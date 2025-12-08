@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "PPG-Frailty-pipeline"
+version = "0.1.0"
+description = "PPG→peaks→PPI/NNI→HRV features (hrv & hrvanalysis) with Dash UI"
+authors = [{ name = "Kaifeng Xu" }]
+readme = "README.md"
+requires-python = "3.9.0"
+
+# 这里列出运行时依赖；pip 会自动安装它们
+dependencies = [
+  "numpy>=1.23",
+  "scipy>=1.9",
+  "hrv",             
+  "hrv-analysis",    
+  "dash>=2.11",
+  "plotly>=5.18",
+  "python-dotenv>=1.0",  
+  "gunicorn>=21.2"       
+]
+
+[project.optional-dependencies]
+ceemd = ["PyEMD>=0.5.1"]
+
+
+dev = [
+  "pytest",
+  "black",
+  "isort",
+  "flake8",
+  "mypy"
+]
+
+[project.scripts]
+ppg-hrv-app = "PPG_Analy_Visual_test:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]  
