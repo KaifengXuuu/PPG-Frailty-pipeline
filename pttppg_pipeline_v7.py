@@ -275,7 +275,7 @@ def split_indices(groups, mode="kfold", n_splits=5, train_size=0.8, random_state
         return [(tr,va)]
     else:
         gkf=GroupKFold(n_splits=min(len(set(groups)), n_splits))
-        return list(gkf.split(idx, groups=groups, groups=groups))
+        return list(gkf.split(idx, groups=groups))
 
 def run_one_setup(records_by_subj, fs, win, hop, motion_thresh, split_mode, n_splits, train_size,
                   epochs_ae, epochs_den, lr, thr=None, setup=1, outdir=Path("results"),
