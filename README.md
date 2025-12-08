@@ -10,9 +10,9 @@ If you don’t have Conda yet, install **Miniconda** or **Anaconda** and verify:
 
 ```bash
 conda --version
-conda create -n <a name you like> python=3.9
-conda activate <a name you like>
-git clone https://github.com/<your-username>/PPG-Frailty-pipeline.git
+conda create -n PPG-frality python=3.9.0
+conda activate PPG-frality
+git clone https://github.com/KaifengXuuu/PPG-Frailty-pipeline.git
 cd PPG-Frailty-pipeline
 pip install .
 ```
