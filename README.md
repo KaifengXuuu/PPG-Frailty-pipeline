@@ -22,13 +22,16 @@ pip install .
 2. Right click in space of folder and select "Terminal"
 3. Run following commands:
 ```
+git fetch -a
+git switch main
+git pull
 cp .env.example .env
 code .
 ```
 4. Open the file /.env in VSCode and change the folowing variables to the Path of your PPG-Datasets:
 ```
 folderpath1 = "/home/Test Data"
-folderpath2 = "/home/Test Data/25July25" #!!!change here!!!
+folderpath2 = "/home/Test Data/25July25" 
 ```
 5. Open file /PPG_Analy_Visual_test.ipynb and click "Run all" butten in VSCode.
 
