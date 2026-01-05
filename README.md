@@ -18,13 +18,19 @@ pip install .
 ```
 
 ### 2. Change filepath
-Change the path of your ppg datasets folder in [ ] of the code below in Notebook ./PPG_Analy_Visual_test.ipynb.
+1. Open the folder /PPG-Frailty-pipeline
+2. Right click in space of folder and select "Terminal"
+3. Run following commands:
 ```
-envi = 1
-
-windows_address_1 = ["/mnt/d/Tubcloud/Shared/PPG/Test Data",
-                   "/mnt/d/Tubcloud/Shared/PPG/Test Data/25July25"]
+cp .env.example .env
+code .
 ```
+4. Open the file /.env in VSCode and change the folowing variables to the Path of your PPG-Datasets:
+```
+folderpath1 = "/home/Test Data"
+folderpath2 = "/home/Test Data/25July25" #!!!change here!!!
+```
+5. Open file /PPG_Analy_Visual_test.ipynb and click "Run all" butten in VSCode.
 
 
 

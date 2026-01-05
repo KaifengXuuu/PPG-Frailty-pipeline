@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM python:3.9-slim-bullseye
 
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -11,20 +11,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 
-WORKDIR /
+WORKDIR /app
 
 
-COPY pyproject.toml /
+COPY pyproject.toml README.md /app/
 
 RUN python -m pip install --upgrade pip setuptools wheel \
     && pip install .
 
 
-COPY . /
+COPY . /app
 
 EXPOSE 8050
 
 ENV APP_HOST=0.0.0.0 \
     APP_PORT=8050
 
-CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:8050", "PPG_Analy_Visual_test:server"]
+CMD ["sh", "-c", "gunicorn", "-w", "2", "-b", "0.0.0.0:8050", "ppg:server"]

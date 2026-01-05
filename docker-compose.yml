@@ -1,0 +1,16 @@
+# docker-compose.yml
+services:
+  ppg-app:
+    build: .
+    ports:
+      - "${APP_PORT:-8050}:8050"   # 映射到主机
+    env_file:
+      - .env
+    # 开发期建议把代码目录挂载进容器，热更新方便
+
+    volumes:
+      - type: bind
+        source: ${PWD}
+        target: /app
+
+    restart: unless-stopped
