@@ -2,6 +2,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 import os
+from pathlib import Path
 import io, zipfile
 import webbrowser
 import numpy as np
@@ -29,11 +30,486 @@ from hrvanalysis import (
     get_sampen,
 )
 from dash import dash_table
+from scipy import signal, interpolate
+import plotly.graph_objects as go
 from datetime import datetime
+from fractions import Fraction
+# =============================================================================
+# Detector v8 (scores-based) runtime integration (CPU-only, NumPy/SciPy)
+# =============================================================================
+import functools
 
+try:
+    from scipy import signal as _sp_signal  # resample_poly if available
+except Exception:  # pragma: no cover
+    _sp_signal = None
+
+DETECTOR_FS_HZ = float(os.environ.get("V8_DETECTOR_FS_HZ", "500"))
+EKF = False #True:use ekf
+
+def _sigmoid(x: np.ndarray) -> np.ndarray:
+    x = np.clip(x, -60.0, 60.0)
+    return 1.0 / (1.0 + np.exp(-x))
+
+
+def _safe_resample_poly(x: np.ndarray, fs_in: float, fs_out: float) -> np.ndarray:
+    """Resample 1D or 2D array; uses SciPy if available, else linear interpolation."""
+    if float(fs_in) == float(fs_out):
+        return x
+    x = np.asarray(x)
+    if _sp_signal is None:
+        t_in = np.arange(x.shape[0], dtype=float) / float(fs_in)
+        n_out = int(round(x.shape[0] * float(fs_out) / float(fs_in)))
+        t_out = np.arange(n_out, dtype=float) / float(fs_out)
+        if x.ndim == 1:
+            return np.interp(t_out, t_in, x).astype(x.dtype)
+        return np.stack([np.interp(t_out, t_in, x[:, c]) for c in range(x.shape[1])], axis=1).astype(x.dtype)
+
+
+    fs_in_i  = int(round(float(fs_in)))
+    fs_out_i = int(round(float(fs_out)))
+
+    # 可选：严格检查，防止 399.8Hz 这种被悄悄 round
+    if abs(float(fs_in) - fs_in_i) > 1e-6 or abs(float(fs_out) - fs_out_i) > 1e-6:
+        # 如果你确实可能遇到非整数采样率，用下面方案 B
+        raise ValueError(f"fs_in/fs_out must be near-integer. got fs_in={fs_in}, fs_out={fs_out}")
+
+    frac = Fraction(fs_out_i, fs_in_i).limit_denominator(1000)
+    up, down = frac.numerator, frac.denominator
+
+    if x.ndim == 1:
+        return _sp_signal.resample_poly(x, up=up, down=down).astype(x.dtype)
+    return np.stack([_sp_signal.resample_poly(x[:, c], up=up, down=down) for c in range(x.shape[1])], axis=1).astype(x.dtype)
+
+
+def _bandpowers_fft(x: np.ndarray, fs: float, bands=((0.1,0.5),(0.5,3.0),(3.0,8.0))) -> list:
+    x = np.asarray(x, dtype=np.float32)
+    try:
+        f, p = signal.welch(x, fs=fs, nperseg=min(len(x), 512))
+        out = []
+        for lo, hi in bands:
+            m = (f >= lo) & (f < hi)
+            out.append(float(np.trapezoid(p[m], f[m])) if np.any(m) else 0.0)
+        return out
+    except Exception:
+        return [0.0]*len(bands)
+
+
+def _spectral_entropy(x: np.ndarray, fs: float, fmin: float = 0.1, fmax: float = 8.0) -> float:
+    x = np.asarray(x, dtype=np.float32)
+    f, p = signal.welch(x, fs=fs, nperseg=min(len(x), 512))
+    m = (f >= fmin) & (f <= fmax)
+    f = f[m]; p = p[m]
+    p = np.maximum(p, 1e-12)
+    p = p / np.sum(p)
+    ent = float(-np.sum(p * np.log(p)))
+
+    return ent
+
+
+def _dominant_freq(x: np.ndarray, fs: float, fmin: float = 0.1, fmax: float = 8.0) -> float:
+    x = np.asarray(x, dtype=np.float32)
+
+    f, p = signal.welch(x, fs=fs, nperseg=min(len(x), 512))
+    m = (f >= fmin) & (f <= fmax)
+    f = f[m]; p = p[m]
+    p = np.maximum(p, 1e-12)
+    p = p / np.sum(p)
+
+    dom = float(f[int(np.argmax(p))]) if len(p) else float("nan")
+    return dom
+
+
+def _time_stats(x: np.ndarray) -> dict:
+    x = np.asarray(x, dtype=float)
+    med = float(np.median(x))
+    q1 = float(np.percentile(x, 25))
+    q3 = float(np.percentile(x, 75))
+    return dict(
+        mean=float(np.mean(x)),
+        std=float(np.std(x)),
+        med=med,
+        iqr=float(q3 - q1),
+        rms=float(np.sqrt(np.mean(x * x) + 1e-12)),
+    )
+
+
+def _extract_window_features_v8(ppg_bp: np.ndarray,
+                               acc_mag: np.ndarray,
+                               gyro_mag: np.ndarray,
+                               jerk_mag: np.ndarray,
+                               fs: float) -> tuple[np.ndarray, np.ndarray]:
+    st_ppg = _time_stats(ppg_bp)
+    bp_ppg = _bandpowers_fft(ppg_bp, fs, bands=[(0.1, 0.5), (0.5, 3.0), (3.0, 8.0)])
+    ppg_vec = np.asarray([
+        st_ppg["mean"], st_ppg["std"], st_ppg["med"], st_ppg["iqr"], st_ppg["rms"],
+        bp_ppg[0], bp_ppg[1], bp_ppg[2],
+        _spectral_entropy(ppg_bp, fs), _dominant_freq(ppg_bp, fs),
+    ], dtype=np.float32)
+
+    st_acc = _time_stats(acc_mag)
+    st_gyr = _time_stats(gyro_mag)
+    st_jerk = _time_stats(jerk_mag)
+    # Acc
+    bp_acc = _bandpowers_fft(acc_mag, fs, bands=[(0.1,0.5),(0.5,3.0),(3.0,8.0)])
+    ent_acc = _spectral_entropy(acc_mag, fs)
+    dom_acc = _dominant_freq(acc_mag, fs)
+
+    # Gyro
+    bp_gyr = _bandpowers_fft(gyro_mag, fs, bands=[(0.1,0.5),(0.5,3.0),(3.0,8.0)])
+    ent_gyr = _spectral_entropy(gyro_mag, fs)
+    dom_gyr = _dominant_freq(gyro_mag, fs)
+
+    # Jerk (只有 entropy/dom，没有 bandpowers)
+    ent_jerk = _spectral_entropy(jerk_mag, fs)
+    dom_jerk = _dominant_freq(jerk_mag, fs)
+
+    imu_vec = np.asarray([
+        # Acc ts (5)
+        st_acc["mean"], st_acc["std"], st_acc["med"], st_acc["iqr"], st_acc["rms"],
+        # Gyro ts (5)
+        st_gyr["mean"], st_gyr["std"], st_gyr["med"], st_gyr["iqr"], st_gyr["rms"],
+        # Jerk ts (5)
+        st_jerk["mean"], st_jerk["std"], st_jerk["med"], st_jerk["iqr"], st_jerk["rms"],
+
+        # Acc bp (3) + Acc ent/dom (2)
+        bp_acc[0], bp_acc[1], bp_acc[2], ent_acc, dom_acc,
+
+        # Gyro bp (3) + Gyro ent/dom (2)
+        bp_gyr[0], bp_gyr[1], bp_gyr[2], ent_gyr, dom_gyr,
+
+        # Jerk ent/dom (2)
+        ent_jerk, dom_jerk,
+    ], dtype=np.float32)
+    return ppg_vec, imu_vec
+
+
+def _mahalanobis_score(x: np.ndarray, mu: np.ndarray, cov: np.ndarray) -> float:
+    x = np.asarray(x, dtype=float).reshape(-1)
+    mu = np.asarray(mu, dtype=float).reshape(-1)
+    cov = np.asarray(cov, dtype=float)
+    d = x - mu
+    try:
+        sol = np.linalg.solve(cov + 1e-8*np.eye(cov.shape[0]), d)
+    except np.linalg.LinAlgError:
+        sol = np.linalg.pinv(cov + 1e-6*np.eye(cov.shape[0])) @ d
+    return float(np.sqrt(np.maximum(0.0, d @ sol)))
+
+
+def _shift_by_steps(x: np.ndarray, steps: int, fill_value: float = np.nan) -> np.ndarray:
+    x = np.asarray(x, dtype=float)
+    out = np.full_like(x, fill_value, dtype=float)
+    if steps == 0:
+        return x
+    if steps > 0:
+        out[steps:] = x[:-steps]
+    else:
+        out[:steps] = x[-steps:]
+    return out
+
+def _whiten_residual(x: np.ndarray, mu: np.ndarray, cov: np.ndarray) -> np.ndarray:
+    """
+    Return z = L^{-1}(x-mu), where cov = L L^T (Cholesky).
+    If Cholesky fails, fall back to eigen / pinv.
+    """
+    x = np.asarray(x, dtype=float).reshape(-1)
+    mu = np.asarray(mu, dtype=float).reshape(-1)
+    cov = np.asarray(cov, dtype=float)
+
+    d = x - mu
+    # small jitter for numerical stability
+    C = cov + 1e-8 * np.eye(cov.shape[0])
+
+    try:
+        L = np.linalg.cholesky(C)
+        z = np.linalg.solve(L, d)  # L z = d
+        return z
+    except np.linalg.LinAlgError:
+        # fallback: eigen whitening
+        w, V = np.linalg.eigh(C)
+        w = np.maximum(w, 1e-8)
+        z = (V.T @ d) / np.sqrt(w)
+        return z
+
+def _print_topk_whiten(z: np.ndarray, feature_names, k: int = 10, prefix: str = "IMU"):
+    z = np.asarray(z, dtype=float).reshape(-1)
+    a = np.abs(z)
+    idx = np.argsort(-a)[:k]
+    print(f"\n[{prefix}] Top-{k} |z| dims:")
+    for j in idx:
+        name = str(feature_names[j]) if feature_names is not None and j < len(feature_names) else f"dim{j}"
+        print(f"  {j:02d}  {name:<24s}  z={z[j]: .4f}  |z|={a[j]: .4f}")
+
+@functools.lru_cache(maxsize=4)
+def load_v8_detector_bundle(npz_path: str) -> dict:
+    d = dict(np.load(npz_path, allow_pickle=True))
+    return dict(
+        imu_feature_names=np.asarray(d["imu_feature_names"], dtype=object),
+        ppg_mu=np.asarray(d["mu_ppg"], dtype=np.float64),
+        ppg_cov=np.asarray(d["cov_ppg"], dtype=np.float64),
+        imu_mu=np.asarray(d["mu_imu"], dtype=np.float64),
+        imu_cov=np.asarray(d["cov_imu"], dtype=np.float64),
+        lag_best_steps=int(d.get("lag_best_steps", 0)),
+        logreg_coef=np.asarray(d.get("coef"), dtype=np.float64).reshape(-1),
+        logreg_intercept=float(np.asarray(d.get("intercept", [0.0]), dtype=np.float64).reshape(-1)[0]),
+    )
+
+
+
+# -----------------------------
+# Detector v8: visualization helpers (sit/motion highlights)
+# -----------------------------
+
+def _mask_to_time_segments(mask, fs: float, min_len_sec: float = 0.2):
+    """Convert a boolean mask (per-sample) to contiguous time segments (x0,x1 in seconds)."""
+
+    m = np.asarray(mask).astype(bool)
+    if m.size == 0 or fs <= 0:
+        return []
+    seg = []
+    start = None
+    for i, v in enumerate(m):
+        if v and start is None:
+            start = i
+        elif (not v) and (start is not None):
+            dur = (i - start) / fs
+            if dur >= float(min_len_sec):
+                seg.append((start / fs, i / fs))
+            start = None
+    if start is not None:
+        dur = (len(m) - start) / fs
+        if dur >= float(min_len_sec):
+            seg.append((start / fs, len(m) / fs))
+    return seg
+
+
+def _clip_segments(seg, x_min: Optional[float] = None, x_max: Optional[float] = None):
+    if not seg:
+        return []
+    out = []
+    for x0, x1 in seg:
+        if x_min is not None:
+            x0 = max(x0, x_min)
+            x1 = max(x1, x_min)
+        if x_max is not None:
+            x0 = min(x0, x_max)
+            x1 = min(x1, x_max)
+        if x1 > x0:
+            out.append((x0, x1))
+    return out
+
+
+def _add_vrect_safe(fig, x0: float, x1: float, fillcolor: str, row=None, col=None):
+    """Add a vertical rectangle to a plotly figure; supports subplots when possible."""
+    # Prefer add_vrect when available (handles subplot row/col properly)
+    try:
+        if hasattr(fig, 'add_vrect'):
+            kwargs = dict(x0=x0, x1=x1, fillcolor=fillcolor, opacity=1.0, line_width=0, layer='below')
+            if row is not None and col is not None:
+                kwargs.update(dict(row=row, col=col))
+            fig.add_vrect(**kwargs)
+            return
+    except Exception:
+        pass
+
+    # Fallback: add_shape
+    shape = dict(
+        type='rect', xref='x', yref='paper',
+        x0=x0, x1=x1, y0=0.0, y1=1.0,
+        fillcolor=fillcolor,
+        line=dict(width=0),
+        layer='below'
+    )
+    try:
+        if row is not None and col is not None:
+            fig.add_shape(shape, row=row, col=col)
+        else:
+            fig.add_shape(shape)
+    except Exception:
+        # As a last resort, ignore
+        return
+
+
+def _add_detector_highlights(fig, seg_sit, seg_motion, *, x_min=None, x_max=None, row=None, col=None,
+                             label_prefix='Detector v8', add_legend=True):
+    """Overlay sit (green) and motion (red) segments on a plotly figure."""
+
+
+    seg_sit = _clip_segments(seg_sit, x_min, x_max)
+    seg_motion = _clip_segments(seg_motion, x_min, x_max)
+
+    # Colors requested by user
+    c_sit = 'rgba(0,180,0,0.12)'
+    c_motion = 'rgba(220,0,0,0.16)'
+
+    for x0, x1 in seg_sit:
+        _add_vrect_safe(fig, x0, x1, c_sit, row=row, col=col)
+    for x0, x1 in seg_motion:
+        _add_vrect_safe(fig, x0, x1, c_motion, row=row, col=col)
+
+    if add_legend:
+        # Dummy legend entries (won't affect data)
+        try:
+            fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers',
+                                     marker=dict(color=c_sit, size=10),
+                                     name=f'{label_prefix}: sit', showlegend=True))
+            fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers',
+                                     marker=dict(color=c_motion, size=10),
+                                     name=f'{label_prefix}: motion', showlegend=True))
+        except Exception:
+            pass
+
+
+def v8_detector_predict(ppg_ir: np.ndarray,
+                        ppg_red: np.ndarray,
+                        acc_xyz_g: np.ndarray,
+                        gyro_xyz_deg: np.ndarray,
+                        fs_in: float,
+                        win_sec: float,
+                        hop_sec: float,
+                        bundle_npz: str) -> dict:
+    """Return window-level and sample-level sit vs walk/run predictions using v8 bundle."""
+    b = load_v8_detector_bundle(bundle_npz)
+    
+    imu_names = None
+    if "imu_feature_names" in b:
+        imu_names = list(b["imu_feature_names"])
+        
+    def _print_scale_stats(name: str, x: np.ndarray):
+        x = np.asarray(x, dtype=float)
+        mag = np.linalg.norm(x, axis=1) if x.ndim == 2 else np.abs(x)
+        print(f"[SCALE] {name}: median={np.median(mag):.6g}  std={np.std(mag):.6g}  mean={np.mean(mag):.6g}  min={np.min(mag):.6g}  max={np.max(mag):.6g}")
+
+    # in v8_detector_predict, very early:
+    _print_scale_stats("acc_raw_input (as provided)", np.asarray(acc_xyz_g, dtype=float))
+    _print_scale_stats("gyro_raw_input (as provided)", np.asarray(gyro_xyz_deg, dtype=float))
+
+    # Units: g -> m/s^2; deg/s -> rad/s
+    g_const = float(globals().get("G", 9.80665))
+    acc_ms2 = np.asarray(acc_xyz_g, dtype=float) * g_const
+    gyro_rads = np.deg2rad(np.asarray(gyro_xyz_deg, dtype=float))
+
+    # Resample for scoring if fs differs
+    fs = float(DETECTOR_FS_HZ)
+    ppg_ir_rs = _safe_resample_poly(np.asarray(ppg_ir, dtype=float), fs_in, fs)
+    acc_rs = _safe_resample_poly(acc_ms2, fs_in, fs)
+    gyro_rs = _safe_resample_poly(gyro_rads, fs_in, fs)
+
+    # Gravity estimate and dynamic acc (lowpass 0.3 Hz like v8)
+    g_est = lp(acc_rs, fc=0.3, fs=fs, order=2, axis=0)
+    a_dyn = acc_rs - g_est
+    acc_mag = np.linalg.norm(a_dyn, axis=1)
+    gyro_mag = np.linalg.norm(gyro_rs, axis=1)
+    jerk = np.diff(acc_mag, prepend=acc_mag[0]) * fs
+    jerk_mag = jerk
+    
+    print(f"[SCALE] acc_dyn_mag: median={np.median(acc_mag):.6g} std={np.std(acc_mag):.6g} mean={np.mean(acc_mag):.6g}")
+    print(f"[SCALE] gyro_mag: median={np.median(gyro_mag):.6g} std={np.std(gyro_mag):.6g} mean={np.mean(gyro_mag):.6g}")
+    print(f"[SCALE] jerk_mag: median={np.median(jerk_mag):.6g} std={np.std(jerk_mag):.6g} mean={np.mean(jerk_mag):.6g}")
+
+    #jerk_mag = np.linalg.norm(jerk, axis=1)
+
+
+    # PPG bandpass (0.5-8 Hz)
+    ppg_bp = bandpass_filter(ppg_ir_rs, lowcut=0.5, highcut=8.0, fs=fs, order=3)
+
+    W = int(round(win_sec * fs))
+    H = int(round(hop_sec * fs))
+    n = len(ppg_bp)
+    if n < W:
+        return dict(pred_sample=np.zeros(len(ppg_ir), dtype=int),
+                    ids=np.full(len(ppg_ir), LABEL_TO_ID["Resting"], dtype=int),
+                    labels=np.array(["Resting"]*len(ppg_ir), dtype=object))
+
+    ppg_score = []
+    imu_score = []
+    win_ranges = []
+    for s in range(0, n - W + 1, H):
+        e = s + W
+        ppg_vec, imu_vec = _extract_window_features_v8(ppg_bp[s:e], acc_mag[s:e], gyro_mag[s:e], jerk_mag[s:e], fs=fs)
+        
+        if s <= 1:  # only first window
+            z_imu = _whiten_residual(imu_vec, b["imu_mu"], b["imu_cov"])
+            _print_topk_whiten(z_imu, imu_names, k=10, prefix="IMU whiten (1st win)")
+            
+        ppg_score.append(_mahalanobis_score(ppg_vec, b["ppg_mu"], b["ppg_cov"]))
+        imu_score.append(_mahalanobis_score(imu_vec, b["imu_mu"], b["imu_cov"]))
+        win_ranges.append((s, e))
+
+    ppg_score = np.asarray(ppg_score, dtype=float)
+    imu_score = np.asarray(imu_score, dtype=float)
+    imu_shift = _shift_by_steps(imu_score, b["lag_best_steps"], fill_value=np.nan)
+
+    # Logistic fusion (trained on [ppg_score, imu_score_shift])
+    coef = b["logreg_coef"]
+    z = b["logreg_intercept"]
+    if coef.size >= 2:
+        z = z + coef[0]*ppg_score + coef[1]*imu_shift
+    elif coef.size == 1:
+        z = z + coef[0]*imu_shift
+    else:
+        z = imu_shift
+
+    prob = _sigmoid(np.nan_to_num(z, nan=-60.0))
+    pred_win = (prob >= 0.5).astype(int)
+
+    # Aggregate to samplewise on scoring grid (vote)
+    votes = np.zeros(n, dtype=float)
+    counts = np.zeros(n, dtype=float)
+    for (s, e), p in zip(win_ranges, pred_win):
+        votes[s:e] += float(p)
+        counts[s:e] += 1.0
+    pred_sample_rs = (votes / np.maximum(counts, 1.0) >= 0.5).astype(int)
+
+    # Map back to original fs
+    pred_sample = _safe_resample_poly(pred_sample_rs.astype(float), fs, float(fs_in))
+    pred_sample = (pred_sample >= 0.5).astype(int)[:len(ppg_ir)]
+
+    ids = np.full(len(ppg_ir), LABEL_TO_ID["Resting"], dtype=int)
+    ids[pred_sample == 1] = LABEL_TO_ID["Walking"]
+    labels = np.array(["Resting" if v == 0 else "Walking" for v in pred_sample], dtype=object)
+    def _stat(name, a):
+        a = np.asarray(a)
+        print(name, "len", a.size, "min/med/max", float(np.min(a)), float(np.median(a)), float(np.max(a)))
+
+    _stat("ppg_score", ppg_score)
+    _stat("imu_score", imu_score)
+    _stat("prob_win", prob)        # 如果有
+    _stat("pred_win", pred_win)        # 如果有
+    _stat("pred_sample", pred_sample)  # 如果有
+    return dict(
+        fs_scoring=fs,
+        lag_best_steps=int(b["lag_best_steps"]),
+        ppg_score=ppg_score,
+        imu_score=imu_score,
+        prob=prob,
+        pred_window=pred_win,
+        pred_sample=pred_sample,
+        ids=ids,
+        labels=labels,
+    )
+
+a = int(os.getenv("MIN_BPM"))
+print(a+1)
+
+#envi = 0
+
+#windows_address_1 = ["/mnt/d/Tubcloud/Shared/PPG/Test Data","/mnt/d/Tubcloud/Shared/PPG/Test Data/25July25"]
+#ubuntu_address_0 = ["/home/trinker/only_view/Test Data","/home/trinker/only_view/Test Data/25July25"]
 DEFAULT_FOLDER_MAIN  = os.getenv("folderpath1")
 DEFAULT_FOLDER = os.getenv("folderpath2")
 
+'''
+if envi:
+    DEFAULT_FOLDER_MAIN = windows_address_1[0]
+    DEFAULT_FOLDER = windows_address_1[1]
+else:
+    DEFAULT_FOLDER_MAIN = ubuntu_address_0[0]
+    DEFAULT_FOLDER = ubuntu_address_0[1]
+
+'''
+
+# Constants
 FS = int(os.getenv("FS_PPG")) # Sampling frequency in Hz
 MIN_BPM = int(os.getenv("MIN_BPM"))  # Minimum expected heart rate for artifact rejection
 MAX_BPM = int(os.getenv("MAX_BPM")) # Maximum expected heart rate for artifact rejection
@@ -74,6 +550,7 @@ def robust_std(x):
     med = np.median(x)
     mad = np.median(np.abs(x - med)) + 1e-12
     return 1.4826 * mad
+
 
 
 #-------------------------------HR & Peaks---------------------------
@@ -231,6 +708,9 @@ def aboypp_peak_hr(ppg_raw, fs=FS, window_sec=10.0,
                 hr_series=np.asarray(hr_series) if len(hr_series) else np.empty((0,2)),
                 HRi_series=np.asarray(HRi_series) if len(HRi_series) else np.empty((0,2)),
                 hr_global=hr_g, hrv_ms=hrv_ms, rr=rr)
+    
+    
+    #  distance, remove dirty segments, add peaks at boundary of windows
 
 def aboypp_peak_hr_windowed(
     ppg_raw, fs=400,
@@ -472,6 +952,7 @@ def build_aboypp_windowed_sync_figure(
 
     return fig
 
+
 #------------Spo2---------------
 def compute_mean_R(ir, red, peaks, fs=FS):
     """Return mean R after PI + outlier filtering; NaN if none valid. For Spo2"""
@@ -546,8 +1027,8 @@ def imu_features(acc, gyro, fs):
     gyro_mag = np.linalg.norm(gyro, axis=1)
     
     # jerk 
-    jerk     = np.diff(acc, axis=0, prepend=acc[:1]) * fs
-    jerk_mag = np.linalg.norm(jerk, axis=1)
+    jerk = np.diff(acc_mag, prepend=acc_mag[0]) * fs
+    jerk_mag = jerk
     return acc_mag, gyro_mag, jerk_mag
 
 
@@ -638,7 +1119,7 @@ def _welch_peak(freqs, Pxx, f_lo=0.8, f_hi=3.0):
     return fpk, snr
 
 #---------bias-----------
-def estimate_bias_from_static(df, idx_start=int(5*FS), idx_end=int(100*FS), fs=FS,
+def estimate_bias_from_static(df, idx_start=int(5*FS), idx_end=int(10*FS), fs=FS,
                               acc_lp_fc=20, gyro_lp_fc=40,
                               index = True,
                               acc_in_g=True, gyro_in_dps=True):
@@ -816,8 +1297,8 @@ def classify_window(a_dyn_win, gyro_win, gdir_win, fs,
     gyro_mag = np.linalg.norm(gyro_win, axis=1)
     acc_rms  = float(np.sqrt(np.mean(acc_mag**2)))
     gyro_rms = float(np.sqrt(np.mean(gyro_mag**2)))
-    jerk     = np.diff(a_dyn_win, axis=0, prepend=a_dyn_win[:1]) * fs
-    jerk_mag = np.linalg.norm(jerk, axis=1)
+    jerk = np.diff(acc_mag, prepend=acc_mag[0]) * fs
+    jerk_mag = jerk
     jerk_rms = float(np.sqrt(np.mean(jerk_mag**2)))
     #print(jerk_rms)
     f, Pxx = signal.welch(acc_mag, fs=fs, window='hann', nperseg=min(len(acc_mag), int(2*fs)))
@@ -857,7 +1338,7 @@ def samplewise_labels(N, fs, win_list, win_labels):
     return ids
 
 
-def imu_preprocess_with_kf(df, cols=None, fs=FS, acc_fc=20, gyro_fc=40,  static_t0=5.0, static_t1=100.0):
+def imu_preprocess_with_kf(df, cols=None, fs=FS, acc_fc=20, gyro_fc=40,  static_t0=5.0, static_t1=10.0):
     """
     Full IMU preprocessing:
       1) initial bias estimation over a static segment
@@ -909,8 +1390,8 @@ def imu_preprocess_with_kf(df, cols=None, fs=FS, acc_fc=20, gyro_fc=40,  static_
     # 5) metrics
     acc_mag  = np.linalg.norm(a_dyn, axis=1)
     gyro_mag = np.linalg.norm((gyro_lp), axis=1)
-    jerk     = np.diff(a_dyn, axis=0, prepend=a_dyn[:1]) * fs
-    jerk_mag = np.linalg.norm(jerk, axis=1)
+    jerk = np.diff(acc_mag, prepend=acc_mag[0]) * fs
+    jerk_mag = jerk
     
     output = dict(
         acc_raw = acc_g,
@@ -934,7 +1415,7 @@ def imu_preprocess_with_kf(df, cols=None, fs=FS, acc_fc=20, gyro_fc=40,  static_
     return output
 
 def classify_motion_from_df(df, fs=FS, cols=None, win_sec=1.0, hop_sec=0.5, thresholds=THRESHOLD,
-                             use_ekf=True, static_t0=5.0, static_t1=10.0):
+                             use_ekf=EKF, static_t0=5.0, static_t1=10.0):
     """Motion classifier with two gravity-removal paths:
     - LPF path (default): fast, no static segment required.
     - EKF path (optional): uses static segment to estimate sensor biases, then EKF roll/pitch and gravity removal.
@@ -973,8 +1454,8 @@ def classify_motion_from_df(df, fs=FS, cols=None, win_sec=1.0, hop_sec=0.5, thre
     # Scalars for ANC
     acc_mag  = np.linalg.norm(a_dyn, axis=1)
     gyro_mag = np.linalg.norm((gyro_lp if use_ekf else lp(gyro, 40, fs)), axis=1)
-    jerk     = np.diff(a_dyn, axis=0, prepend=a_dyn[:1]) * fs
-    jerk_mag = np.linalg.norm(jerk, axis=1)
+    jerk = np.diff(acc_mag, prepend=acc_mag[0]) * fs
+    jerk_mag = jerk
     t = df['Time'].values if 'Time' in df.columns else np.arange(N)/fs
     unique, counts = np.unique(ids, return_counts=True)
     frac = {MOTION_LABELS[i]: float(counts[j]/N) for j,i in enumerate(unique)}
@@ -1156,9 +1637,10 @@ def hr_from_anc_pipeline(ppg_raw, imu_res, fs=FS,
         )
     )
     """
-import numpy as np
-from scipy import signal, interpolate
-import plotly.graph_objects as go
+    
+    
+
+
 
 # =========================================================
 # 1) Baseline utilities
@@ -1445,7 +1927,6 @@ def build_cemd_lms_figure(ppg, fs, out_dict, height=420, title="CE(M)D + LMS ANC
     fig.update_xaxes(title="Time (s)", showgrid=True, gridcolor="rgba(0,0,0,0.08)")
     fig.update_yaxes(title="Amplitude", showgrid=True, gridcolor="rgba(0,0,0,0.08)")
     return fig
-
 # ==== HR/HRV compare (strict) – core helpers ====
 
 # 统一的“已知特征键”清单（用于并集表的排序与补齐）
@@ -1460,6 +1941,7 @@ _HRVA_TD_KEYS   = [
 _HRVA_GEOM_KEYS = ['triangular_index','tinn']
 _HRVA_FD_KEYS   = ['vlf','lf','hf','total_power','lfnu','hfnu','lf_hf','lf_hf_ratio','lf_hr_ratio']
 _HRVA_NL_KEYS   = ['csi','cvi','mcsi','sd1','sd2','sd2_sd1','sd1_sd2','sampen']
+
 
 def _fmt_float(v: Any) -> Any:
     """.4f;NaN/Inf -> None。"""
@@ -1537,11 +2019,14 @@ def hrv_features_via_hrv(ppi_ms: List[float]) -> Dict[str, Any]:
     """
     using hrv(JOSS) to caculat: time-domain + fre-domain + non-linear
     """
+
     rri = RRi(ppi_ms)
     out: Dict[str, Any] = {}
+  
     out.update({k: _fmt_float(v) for k, v in time_domain(rri).items()})
     out.update({k: _fmt_float(v) for k, v in frequency_domain(rri).items()})
     out.update({k: _fmt_float(v) for k, v in non_linear(rri).items()})
+    
     return out
 
 
@@ -1672,7 +2157,6 @@ def build_hrv_compare_table(rows: List[Dict[str, Any]]):
         page_size=20,
     )
 # ================================================
-
 #-------------------------Dash Func-------------------
 def get_folder_options():
     """遍历 DEFAULT_FOLDER_MAIN 下的子文件夹，生成 Dropdown 选项；确保包含 DEFAULT_FOLDER。"""
@@ -1688,8 +2172,54 @@ def get_folder_options():
     # label 显示目录名，value 为完整路径
     return [{'label': os.path.basename(p) or p, 'value': p} for p in paths]
 
+
 # --- Dash App Layout ---
 app = dash.Dash(__name__)
+
+
+# ---------------- Detector bundle (NPZ) selection helpers ----------------
+# Dash UI two-level selection: folder (under current working directory) -> .npz file.
+# If no bundle is selected, fallback to environment variable V8_DETECTOR_BUNDLE_NPZ.
+
+_BUNDLE_ENV_FALLBACK = os.environ.get("V8_DETECTOR_BUNDLE_NPZ", "./results_v8_audit/detector_v8_bundle.npz")
+
+def _list_subdirs_of_cwd():
+    base = Path(".").resolve()
+    opts = [{"label": ".", "value": "."}]
+    for p in sorted(base.iterdir()):
+        if p.is_dir():
+            opts.append({"label": p.name, "value": p.name})
+    return opts
+
+def _list_npz_in_dir(dir_value: str):
+    if not dir_value:
+        return []
+    p = Path(dir_value)
+    if not p.exists() or not p.is_dir():
+        return []
+    files = sorted([x.name for x in p.iterdir() if x.is_file() and x.suffix.lower() == ".npz"])
+    return [{"label": f, "value": f} for f in files]
+
+def _parse_bundle_default():
+    # Returns (dir_value, file_value) based on env fallback if possible.
+    try:
+        p = Path(_BUNDLE_ENV_FALLBACK)
+        if not p.is_absolute():
+            p = (Path(".").resolve() / p).resolve()
+        cwd = Path(".").resolve()
+        if p.exists() and (cwd == p.parent or cwd in p.parents):
+            dir_value = os.path.relpath(p.parent, cwd)
+            dir_value = "." if dir_value == "." else dir_value
+            return dir_value, p.name
+    except Exception:
+        pass
+    return ".", None
+
+_BUNDLE_DIR_OPTIONS = _list_subdirs_of_cwd()
+_DEFAULT_BUNDLE_DIR, _DEFAULT_BUNDLE_FILE = _parse_bundle_default()
+_BUNDLE_NPZ_OPTIONS = _list_npz_in_dir(_DEFAULT_BUNDLE_DIR)
+if _DEFAULT_BUNDLE_FILE and (not any(o["value"] == _DEFAULT_BUNDLE_FILE for o in _BUNDLE_NPZ_OPTIONS)):
+    _DEFAULT_BUNDLE_FILE = _BUNDLE_NPZ_OPTIONS[0]["value"] if _BUNDLE_NPZ_OPTIONS else None
 
 # Auto‑launch browser window
 webbrowser.open(f"http://localhost:{PORT}")
@@ -1738,6 +2268,17 @@ app.layout = html.Div([
 
     # Input block: column name configuration
     html.Div([
+        html.Div([        
+            html.Label("📁 Select input channel of PPG:"),
+            dcc.Dropdown(
+                id='input_channel',
+                options=["IR","RED","IR & RED"],
+                value=["IR & RED"],
+                clearable=False,
+                #placeholder='IR & RED',
+                style={'width': '80%'}
+            ),
+    ]),
         html.Label("🔢 Enter IR Column Name:"),
         dcc.Input(id='ir-column', type='text', value='IR'),
         html.Label("🔢 Enter RED Column Name:"),
@@ -1778,6 +2319,32 @@ app.layout = html.Div([
         html.Div(["Enable", dcc.Checklist([{"label":"on","value":"on"}],value=["on"], id="aboy_on")]),
         html.Div(["Amp percentile", dcc.Slider(id="aboy_p", min=50, max=90, step=5, value=65)]),     #, style={"width":"260px"}),
         html.Div(["Window (s)", dcc.Slider(id="aboy_win", min=5, max=15, step=1, value=10)]),        #, style={"width":"260px"})
+
+
+html.Hr(style={"marginTop": 16, "marginBottom": 12}),
+html.H4("V8 detector bundle (.npz)"),
+html.Div([
+    html.Label("Folder (under current working directory)"),
+    dcc.Dropdown(
+        id="bundle_dir",
+        options=_BUNDLE_DIR_OPTIONS,
+        value=_DEFAULT_BUNDLE_DIR,
+        clearable=False,
+        style={"width": "420px"},
+    ),
+], style={"marginTop": 6}),
+html.Div([
+    html.Label("NPZ file"),
+    dcc.Dropdown(
+        id="bundle_npz",
+        options=_BUNDLE_NPZ_OPTIONS,
+        value=_DEFAULT_BUNDLE_FILE,
+        clearable=True,
+        placeholder="Select a .npz bundle file",
+        style={"width": "420px"},
+    ),
+    html.Div(id="bundle_path_text", style={"marginTop": 6, "fontSize": "0.9em", "color": "#555"}),
+], style={"marginTop": 10}),
     ],style={'marginTop': 30}), #style={"display":"flex", "gap":"16px", "alignItems":"center", "flexWrap":"wrap", "marginTop": 8}),
 
     html.Button("🚀 Analyze", id='analyze', n_clicks=0, style={"marginTop": 8}),  # Button to trigger signal processing
@@ -1855,7 +2422,44 @@ app.layout = html.Div([
 ], style={'backgroundColor': 'white', 'padding': '20px'})
 
 
+
+
+
+
+
 # --- Callback: Update File List ---
+
+# ---------------- Bundle selection callbacks ----------------
+@app.callback(
+    Output("bundle_npz", "options"),
+    Output("bundle_npz", "value"),
+    Input("bundle_dir", "value"),
+    State("bundle_npz", "value"),
+    prevent_initial_call=False,
+)
+def _cb_update_bundle_npz(dir_value, current_value):
+    opts = _list_npz_in_dir(dir_value)
+    values = [o["value"] for o in opts]
+    if current_value in values:
+        return opts, current_value
+    new_value = values[0] if values else None
+    return opts, new_value
+
+
+@app.callback(
+    Output("bundle_path_text", "children"),
+    Input("bundle_dir", "value"),
+    Input("bundle_npz", "value"),
+    prevent_initial_call=False,
+)
+def _cb_show_bundle_path(dir_value, file_value):
+    if dir_value and file_value:
+        p = Path(dir_value) / file_value
+        if p.exists():
+            return f"Using detector bundle: {p.as_posix()}"
+        return f"Selected: {p.as_posix()} (not found; will fall back to V8_DETECTOR_BUNDLE_NPZ)"
+    return f"No bundle selected; fallback: V8_DETECTOR_BUNDLE_NPZ={_BUNDLE_ENV_FALLBACK}"
+
 @app.callback(
     Output('file-list', 'options'),
     Output('file-list', 'value'),
@@ -1905,9 +2509,10 @@ def toggle_filename_input(toggle_vals):
     State("hrv-manual-name-toggle", "value"),
     State("hrv-filename-input", "value"),
     State("hrv-orig-fn", "data"),
+    State("input_channel","value"),
     prevent_initial_call=True
 )
-def save_hrv_csv(n_clicks, table_data, save_dir, toggle_vals, manual_name, orig_fn):
+def save_hrv_csv(n_clicks, table_data, save_dir, toggle_vals, manual_name, orig_fn, channel):
     if not save_dir or not isinstance(save_dir, str) or save_dir.strip() == "":
         return "Please input folder path for downloadng "
     if not isinstance(table_data, list) or len(table_data) == 0:
@@ -1915,11 +2520,12 @@ def save_hrv_csv(n_clicks, table_data, save_dir, toggle_vals, manual_name, orig_
 
     ts = datetime.now().strftime("%Y%M%d-%H%M%S")  
     base = (orig_fn or "ppg").rsplit(".", 1)[0]
-
+    if channel== "IR & RED":
+        channel = "IR_RED"
     if toggle_vals and "manual" in toggle_vals and manual_name and manual_name.strip():
         fname = manual_name.strip()
     else:
-        fname = f"{base}-HRV-{ts}"
+        fname = f"{base}-HRV-{channel}-{ts}"
 
     if not fname.lower().endswith(".csv"):
         fname += ".csv"
@@ -1937,6 +2543,7 @@ def save_hrv_csv(n_clicks, table_data, save_dir, toggle_vals, manual_name, orig_
     State("folder-path", "value"),
     State("ir-column", "value"),
     State("red-column", "value"),
+    State("input_channel","value"),
     # --- Aboy++ relates ---
     State("aboy_on", "value"),
     State("aboy_win", "value"),
@@ -1957,7 +2564,7 @@ def save_hrv_csv(n_clicks, table_data, save_dir, toggle_vals, manual_name, orig_
 )
 def batch_export_hrv_to_disk(
     n_clicks,
-    folder, ir_col, red_col,
+    folder, ir_col, red_col, channel,
     aboy_on, aboy_win, fmax,
     hp_on, hp_cut, notch_on, notch_f, bp_order, bp_lo, bp_hi, wav_on, wav_lv,
     save_dir
@@ -1973,15 +2580,24 @@ def batch_export_hrv_to_disk(
 
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     saved = []
+    errors = []
 
     for fname in csvs:
         fpath = os.path.join(folder, fname)
         df = pd.read_csv(fpath)
-
-        # combined PPG = (ir+red)/2
-        ir = df[ir_col].astype(float).to_numpy()
-        red = df[red_col].astype(float).to_numpy()
-        ppg_raw = (ir + red) / 2.0
+        if channel== "IR & RED":
+            channel = "IR_RED"
+        # combined PPG = (ir+red)/2    
+        if channel == "IR_RED":
+            ir = df[ir_col].astype(float).to_numpy()
+            red = df[red_col].astype(float).to_numpy()
+            ppg_raw = (ir + red) / 2.0
+        elif channel == "IR":
+            ir = df[ir_col].astype(float).to_numpy()
+            ppg_raw = ir
+        else:
+            red = df[red_col].astype(float).to_numpy()
+            ppg_raw = red
 
         # --- aboy++ peaks ---
         use_aboy = (aboy_on and ("on" in aboy_on))
@@ -2011,23 +2627,40 @@ def batch_export_hrv_to_disk(
 
         # --- HRV compare table ---
         aboy_info_ir = {"peaks_global": peaks}
-        ppi_ms, rows = hrv_compare_from_aboy_ir(
-            aboy_info_ir=aboy_info_ir,
-            fs_ppg=FS,
-            peaks_are_indices=True,
-            ppi_min_ms=300.0,
-            ppi_max_ms=2000.0,
-            deduplicate_ms=None  # off bei dev
-        )
+        
+        try:
+            ppi_ms, rows = hrv_compare_from_aboy_ir(
+                aboy_info_ir=aboy_info_ir,
+                fs_ppg=FS,
+                peaks_are_indices=True,
+                ppi_min_ms=300.0,
+                ppi_max_ms=2000.0,
+                deduplicate_ms=None  # off bei dev
+            )
+        
 
-        df_out = pd.DataFrame(rows)
-        out_name = f"{fname.rsplit('.',1)[0]}-HRV-{ts}.csv"
-        full_path = os.path.join(save_dir, out_name)
-        df_out.to_csv(full_path, index=False, encoding="utf-8-sig")
-        saved.append(full_path)
+            df_out = pd.DataFrame(rows)
+            out_name = f"{fname.rsplit('.',1)[0]}-HRV-{channel}-{ts}.csv"
+            full_path = os.path.join(save_dir, out_name)
+            df_out.to_csv(full_path, index=False, encoding="utf-8-sig")
+            saved.append(full_path)
+        except Exception as e:
+            errors.append(f"{fname}: {e.__class__.__name__}: {e}")
+            continue
+        
+    msg = [f"Processed: {len(saved)} succeeded."]
+    preview = "\n".join(saved[:5])
+    msg.append("Saved (first 5):")
+    msg.append(preview)
+    
+    if errors:
+        msg.append(f"Skipped: {len(errors)} failed.")
+        preview = "\n".join(errors[:5])
+        msg.append("Failures (first 5):")
+        msg.append(preview)
 
-    preview = "\n".join(saved[:8])
-    return f"Processed {len(saved)} files.\nSaved to: {save_dir}\nExamples:\n{preview}"
+    msg.append(f"Output dir: {save_dir}")
+    return "\n".join(msg)
 
 # --- Callback: Analyze File and Plot ---
 @app.callback(
@@ -2061,6 +2694,7 @@ def batch_export_hrv_to_disk(
     State('file-list_bias', 'value'),
     State('ir-column', 'value'),
     State('red-column', 'value'),
+    State("input_channel","value"),
     State('bandpass-order', 'value'),
     State('bandpass-lowcut', 'value'),
     State('bandpass-highcut', 'value'),
@@ -2073,7 +2707,9 @@ def batch_export_hrv_to_disk(
     State("fmax", "value"),
     State("imu_on", "value"), State("win_sec", "value"), State("hop_sec", "value"),
     State("anc_on", "value"), State("anc_mu", "value"), State("anc_pad", "value"),
-    State("aboy_on", "value"), State("aboy_p", "value"), State("aboy_win", "value")
+    State("aboy_on", "value"), State("aboy_p", "value"), State("aboy_win", "value"),
+State("bundle_dir", "value"),
+State("bundle_npz", "value"),
 )
 def analyze_file(_, 
                  folder, 
@@ -2081,7 +2717,8 @@ def analyze_file(_,
                  folder_bias, 
                  filename_bias, 
                  ir_col, 
-                 red_col, 
+                 red_col,
+                 channel,
                  bp_order, 
                  bp_lowcut,
                  bp_highcut, 
@@ -2094,7 +2731,7 @@ def analyze_file(_,
                  fmax,            
                  imu_on, win_sec, hop_sec,
                  anc_on, anc_mu, anc_pad,
-                 aboy_on, aboy_p, aboy_win
+                 aboy_on, aboy_p, aboy_win, bundle_dir, bundle_npz
                  ):
     
     def empty_fig(title):
@@ -2122,12 +2759,27 @@ def analyze_file(_,
     preview = DataTable(data=df.head(3).to_dict("records"), columns=[{"name": i, "id": i} for i in df.columns])
     preview_bias = DataTable(data=df_bias.head(3).to_dict("records"), columns=[{"name": i, "id": i} for i in df.columns])
     # Validate column names
+    """
     if ir_col not in df.columns or red_col not in df.columns:
-        err = html.Div("❌ Column names incorrect")
+        err = html.Div("❌ Column names incorrect or lacking IR or RED column")
         return preview, err, *[empty_fig("") for _ in range(13)]
+    """
+    
+    if channel == "IR & RED":
+        ir_raw = df[ir_col].astype(float).to_numpy()
+        red_raw = df[red_col].astype(float).to_numpy()
+        ppg_raw = (ir_raw + red_raw) / 2.0
+    elif channel == "IR":
+        ir_raw = df[ir_col].astype(float).to_numpy()
+        red_raw = ir_raw
+        ppg_raw = ir_raw
+    else:
+        red_raw = df[red_col].astype(float).to_numpy()
+        ir_raw = red_raw
+        ppg_raw = red_raw
 
     # Extract IR and RED columns
-    ir_raw, red_raw = df[ir_col].values, df[red_col].values
+    #ir_raw, red_raw = df[ir_col].values, df[red_col].values
     time = df['Time'].values if 'Time' in df else np.arange(len(ir_raw)) / FS
     #print(time)
     #print(len(time))
@@ -2167,20 +2819,51 @@ def analyze_file(_,
     jerk_mag = np.linalg.norm(jerk, axis=1)
     """
 
-        # ---- IMU classification ----
+    # ---- IMU classification ----
     imu_res = None
     if imu_on:
-        try:
-            imu_cols = None         # dict(ax='AX',ay='AY',az='AZ',gx='GX',gy='GY',gz='GZ')
-            imu_res = classify_motion_from_df(df, FS, cols=imu_cols, win_sec=win_sec, hop_sec=hop_sec)
-        except Exception:
-            imu_res = None
-            
-    acc_mag  = imu_res["acc_mag"]
-    gyro_mag = imu_res["gyro_mag"]
-    jerk_mag = imu_res["jerk_mag"]        
+        imu_cols = None         # dict(ax='AX',ay='AY',az='AZ',gx='GX',gy='GY',gz='GZ')
+        imu_res = classify_motion_from_df(df, FS, cols=imu_cols, win_sec=win_sec, hop_sec=hop_sec)
 
-    # ---- ANC ----
+
+    # Optional: trained v8 detector override (scores-based)
+    det_v8 = None
+    # Resolve detector bundle: UI selection takes precedence, otherwise fallback to env var.
+    bundle_npz_path = ""
+    if bundle_dir and bundle_npz:
+        p = Path(bundle_dir) / bundle_npz
+        if p.exists():
+            bundle_npz_path = str(p)
+    if not bundle_npz_path:
+        bundle_npz_path = os.environ.get("V8_DETECTOR_BUNDLE_NPZ", "").strip()
+
+    if imu_on and (imu_res is not None) and bundle_npz_path:
+        det_v8 = v8_detector_predict(
+            ppg_ir=ir_raw,
+            ppg_red=red_raw,
+            acc_xyz_g=df[['AX','AY','AZ']].to_numpy(float),
+            gyro_xyz_deg=df[['GX','GY','GZ']].to_numpy(float),
+            fs_in=float(FS),
+            win_sec=float(win_sec),
+            hop_sec=float(hop_sec),
+            bundle_npz=bundle_npz_path,
+        )
+        imu_res["det_v8"] = det_v8
+        if os.environ.get("V8_DETECTOR_OVERRIDE", "1") == "1":
+            imu_res["ids"] = det_v8["ids"]
+            imu_res["labels"] = det_v8["labels"]
+            imu_res["motion_labels"] = ["Walking"]
+
+    # Safe access even if IMU is disabled
+    if imu_res is not None:
+        acc_mag  = imu_res["acc_mag"]
+        gyro_mag = imu_res["gyro_mag"]
+        jerk_mag = imu_res["jerk_mag"]
+    else:
+        acc_mag  = np.full(len(df), np.nan)
+        gyro_mag = np.full(len(df), np.nan)
+        jerk_mag = np.full(len(df), np.nan)
+# ---- ANC ----
     anc_info = None
     if anc_on and imu_res is not None:
         ppg_raw = (ir_raw + red_raw) / 2.0
@@ -2387,6 +3070,11 @@ def analyze_file(_,
     fig_gyro_jerk_time.update_layout(title='IMU Magnitude - Time Domain',
                         xaxis_title='Time (s)', yaxis_title='Magnitude')
 
+    # ------------------------------------------------------------------
+    # Detector v8 segment highlights (requested):
+    #   green = sit, red = motion
+    # ------------------------------------------------------------------
+
     fig_acc_time = go.Figure()
     fig_acc_time.add_trace(go.Scatter(x=time, y=acc_mag,  name='AccMag (m/s²)', line=dict(color="red")))
     fig_acc_time.update_layout(title='ACC Magnitude - Time Domain',
@@ -2466,7 +3154,73 @@ def analyze_file(_,
         )
         fig_imu_t.update_layout(title='IMU Magnitude & Motion class - Time Domain',
                          yaxis_title='Magnitude')
-    
+        # ------------------------------------------------------------------
+    # Detector v8 segment highlights (sit=green, motion=red)
+    # IMPORTANT: place this AFTER fig_imu_t has been created.
+    # ------------------------------------------------------------------
+
+    #if det_v8 is not None and isinstance(det_v8, dict) and det_v8.get("pred_sample") is not None:
+    v8_mask = np.asarray(det_v8["pred_sample"]).astype(int)
+
+    # filter flicker (very short segments)
+    min_seg = max(0.2, float(hop_sec))
+
+    seg_motion = _mask_to_time_segments(v8_mask == 1, fs=float(FS), min_len_sec=min_seg)
+    seg_sit    = _mask_to_time_segments(v8_mask == 0, fs=float(FS), min_len_sec=min_seg)
+
+    # align to actual time axis (in case Time does not start at 0)
+    t0_ppg = float(time[0]) if len(time) else 0.0
+    seg_motion = [(t0_ppg + x0, t0_ppg + x1) for x0, x1 in seg_motion]
+    seg_sit    = [(t0_ppg + x0, t0_ppg + x1) for x0, x1 in seg_sit]
+
+    t_end_ppg = float(time[-1]) if len(time) else None
+
+    # --- PPG time-domain figs ---
+    for _fig in (fig_IR_time, fig_red_time, fig_comb_time, fig_zm_time):
+        _add_detector_highlights(
+            _fig, seg_sit, seg_motion,
+            x_min=t0_ppg, x_max=t_end_ppg,
+            label_prefix="Detector v8",
+            add_legend=False
+        )
+
+    # --- IMU magnitude time-domain fig (same time axis as PPG here) ---
+    _add_detector_highlights(
+        fig_gyro_jerk_time, seg_sit, seg_motion,
+        x_min=t0_ppg, x_max=t_end_ppg,
+        label_prefix="Detector v8",
+        add_legend=False
+    )
+
+    # --- IMU subplot fig: draw highlights ONLY on row=1 panel ---
+    # t_imu is defined inside imu_res block; if it exists, shift segments to it.
+    if imu_res is not None and "time" in imu_res and len(imu_res["time"]):
+        t0_imu = float(imu_res["time"][0])
+        t_end_imu = float(imu_res["time"][-1])
+
+        # if imu time axis differs, re-shift using imu t0 (optional but safe)
+        seg_motion_imu = [(t0_imu + (x0 - t0_ppg), t0_imu + (x1 - t0_ppg)) for x0, x1 in seg_motion]
+        seg_sit_imu    = [(t0_imu + (x0 - t0_ppg), t0_imu + (x1 - t0_ppg)) for x0, x1 in seg_sit]
+
+        _add_detector_highlights(
+            fig_imu_t, seg_sit_imu, seg_motion_imu,
+            x_min=t0_imu, x_max=t_end_imu,
+            row=1, col=1,
+            label_prefix="Detector v8",
+            add_legend=False
+        )
+    else:
+        # fallback: assume same axis as PPG
+        _add_detector_highlights(
+            fig_imu_t, seg_sit, seg_motion,
+            x_min=t0_ppg, x_max=t_end_ppg,
+            row=1, col=1,
+            label_prefix="Detector v8",
+            add_legend=False
+        )
+
+
+
     #fig_EMD_1
     # ppg_raw: 1D array, FS: sampling rate
     out_EMD = remove_ma_cemd_lms(
@@ -2529,12 +3283,6 @@ def analyze_file(_,
 
     return output
 
-
 # --- Run Dash App ---
 if __name__ == '__main__':
     app.run(debug=True, port=PORT)
-
-
-
-
-

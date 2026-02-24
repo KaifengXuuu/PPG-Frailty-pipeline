@@ -10,6 +10,8 @@ import torch, torch.nn as nn, torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import GroupKFold, GroupShuffleSplit
 from sklearn import metrics
+from tqdm import tqdm
+import time
 
 # ========== Models ==========
 class CNNBiLSTMAE(nn.Module):
@@ -79,10 +81,15 @@ class HRBandEnergyReg(nn.Module):
         self.register_buffer("mask_out", ((f<band[0]) | (f>band[1])).float().view(1,-1,1))
         self.n=n_fft; self.h=hop; self.w=win_length; self.wi=w_in; self.wo=w_out
     def forward(self, y):
-        y=y.squeeze(1)
+        y = y.squeeze(1)
         Y = torch.stft(y, n_fft=self.n, hop_length=self.h, win_length=self.w, return_complex=True)
         mag = torch.abs(Y)
-        return self.wo*(mag*self.mask_out).mean() - self.wi*(mag*self.mask_in).mean()
+
+        mask_in  = self.mask_in.to(mag.device)
+        mask_out = self.mask_out.to(mag.device)
+
+        return self.wo*(mag*mask_out).mean() - self.wi*(mag*mask_in).mean()
+
 
 # ========== Utils ==========
 
@@ -133,8 +140,27 @@ def load_physionet_csv(root: Path, fs: float):
     for p in paths:
         df = pd.read_csv(p); m={k:_pick(df,v) for k,v in CAND.items()}; rec={}
         for k in CAND.keys():
-            if m.get(k) is not None: rec[k]=df[m[k]].to_numpy(float)
-        if "time" not in rec: rec["time"]=np.arange(len(df))/fs
+            if m.get(k) is None:
+                continue
+            col = m[k]
+
+            if k == "time":
+                # time 可能是 datetime 字符串；不要 to_numpy(float)
+                # 统一转换为“从起点开始的秒”
+                t = pd.to_datetime(df[col], errors="coerce")
+                if t.notna().all():
+                    rec["time"] = (t - t.iloc[0]).dt.total_seconds().to_numpy(dtype=np.float32)
+                else:
+                    # 兜底：用采样率生成
+                    rec["time"] = (np.arange(len(df), dtype=np.float32) / float(fs))
+                continue
+
+            # 其它列：按 float 读
+            rec[k] = pd.to_numeric(df[col], errors="coerce").to_numpy(dtype=np.float32)
+
+        if "time" not in rec:
+            rec["time"] = (np.arange(len(df), dtype=np.float32) / float(fs))
+
         sid = p.stem.split("_")[0]; sub2recs.setdefault(sid, []).append(rec)
     return sub2recs
 
@@ -186,6 +212,10 @@ def train_detector(train_ds, val_ds, fs, epochs=20, lr=1e-3):
     device="cuda" if torch.cuda.is_available() else "cpu"
     model=CNNBiLSTMAE(in_ch=1).to(device); opt=torch.optim.Adam(model.parameters(), lr=lr)
     TL=DataLoader(train_ds,64,True); VL=DataLoader(val_ds,128,False); best={"val":1e9,"state":None}
+    pbar = tqdm(range(1, epochs+1),
+            desc="AE epochs",
+            position=2,
+            leave=False)
     for ep in range(1,epochs+1):
         model.train(); tr=0.0
         for x,y,_ in TL:
@@ -197,6 +227,7 @@ def train_detector(train_ds, val_ds, fs, epochs=20, lr=1e-3):
             for x,y,_ in VL:
                 x,y=x.to(device),y.to(device); yhat=model(x); va+=F.mse_loss(yhat,y).item()*x.size(0)
         va/=len(VL.dataset)
+        pbar.set_postfix(train=f"{tr:.4f}", val=f"{va:.4f}")
         if va<best["val"]: best={"val":va,"state":{k:v.cpu() for k,v in model.state_dict().items()}}
     model.load_state_dict(best["state"]); return model, best["val"]
 
@@ -221,8 +252,17 @@ def train_denoiser(train_ds, val_ds, fs, epochs=20, lr=1e-3, lam_spec=0.5, lam_h
     device="cuda" if torch.cuda.is_available() else "cpu"
     in_ch = next(iter(DataLoader(train_ds,1)))[0].shape[1]
     model=UNet1D(in_ch=in_ch, out_ch=1, base=32).to(device); opt=torch.optim.Adam(model.parameters(), lr=lr)
-    spec=MultiResSTFTLoss(); hr=HRBandEnergyReg(fs=fs, w_in=0.05, w_out=0.05)
+    spec = MultiResSTFTLoss().to(device)
+    hr   = HRBandEnergyReg(fs=int(fs), w_in=0.05, w_out=0.05).to(device)
+    print("yhat on:", next(model.parameters()).device)
+    print("mask_in on:", hr.mask_in.device)
+    print("mask_out on:", hr.mask_out.device)
+
     TL=DataLoader(train_ds,16,True); VL=DataLoader(val_ds,32,False); best={"val":1e9,"state":None,"hr_band":None}
+    pbar = tqdm(range(1, epochs+1),
+            desc="Denoiser epochs",
+            position=2,
+            leave=False)
     for ep in range(1,epochs+1):
         model.train(); tr=0.0
         for x,y,is_clean in TL:
@@ -244,12 +284,14 @@ def train_denoiser(train_ds, val_ds, fs, epochs=20, lr=1e-3, lam_spec=0.5, lam_h
                 loss=F.l1_loss(yhat,y)+lam_spec*spec(yhat,y)+lam_hr*hr(yhat)
                 va+=loss.item()*x.size(0); va_hr += hr(yhat).item()*x.size(0)
         va/=len(VL.dataset); va_hr/=len(VL.dataset)
+        
+        pbar.set_postfix(train=f"{tr:.4f}", val=f"{va:.4f}", hr=f"{va_hr:.4f}")
         if va<best["val"]: best={"val":va,"state":{k:v.cpu() for k,v in model.state_dict().items()},"hr_band":va_hr}
     model.load_state_dict(best["state"]); return model, best
 
 def eval_denoiser(model, ds, fs):
     device=next(model.parameters()).device
-    L=DataLoader(ds,64,False); l1s=[]; snr_imp=[]; hr_losses=[]; hr=HRBandEnergyReg(fs=fs)
+    L=DataLoader(ds,64,False); l1s=[]; snr_imp=[]; hr_losses=[]; hr = HRBandEnergyReg(fs=int(fs)).to(device)
     with torch.no_grad():
         for x,y,_ in L:
             x,y=x.to(device),y.to(device); yhat=model(x)
@@ -284,7 +326,11 @@ def run_one_setup(records_by_subj, fs, win, hop, motion_thresh, split_mode, n_sp
     records, groups = subjectwise(records_by_subj)
     folds = split_indices(groups, mode=split_mode, n_splits=n_splits, train_size=train_size)
     det_folds=[]; den_folds=[]; det_hold=None; den_hold=None
-    for k,(tr,va) in enumerate(folds, start=1):
+    for k, (tr, va) in enumerate(
+            tqdm(folds, desc=f"Setup {setup} | folds", position=1, leave=False),
+            start=1
+        ):
+        t0_fold = time.time()
         tr_recs=[records[i] for i in tr]; va_recs=[records[i] for i in va]
         tr_ae=DatasetAE(tr_recs, fs, win, hop, motion_thresh, setup); va_ae=DatasetAE(va_recs, fs, win, hop, motion_thresh, setup)
         ae, best_ae = train_detector(tr_ae, va_ae, fs, epochs_ae, lr)
@@ -296,28 +342,38 @@ def run_one_setup(records_by_subj, fs, win, hop, motion_thresh, split_mode, n_sp
 
     (outdir / "detector_results.json").write_text(json.dumps({"folds":det_folds,"holdout":det_hold}, ensure_ascii=False, indent=2), encoding="utf-8")
     (outdir / "denoiser_results.json").write_text(json.dumps({"folds":den_folds,"holdout":den_hold}, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"[Setup {setup} | Fold {k}/{len(folds)}] done in {(time.time()-t0_fold)/60:.1f} min")
     return {"detector":{"folds":det_folds,"holdout":det_hold}, "denoiser":{"folds":den_folds,"holdout":den_hold}}
 
 def run_both_setups(data_root: str, fs=500.0, win=6.0, hop=1.0,
                     motion_thresh=0.8, split_mode="kfold", n_splits=5, train_size=0.8,
                     epochs_ae=20, epochs_denoise=20, lr=1e-3, detector_threshold=None,
                     outdir="results", lam_spec=0.5, lam_hr=0.1, lam_cons=0.2):
+    t0_all = time.time()
     root=Path(data_root)
     sub2recs=load_physionet_csv(root, fs=float(fs))
     out1=Path(outdir)/"setup1"
     out2=Path(outdir)/"setup2"
-    res1=run_one_setup(sub2recs, fs, win, hop, motion_thresh, split_mode, n_splits, train_size,
-                       epochs_ae, epochs_denoise, lr, detector_threshold, setup=1, outdir=out1,
-                       lam_spec=lam_spec, lam_hr=lam_hr, lam_cons=lam_cons)
-    res2=run_one_setup(sub2recs, fs, win, hop, motion_thresh, split_mode, n_splits, train_size,
-                       epochs_ae, epochs_denoise, lr, detector_threshold, setup=2, outdir=out2,
-                       lam_spec=lam_spec, lam_hr=lam_hr, lam_cons=lam_cons)
+    results = {}
+    for setup in tqdm([1, 2], desc="Overall setups", position=0):
+        out = Path(outdir) / (f"setup{setup}")
+        results[setup] = run_one_setup(
+            sub2recs, fs, win, hop, motion_thresh, split_mode, n_splits, train_size,
+            epochs_ae, epochs_denoise, lr, detector_threshold,
+            setup=setup, outdir=out,
+            lam_spec=lam_spec, lam_hr=lam_hr, lam_cons=lam_cons
+        )
+
+    res1 = results[1]
+    res2 = results[2]
     comp = {
         "detector": {"setup1_holdout": res1["detector"]["holdout"], "setup2_holdout": res2["detector"]["holdout"]},
         "denoiser": {"setup1_holdout": res1["denoiser"]["holdout"], "setup2_holdout": res2["denoiser"]["holdout"]}
     }
     Path(outdir).mkdir(exist_ok=True)
     (Path(outdir)/"compare.json").write_text(json.dumps(comp, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"[Total] run_both_setups finished in {(time.time()-t0_all)/60:.1f} min")
+
     return res1, res2, comp
 
 # ========== CLI ==========
@@ -350,3 +406,32 @@ if __name__=="__main__":
         outdir=args.outdir, lam_spec=args.lam_spec, lam_hr=args.lam_hr, lam_cons=args.lam_cons
     )
     print("Done. See results/setup1, results/setup2 and results/compare.json")
+
+
+'''
+python pttppg_pipeline_v7.py \
+  --data_root /mnt/d/PTT-PPG/1.1.0 \
+  --split_mode holdout \
+  --train_size 0.8 \
+  --epochs_ae 10 \
+  --epochs_denoise 10
+
+
+python pttppg_pipeline_v7.py \
+  --data_root /mnt/d/PTT-PPG/1.1.0 \
+  --fs 500 \
+  --win 6 \
+  --hop 1 \
+  --split_mode kfold \
+  --n_splits 5 \
+  --epochs_ae 20 \
+  --epochs_denoise 30 \
+  --lr 1e-3 \
+  --motion_thresh 0.8 \
+  --detector_threshold 0.06 \
+  --lam_spec 0.5 \
+  --lam_hr 0.1 \
+  --lam_cons 0.2
+
+
+'''
