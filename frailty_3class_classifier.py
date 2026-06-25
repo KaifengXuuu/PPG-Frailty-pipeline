@@ -7,6 +7,7 @@ import random
 import shutil
 import sys
 import time
+import warnings
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -75,6 +76,11 @@ MODEL_CHOICES = (
 )
 SWEEP_MODEL_CHOICES = ("cnn", "inceptiontime", "shapeformer_pisd", "shapeformer")
 EXTRA_INPUT_CHOICES = ("0", "PPI", "HRV")
+MANUAL_FEATURE_CHOICES = ("none", "morphology", "morphology_ppi_hrv_filelevel")
+SQI_MODE_CHOICES = ("none", "top70_quality", "top50_quality")
+AGGREGATION_CHOICES = ("mean_prob", "quality_weighted_mean")
+LOSS_TYPE_CHOICES = ("weighted_ce", "balanced_softmax", "focal_loss")
+CLASS_WEIGHT_CHOICES = ("inverse_subject_count", "effective_number")
 META_COLS = {"path", "dataset", "subject", "role", "class_name", "label"}
 PPI_FEATURE_SUFFIXES = (
     "peak_count",
@@ -100,6 +106,13 @@ HRV_FEATURE_SUFFIXES = (
     "lf_hf",
     "total_power",
 )
+MORPHOLOGY_PREFIXES = (
+    "morph_",
+    "ir_red_",
+    "red_ir_",
+    "motion_norm_",
+)
+FEATURE_CACHE_VERSION = "v2_aboy_morph_gravity"
 
 
 @dataclass
@@ -129,6 +142,13 @@ class RunConfig:
     cnn_select_best_epoch: bool = True
     role_mode: str = "static_only"
     extra_input: str = "0"
+    manual_features: str = "none"
+    sqi_mode: str = "none"
+    aggregation: str = "mean_prob"
+    loss_type: str = "weighted_ce"
+    class_weight_mode: str = "inverse_subject_count"
+    class_weight_beta: float = 0.999
+    focal_gamma: float = 2.0
     shapeformer_num_shapelets: int = 3
     shapeformer_shapelet_len: int = 128
     shapeformer_shapelet_stride: int = 64
@@ -148,6 +168,12 @@ class RunConfig:
     def __post_init__(self) -> None:
         self.fs = float(self.fs)
         self.cnn_target_fs = float(self.fs)
+        self.extra_input = normalize_extra_input(self.extra_input)
+        self.manual_features = normalize_manual_features(self.manual_features)
+        self.sqi_mode = normalize_sqi_mode(self.sqi_mode)
+        self.aggregation = normalize_aggregation(self.aggregation)
+        self.loss_type = normalize_loss_type(self.loss_type)
+        self.class_weight_mode = normalize_class_weight_mode(self.class_weight_mode)
 
 
 def finite_float(value: float) -> float:
@@ -202,6 +228,19 @@ def lowpass_imu(x: np.ndarray, fs: float, cutoff: float) -> np.ndarray:
         return signal.sosfiltfilt(sos, x, axis=0)
     except ValueError:
         return signal.sosfilt(sos, x, axis=0)
+
+
+def remove_acc_gravity(acc: np.ndarray, fs: float, gravity_cutoff: float = 0.3) -> np.ndarray:
+    acc = np.asarray(acc, dtype=np.float64)
+    if acc.ndim != 2 or acc.shape[0] < 16:
+        return np.nan_to_num(acc, nan=0.0)
+    cutoff = min(float(gravity_cutoff), 0.45 * float(fs))
+    sos = signal.butter(2, cutoff, btype="lowpass", fs=fs, output="sos")
+    try:
+        gravity = signal.sosfiltfilt(sos, acc, axis=0)
+    except ValueError:
+        gravity = signal.sosfilt(sos, acc, axis=0)
+    return np.nan_to_num(acc - gravity, nan=0.0)
 
 
 def time_features(x: np.ndarray, prefix: str) -> Dict[str, float]:
@@ -297,26 +336,117 @@ def clean_pp_intervals(peaks: np.ndarray, fs: float, min_bpm: float = 35.0, max_
     return ppi
 
 
-def detect_ppg_peaks(ppg: np.ndarray, fs: float, min_bpm: float = 35.0, max_bpm: float = 210.0) -> np.ndarray:
-    x = interp_nan(ppg)
-    if x.size < int(3 * fs):
+def _highpass_ppg(x: np.ndarray, fs: float, cutoff: float = 0.2) -> np.ndarray:
+    x = interp_nan(x)
+    if x.size < 16:
+        return x - np.median(x) if x.size else x
+    sos = signal.butter(2, min(cutoff, 0.45 * fs), btype="highpass", fs=fs, output="sos")
+    try:
+        return signal.sosfiltfilt(sos, x)
+    except ValueError:
+        return signal.sosfilt(sos, x)
+
+
+def _aboy_bandpass(x: np.ndarray, fs: float, lowcut: float, highcut: float) -> np.ndarray:
+    highcut = min(float(highcut), 0.45 * float(fs))
+    lowcut = min(float(lowcut), highcut * 0.5)
+    if x.size < 16 or highcut <= lowcut:
+        return x - np.median(x) if x.size else x
+    sos = signal.butter(2, [lowcut, highcut], btype="bandpass", fs=fs, output="sos")
+    try:
+        return signal.sosfiltfilt(sos, x)
+    except ValueError:
+        return signal.sosfilt(sos, x)
+
+
+def _detect_maxima_adaptive(sig: np.ndarray, fs: float, min_dist: int, amp_percentile: float = 65.0, prom_scale: float = 0.25) -> np.ndarray:
+    sig = np.asarray(sig, dtype=np.float64)
+    if sig.size < max(8, int(0.5 * fs)):
         return np.empty(0, dtype=np.int64)
-    scale = float(np.std(x))
+    scale = np.std(sig)
     if scale < 1e-8:
         return np.empty(0, dtype=np.int64)
-    z = (x - float(np.median(x))) / (scale + 1e-8)
-    distance = max(1, int(round(fs * 60.0 / max_bpm)))
-    candidates: List[Tuple[float, np.ndarray]] = []
+    pre_peaks, _ = signal.find_peaks(sig, distance=max(1, int(min_dist)))
+    if pre_peaks.size == 0:
+        return np.empty(0, dtype=np.int64)
+    pk_vals = sig[pre_peaks]
+    amp_thr = float(np.percentile(pk_vals, amp_percentile))
+    prom_thr = max(1e-6, float(prom_scale) * max(abs(amp_thr), float(np.std(sig))))
+    peaks, _ = signal.find_peaks(sig, distance=max(1, int(min_dist)), prominence=prom_thr)
+    return peaks.astype(np.int64)
+
+
+def _score_peak_train(peaks: np.ndarray, fs: float, min_bpm: float, max_bpm: float) -> float:
+    ppi = clean_pp_intervals(peaks, fs, min_bpm=min_bpm, max_bpm=max_bpm)
+    if ppi.size < 2:
+        return float(peaks.size) * 0.01
+    cv = float(np.std(ppi) / (np.mean(ppi) + 1e-8))
+    coverage = float(np.sum(ppi) / max((peaks[-1] - peaks[0]) / fs, 1e-8)) if peaks.size >= 2 else 0.0
+    return float(ppi.size) + 0.5 * min(coverage, 1.0) - min(cv, 2.0)
+
+
+def aboypp_detect_peaks(ppg: np.ndarray, fs: float, min_bpm: float = 35.0, max_bpm: float = 210.0, window_sec: float = 10.0) -> np.ndarray:
+    x0 = _highpass_ppg(ppg, fs, cutoff=0.2)
+    if x0.size < int(3 * fs):
+        return np.empty(0, dtype=np.int64)
+
+    best_score = -np.inf
+    best_peaks = np.empty(0, dtype=np.int64)
     for polarity in (1.0, -1.0):
-        peaks, _props = signal.find_peaks(polarity * z, distance=distance, prominence=0.30)
-        ppi = clean_pp_intervals(peaks, fs, min_bpm=min_bpm, max_bpm=max_bpm)
-        if ppi.size == 0:
-            score = float(peaks.size) * 0.01
-        else:
-            cv = float(np.std(ppi) / (np.mean(ppi) + 1e-8))
-            score = float(ppi.size) - min(cv, 1.0)
-        candidates.append((score, peaks.astype(np.int64)))
-    return max(candidates, key=lambda item: item[0])[1]
+        x = polarity * x0
+        peaks_all: List[int] = []
+        hri = 0.0
+        win = max(int(round(window_sec * fs)), int(round(3 * fs)))
+        for start, stop in iter_windows(len(x), fs, window_sec, window_sec):
+            if stop - start < max(64, int(0.5 * fs)):
+                continue
+            seg = x[start:stop]
+            high_cut = min(8.0, max(1.5, (1.0 + hri) * 3.0))
+            seg_f = _aboy_bandpass(seg, fs, lowcut=0.5, highcut=high_cut)
+            dist0 = int(fs * 60.0 / max_bpm)
+            pk0 = _detect_maxima_adaptive(seg_f, fs, min_dist=dist0, amp_percentile=65.0, prom_scale=0.25)
+            if pk0.size >= 2:
+                tpp = np.diff(pk0) / fs
+                if tpp.size:
+                    q30 = np.percentile(tpp, 30)
+                    pd_keep = tpp[tpp >= q30]
+                    if pd_keep.size >= 2:
+                        med = float(np.median(pd_keep))
+                        mean = float(np.mean(pd_keep))
+                        if med * 0.5 < mean < med * 1.5:
+                            hri = float(np.std(pd_keep) / (mean + 1e-12) * 10.0)
+            hrwin = fs / ((1.0 + hri) * 3.0)
+            min_dist_final = max(int(2 * hrwin), int(fs * 60.0 / max_bpm))
+            if pk0.size:
+                pk_vals = seg_f[pk0]
+                top = pk_vals[np.argsort(pk_vals)][int(0.7 * len(pk_vals)) :] if len(pk_vals) >= 3 else pk_vals
+                avg_sys = float(np.mean(top)) if top.size else float(np.std(seg_f))
+            else:
+                avg_sys = float(np.std(seg_f))
+            prom_final = max(1e-6, 0.25 * max(abs(avg_sys), float(np.std(seg_f))))
+            pk_final, _ = signal.find_peaks(seg_f, distance=max(1, min_dist_final), prominence=prom_final)
+            peaks_all.extend((pk_final + start).astype(int).tolist())
+        peaks = np.unique(np.asarray(peaks_all, dtype=np.int64))
+        if peaks.size >= 3:
+            ppi = clean_pp_intervals(peaks, fs, min_bpm=min_bpm, max_bpm=max_bpm)
+            if ppi.size >= 3:
+                med = float(np.median(ppi))
+                keep = np.ones(peaks.size, dtype=bool)
+                rr = np.diff(peaks) / fs
+                bad_rr = (rr < 0.5 * med) | (rr > 1.8 * med)
+                if bad_rr.any():
+                    bad_idx = np.where(bad_rr)[0] + 1
+                    keep[bad_idx] = False
+                    peaks = peaks[keep]
+        score = _score_peak_train(peaks, fs, min_bpm=min_bpm, max_bpm=max_bpm)
+        if score > best_score:
+            best_score = score
+            best_peaks = peaks
+    return best_peaks.astype(np.int64)
+
+
+def detect_ppg_peaks(ppg: np.ndarray, fs: float, min_bpm: float = 35.0, max_bpm: float = 210.0) -> np.ndarray:
+    return aboypp_detect_peaks(ppg, fs, min_bpm=min_bpm, max_bpm=max_bpm)
 
 
 def ppi_hrv_features(ppg: np.ndarray, fs: float, prefix: str, duration_sec: float) -> Dict[str, float]:
@@ -376,6 +506,127 @@ def ppi_hrv_features(ppg: np.ndarray, fs: float, prefix: str, duration_sec: floa
     return feats
 
 
+def _pulse_feature_summary(sig: np.ndarray, raw: np.ndarray, peaks: np.ndarray, fs: float, prefix: str) -> Dict[str, float]:
+    sig = interp_nan(sig)
+    raw = interp_nan(raw)
+    out = {
+        f"{prefix}_pulse_amplitude_mean": 0.0,
+        f"{prefix}_pulse_amplitude_std": 0.0,
+        f"{prefix}_rise_time_ms_mean": 0.0,
+        f"{prefix}_decay_time_ms_mean": 0.0,
+        f"{prefix}_pulse_width_ms_mean": 0.0,
+        f"{prefix}_systolic_slope_mean": 0.0,
+        f"{prefix}_pulse_area_mean": 0.0,
+        f"{prefix}_ppi_cv": 0.0,
+        f"{prefix}_ppi_mad_ms": 0.0,
+        f"{prefix}_ac": finite_float(np.std(sig)),
+        f"{prefix}_dc": finite_float(np.median(raw)) if raw.size else 0.0,
+    }
+    peaks = np.asarray(peaks, dtype=np.int64)
+    peaks = peaks[(peaks > 1) & (peaks < sig.size - 2)]
+    if peaks.size < 2:
+        return out
+    if float(np.mean(sig[peaks])) < float(np.median(sig)):
+        sig = -sig
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        widths, _height, _left_ips, _right_ips = signal.peak_widths(sig, peaks, rel_height=0.5)
+    amplitudes: List[float] = []
+    rise_ms: List[float] = []
+    decay_ms: List[float] = []
+    slopes: List[float] = []
+    areas: List[float] = []
+    for idx, peak in enumerate(peaks):
+        left_bound = int(peaks[idx - 1]) if idx > 0 else max(0, int(peak - 1.5 * fs))
+        right_bound = int(peaks[idx + 1]) if idx + 1 < peaks.size else min(sig.size - 1, int(peak + 1.5 * fs))
+        if right_bound <= left_bound + 2:
+            continue
+        left_seg = sig[left_bound : peak + 1]
+        right_seg = sig[peak : right_bound + 1]
+        if left_seg.size < 2 or right_seg.size < 2:
+            continue
+        left_valley = left_bound + int(np.argmin(left_seg))
+        right_valley = peak + int(np.argmin(right_seg))
+        valley_level = float(max(sig[left_valley], sig[right_valley]))
+        amp = float(sig[peak] - valley_level)
+        if amp <= 1e-8:
+            continue
+        rise = max((int(peak) - int(left_valley)) / fs, 1.0 / fs)
+        decay = max((int(right_valley) - int(peak)) / fs, 1.0 / fs)
+        amplitudes.append(amp)
+        rise_ms.append(1000.0 * rise)
+        decay_ms.append(1000.0 * decay)
+        slopes.append(amp / rise)
+        base = np.linspace(float(sig[left_valley]), float(sig[right_valley]), int(right_valley - left_valley + 1))
+        pulse = sig[left_valley : right_valley + 1] - base
+        areas.append(float(np.trapezoid(np.maximum(pulse, 0.0), dx=1.0 / fs)))
+
+    ppi = clean_pp_intervals(peaks, fs)
+    if ppi.size >= 2:
+        out[f"{prefix}_ppi_cv"] = finite_float(np.std(ppi) / (np.mean(ppi) + 1e-8))
+        med = float(np.median(ppi))
+        out[f"{prefix}_ppi_mad_ms"] = finite_float(1000.0 * np.median(np.abs(ppi - med)))
+    if amplitudes:
+        out[f"{prefix}_pulse_amplitude_mean"] = finite_float(np.mean(amplitudes))
+        out[f"{prefix}_pulse_amplitude_std"] = finite_float(np.std(amplitudes))
+    if rise_ms:
+        out[f"{prefix}_rise_time_ms_mean"] = finite_float(np.mean(rise_ms))
+    if decay_ms:
+        out[f"{prefix}_decay_time_ms_mean"] = finite_float(np.mean(decay_ms))
+    if widths.size:
+        out[f"{prefix}_pulse_width_ms_mean"] = finite_float(1000.0 * np.mean(widths) / fs)
+    if slopes:
+        out[f"{prefix}_systolic_slope_mean"] = finite_float(np.mean(slopes))
+    if areas:
+        out[f"{prefix}_pulse_area_mean"] = finite_float(np.mean(areas))
+    return out
+
+
+def morphology_features(
+    red: np.ndarray,
+    ir: np.ndarray,
+    red_raw: np.ndarray,
+    ir_raw: np.ndarray,
+    acc_dyn: np.ndarray,
+    gyro: np.ndarray,
+    fs: float,
+) -> Dict[str, float]:
+    red_peaks = detect_ppg_peaks(red, fs)
+    ir_peaks = detect_ppg_peaks(ir, fs)
+    feats: Dict[str, float] = {}
+    feats.update(_pulse_feature_summary(red, red_raw, red_peaks, fs, "morph_red"))
+    feats.update(_pulse_feature_summary(ir, ir_raw, ir_peaks, fs, "morph_ir"))
+
+    red_ac = float(np.std(red))
+    ir_ac = float(np.std(ir))
+    red_dc = float(np.median(interp_nan(red_raw))) if len(red_raw) else 0.0
+    ir_dc = float(np.median(interp_nan(ir_raw))) if len(ir_raw) else 0.0
+    feats["ir_red_ac_ratio"] = finite_float(ir_ac / (red_ac + 1e-8))
+    feats["ir_red_dc_ratio"] = finite_float(ir_dc / (red_dc + 1e-8))
+    feats["ir_red_acdc_ratio"] = finite_float((ir_ac / (abs(ir_dc) + 1e-8)) / (red_ac / (abs(red_dc) + 1e-8) + 1e-8))
+    feats["ir_red_corr"] = finite_float(np.corrcoef(ir, red)[0, 1]) if len(ir) > 2 and ir_ac > 0 and red_ac > 0 else 0.0
+    max_lag = min(int(round(0.5 * fs)), max(1, len(ir) // 4))
+    if len(ir) > 2 * max_lag + 1 and ir_ac > 0 and red_ac > 0:
+        ir_z = (ir - np.mean(ir)) / (ir_ac + 1e-8)
+        red_z = (red - np.mean(red)) / (red_ac + 1e-8)
+        corr = signal.correlate(ir_z, red_z, mode="full")
+        lags = signal.correlation_lags(len(ir_z), len(red_z), mode="full")
+        mask = np.abs(lags) <= max_lag
+        best_lag = int(lags[mask][int(np.argmax(corr[mask]))]) if np.any(mask) else 0
+    else:
+        best_lag = 0
+    feats["ir_red_phase_lag_ms"] = finite_float(1000.0 * best_lag / fs)
+
+    acc_mag = np.linalg.norm(np.asarray(acc_dyn, dtype=np.float64), axis=1) if np.asarray(acc_dyn).ndim == 2 else np.asarray(acc_dyn, dtype=np.float64)
+    gyro_mag = np.linalg.norm(np.asarray(gyro, dtype=np.float64), axis=1) if np.asarray(gyro).ndim == 2 else np.asarray(gyro, dtype=np.float64)
+    motion_rms = finite_float(np.sqrt(np.mean(np.square(acc_mag))) + 0.25 * np.sqrt(np.mean(np.square(gyro_mag)))) if acc_mag.size else 0.0
+    feats["motion_norm_ppg_ac"] = finite_float((red_ac + ir_ac) * 0.5 / (motion_rms + 1e-8))
+    feats["motion_norm_ir_peak_stability"] = finite_float(1.0 / (1.0 + feats.get("morph_ir_ppi_cv", 0.0) + motion_rms))
+    feats["motion_norm_red_peak_stability"] = finite_float(1.0 / (1.0 + feats.get("morph_red_ppi_cv", 0.0) + motion_rms))
+    return feats
+
+
 def iter_windows(n: int, fs: float, win_sec: float, hop_sec: float) -> Iterable[Tuple[int, int]]:
     win = max(1, int(round(win_sec * fs)))
     hop = max(1, int(round(hop_sec * fs)))
@@ -427,9 +678,11 @@ def per_window_features(
 
 def extract_file_features(path: Path, fs: float, win_sec: float, hop_sec: float) -> Dict[str, float]:
     df = read_numeric_csv(path)
-    red = bandpass_ppg(df["RED"].to_numpy(), fs)
-    ir = bandpass_ppg(df["IR"].to_numpy(), fs)
-    acc = lowpass_imu(df[["AX", "AY", "AZ"]].to_numpy(), fs, cutoff=20.0)
+    red_raw = interp_nan(df["RED"].to_numpy())
+    ir_raw = interp_nan(df["IR"].to_numpy())
+    red = bandpass_ppg(red_raw, fs)
+    ir = bandpass_ppg(ir_raw, fs)
+    acc = remove_acc_gravity(lowpass_imu(df[["AX", "AY", "AZ"]].to_numpy(), fs, cutoff=20.0), fs)
     gyro = lowpass_imu(df[["GX", "GY", "GZ"]].to_numpy(), fs, cutoff=40.0)
 
     rows = []
@@ -444,6 +697,7 @@ def extract_file_features(path: Path, fs: float, win_sec: float, hop_sec: float)
     }
     out.update(ppi_hrv_features(red, fs, "red_ppg", duration_sec=out["duration_sec"]))
     out.update(ppi_hrv_features(ir, fs, "ir_ppg", duration_sec=out["duration_sec"]))
+    out.update(morphology_features(red, ir, red_raw, ir_raw, acc, gyro, fs))
     for col in feat_df.columns:
         vals = feat_df[col].to_numpy(dtype=float)
         out[f"{col}__mean"] = finite_float(np.mean(vals))
@@ -582,13 +836,13 @@ def feature_cache_name(config: RunConfig) -> Path:
     root = Path(config.data_root)
     out_dir = Path("datasets")
     out_dir.mkdir(parents=True, exist_ok=True)
-    return out_dir / f"frailty3_features_ppi_hrv_{role_cache_tag(config)}_fs{int(config.fs)}_w{config.win_sec:g}_h{config.hop_sec:g}.csv"
+    return out_dir / f"frailty3_features_{FEATURE_CACHE_VERSION}_{role_cache_tag(config)}_fs{int(config.fs)}_w{config.win_sec:g}_h{config.hop_sec:g}.csv"
 
 
 def ppi_hrv_cache_name(config: RunConfig) -> Path:
     out_dir = Path("datasets")
     out_dir.mkdir(parents=True, exist_ok=True)
-    return out_dir / f"frailty3_ppi_hrv_{role_cache_tag(config)}_fs{int(config.fs)}.csv"
+    return out_dir / f"frailty3_ppi_hrv_{FEATURE_CACHE_VERSION}_{role_cache_tag(config)}_fs{int(config.fs)}.csv"
 
 
 def build_feature_table(config: RunConfig, refresh: bool = False) -> Tuple[pd.DataFrame, Dict[str, List[str]], Path]:
@@ -647,19 +901,111 @@ def normalize_extra_input(value: str) -> str:
     raise ValueError(f"Unknown extra input mode: {value}. Use one of {EXTRA_INPUT_CHOICES}.")
 
 
-def select_extra_feature_columns(features: pd.DataFrame, extra_input: str) -> List[str]:
+def normalize_manual_features(value: str) -> str:
+    text = str(value).strip().lower().replace("-", "_").replace(" ", "")
+    text = text.replace("+", "_").replace("/", "_")
+    aliases = {
+        "": "none",
+        "0": "none",
+        "none": "none",
+        "no": "none",
+        "morphology": "morphology",
+        "morph": "morphology",
+        "morphology_ppi_hrv": "morphology_ppi_hrv_filelevel",
+        "morphology_ppi_hrv_filelevel": "morphology_ppi_hrv_filelevel",
+        "morphologyppihrvfilelevel": "morphology_ppi_hrv_filelevel",
+        "morphology+ppi_hrv_filelevel": "morphology_ppi_hrv_filelevel",
+    }
+    if text not in aliases:
+        raise ValueError(f"Unknown manual feature mode: {value}. Use one of {MANUAL_FEATURE_CHOICES}.")
+    return aliases[text]
+
+
+def normalize_sqi_mode(value: str) -> str:
+    text = str(value).strip().lower().replace("-", "_")
+    aliases = {
+        "": "none",
+        "0": "none",
+        "none": "none",
+        "no": "none",
+        "top70": "top70_quality",
+        "top70_quality": "top70_quality",
+        "top50": "top50_quality",
+        "top50_quality": "top50_quality",
+    }
+    if text not in aliases:
+        raise ValueError(f"Unknown SQI mode: {value}. Use one of {SQI_MODE_CHOICES}.")
+    return aliases[text]
+
+
+def normalize_aggregation(value: str) -> str:
+    text = str(value).strip().lower().replace("-", "_")
+    aliases = {
+        "": "mean_prob",
+        "mean": "mean_prob",
+        "mean_prob": "mean_prob",
+        "quality_weighted": "quality_weighted_mean",
+        "quality_weighted_mean": "quality_weighted_mean",
+    }
+    if text not in aliases:
+        raise ValueError(f"Unknown aggregation mode: {value}. Use one of {AGGREGATION_CHOICES}.")
+    return aliases[text]
+
+
+def normalize_loss_type(value: str) -> str:
+    text = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "weighted_ce": "weighted_ce",
+        "weighted_cross_entropy": "weighted_ce",
+        "ce": "weighted_ce",
+        "balanced_softmax": "balanced_softmax",
+        "focal": "focal_loss",
+        "focal_loss": "focal_loss",
+    }
+    if text not in aliases:
+        raise ValueError(f"Unknown loss type: {value}. Use one of {LOSS_TYPE_CHOICES}.")
+    return aliases[text]
+
+
+def normalize_class_weight_mode(value: str) -> str:
+    text = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "inverse": "inverse_subject_count",
+        "inverse_count": "inverse_subject_count",
+        "inverse_subject_count": "inverse_subject_count",
+        "effective": "effective_number",
+        "effective_number": "effective_number",
+    }
+    if text not in aliases:
+        raise ValueError(f"Unknown class weight mode: {value}. Use one of {CLASS_WEIGHT_CHOICES}.")
+    return aliases[text]
+
+
+def select_extra_feature_columns(features: pd.DataFrame, extra_input: str, manual_features: str = "none") -> List[str]:
     mode = normalize_extra_input(extra_input)
-    if mode == "0":
-        return []
-    suffixes = PPI_FEATURE_SUFFIXES if mode == "PPI" else PPI_FEATURE_SUFFIXES + HRV_FEATURE_SUFFIXES
+    manual_mode = normalize_manual_features(manual_features)
+    suffixes: Tuple[str, ...] = ()
+    if mode == "PPI":
+        suffixes = PPI_FEATURE_SUFFIXES
+    elif mode == "HRV":
+        suffixes = PPI_FEATURE_SUFFIXES + HRV_FEATURE_SUFFIXES
     cols: List[str] = []
     for col in features.columns:
         if col in META_COLS:
             continue
-        if any(col.endswith(f"_{suffix}") for suffix in suffixes):
+        include = False
+        if suffixes and any(col.endswith(f"_{suffix}") for suffix in suffixes):
+            include = True
+        if manual_mode in {"morphology", "morphology_ppi_hrv_filelevel"} and col.startswith(MORPHOLOGY_PREFIXES):
+            include = True
+        if manual_mode == "morphology_ppi_hrv_filelevel" and any(col.endswith(f"_{suffix}") for suffix in PPI_FEATURE_SUFFIXES + HRV_FEATURE_SUFFIXES):
+            include = True
+        if include:
             cols.append(col)
     if not cols:
-        raise RuntimeError(f"No {mode} feature columns were found in the feature table.")
+        requested = ", ".join(part for part in [mode if mode != "0" else "", manual_mode if manual_mode != "none" else ""] if part)
+        if requested:
+            raise RuntimeError(f"No feature columns were found for requested extra/manual inputs: {requested}.")
     return cols
 
 
@@ -969,7 +1315,7 @@ def extract_cnn_windows_from_file(path: Path, config: RunConfig) -> np.ndarray:
     df = read_numeric_csv(path)
     red = bandpass_ppg(df["RED"].to_numpy(), config.fs)
     ir = bandpass_ppg(df["IR"].to_numpy(), config.fs)
-    acc = lowpass_imu(df[["AX", "AY", "AZ"]].to_numpy(), config.fs, cutoff=20.0)
+    acc = remove_acc_gravity(lowpass_imu(df[["AX", "AY", "AZ"]].to_numpy(), config.fs, cutoff=20.0), config.fs)
     gyro = lowpass_imu(df[["GX", "GY", "GZ"]].to_numpy(), config.fs, cutoff=40.0)
     data = np.column_stack([red, ir, acc, gyro]).astype(np.float32)
 
@@ -1130,17 +1476,164 @@ def make_torch_window_model(model_name: str, n_channels: int, n_classes: int, dr
 
 
 def aggregate_by_key(probs: np.ndarray, labels: np.ndarray, keys: Sequence[object]) -> Tuple[List[int], List[int]]:
+    true, pred, _used = aggregate_by_key_with_quality(probs, labels, keys)
+    return true, pred
+
+
+def compute_window_sqi_scores(x: np.ndarray, fs: float = 400.0) -> np.ndarray:
+    x = np.asarray(x, dtype=np.float32)
+    if x.ndim != 3 or x.shape[0] == 0:
+        return np.empty(0, dtype=np.float32)
+    scores: List[float] = []
+    for window in x:
+        red = np.asarray(window[0], dtype=np.float64)
+        ir = np.asarray(window[1], dtype=np.float64)
+        ppg = ir if np.std(ir) >= np.std(red) else red
+        acc = np.linalg.norm(window[2:5].astype(np.float64), axis=0) if window.shape[0] >= 5 else np.zeros(window.shape[1])
+        gyro = np.linalg.norm(window[5:8].astype(np.float64), axis=0) if window.shape[0] >= 8 else np.zeros(window.shape[1])
+        ppg_std = float(np.std(ppg))
+        if ppg_std < 1e-8 or ppg.size < 16:
+            scores.append(0.0)
+            continue
+        freqs, psd = signal.welch(ppg, fs=float(fs), nperseg=min(512, ppg.size))
+        total = float(np.trapezoid(psd, freqs)) + 1e-12
+        band = (freqs >= 0.5) & (freqs <= 3.0)
+        spectral_ratio = float(np.trapezoid(psd[band], freqs[band]) / total) if np.any(band) else 0.0
+        peaks, _ = signal.find_peaks((ppg - np.median(ppg)) / (ppg_std + 1e-8), distance=max(1, int(round(0.28 * fs))), prominence=0.3)
+        if peaks.size >= 3:
+            intervals = np.diff(peaks).astype(np.float64)
+            ppi_stability = 1.0 / (1.0 + float(np.std(intervals) / (np.mean(intervals) + 1e-8)))
+            peak_density = min(1.0, float(peaks.size) / max(2.0, ppg.size / 400.0 * 3.0))
+        else:
+            ppi_stability = 0.0
+            peak_density = 0.0
+        motion = float(np.sqrt(np.mean(np.square(acc))) + 0.25 * np.sqrt(np.mean(np.square(gyro))))
+        motion_penalty = 1.0 / (1.0 + max(0.0, motion - 1.0))
+        score = 0.40 * spectral_ratio + 0.35 * ppi_stability + 0.15 * peak_density + 0.10 * motion_penalty
+        scores.append(finite_float(score))
+    scores_arr = np.asarray(scores, dtype=np.float32)
+    if scores_arr.size and np.nanmax(scores_arr) > np.nanmin(scores_arr):
+        lo = float(np.nanpercentile(scores_arr, 5))
+        hi = float(np.nanpercentile(scores_arr, 95))
+        scores_arr = np.clip((scores_arr - lo) / (hi - lo + 1e-8), 0.0, 1.0).astype(np.float32)
+    return np.nan_to_num(scores_arr, nan=0.0, posinf=1.0, neginf=0.0).astype(np.float32)
+
+
+def sqi_keep_mask(keys: Sequence[object], quality: np.ndarray, sqi_mode: str) -> np.ndarray:
+    mode = normalize_sqi_mode(sqi_mode)
+    n = len(keys)
+    if mode == "none" or n == 0:
+        return np.ones(n, dtype=bool)
+    fraction = 0.70 if mode == "top70_quality" else 0.50
+    quality = np.asarray(quality, dtype=np.float64)
+    keep = np.zeros(n, dtype=bool)
+    grouped: Dict[object, List[int]] = {}
+    for idx, key in enumerate(keys):
+        grouped.setdefault(key, []).append(idx)
+    for idxs in grouped.values():
+        idx_arr = np.asarray(idxs, dtype=np.int64)
+        n_keep = max(1, int(math.ceil(len(idx_arr) * fraction)))
+        order = np.argsort(quality[idx_arr])[::-1]
+        keep[idx_arr[order[:n_keep]]] = True
+    return keep
+
+
+def aggregate_by_key_with_quality(
+    probs: np.ndarray,
+    labels: np.ndarray,
+    keys: Sequence[object],
+    quality: Optional[np.ndarray] = None,
+    sqi_mode: str = "none",
+    aggregation: str = "mean_prob",
+) -> Tuple[List[int], List[int], int]:
     grouped: Dict[object, List[int]] = {}
     for idx, key in enumerate(keys):
         grouped.setdefault(key, []).append(idx)
     true: List[int] = []
     pred: List[int] = []
+    mode = normalize_sqi_mode(sqi_mode)
+    aggregation = normalize_aggregation(aggregation)
+    quality_arr = np.asarray(quality, dtype=np.float64) if quality is not None else np.ones(len(keys), dtype=np.float64)
+    used = 0
     for key, idxs in grouped.items():
         idx_arr = np.asarray(idxs, dtype=np.int64)
-        avg_probs = np.mean(probs[idx_arr], axis=0)
+        if mode != "none":
+            keep = sqi_keep_mask([keys[int(idx)] for idx in idx_arr], quality_arr[idx_arr], mode)
+            selected = idx_arr[keep]
+            if selected.size == 0:
+                selected = idx_arr
+        else:
+            selected = idx_arr
+        used += int(selected.size)
+        if aggregation == "quality_weighted_mean":
+            weights = np.clip(quality_arr[selected], 0.0, None)
+            if float(np.sum(weights)) <= 1e-8:
+                avg_probs = np.mean(probs[selected], axis=0)
+            else:
+                avg_probs = np.average(probs[selected], axis=0, weights=weights)
+        else:
+            avg_probs = np.mean(probs[selected], axis=0)
         true.append(int(labels[idx_arr[0]]))
         pred.append(int(np.argmax(avg_probs)))
-    return true, pred
+    return true, pred, used
+
+
+def class_counts_from_labels(labels: np.ndarray) -> np.ndarray:
+    counts = np.bincount(np.asarray(labels, dtype=np.int64), minlength=len(CLASS_NAMES)).astype(np.float32)
+    return np.maximum(counts, 1.0)
+
+
+def class_weights_from_counts(counts: np.ndarray, mode: str, beta: float = 0.999) -> np.ndarray:
+    counts = np.maximum(np.asarray(counts, dtype=np.float32), 1.0)
+    mode = normalize_class_weight_mode(mode)
+    if mode == "effective_number":
+        beta = min(0.9999, max(0.0, float(beta)))
+        weights = (1.0 - beta) / (1.0 - np.power(beta, counts))
+    else:
+        weights = 1.0 / counts
+    weights = weights / (np.mean(weights) + 1e-8)
+    return weights.astype(np.float32)
+
+
+if nn is not None:
+
+    class WindowClassificationLoss(nn.Module):
+        def __init__(
+            self,
+            loss_type: str,
+            class_weights: "torch.Tensor",
+            class_counts: "torch.Tensor",
+            label_smoothing: float = 0.0,
+            focal_gamma: float = 2.0,
+        ) -> None:
+            super().__init__()
+            self.loss_type = normalize_loss_type(loss_type)
+            self.register_buffer("class_weights", class_weights.detach().clone())
+            self.register_buffer("class_counts", torch.clamp(class_counts.detach().clone(), min=1.0))
+            self.label_smoothing = max(0.0, float(label_smoothing))
+            self.focal_gamma = max(0.0, float(focal_gamma))
+
+        def forward(self, logits: "torch.Tensor", target: "torch.Tensor") -> "torch.Tensor":
+            if self.loss_type == "balanced_softmax":
+                adjusted = logits + torch.log(self.class_counts.view(1, -1))
+                return nn.functional.cross_entropy(adjusted, target, label_smoothing=self.label_smoothing)
+            if self.loss_type == "focal_loss":
+                ce = nn.functional.cross_entropy(
+                    logits,
+                    target,
+                    weight=self.class_weights,
+                    reduction="none",
+                    label_smoothing=self.label_smoothing,
+                )
+                pt = torch.exp(-nn.functional.cross_entropy(logits, target, reduction="none"))
+                focal = torch.pow(1.0 - pt, self.focal_gamma) * ce
+                return torch.mean(focal)
+            return nn.functional.cross_entropy(
+                logits,
+                target,
+                weight=self.class_weights,
+                label_smoothing=self.label_smoothing,
+            )
 
 
 def train_cnn_model(
@@ -1153,6 +1646,7 @@ def train_cnn_model(
     y_val: Optional[np.ndarray] = None,
     extra_train: Optional[np.ndarray] = None,
     extra_val: Optional[np.ndarray] = None,
+    class_count_labels: Optional[np.ndarray] = None,
 ) -> Tuple["nn.Module", Dict[str, object]]:
     ensure_torch()
     set_all_seeds(seed)
@@ -1174,16 +1668,18 @@ def train_cnn_model(
         ).to(device)
     else:
         model = base_model.to(device)
-    counts = np.bincount(y_train, minlength=len(CLASS_NAMES)).astype(np.float32)
-    weights = counts.sum() / (len(CLASS_NAMES) * np.maximum(counts, 1.0))
+    class_count_source = np.asarray(class_count_labels, dtype=np.int64) if class_count_labels is not None and len(class_count_labels) else y_train
+    counts = class_counts_from_labels(class_count_source)
+    weights = class_weights_from_counts(counts, config.class_weight_mode, beta=config.class_weight_beta)
     class_weights = torch.tensor(weights, dtype=torch.float32, device=device)
-    try:
-        criterion = nn.CrossEntropyLoss(
-            weight=class_weights,
-            label_smoothing=max(0.0, float(config.cnn_label_smoothing)),
-        )
-    except TypeError:
-        criterion = nn.CrossEntropyLoss(weight=class_weights)
+    class_counts = torch.tensor(counts, dtype=torch.float32, device=device)
+    criterion = WindowClassificationLoss(
+        loss_type=config.loss_type,
+        class_weights=class_weights,
+        class_counts=class_counts,
+        label_smoothing=float(config.cnn_label_smoothing),
+        focal_gamma=float(config.focal_gamma),
+    )
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.cnn_lr, weight_decay=float(config.cnn_weight_decay))
     dataset = (
         CnnWindowFeatureDataset(x_train, extra_train, y_train)
@@ -1284,7 +1780,8 @@ def evaluate_cnn(
     x_win, y_win, subject_win, file_win, cnn_cache_path = build_cnn_window_table(features, config, refresh=refresh_cnn)
     y_file = features["label"].to_numpy(dtype=int)
     groups = features["subject"].to_numpy()
-    extra_cols = select_extra_feature_columns(features, config.extra_input)
+    extra_cols = select_extra_feature_columns(features, config.extra_input, config.manual_features)
+    sqi_scores = compute_window_sqi_scores(x_win, fs=config.fs)
 
     subject_labels = features.groupby("subject")["label"].first()
     min_class_subjects = int(subject_labels.value_counts().min())
@@ -1302,6 +1799,7 @@ def evaluate_cnn(
 
     for fold, (train_idx, test_idx) in enumerate(cv.split(np.zeros(len(features)), y_file, groups), start=1):
         train_mask = np.isin(file_win, train_idx)
+        train_mask &= sqi_keep_mask(file_win.tolist(), sqi_scores, config.sqi_mode)
         test_mask = np.isin(file_win, test_idx)
         window_extra: Optional[np.ndarray] = None
         if extra_cols:
@@ -1317,6 +1815,7 @@ def evaluate_cnn(
             y_val=y_win[test_mask],
             extra_train=window_extra[train_mask] if window_extra is not None else None,
             extra_val=window_extra[test_mask] if window_extra is not None else None,
+            class_count_labels=features.iloc[train_idx].groupby("subject")["label"].first().to_numpy(dtype=int),
         )
         probs = cnn_predict_proba(
             model,
@@ -1330,8 +1829,23 @@ def evaluate_cnn(
         window_true.extend(y_test.tolist())
         window_pred.extend(preds.tolist())
 
-        fold_file_true, fold_file_pred = aggregate_by_key(probs, y_test, file_win[test_mask].tolist())
-        fold_subject_true, fold_subject_pred = aggregate_by_key(probs, y_test, subject_win[test_mask].tolist())
+        q_test = sqi_scores[test_mask]
+        fold_file_true, fold_file_pred, fold_file_used = aggregate_by_key_with_quality(
+            probs,
+            y_test,
+            file_win[test_mask].tolist(),
+            quality=q_test,
+            sqi_mode=config.sqi_mode,
+            aggregation=config.aggregation,
+        )
+        fold_subject_true, fold_subject_pred, fold_subject_used = aggregate_by_key_with_quality(
+            probs,
+            y_test,
+            subject_win[test_mask].tolist(),
+            quality=q_test,
+            sqi_mode=config.sqi_mode,
+            aggregation=config.aggregation,
+        )
         file_true.extend(fold_file_true)
         file_pred.extend(fold_file_pred)
         subject_true.extend(fold_subject_true)
@@ -1344,6 +1858,8 @@ def evaluate_cnn(
                 "n_test_files": int(len(test_idx)),
                 "n_train_windows": int(np.sum(train_mask)),
                 "n_test_windows": int(np.sum(test_mask)),
+                "n_file_aggregation_windows": int(fold_file_used),
+                "n_subject_aggregation_windows": int(fold_subject_used),
                 "test_subjects": sorted(map(str, np.unique(groups[test_idx]))),
                 "best_epoch": fold_info["best_epoch"],
                 "best_window_balanced_accuracy": fold_info["best_window_balanced_accuracy"],
@@ -1359,6 +1875,9 @@ def evaluate_cnn(
         "n_subjects": int(features["subject"].nunique()),
         "n_windows": int(len(y_win)),
         "extra_input": normalize_extra_input(config.extra_input),
+        "manual_features": normalize_manual_features(config.manual_features),
+        "sqi_mode": normalize_sqi_mode(config.sqi_mode),
+        "aggregation": normalize_aggregation(config.aggregation),
         "n_extra_features": int(len(extra_cols)),
         "n_splits": int(n_splits),
         "cnn_cache": str(cnn_cache_path),
@@ -1476,16 +1995,17 @@ def train_shapeformer_model(
     else:
         model = base_model.to(device)
 
-    counts = np.bincount(y_train, minlength=len(CLASS_NAMES)).astype(np.float32)
-    weights = counts.sum() / (len(CLASS_NAMES) * np.maximum(counts, 1.0))
+    counts = class_counts_from_labels(y_train)
+    weights = class_weights_from_counts(counts, config.class_weight_mode, beta=config.class_weight_beta)
     class_weights = torch.tensor(weights, dtype=torch.float32, device=device)
-    try:
-        criterion = nn.CrossEntropyLoss(
-            weight=class_weights,
-            label_smoothing=max(0.0, float(config.cnn_label_smoothing)),
-        )
-    except TypeError:
-        criterion = nn.CrossEntropyLoss(weight=class_weights)
+    class_counts = torch.tensor(counts, dtype=torch.float32, device=device)
+    criterion = WindowClassificationLoss(
+        loss_type=config.loss_type,
+        class_weights=class_weights,
+        class_counts=class_counts,
+        label_smoothing=float(config.cnn_label_smoothing),
+        focal_gamma=float(config.focal_gamma),
+    )
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.cnn_lr, weight_decay=float(config.cnn_weight_decay))
     dataset = (
         CnnWindowFeatureDataset(x_train, extra_train, y_train)
@@ -1590,7 +2110,7 @@ def evaluate_shapeformer(
     x_win, y_win, subject_win, file_win, cnn_cache_path = build_cnn_window_table(features, config, refresh=refresh_cnn)
     y_file = features["label"].to_numpy(dtype=int)
     groups = features["subject"].to_numpy()
-    extra_cols = select_extra_feature_columns(features, config.extra_input)
+    extra_cols = select_extra_feature_columns(features, config.extra_input, config.manual_features)
 
     subject_labels = features.groupby("subject")["label"].first()
     min_class_subjects = int(subject_labels.value_counts().min())
@@ -1873,7 +2393,7 @@ def save_final_cnn_model(
     ensure_torch()
     features = features.reset_index(drop=True)
     x_win, y_win, _, _, cnn_cache_path = build_cnn_window_table(features, config, refresh=refresh_cnn)
-    extra_cols = select_extra_feature_columns(features, config.extra_input)
+    extra_cols = select_extra_feature_columns(features, config.extra_input, config.manual_features)
     extra_win: Optional[np.ndarray] = None
     if extra_cols:
         all_file_idx = np.arange(len(features), dtype=np.int64)
@@ -1918,7 +2438,7 @@ def save_final_shapeformer_model(
     ensure_shapeformer()
     features = features.reset_index(drop=True)
     x_win, y_win, _, file_win, cnn_cache_path = build_cnn_window_table(features, config, refresh=refresh_cnn)
-    extra_cols = select_extra_feature_columns(features, config.extra_input)
+    extra_cols = select_extra_feature_columns(features, config.extra_input, config.manual_features)
     extra_win: Optional[np.ndarray] = None
     if extra_cols:
         all_file_idx = np.arange(len(features), dtype=np.int64)
@@ -2299,6 +2819,11 @@ def config_from_args(args: argparse.Namespace) -> RunConfig:
         cnn_select_best_epoch=not args.cnn_use_final_epoch,
         role_mode=normalize_role_mode(args.role_mode),
         extra_input=normalize_extra_input(args.extra_input),
+        manual_features=normalize_manual_features(args.manual_features),
+        sqi_mode=normalize_sqi_mode(args.sqi_mode),
+        aggregation=normalize_aggregation(args.aggregation),
+        loss_type=normalize_loss_type(args.loss_type),
+        class_weight_mode=normalize_class_weight_mode(args.class_weight_mode),
         shapeformer_num_shapelets=args.shapeformer_num_shapelets,
         shapeformer_shapelet_len=args.shapeformer_shapelet_len,
         shapeformer_shapelet_stride=args.shapeformer_shapelet_stride,
@@ -2362,6 +2887,11 @@ def single_run_result_row(
         "model": report.get("model"),
         "resolved_model": report.get("resolved_model"),
         "extra_input": normalize_extra_input(config.extra_input),
+        "manual_features": normalize_manual_features(config.manual_features),
+        "sqi_mode": normalize_sqi_mode(config.sqi_mode),
+        "aggregation": normalize_aggregation(config.aggregation),
+        "loss_type": normalize_loss_type(config.loss_type),
+        "class_weight_mode": normalize_class_weight_mode(config.class_weight_mode),
         "cnn_epochs": config.cnn_epochs,
         "cnn_patience": config.cnn_patience,
         "window_sec": config.cnn_seq_sec,
@@ -2397,6 +2927,11 @@ def build_sweep_summary(run_rows: List[Dict[str, object]]) -> pd.DataFrame:
         "model",
         "resolved_model",
         "extra_input",
+        "manual_features",
+        "sqi_mode",
+        "aggregation",
+        "loss_type",
+        "class_weight_mode",
         "cnn_epochs",
         "cnn_patience",
         "window_sec",
@@ -2690,6 +3225,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--role-mode", choices=ROLE_MODE_CHOICES, default="static_only")
     parser.add_argument("--extra-input", choices=EXTRA_INPUT_CHOICES, default="0")
+    parser.add_argument("--manual-features", choices=MANUAL_FEATURE_CHOICES, default="none")
+    parser.add_argument("--sqi-mode", choices=SQI_MODE_CHOICES, default="none")
+    parser.add_argument("--aggregation", choices=AGGREGATION_CHOICES, default="mean_prob")
+    parser.add_argument("--loss-type", choices=LOSS_TYPE_CHOICES, default="weighted_ce")
+    parser.add_argument("--class-weight-mode", choices=CLASS_WEIGHT_CHOICES, default="inverse_subject_count")
     parser.add_argument("--shapeformer-num-shapelets", type=int, default=3)
     parser.add_argument("--shapeformer-shapelet-len", type=int, default=128)
     parser.add_argument("--shapeformer-shapelet-stride", type=int, default=64)

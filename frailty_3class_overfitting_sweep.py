@@ -17,13 +17,20 @@ from sklearn.preprocessing import StandardScaler
 
 from frailty_3class_classifier import CLASS_NAMES, RunConfig, build_feature_table, finite_float
 from frailty_3class_classifier import (
-    aggregate_by_key,
+    aggregate_by_key_with_quality,
     build_cnn_window_table,
     cnn_device,
     cnn_predict_proba,
+    compute_window_sqi_scores,
+    normalize_aggregation,
     normalize_extra_input,
+    normalize_class_weight_mode,
+    normalize_loss_type,
+    normalize_manual_features,
+    normalize_sqi_mode,
     save_learning_curve_artifacts,
     select_extra_feature_columns,
+    sqi_keep_mask,
     train_cnn_model,
 )
 from frailty_3class_holdout_eval import (
@@ -54,6 +61,11 @@ OVERFIT_COLUMNS = [
     "cnn_weight_decay",
     "cnn_dropout",
     "cnn_label_smoothing",
+    "sqi_mode",
+    "aggregation",
+    "manual_features",
+    "loss_type",
+    "class_weight_mode",
     "dynamic_data_mode",
     "stage2_fixed_epoch",
 ]
@@ -101,6 +113,11 @@ def stage1_grid(args: argparse.Namespace) -> List[Dict[str, object]]:
         "dropout": 0.5,
         "label_smoothing": 0.20,
         "max_windows_fraction": 0.9,
+        "sqi_mode": "none",
+        "aggregation": "mean_prob",
+        "manual_features": "none",
+        "loss_type": "weighted_ce",
+        "class_weight_mode": "inverse_subject_count",
     }
 
     def token(value: object) -> str:
@@ -119,13 +136,28 @@ def stage1_grid(args: argparse.Namespace) -> List[Dict[str, object]]:
         dropout: float = base["dropout"],
         label_smoothing: float = base["label_smoothing"],
         max_windows_fraction: float = base["max_windows_fraction"],
+        sqi_mode: str = base["sqi_mode"],
+        aggregation: str = base["aggregation"],
+        manual_features: str = base["manual_features"],
+        loss_type: str = base["loss_type"],
+        class_weight_mode: str = base["class_weight_mode"],
     ) -> None:
+        sqi_mode = normalize_sqi_mode(sqi_mode)
+        aggregation = normalize_aggregation(aggregation)
+        manual_features = normalize_manual_features(manual_features)
+        loss_type = normalize_loss_type(loss_type)
+        class_weight_mode = normalize_class_weight_mode(class_weight_mode)
         key = (
             round(float(lr), 10),
             round(float(weight_decay), 10),
             round(float(dropout), 10),
             round(float(label_smoothing), 10),
             round(float(max_windows_fraction), 10),
+            sqi_mode,
+            aggregation,
+            manual_features,
+            loss_type,
+            class_weight_mode,
         )
         if key in seen:
             return
@@ -133,7 +165,8 @@ def stage1_grid(args: argparse.Namespace) -> List[Dict[str, object]]:
         name = (
             f"{screen_group}_{factor}-{token(factor_value)}_"
             f"lr{float(lr):g}_wd{float(weight_decay):g}_do{float(dropout):g}_"
-            f"ls{float(label_smoothing):g}_mw{int(round(float(max_windows_fraction) * 100)):02d}"
+            f"ls{float(label_smoothing):g}_mw{int(round(float(max_windows_fraction) * 100)):02d}_"
+            f"sqi{sqi_mode}_agg{aggregation}_man{manual_features}_loss{loss_type}_cw{class_weight_mode}"
         )
         templates.append(
             {
@@ -146,6 +179,11 @@ def stage1_grid(args: argparse.Namespace) -> List[Dict[str, object]]:
                 "cnn_dropout": float(dropout),
                 "cnn_label_smoothing": float(label_smoothing),
                 "max_windows_fraction": float(max_windows_fraction),
+                "sqi_mode": sqi_mode,
+                "aggregation": aggregation,
+                "manual_features": manual_features,
+                "loss_type": loss_type,
+                "class_weight_mode": class_weight_mode,
             }
         )
 
@@ -158,6 +196,16 @@ def stage1_grid(args: argparse.Namespace) -> List[Dict[str, object]]:
         add_template("main_effect", "label_smoothing", label_smoothing, label_smoothing=label_smoothing)
     for max_windows_fraction in [1.0, 0.9, 0.7, 0.5]:
         add_template("main_effect", "max_windows_fraction", max_windows_fraction, max_windows_fraction=max_windows_fraction)
+    for sqi_mode in ["none", "top70_quality", "top50_quality"]:
+        add_template("main_effect", "sqi_mode", sqi_mode, sqi_mode=sqi_mode)
+    for aggregation in ["mean_prob", "quality_weighted_mean"]:
+        add_template("main_effect", "aggregation", aggregation, aggregation=aggregation)
+    for manual_features in ["none", "morphology", "morphology_ppi_hrv_filelevel"]:
+        add_template("main_effect", "manual_features", manual_features, manual_features=manual_features)
+    for loss_type in ["weighted_ce", "balanced_softmax", "focal_loss"]:
+        add_template("main_effect", "loss_type", loss_type, loss_type=loss_type)
+    for class_weight_mode in ["inverse_subject_count", "effective_number"]:
+        add_template("main_effect", "class_weight_mode", class_weight_mode, class_weight_mode=class_weight_mode)
 
     strong_combinations = [
         (1e-3, weight_decay, dropout, label_smoothing, 0.9)
@@ -177,6 +225,24 @@ def stage1_grid(args: argparse.Namespace) -> List[Dict[str, object]]:
             max_windows_fraction=max_windows_fraction,
         )
 
+    for sqi_mode in ["top70_quality", "top50_quality"]:
+        add_template(
+            "quality_combo",
+            "sqi_aggregation",
+            f"{sqi_mode}_quality_weighted_mean",
+            sqi_mode=sqi_mode,
+            aggregation="quality_weighted_mean",
+        )
+    for manual_features in ["morphology", "morphology_ppi_hrv_filelevel"]:
+        for loss_type in ["balanced_softmax", "focal_loss"]:
+            add_template(
+                "manual_loss_combo",
+                "manual_loss",
+                f"{manual_features}_{loss_type}",
+                manual_features=manual_features,
+                loss_type=loss_type,
+            )
+
     rows: List[Dict[str, object]] = []
     for epoch in epochs:
         for template in templates:
@@ -193,6 +259,11 @@ def stage1_grid(args: argparse.Namespace) -> List[Dict[str, object]]:
                     "cnn_weight_decay": float(template["cnn_weight_decay"]),
                     "cnn_dropout": float(template["cnn_dropout"]),
                     "cnn_label_smoothing": float(template["cnn_label_smoothing"]),
+                    "sqi_mode": str(template["sqi_mode"]),
+                    "aggregation": str(template["aggregation"]),
+                    "manual_features": str(template["manual_features"]),
+                    "loss_type": str(template["loss_type"]),
+                    "class_weight_mode": str(template["class_weight_mode"]),
                     "dynamic_data_mode": "static_only",
                     "stage2_fixed_epoch": 0,
                     "cnn_epochs": int(epoch),
@@ -276,6 +347,11 @@ def stage2_grid(args: argparse.Namespace) -> List[Dict[str, object]]:
                         float(base["cnn_weight_decay"]),
                         float(base["cnn_dropout"]),
                         float(base["cnn_label_smoothing"]),
+                        str(base.get("sqi_mode", "none")),
+                        str(base.get("aggregation", "mean_prob")),
+                        str(base.get("manual_features", "none")),
+                        str(base.get("loss_type", "weighted_ce")),
+                        str(base.get("class_weight_mode", "inverse_subject_count")),
                         dynamic_mode,
                     )
                     if key in seen:
@@ -297,6 +373,11 @@ def stage2_grid(args: argparse.Namespace) -> List[Dict[str, object]]:
                             "cnn_weight_decay": float(base["cnn_weight_decay"]),
                             "cnn_dropout": float(base["cnn_dropout"]),
                             "cnn_label_smoothing": float(base["cnn_label_smoothing"]),
+                            "sqi_mode": str(base.get("sqi_mode", "none")),
+                            "aggregation": str(base.get("aggregation", "mean_prob")),
+                            "manual_features": str(base.get("manual_features", "none")),
+                            "loss_type": str(base.get("loss_type", "weighted_ce")),
+                            "class_weight_mode": str(base.get("class_weight_mode", "inverse_subject_count")),
                             "dynamic_data_mode": dynamic_mode,
                             "cnn_patience": 0,
                             "max_windows_fraction": float(max_frac),
@@ -368,6 +449,11 @@ def reference_grid_row(epoch: int = 0) -> Dict[str, object]:
         "cnn_weight_decay": 1e-4,
         "cnn_dropout": -1.0,
         "cnn_label_smoothing": 0.0,
+        "sqi_mode": "none",
+        "aggregation": "mean_prob",
+        "manual_features": "none",
+        "loss_type": "weighted_ce",
+        "class_weight_mode": "inverse_subject_count",
         "dynamic_data_mode": "static_only",
         "stage2_fixed_epoch": int(epoch),
         "cnn_epochs": int(epoch),
@@ -423,6 +509,11 @@ def apply_overfit_config(config: RunConfig, grid: Dict[str, object], args: argpa
     config.cnn_weight_decay = float(grid["cnn_weight_decay"])
     config.cnn_dropout = float(grid["cnn_dropout"])
     config.cnn_label_smoothing = float(grid["cnn_label_smoothing"])
+    config.sqi_mode = normalize_sqi_mode(grid.get("sqi_mode", "none"))
+    config.aggregation = normalize_aggregation(grid.get("aggregation", "mean_prob"))
+    config.manual_features = normalize_manual_features(grid.get("manual_features", "none"))
+    config.loss_type = normalize_loss_type(grid.get("loss_type", "weighted_ce"))
+    config.class_weight_mode = normalize_class_weight_mode(grid.get("class_weight_mode", "inverse_subject_count"))
     config.cnn_patience = int(grid["cnn_patience"])
     config.cnn_max_windows_fraction = float(grid["max_windows_fraction"])
     config.role_mode = "all_roles" if normalize_dynamic_data_mode(grid.get("dynamic_data_mode", "static_only")) == "train_all_roles" else "static_only"
@@ -551,13 +642,14 @@ def train_eval_with_train_all_roles_once(
         eval_config,
         refresh=refresh_cnn_windows,
     )
+    sqi_static = compute_window_sqi_scores(x_static, fs=config.fs)
     train_mask = np.isin(file_train_all, train_idx_all)
     val_mask = np.isin(file_static, val_idx_static)
     test_mask = np.isin(file_static, test_idx_static)
     if not np.any(train_mask) or not np.any(val_mask) or not np.any(test_mask):
         raise RuntimeError("Empty train, validation, or test window set after dynamic augmentation split.")
 
-    extra_cols = select_extra_feature_columns(static_features, config.extra_input)
+    extra_cols = select_extra_feature_columns(static_features, config.extra_input, config.manual_features)
     train_window_extra: Optional[np.ndarray] = None
     static_window_extra: Optional[np.ndarray] = None
     if extra_cols:
@@ -786,8 +878,9 @@ def train_eval_groupkfold_once(
         x_train_source, y_train_source, _subject_train_source, file_train_source = x_static, y_static, subject_static, file_static
         train_cache_path = eval_cache_path
         train_feature_source = static_features
+    sqi_train_source = sqi_static if mode != "train_all_roles" else compute_window_sqi_scores(x_train_source, fs=config.fs)
 
-    extra_cols = select_extra_feature_columns(static_features, config.extra_input)
+    extra_cols = select_extra_feature_columns(static_features, config.extra_input, config.manual_features)
     device = cnn_device()
     window_true: List[int] = []
     window_pred: List[int] = []
@@ -808,6 +901,7 @@ def train_eval_groupkfold_once(
         else:
             train_idx_source = train_idx_static
         train_mask = np.isin(file_train_source, train_idx_source)
+        train_mask &= sqi_keep_mask(file_train_source.tolist(), sqi_train_source, config.sqi_mode)
         val_mask = np.isin(file_static, val_idx_static)
         if not np.any(train_mask) or not np.any(val_mask):
             raise RuntimeError(f"Empty train or validation windows in CV fold {fold}.")
@@ -830,6 +924,7 @@ def train_eval_groupkfold_once(
             y_val=y_static[val_mask],
             extra_train=train_window_extra[train_mask] if train_window_extra is not None else None,
             extra_val=static_window_extra[val_mask] if static_window_extra is not None else None,
+            class_count_labels=static_features.iloc[train_idx_static].groupby("subject")["label"].first().to_numpy(dtype=int),
         )
         probs = cnn_predict_proba(
             model,
@@ -842,8 +937,23 @@ def train_eval_groupkfold_once(
         y_val = y_static[val_mask].astype(int)
         window_true.extend(y_val.tolist())
         window_pred.extend(preds.tolist())
-        fold_file_true, fold_file_pred = aggregate_by_key(probs, y_val, file_static[val_mask].tolist())
-        fold_subject_true, fold_subject_pred = aggregate_by_key(probs, y_val, subject_static[val_mask].tolist())
+        q_val = sqi_static[val_mask]
+        fold_file_true, fold_file_pred, fold_file_used = aggregate_by_key_with_quality(
+            probs,
+            y_val,
+            file_static[val_mask].tolist(),
+            quality=q_val,
+            sqi_mode=config.sqi_mode,
+            aggregation=config.aggregation,
+        )
+        fold_subject_true, fold_subject_pred, fold_subject_used = aggregate_by_key_with_quality(
+            probs,
+            y_val,
+            subject_static[val_mask].tolist(),
+            quality=q_val,
+            sqi_mode=config.sqi_mode,
+            aggregation=config.aggregation,
+        )
         file_true.extend(fold_file_true)
         file_pred.extend(fold_file_pred)
         subject_true.extend(fold_subject_true)
@@ -861,6 +971,9 @@ def train_eval_groupkfold_once(
                 "n_val_files": int(len(val_idx_static)),
                 "n_train_windows": int(np.sum(train_mask)),
                 "n_val_windows": int(np.sum(val_mask)),
+                "n_file_aggregation_windows": int(fold_file_used),
+                "n_subject_aggregation_windows": int(fold_subject_used),
+                "mean_val_sqi": finite_float(np.mean(q_val)) if q_val.size else 0.0,
                 "val_subjects": sorted(map(str, np.unique(groups[val_idx_static]))),
                 "best_epoch": int(fold_info["best_epoch"]),
                 "best_window_balanced_accuracy": fold_info["best_window_balanced_accuracy"],
@@ -929,11 +1042,19 @@ def train_eval_groupkfold_once(
         "n_train_windows": int(total_train_windows),
         "n_val_windows": int(total_val_windows),
         "n_test_windows": int(total_val_windows),
+        "n_file_aggregation_windows": int(sum(int(fold.get("n_file_aggregation_windows", 0)) for fold in fold_summaries)),
+        "n_subject_aggregation_windows": int(sum(int(fold.get("n_subject_aggregation_windows", 0)) for fold in fold_summaries)),
         "n_static_train_files": int(round(float(np.mean([fold["n_static_train_files"] for fold in fold_summaries])))),
         "n_all_role_train_files": int(round(float(np.mean([fold["n_train_files"] for fold in fold_summaries])))),
         "n_dynamic_added_train_files": int(round(float(np.mean([fold["n_dynamic_added_train_files"] for fold in fold_summaries])))),
         "extra_input": normalize_extra_input(config.extra_input),
+        "manual_features": normalize_manual_features(config.manual_features),
+        "sqi_mode": normalize_sqi_mode(config.sqi_mode),
+        "aggregation": normalize_aggregation(config.aggregation),
+        "loss_type": normalize_loss_type(config.loss_type),
+        "class_weight_mode": normalize_class_weight_mode(config.class_weight_mode),
         "n_extra_features": int(len(extra_cols)),
+        "mean_window_sqi": finite_float(np.mean(sqi_static)) if sqi_static.size else 0.0,
         "cnn_cache": str(eval_cache_path),
         "train_all_roles_cnn_cache": str(train_cache_path),
         "validation_window_balanced_accuracy": metrics["window_balanced_accuracy"],
@@ -972,6 +1093,11 @@ def overfit_run_row(report: Dict[str, object], rank_row: pd.Series, report_path:
     row["is_reference"] = bool(grid.get("is_reference", False))
     row["overfit_grid_cnn_patience"] = int(grid["cnn_patience"])
     row["overfit_grid_max_windows_fraction"] = float(grid["max_windows_fraction"])
+    row["sqi_mode"] = str(grid.get("sqi_mode", report.get("sqi_mode", "none")))
+    row["aggregation"] = str(grid.get("aggregation", report.get("aggregation", "mean_prob")))
+    row["manual_features"] = str(grid.get("manual_features", report.get("manual_features", "none")))
+    row["loss_type"] = str(grid.get("loss_type", report.get("loss_type", "weighted_ce")))
+    row["class_weight_mode"] = str(grid.get("class_weight_mode", report.get("class_weight_mode", "inverse_subject_count")))
     row["train_role_mode"] = str(report.get("train_role_mode", "static_only"))
     row["validation_role_mode"] = str(report.get("validation_role_mode", "static_only"))
     row["test_role_mode"] = str(report.get("test_role_mode", "static_only"))
@@ -982,6 +1108,9 @@ def overfit_run_row(report: Dict[str, object], rank_row: pd.Series, report_path:
     row["n_static_train_files"] = int(report.get("n_static_train_files", (report.get("folds") or [{}])[0].get("n_train_files", 0)))
     row["n_all_role_train_files"] = int(report.get("n_all_role_train_files", report.get("n_static_train_files", 0)))
     row["n_dynamic_added_train_files"] = int(report.get("n_dynamic_added_train_files", 0))
+    row["mean_window_sqi"] = finite_float(report.get("mean_window_sqi", 0.0))
+    row["n_file_aggregation_windows"] = int(report.get("n_file_aggregation_windows", 0) or 0)
+    row["n_subject_aggregation_windows"] = int(report.get("n_subject_aggregation_windows", 0) or 0)
     fold_best_epochs = [safe_float(fold.get("best_epoch")) for fold in report.get("folds", [])]
     fold_best_epochs = [value for value in fold_best_epochs if math.isfinite(value)]
     if fold_best_epochs:
@@ -1015,6 +1144,9 @@ def build_overfit_summary(run_rows: List[Dict[str, object]]) -> pd.DataFrame:
         "best_epoch_train_loss",
         "best_epoch_val_loss",
         "val_train_loss_gap",
+        "mean_window_sqi",
+        "n_file_aggregation_windows",
+        "n_subject_aggregation_windows",
     ]
     for values, sub in runs.groupby(group_cols, dropna=False, sort=False):
         row = {col: value for col, value in zip(group_cols, values)}

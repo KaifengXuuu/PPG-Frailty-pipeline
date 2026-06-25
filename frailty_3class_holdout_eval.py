@@ -320,7 +320,7 @@ def train_eval_holdout_once(
     if not np.any(train_mask) or not np.any(val_mask) or not np.any(test_mask):
         raise RuntimeError("Empty train, validation, or test window set after holdout split.")
 
-    extra_cols = select_extra_feature_columns(features, config.extra_input)
+    extra_cols = select_extra_feature_columns(features, config.extra_input, config.manual_features)
     window_extra: Optional[np.ndarray] = None
     if extra_cols:
         scaled_file_features = scaled_file_features_for_fold(features, extra_cols, train_idx)
