@@ -1,0 +1,26 @@
+    # lowpass
+    acc_f  = lp(acc,  acc_lp_fc, fs, order=4, axis=0)
+    gyro_f = lp(gyro, gyro_lp_fc, fs, order=4, axis=0)
+
+    # robust mean
+    acc_mean  = robust_mean(acc_f,  axis=0)
+    gyro_mean = robust_mean(gyro_f, axis=0)
+
+    # ini attitude by acc mean
+    roll0, pitch0 = acc_to_rp_from_mean(acc_mean)
+
+    #
+    g_body0 = gravity_body_from_rp(roll0, pitch0)
+    acc_bias  = acc_mean  - g_body0  # g + bias
+    gyro_bias = gyro_mean  # gyro bias
+    acc_bc = acc - acc_b
+    gyro_bc= gyro - gyr_b
+    acc_lp = lp(acc_bc, acc_fc, fs)
+    gyro_lp= lp(gyro_bc, gyro_fc, fs)
+
+
+
+
+https://peterhcharlton.github.io/post/ppg_datasets/
+ultra-short-term HRV analysis
+https://ieeexplore.ieee.org/document/10943067

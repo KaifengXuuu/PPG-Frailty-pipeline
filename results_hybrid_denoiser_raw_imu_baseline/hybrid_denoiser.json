@@ -1,0 +1,35 @@
+{
+  "onnx_path": "hybrid_denoiser.onnx",
+  "pt_path": "hybrid_denoiser.pt",
+  "window_cfg": {
+    "fs": 500.0,
+    "win_sec": 6.0,
+    "hop_sec": 1.0
+  },
+  "baseline_cfg": {
+    "band_low": 0.5,
+    "band_high": 8.0,
+    "band_order": 3,
+    "gravity_cutoff_hz": 0.3,
+    "ridge_alpha": 8.0,
+    "lags_ms": [
+      -200,
+      -120,
+      -80,
+      -40,
+      0,
+      40,
+      80,
+      120,
+      200
+    ]
+  },
+  "model_cfg": {
+    "input_mode": "raw_imu_baseline",
+    "in_channels": 15,
+    "base_channels": 32
+  },
+  "opset_version": 17,
+  "input_name": "model_input",
+  "output_name": "artifact_hat"
+}

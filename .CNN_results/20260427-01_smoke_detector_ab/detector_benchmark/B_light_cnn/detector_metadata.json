@@ -1,0 +1,38 @@
+{
+  "model_name": "B_light_cnn",
+  "detector_cfg": {
+    "in_channels": 10,
+    "base_channels": 24,
+    "fs": 64.0,
+    "win_sec": 4.0,
+    "hop_sec": 4.0
+  },
+  "threshold": 0.9,
+  "input_channels": [
+    "ppg",
+    "acc_dyn_x",
+    "acc_dyn_y",
+    "acc_dyn_z",
+    "gyro_x",
+    "gyro_y",
+    "gyro_z",
+    "acc_mag",
+    "gyro_mag",
+    "jerk_mag"
+  ],
+  "preprocessing": "acceleration inferred per record and gravity removed; missing gyro zero-filled",
+  "output": "motion_logit; apply sigmoid and compare with threshold",
+  "onnx_export": {
+    "model_name": "B_light_cnn",
+    "success": true,
+    "onnx_path": ".CNN_results/20260427-01_smoke_detector_ab/detector_benchmark/B_light_cnn/B_light_cnn.onnx",
+    "threshold": 0.9,
+    "detector_cfg": {
+      "in_channels": 10,
+      "base_channels": 24,
+      "fs": 64.0,
+      "win_sec": 4.0,
+      "hop_sec": 4.0
+    }
+  }
+}

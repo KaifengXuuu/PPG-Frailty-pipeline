@@ -1,0 +1,62 @@
+{
+  "model_family": "PeakIntervalGateNet",
+  "cpu_only_reuse": true,
+  "model_cfg": {
+    "in_channels": 1,
+    "base_channels": 32,
+    "norm_type": "instance",
+    "ibi_min_sec": 0.3,
+    "ibi_max_sec": 2.0,
+    "num_domains": 5
+  },
+  "window_cfg": {
+    "fs": 64.0,
+    "win_sec": 4.0,
+    "hop_sec": 4.0
+  },
+  "thresholds": {
+    "peak_threshold": 0.725,
+    "gate_threshold": 0.44999999999999996
+  },
+  "input_spec": {
+    "name": "ppg_input",
+    "shape": [
+      "batch",
+      1,
+      256
+    ],
+    "dtype": "float32",
+    "preprocess": {
+      "ppg_filter": "bandpass already applied in training loader",
+      "normalization": "per-record zscore_1d"
+    }
+  },
+  "output_spec": {
+    "peak_logit": {
+      "shape": [
+        "batch",
+        256
+      ],
+      "postprocess": "sigmoid then threshold with peak_threshold"
+    },
+    "ibi_pred": {
+      "shape": [
+        "batch",
+        256
+      ],
+      "unit": "seconds"
+    },
+    "gate_logit": {
+      "shape": [
+        "batch"
+      ],
+      "postprocess": "sigmoid then threshold with gate_threshold"
+    }
+  },
+  "split_summary": {
+    "external_holdout_dataset": "simultaneous_measurements",
+    "train_subject_count": 30,
+    "holdout_subject_count": 8,
+    "extra_holdout_subject_count": 14
+  }
+}

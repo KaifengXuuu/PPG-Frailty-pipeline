@@ -1,0 +1,90 @@
+{
+  "model_path": "hybrid_denoiser.pt",
+  "window_cfg": {
+    "fs": 500.0,
+    "win_sec": 6.0,
+    "hop_sec": 1.0
+  },
+  "baseline_cfg": {
+    "band_low": 0.5,
+    "band_high": 8.0,
+    "band_order": 3,
+    "gravity_cutoff_hz": 0.3,
+    "ridge_alpha": 8.0,
+    "lags_ms": [
+      -200,
+      -120,
+      -80,
+      -40,
+      0,
+      40,
+      80,
+      120,
+      200
+    ]
+  },
+  "model_cfg": {
+    "input_mode": "raw_imu",
+    "in_channels": 11,
+    "base_channels": 32
+  },
+  "prior_cfg": {
+    "target_lowpass_hz": 6.0,
+    "target_band_low": 0.5,
+    "target_band_high": 8.0,
+    "target_band_order": 3,
+    "target_lowpass_order": 2,
+    "template_len": 256,
+    "library_bins": 5,
+    "min_ibi_sec": 0.35,
+    "max_ibi_sec": 1.6,
+    "base_channels": 16
+  },
+  "loss_cfg": {
+    "artifact": 1.0,
+    "clean": 0.35,
+    "sit": 0.75,
+    "peak": 0.2,
+    "decorr": 0.12,
+    "slope": 0.18,
+    "anchor": 0.12
+  },
+  "best_epoch": 8,
+  "best_val_total": 0.5457782532545469,
+  "num_train_windows": 21828,
+  "num_val_windows": 4414,
+  "library_bins": 5,
+  "library_template_len": 256,
+  "train_subjects": [
+    "s10",
+    "s11",
+    "s12",
+    "s14",
+    "s16",
+    "s17",
+    "s18",
+    "s2",
+    "s20",
+    "s21",
+    "s3",
+    "s4",
+    "s5",
+    "s8",
+    "s9"
+  ],
+  "val_subjects": [
+    "s1",
+    "s13",
+    "s6"
+  ],
+  "holdout_subjects": [
+    "s15",
+    "s19",
+    "s22",
+    "s7"
+  ],
+  "onnx_path": "hybrid_denoiser.onnx",
+  "onnx_opset_version": 17,
+  "onnx_input_name": "model_input",
+  "onnx_output_name": "artifact_hat"
+}

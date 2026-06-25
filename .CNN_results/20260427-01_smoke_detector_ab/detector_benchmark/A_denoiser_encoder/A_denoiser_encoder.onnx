@@ -1,0 +1,1931 @@
+
+pytorch2.9.1+cu126:æ
+¡
+features
+enc1.net.0.weight
+enc1.net.0.biasconv1dnode_conv1d"Conv*
+group *
+pads@@ *
+auto_pad"NOTSET *
+strides@ *
+	dilations@ JÆ
+	namespace¸: __main__.DenoiserEncoderMotionDetector/enc1: __main__.ConvBlock1D/enc1.net: torch.nn.modules.container.Sequential/enc1.net.0: torch.nn.modules.conv.Conv1d/conv1d: aten.conv1d.defaultJÅ
+pkg.torch.onnx.class_hierarchy¢['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.conv.Conv1d', 'aten.conv1d.default']J¶
+pkg.torch.onnx.fx_node›%conv1d : [num_users=1] = call_function[target=torch.ops.aten.conv1d.default](args = (%x, %p_enc1_net_0_weight, %p_enc1_net_0_bias, [1], [2]), kwargs = {})JN
+pkg.torch.onnx.name_scopes0['', 'enc1', 'enc1.net', 'enc1.net.0', 'conv1d']Jå
+pkg.torch.onnx.stack_traceÆFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1599, in forward
+    e1 = self.enc1(x)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/conv.py", line 371, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+Û
+conv1d
+enc1.net.1.weight
+enc1.net.1.biasinstance_normnode_instance_norm"InstanceNormalization*
+epsilon¬Å'7 Jä
+	namespaceÖ: __main__.DenoiserEncoderMotionDetector/enc1: __main__.ConvBlock1D/enc1.net: torch.nn.modules.container.Sequential/enc1.net.1: torch.nn.modules.instancenorm.InstanceNorm1d/instance_norm: aten.instance_norm.defaultJÜ
+pkg.torch.onnx.class_hierarchy¹['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.instancenorm.InstanceNorm1d', 'aten.instance_norm.default']Jã
+pkg.torch.onnx.fx_nodeÈ%instance_norm : [num_users=1] = call_function[target=torch.ops.aten.instance_norm.default](args = (%conv1d, %p_enc1_net_1_weight, %p_enc1_net_1_bias, None, None, True, 0.1, 1e-05, True), kwargs = {})JU
+pkg.torch.onnx.name_scopes7['', 'enc1', 'enc1.net', 'enc1.net.1', 'instance_norm']JÜ
+pkg.torch.onnx.stack_trace½File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1599, in forward
+    e1 = self.enc1(x)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/instancenorm.py", line 124, in forward
+    return self._apply_instance_norm(input)
+„
+
+instance_norm
+val_0val_1
+node_Div_1"DivJÆ
+	namespace¸: __main__.DenoiserEncoderMotionDetector/enc1: __main__.ConvBlock1D/enc1.net: torch.nn.modules.container.Sequential/enc1.net.2: torch.nn.modules.activation.GELU/gelu: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']JŠ
+pkg.torch.onnx.fx_nodep%gelu : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm,), kwargs = {})JL
+pkg.torch.onnx.name_scopes.['', 'enc1', 'enc1.net', 'enc1.net.2', 'gelu']Jå
+pkg.torch.onnx.stack_traceÆFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1599, in forward
+    e1 = self.enc1(x)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+õ	
+val_1val_2
+node_Erf_2"ErfJÆ
+	namespace¸: __main__.DenoiserEncoderMotionDetector/enc1: __main__.ConvBlock1D/enc1.net: torch.nn.modules.container.Sequential/enc1.net.2: torch.nn.modules.activation.GELU/gelu: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']JŠ
+pkg.torch.onnx.fx_nodep%gelu : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm,), kwargs = {})JL
+pkg.torch.onnx.name_scopes.['', 'enc1', 'enc1.net', 'enc1.net.2', 'gelu']Jå
+pkg.torch.onnx.stack_traceÆFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1599, in forward
+    e1 = self.enc1(x)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+ü	
+val_2
+val_3val_4
+node_Add_4"AddJÆ
+	namespace¸: __main__.DenoiserEncoderMotionDetector/enc1: __main__.ConvBlock1D/enc1.net: torch.nn.modules.container.Sequential/enc1.net.2: torch.nn.modules.activation.GELU/gelu: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']JŠ
+pkg.torch.onnx.fx_nodep%gelu : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm,), kwargs = {})JL
+pkg.torch.onnx.name_scopes.['', 'enc1', 'enc1.net', 'enc1.net.2', 'gelu']Jå
+pkg.torch.onnx.stack_traceÆFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1599, in forward
+    e1 = self.enc1(x)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+ü	
+val_5
+val_4val_6
+node_Mul_6"MulJÆ
+	namespace¸: __main__.DenoiserEncoderMotionDetector/enc1: __main__.ConvBlock1D/enc1.net: torch.nn.modules.container.Sequential/enc1.net.2: torch.nn.modules.activation.GELU/gelu: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']JŠ
+pkg.torch.onnx.fx_nodep%gelu : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm,), kwargs = {})JL
+pkg.torch.onnx.name_scopes.['', 'enc1', 'enc1.net', 'enc1.net.2', 'gelu']Jå
+pkg.torch.onnx.stack_traceÆFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1599, in forward
+    e1 = self.enc1(x)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+‚
+
+instance_norm
+val_6gelu	node_gelu"MulJÆ
+	namespace¸: __main__.DenoiserEncoderMotionDetector/enc1: __main__.ConvBlock1D/enc1.net: torch.nn.modules.container.Sequential/enc1.net.2: torch.nn.modules.activation.GELU/gelu: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']JŠ
+pkg.torch.onnx.fx_nodep%gelu : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm,), kwargs = {})JL
+pkg.torch.onnx.name_scopes.['', 'enc1', 'enc1.net', 'enc1.net.2', 'gelu']Jå
+pkg.torch.onnx.stack_traceÆFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1599, in forward
+    e1 = self.enc1(x)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+ª
+gelu
+enc1.net.3.weight
+enc1.net.3.biasconv1d_1node_conv1d_1"Conv*
+group *
+pads@@ *
+auto_pad"NOTSET *
+strides@ *
+	dilations@ JÈ
+	namespaceº: __main__.DenoiserEncoderMotionDetector/enc1: __main__.ConvBlock1D/enc1.net: torch.nn.modules.container.Sequential/enc1.net.3: torch.nn.modules.conv.Conv1d/conv1d_1: aten.conv1d.defaultJÅ
+pkg.torch.onnx.class_hierarchy¢['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.conv.Conv1d', 'aten.conv1d.default']J»
+pkg.torch.onnx.fx_node %conv1d_1 : [num_users=1] = call_function[target=torch.ops.aten.conv1d.default](args = (%gelu, %p_enc1_net_3_weight, %p_enc1_net_3_bias, [1], [2]), kwargs = {})JP
+pkg.torch.onnx.name_scopes2['', 'enc1', 'enc1.net', 'enc1.net.3', 'conv1d_1']Jå
+pkg.torch.onnx.stack_traceÆFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1599, in forward
+    e1 = self.enc1(x)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/conv.py", line 371, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+é
+conv1d_1
+enc1.net.4.weight
+enc1.net.4.biasinstance_norm_1node_instance_norm_1"InstanceNormalization*
+epsilon¬Å'7 Jæ
+	namespaceØ: __main__.DenoiserEncoderMotionDetector/enc1: __main__.ConvBlock1D/enc1.net: torch.nn.modules.container.Sequential/enc1.net.4: torch.nn.modules.instancenorm.InstanceNorm1d/instance_norm_1: aten.instance_norm.defaultJÜ
+pkg.torch.onnx.class_hierarchy¹['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.instancenorm.InstanceNorm1d', 'aten.instance_norm.default']Jç
+pkg.torch.onnx.fx_nodeÌ%instance_norm_1 : [num_users=1] = call_function[target=torch.ops.aten.instance_norm.default](args = (%conv1d_1, %p_enc1_net_4_weight, %p_enc1_net_4_bias, None, None, True, 0.1, 1e-05, True), kwargs = {})JW
+pkg.torch.onnx.name_scopes9['', 'enc1', 'enc1.net', 'enc1.net.4', 'instance_norm_1']JÜ
+pkg.torch.onnx.stack_trace½File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1599, in forward
+    e1 = self.enc1(x)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/instancenorm.py", line 124, in forward
+    return self._apply_instance_norm(input)
+
+
+instance_norm_1
+val_0val_8
+node_Div_8"DivJÈ
+	namespaceº: __main__.DenoiserEncoderMotionDetector/enc1: __main__.ConvBlock1D/enc1.net: torch.nn.modules.container.Sequential/enc1.net.5: torch.nn.modules.activation.GELU/gelu_1: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_1 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_1,), kwargs = {})JN
+pkg.torch.onnx.name_scopes0['', 'enc1', 'enc1.net', 'enc1.net.5', 'gelu_1']Jå
+pkg.torch.onnx.stack_traceÆFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1599, in forward
+    e1 = self.enc1(x)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+ı	
+val_8val_9
+node_Erf_9"ErfJÈ
+	namespaceº: __main__.DenoiserEncoderMotionDetector/enc1: __main__.ConvBlock1D/enc1.net: torch.nn.modules.container.Sequential/enc1.net.5: torch.nn.modules.activation.GELU/gelu_1: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_1 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_1,), kwargs = {})JN
+pkg.torch.onnx.name_scopes0['', 'enc1', 'enc1.net', 'enc1.net.5', 'gelu_1']Jå
+pkg.torch.onnx.stack_traceÆFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1599, in forward
+    e1 = self.enc1(x)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+†
+
+val_9
+val_3val_11node_Add_11"AddJÈ
+	namespaceº: __main__.DenoiserEncoderMotionDetector/enc1: __main__.ConvBlock1D/enc1.net: torch.nn.modules.container.Sequential/enc1.net.5: torch.nn.modules.activation.GELU/gelu_1: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_1 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_1,), kwargs = {})JN
+pkg.torch.onnx.name_scopes0['', 'enc1', 'enc1.net', 'enc1.net.5', 'gelu_1']Jå
+pkg.torch.onnx.stack_traceÆFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1599, in forward
+    e1 = self.enc1(x)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+‡
+
+val_5
+val_11val_13node_Mul_13"MulJÈ
+	namespaceº: __main__.DenoiserEncoderMotionDetector/enc1: __main__.ConvBlock1D/enc1.net: torch.nn.modules.container.Sequential/enc1.net.5: torch.nn.modules.activation.GELU/gelu_1: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_1 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_1,), kwargs = {})JN
+pkg.torch.onnx.name_scopes0['', 'enc1', 'enc1.net', 'enc1.net.5', 'gelu_1']Jå
+pkg.torch.onnx.stack_traceÆFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1599, in forward
+    e1 = self.enc1(x)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+‘
+
+instance_norm_1
+val_13gelu_1node_gelu_1"MulJÈ
+	namespaceº: __main__.DenoiserEncoderMotionDetector/enc1: __main__.ConvBlock1D/enc1.net: torch.nn.modules.container.Sequential/enc1.net.5: torch.nn.modules.activation.GELU/gelu_1: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_1 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_1,), kwargs = {})JN
+pkg.torch.onnx.name_scopes0['', 'enc1', 'enc1.net', 'enc1.net.5', 'gelu_1']Jå
+pkg.torch.onnx.stack_traceÆFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1599, in forward
+    e1 = self.enc1(x)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+Á	
+gelu_1
+avg_pool1dnode_avg_pool1d"AveragePool*
+count_include_pad *
+	ceil_mode  *
+pads@ @  *
+auto_pad"NOTSET *
+strides@ *
+kernel_shape@ J³
+	namespace¥: __main__.DenoiserEncoderMotionDetector/down1: torch.nn.modules.container.Sequential/down1.0: torch.nn.modules.pooling.AvgPool1d/avg_pool1d: aten.avg_pool1d.defaultJ·
+pkg.torch.onnx.class_hierarchy”['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AvgPool1d', 'aten.avg_pool1d.default']J˜
+pkg.torch.onnx.fx_node~%avg_pool1d : [num_users=1] = call_function[target=torch.ops.aten.avg_pool1d.default](args = (%gelu_1, [2], [2]), kwargs = {})JD
+pkg.torch.onnx.name_scopes&['', 'down1', 'down1.0', 'avg_pool1d']JÄ
+pkg.torch.onnx.stack_trace¥File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1600, in forward
+    e2 = self.down1(e1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/pooling.py", line 672, in forward
+    return F.avg_pool1d(
+É
+
+avg_pool1d
+down1.1.net.0.weight
+down1.1.net.0.biasconv1d_2node_conv1d_2"Conv*
+group *
+pads@@ *
+auto_pad"NOTSET *
+strides@ *
+	dilations@ Jş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down1: torch.nn.modules.container.Sequential/down1.1: __main__.ConvBlock1D/down1.1.net: torch.nn.modules.container.Sequential/down1.1.net.0: torch.nn.modules.conv.Conv1d/conv1d_2: aten.conv1d.defaultJî
+pkg.torch.onnx.class_hierarchyË['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.conv.Conv1d', 'aten.conv1d.default']JÇ
+pkg.torch.onnx.fx_node¬%conv1d_2 : [num_users=1] = call_function[target=torch.ops.aten.conv1d.default](args = (%avg_pool1d, %p_down1_1_net_0_weight, %p_down1_1_net_0_bias, [1], [2]), kwargs = {})Jb
+pkg.torch.onnx.name_scopesD['', 'down1', 'down1.1', 'down1.1.net', 'down1.1.net.0', 'conv1d_2']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1600, in forward
+    e2 = self.down1(e1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/conv.py", line 371, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+ü
+conv1d_2
+down1.1.net.1.weight
+down1.1.net.1.biasinstance_norm_2node_instance_norm_2"InstanceNormalization*
+epsilon¬Å'7 Jœ
+	namespace: __main__.DenoiserEncoderMotionDetector/down1: torch.nn.modules.container.Sequential/down1.1: __main__.ConvBlock1D/down1.1.net: torch.nn.modules.container.Sequential/down1.1.net.1: torch.nn.modules.instancenorm.InstanceNorm1d/instance_norm_2: aten.instance_norm.defaultJ…
+pkg.torch.onnx.class_hierarchyâ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.instancenorm.InstanceNorm1d', 'aten.instance_norm.default']Jí
+pkg.torch.onnx.fx_nodeÒ%instance_norm_2 : [num_users=1] = call_function[target=torch.ops.aten.instance_norm.default](args = (%conv1d_2, %p_down1_1_net_1_weight, %p_down1_1_net_1_bias, None, None, True, 0.1, 1e-05, True), kwargs = {})Ji
+pkg.torch.onnx.name_scopesK['', 'down1', 'down1.1', 'down1.1.net', 'down1.1.net.1', 'instance_norm_2']Jò
+pkg.torch.onnx.stack_traceÓFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1600, in forward
+    e2 = self.down1(e1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/instancenorm.py", line 124, in forward
+    return self._apply_instance_norm(input)
+—
+instance_norm_2
+val_0val_15node_Div_15"DivJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down1: torch.nn.modules.container.Sequential/down1.1: __main__.ConvBlock1D/down1.1.net: torch.nn.modules.container.Sequential/down1.1.net.2: torch.nn.modules.activation.GELU/gelu_2: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_2 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_2,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down1', 'down1.1', 'down1.1.net', 'down1.1.net.2', 'gelu_2']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1600, in forward
+    e2 = self.down1(e1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+‡
+val_15val_16node_Erf_16"ErfJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down1: torch.nn.modules.container.Sequential/down1.1: __main__.ConvBlock1D/down1.1.net: torch.nn.modules.container.Sequential/down1.1.net.2: torch.nn.modules.activation.GELU/gelu_2: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_2 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_2,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down1', 'down1.1', 'down1.1.net', 'down1.1.net.2', 'gelu_2']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1600, in forward
+    e2 = self.down1(e1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+
+val_16
+val_3val_18node_Add_18"AddJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down1: torch.nn.modules.container.Sequential/down1.1: __main__.ConvBlock1D/down1.1.net: torch.nn.modules.container.Sequential/down1.1.net.2: torch.nn.modules.activation.GELU/gelu_2: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_2 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_2,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down1', 'down1.1', 'down1.1.net', 'down1.1.net.2', 'gelu_2']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1600, in forward
+    e2 = self.down1(e1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+
+val_5
+val_18val_20node_Mul_20"MulJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down1: torch.nn.modules.container.Sequential/down1.1: __main__.ConvBlock1D/down1.1.net: torch.nn.modules.container.Sequential/down1.1.net.2: torch.nn.modules.activation.GELU/gelu_2: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_2 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_2,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down1', 'down1.1', 'down1.1.net', 'down1.1.net.2', 'gelu_2']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1600, in forward
+    e2 = self.down1(e1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+˜
+instance_norm_2
+val_20gelu_2node_gelu_2"MulJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down1: torch.nn.modules.container.Sequential/down1.1: __main__.ConvBlock1D/down1.1.net: torch.nn.modules.container.Sequential/down1.1.net.2: torch.nn.modules.activation.GELU/gelu_2: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_2 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_2,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down1', 'down1.1', 'down1.1.net', 'down1.1.net.2', 'gelu_2']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1600, in forward
+    e2 = self.down1(e1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+Á
+gelu_2
+down1.1.net.3.weight
+down1.1.net.3.biasconv1d_3node_conv1d_3"Conv*
+group *
+pads@@ *
+auto_pad"NOTSET *
+strides@ *
+	dilations@ Jş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down1: torch.nn.modules.container.Sequential/down1.1: __main__.ConvBlock1D/down1.1.net: torch.nn.modules.container.Sequential/down1.1.net.3: torch.nn.modules.conv.Conv1d/conv1d_3: aten.conv1d.defaultJî
+pkg.torch.onnx.class_hierarchyË['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.conv.Conv1d', 'aten.conv1d.default']JÃ
+pkg.torch.onnx.fx_node¨%conv1d_3 : [num_users=1] = call_function[target=torch.ops.aten.conv1d.default](args = (%gelu_2, %p_down1_1_net_3_weight, %p_down1_1_net_3_bias, [1], [2]), kwargs = {})Jb
+pkg.torch.onnx.name_scopesD['', 'down1', 'down1.1', 'down1.1.net', 'down1.1.net.3', 'conv1d_3']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1600, in forward
+    e2 = self.down1(e1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/conv.py", line 371, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+ü
+conv1d_3
+down1.1.net.4.weight
+down1.1.net.4.biasinstance_norm_3node_instance_norm_3"InstanceNormalization*
+epsilon¬Å'7 Jœ
+	namespace: __main__.DenoiserEncoderMotionDetector/down1: torch.nn.modules.container.Sequential/down1.1: __main__.ConvBlock1D/down1.1.net: torch.nn.modules.container.Sequential/down1.1.net.4: torch.nn.modules.instancenorm.InstanceNorm1d/instance_norm_3: aten.instance_norm.defaultJ…
+pkg.torch.onnx.class_hierarchyâ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.instancenorm.InstanceNorm1d', 'aten.instance_norm.default']Jí
+pkg.torch.onnx.fx_nodeÒ%instance_norm_3 : [num_users=1] = call_function[target=torch.ops.aten.instance_norm.default](args = (%conv1d_3, %p_down1_1_net_4_weight, %p_down1_1_net_4_bias, None, None, True, 0.1, 1e-05, True), kwargs = {})Ji
+pkg.torch.onnx.name_scopesK['', 'down1', 'down1.1', 'down1.1.net', 'down1.1.net.4', 'instance_norm_3']Jò
+pkg.torch.onnx.stack_traceÓFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1600, in forward
+    e2 = self.down1(e1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/instancenorm.py", line 124, in forward
+    return self._apply_instance_norm(input)
+—
+instance_norm_3
+val_0val_22node_Div_22"DivJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down1: torch.nn.modules.container.Sequential/down1.1: __main__.ConvBlock1D/down1.1.net: torch.nn.modules.container.Sequential/down1.1.net.5: torch.nn.modules.activation.GELU/gelu_3: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_3 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_3,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down1', 'down1.1', 'down1.1.net', 'down1.1.net.5', 'gelu_3']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1600, in forward
+    e2 = self.down1(e1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+‡
+val_22val_23node_Erf_23"ErfJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down1: torch.nn.modules.container.Sequential/down1.1: __main__.ConvBlock1D/down1.1.net: torch.nn.modules.container.Sequential/down1.1.net.5: torch.nn.modules.activation.GELU/gelu_3: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_3 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_3,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down1', 'down1.1', 'down1.1.net', 'down1.1.net.5', 'gelu_3']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1600, in forward
+    e2 = self.down1(e1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+
+val_23
+val_3val_25node_Add_25"AddJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down1: torch.nn.modules.container.Sequential/down1.1: __main__.ConvBlock1D/down1.1.net: torch.nn.modules.container.Sequential/down1.1.net.5: torch.nn.modules.activation.GELU/gelu_3: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_3 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_3,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down1', 'down1.1', 'down1.1.net', 'down1.1.net.5', 'gelu_3']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1600, in forward
+    e2 = self.down1(e1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+
+val_5
+val_25val_27node_Mul_27"MulJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down1: torch.nn.modules.container.Sequential/down1.1: __main__.ConvBlock1D/down1.1.net: torch.nn.modules.container.Sequential/down1.1.net.5: torch.nn.modules.activation.GELU/gelu_3: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_3 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_3,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down1', 'down1.1', 'down1.1.net', 'down1.1.net.5', 'gelu_3']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1600, in forward
+    e2 = self.down1(e1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+˜
+instance_norm_3
+val_27gelu_3node_gelu_3"MulJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down1: torch.nn.modules.container.Sequential/down1.1: __main__.ConvBlock1D/down1.1.net: torch.nn.modules.container.Sequential/down1.1.net.5: torch.nn.modules.activation.GELU/gelu_3: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_3 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_3,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down1', 'down1.1', 'down1.1.net', 'down1.1.net.5', 'gelu_3']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1600, in forward
+    e2 = self.down1(e1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+Ì	
+gelu_3avg_pool1d_1node_avg_pool1d_1"AveragePool*
+count_include_pad *
+	ceil_mode  *
+pads@ @  *
+auto_pad"NOTSET *
+strides@ *
+kernel_shape@ Jµ
+	namespace§: __main__.DenoiserEncoderMotionDetector/down2: torch.nn.modules.container.Sequential/down2.0: torch.nn.modules.pooling.AvgPool1d/avg_pool1d_1: aten.avg_pool1d.defaultJ·
+pkg.torch.onnx.class_hierarchy”['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AvgPool1d', 'aten.avg_pool1d.default']J›
+pkg.torch.onnx.fx_node€%avg_pool1d_1 : [num_users=1] = call_function[target=torch.ops.aten.avg_pool1d.default](args = (%gelu_3, [2], [2]), kwargs = {})JF
+pkg.torch.onnx.name_scopes(['', 'down2', 'down2.0', 'avg_pool1d_1']JÄ
+pkg.torch.onnx.stack_trace¥File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1601, in forward
+    e3 = self.down2(e2)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/pooling.py", line 672, in forward
+    return F.avg_pool1d(
+Í
+avg_pool1d_1
+down2.1.net.0.weight
+down2.1.net.0.biasconv1d_4node_conv1d_4"Conv*
+group *
+pads@@ *
+auto_pad"NOTSET *
+strides@ *
+	dilations@ Jş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down2: torch.nn.modules.container.Sequential/down2.1: __main__.ConvBlock1D/down2.1.net: torch.nn.modules.container.Sequential/down2.1.net.0: torch.nn.modules.conv.Conv1d/conv1d_4: aten.conv1d.defaultJî
+pkg.torch.onnx.class_hierarchyË['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.conv.Conv1d', 'aten.conv1d.default']JÉ
+pkg.torch.onnx.fx_node®%conv1d_4 : [num_users=1] = call_function[target=torch.ops.aten.conv1d.default](args = (%avg_pool1d_1, %p_down2_1_net_0_weight, %p_down2_1_net_0_bias, [1], [2]), kwargs = {})Jb
+pkg.torch.onnx.name_scopesD['', 'down2', 'down2.1', 'down2.1.net', 'down2.1.net.0', 'conv1d_4']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1601, in forward
+    e3 = self.down2(e2)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/conv.py", line 371, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+ü
+conv1d_4
+down2.1.net.1.weight
+down2.1.net.1.biasinstance_norm_4node_instance_norm_4"InstanceNormalization*
+epsilon¬Å'7 Jœ
+	namespace: __main__.DenoiserEncoderMotionDetector/down2: torch.nn.modules.container.Sequential/down2.1: __main__.ConvBlock1D/down2.1.net: torch.nn.modules.container.Sequential/down2.1.net.1: torch.nn.modules.instancenorm.InstanceNorm1d/instance_norm_4: aten.instance_norm.defaultJ…
+pkg.torch.onnx.class_hierarchyâ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.instancenorm.InstanceNorm1d', 'aten.instance_norm.default']Jí
+pkg.torch.onnx.fx_nodeÒ%instance_norm_4 : [num_users=1] = call_function[target=torch.ops.aten.instance_norm.default](args = (%conv1d_4, %p_down2_1_net_1_weight, %p_down2_1_net_1_bias, None, None, True, 0.1, 1e-05, True), kwargs = {})Ji
+pkg.torch.onnx.name_scopesK['', 'down2', 'down2.1', 'down2.1.net', 'down2.1.net.1', 'instance_norm_4']Jò
+pkg.torch.onnx.stack_traceÓFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1601, in forward
+    e3 = self.down2(e2)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/instancenorm.py", line 124, in forward
+    return self._apply_instance_norm(input)
+—
+instance_norm_4
+val_0val_29node_Div_29"DivJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down2: torch.nn.modules.container.Sequential/down2.1: __main__.ConvBlock1D/down2.1.net: torch.nn.modules.container.Sequential/down2.1.net.2: torch.nn.modules.activation.GELU/gelu_4: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_4 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_4,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down2', 'down2.1', 'down2.1.net', 'down2.1.net.2', 'gelu_4']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1601, in forward
+    e3 = self.down2(e2)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+‡
+val_29val_30node_Erf_30"ErfJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down2: torch.nn.modules.container.Sequential/down2.1: __main__.ConvBlock1D/down2.1.net: torch.nn.modules.container.Sequential/down2.1.net.2: torch.nn.modules.activation.GELU/gelu_4: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_4 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_4,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down2', 'down2.1', 'down2.1.net', 'down2.1.net.2', 'gelu_4']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1601, in forward
+    e3 = self.down2(e2)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+
+val_30
+val_3val_32node_Add_32"AddJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down2: torch.nn.modules.container.Sequential/down2.1: __main__.ConvBlock1D/down2.1.net: torch.nn.modules.container.Sequential/down2.1.net.2: torch.nn.modules.activation.GELU/gelu_4: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_4 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_4,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down2', 'down2.1', 'down2.1.net', 'down2.1.net.2', 'gelu_4']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1601, in forward
+    e3 = self.down2(e2)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+
+val_5
+val_32val_34node_Mul_34"MulJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down2: torch.nn.modules.container.Sequential/down2.1: __main__.ConvBlock1D/down2.1.net: torch.nn.modules.container.Sequential/down2.1.net.2: torch.nn.modules.activation.GELU/gelu_4: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_4 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_4,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down2', 'down2.1', 'down2.1.net', 'down2.1.net.2', 'gelu_4']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1601, in forward
+    e3 = self.down2(e2)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+˜
+instance_norm_4
+val_34gelu_4node_gelu_4"MulJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down2: torch.nn.modules.container.Sequential/down2.1: __main__.ConvBlock1D/down2.1.net: torch.nn.modules.container.Sequential/down2.1.net.2: torch.nn.modules.activation.GELU/gelu_4: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_4 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_4,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down2', 'down2.1', 'down2.1.net', 'down2.1.net.2', 'gelu_4']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1601, in forward
+    e3 = self.down2(e2)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+Á
+gelu_4
+down2.1.net.3.weight
+down2.1.net.3.biasconv1d_5node_conv1d_5"Conv*
+group *
+pads@@ *
+auto_pad"NOTSET *
+strides@ *
+	dilations@ Jş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down2: torch.nn.modules.container.Sequential/down2.1: __main__.ConvBlock1D/down2.1.net: torch.nn.modules.container.Sequential/down2.1.net.3: torch.nn.modules.conv.Conv1d/conv1d_5: aten.conv1d.defaultJî
+pkg.torch.onnx.class_hierarchyË['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.conv.Conv1d', 'aten.conv1d.default']JÃ
+pkg.torch.onnx.fx_node¨%conv1d_5 : [num_users=1] = call_function[target=torch.ops.aten.conv1d.default](args = (%gelu_4, %p_down2_1_net_3_weight, %p_down2_1_net_3_bias, [1], [2]), kwargs = {})Jb
+pkg.torch.onnx.name_scopesD['', 'down2', 'down2.1', 'down2.1.net', 'down2.1.net.3', 'conv1d_5']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1601, in forward
+    e3 = self.down2(e2)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/conv.py", line 371, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+ü
+conv1d_5
+down2.1.net.4.weight
+down2.1.net.4.biasinstance_norm_5node_instance_norm_5"InstanceNormalization*
+epsilon¬Å'7 Jœ
+	namespace: __main__.DenoiserEncoderMotionDetector/down2: torch.nn.modules.container.Sequential/down2.1: __main__.ConvBlock1D/down2.1.net: torch.nn.modules.container.Sequential/down2.1.net.4: torch.nn.modules.instancenorm.InstanceNorm1d/instance_norm_5: aten.instance_norm.defaultJ…
+pkg.torch.onnx.class_hierarchyâ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.instancenorm.InstanceNorm1d', 'aten.instance_norm.default']Jí
+pkg.torch.onnx.fx_nodeÒ%instance_norm_5 : [num_users=1] = call_function[target=torch.ops.aten.instance_norm.default](args = (%conv1d_5, %p_down2_1_net_4_weight, %p_down2_1_net_4_bias, None, None, True, 0.1, 1e-05, True), kwargs = {})Ji
+pkg.torch.onnx.name_scopesK['', 'down2', 'down2.1', 'down2.1.net', 'down2.1.net.4', 'instance_norm_5']Jò
+pkg.torch.onnx.stack_traceÓFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1601, in forward
+    e3 = self.down2(e2)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/instancenorm.py", line 124, in forward
+    return self._apply_instance_norm(input)
+—
+instance_norm_5
+val_0val_36node_Div_36"DivJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down2: torch.nn.modules.container.Sequential/down2.1: __main__.ConvBlock1D/down2.1.net: torch.nn.modules.container.Sequential/down2.1.net.5: torch.nn.modules.activation.GELU/gelu_5: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_5 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_5,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down2', 'down2.1', 'down2.1.net', 'down2.1.net.5', 'gelu_5']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1601, in forward
+    e3 = self.down2(e2)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+‡
+val_36val_37node_Erf_37"ErfJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down2: torch.nn.modules.container.Sequential/down2.1: __main__.ConvBlock1D/down2.1.net: torch.nn.modules.container.Sequential/down2.1.net.5: torch.nn.modules.activation.GELU/gelu_5: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_5 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_5,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down2', 'down2.1', 'down2.1.net', 'down2.1.net.5', 'gelu_5']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1601, in forward
+    e3 = self.down2(e2)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+
+val_37
+val_3val_39node_Add_39"AddJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down2: torch.nn.modules.container.Sequential/down2.1: __main__.ConvBlock1D/down2.1.net: torch.nn.modules.container.Sequential/down2.1.net.5: torch.nn.modules.activation.GELU/gelu_5: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_5 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_5,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down2', 'down2.1', 'down2.1.net', 'down2.1.net.5', 'gelu_5']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1601, in forward
+    e3 = self.down2(e2)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+
+val_5
+val_39val_41node_Mul_41"MulJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down2: torch.nn.modules.container.Sequential/down2.1: __main__.ConvBlock1D/down2.1.net: torch.nn.modules.container.Sequential/down2.1.net.5: torch.nn.modules.activation.GELU/gelu_5: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_5 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_5,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down2', 'down2.1', 'down2.1.net', 'down2.1.net.5', 'gelu_5']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1601, in forward
+    e3 = self.down2(e2)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+˜
+instance_norm_5
+val_41gelu_5node_gelu_5"MulJş
+	namespaceğ: __main__.DenoiserEncoderMotionDetector/down2: torch.nn.modules.container.Sequential/down2.1: __main__.ConvBlock1D/down2.1.net: torch.nn.modules.container.Sequential/down2.1.net.5: torch.nn.modules.activation.GELU/gelu_5: aten.gelu.defaultJğ
+pkg.torch.onnx.class_hierarchyÍ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_5 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_5,), kwargs = {})J`
+pkg.torch.onnx.name_scopesB['', 'down2', 'down2.1', 'down2.1.net', 'down2.1.net.5', 'gelu_5']Jû
+pkg.torch.onnx.stack_traceÜFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1601, in forward
+    e3 = self.down2(e2)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+¥
+gelu_5
+mid.net.0.weight
+mid.net.0.biasconv1d_6node_conv1d_6"Conv*
+group *
+pads@@ *
+auto_pad"NOTSET *
+strides@ *
+	dilations@ JÅ
+	namespace·: __main__.DenoiserEncoderMotionDetector/mid: __main__.ConvBlock1D/mid.net: torch.nn.modules.container.Sequential/mid.net.0: torch.nn.modules.conv.Conv1d/conv1d_6: aten.conv1d.defaultJÅ
+pkg.torch.onnx.class_hierarchy¢['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.conv.Conv1d', 'aten.conv1d.default']J»
+pkg.torch.onnx.fx_node %conv1d_6 : [num_users=1] = call_function[target=torch.ops.aten.conv1d.default](args = (%gelu_5, %p_mid_net_0_weight, %p_mid_net_0_bias, [1], [2]), kwargs = {})JM
+pkg.torch.onnx.name_scopes/['', 'mid', 'mid.net', 'mid.net.0', 'conv1d_6']Jæ
+pkg.torch.onnx.stack_traceÇFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1602, in forward
+    mid = self.mid(e3)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/conv.py", line 371, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+à
+conv1d_6
+mid.net.1.weight
+mid.net.1.biasinstance_norm_6node_instance_norm_6"InstanceNormalization*
+epsilon¬Å'7 Jã
+	namespaceÕ: __main__.DenoiserEncoderMotionDetector/mid: __main__.ConvBlock1D/mid.net: torch.nn.modules.container.Sequential/mid.net.1: torch.nn.modules.instancenorm.InstanceNorm1d/instance_norm_6: aten.instance_norm.defaultJÜ
+pkg.torch.onnx.class_hierarchy¹['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.instancenorm.InstanceNorm1d', 'aten.instance_norm.default']Jå
+pkg.torch.onnx.fx_nodeÊ%instance_norm_6 : [num_users=1] = call_function[target=torch.ops.aten.instance_norm.default](args = (%conv1d_6, %p_mid_net_1_weight, %p_mid_net_1_bias, None, None, True, 0.1, 1e-05, True), kwargs = {})JT
+pkg.torch.onnx.name_scopes6['', 'mid', 'mid.net', 'mid.net.1', 'instance_norm_6']Jİ
+pkg.torch.onnx.stack_trace¾File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1602, in forward
+    mid = self.mid(e3)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/instancenorm.py", line 124, in forward
+    return self._apply_instance_norm(input)
+‹
+
+instance_norm_6
+val_0val_43node_Div_43"DivJÅ
+	namespace·: __main__.DenoiserEncoderMotionDetector/mid: __main__.ConvBlock1D/mid.net: torch.nn.modules.container.Sequential/mid.net.2: torch.nn.modules.activation.GELU/gelu_6: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_6 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_6,), kwargs = {})JK
+pkg.torch.onnx.name_scopes-['', 'mid', 'mid.net', 'mid.net.2', 'gelu_6']Jæ
+pkg.torch.onnx.stack_traceÇFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1602, in forward
+    mid = self.mid(e3)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+û	
+val_43val_44node_Erf_44"ErfJÅ
+	namespace·: __main__.DenoiserEncoderMotionDetector/mid: __main__.ConvBlock1D/mid.net: torch.nn.modules.container.Sequential/mid.net.2: torch.nn.modules.activation.GELU/gelu_6: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_6 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_6,), kwargs = {})JK
+pkg.torch.onnx.name_scopes-['', 'mid', 'mid.net', 'mid.net.2', 'gelu_6']Jæ
+pkg.torch.onnx.stack_traceÇFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1602, in forward
+    mid = self.mid(e3)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+‚
+
+val_44
+val_3val_46node_Add_46"AddJÅ
+	namespace·: __main__.DenoiserEncoderMotionDetector/mid: __main__.ConvBlock1D/mid.net: torch.nn.modules.container.Sequential/mid.net.2: torch.nn.modules.activation.GELU/gelu_6: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_6 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_6,), kwargs = {})JK
+pkg.torch.onnx.name_scopes-['', 'mid', 'mid.net', 'mid.net.2', 'gelu_6']Jæ
+pkg.torch.onnx.stack_traceÇFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1602, in forward
+    mid = self.mid(e3)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+‚
+
+val_5
+val_46val_48node_Mul_48"MulJÅ
+	namespace·: __main__.DenoiserEncoderMotionDetector/mid: __main__.ConvBlock1D/mid.net: torch.nn.modules.container.Sequential/mid.net.2: torch.nn.modules.activation.GELU/gelu_6: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_6 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_6,), kwargs = {})JK
+pkg.torch.onnx.name_scopes-['', 'mid', 'mid.net', 'mid.net.2', 'gelu_6']Jæ
+pkg.torch.onnx.stack_traceÇFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1602, in forward
+    mid = self.mid(e3)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+Œ
+
+instance_norm_6
+val_48gelu_6node_gelu_6"MulJÅ
+	namespace·: __main__.DenoiserEncoderMotionDetector/mid: __main__.ConvBlock1D/mid.net: torch.nn.modules.container.Sequential/mid.net.2: torch.nn.modules.activation.GELU/gelu_6: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_6 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_6,), kwargs = {})JK
+pkg.torch.onnx.name_scopes-['', 'mid', 'mid.net', 'mid.net.2', 'gelu_6']Jæ
+pkg.torch.onnx.stack_traceÇFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1602, in forward
+    mid = self.mid(e3)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+¥
+gelu_6
+mid.net.3.weight
+mid.net.3.biasconv1d_7node_conv1d_7"Conv*
+group *
+pads@@ *
+auto_pad"NOTSET *
+strides@ *
+	dilations@ JÅ
+	namespace·: __main__.DenoiserEncoderMotionDetector/mid: __main__.ConvBlock1D/mid.net: torch.nn.modules.container.Sequential/mid.net.3: torch.nn.modules.conv.Conv1d/conv1d_7: aten.conv1d.defaultJÅ
+pkg.torch.onnx.class_hierarchy¢['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.conv.Conv1d', 'aten.conv1d.default']J»
+pkg.torch.onnx.fx_node %conv1d_7 : [num_users=1] = call_function[target=torch.ops.aten.conv1d.default](args = (%gelu_6, %p_mid_net_3_weight, %p_mid_net_3_bias, [1], [2]), kwargs = {})JM
+pkg.torch.onnx.name_scopes/['', 'mid', 'mid.net', 'mid.net.3', 'conv1d_7']Jæ
+pkg.torch.onnx.stack_traceÇFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1602, in forward
+    mid = self.mid(e3)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/conv.py", line 371, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+à
+conv1d_7
+mid.net.4.weight
+mid.net.4.biasinstance_norm_7node_instance_norm_7"InstanceNormalization*
+epsilon¬Å'7 Jã
+	namespaceÕ: __main__.DenoiserEncoderMotionDetector/mid: __main__.ConvBlock1D/mid.net: torch.nn.modules.container.Sequential/mid.net.4: torch.nn.modules.instancenorm.InstanceNorm1d/instance_norm_7: aten.instance_norm.defaultJÜ
+pkg.torch.onnx.class_hierarchy¹['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.instancenorm.InstanceNorm1d', 'aten.instance_norm.default']Jå
+pkg.torch.onnx.fx_nodeÊ%instance_norm_7 : [num_users=1] = call_function[target=torch.ops.aten.instance_norm.default](args = (%conv1d_7, %p_mid_net_4_weight, %p_mid_net_4_bias, None, None, True, 0.1, 1e-05, True), kwargs = {})JT
+pkg.torch.onnx.name_scopes6['', 'mid', 'mid.net', 'mid.net.4', 'instance_norm_7']Jİ
+pkg.torch.onnx.stack_trace¾File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1602, in forward
+    mid = self.mid(e3)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/instancenorm.py", line 124, in forward
+    return self._apply_instance_norm(input)
+‹
+
+instance_norm_7
+val_0val_50node_Div_50"DivJÅ
+	namespace·: __main__.DenoiserEncoderMotionDetector/mid: __main__.ConvBlock1D/mid.net: torch.nn.modules.container.Sequential/mid.net.5: torch.nn.modules.activation.GELU/gelu_7: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_7 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_7,), kwargs = {})JK
+pkg.torch.onnx.name_scopes-['', 'mid', 'mid.net', 'mid.net.5', 'gelu_7']Jæ
+pkg.torch.onnx.stack_traceÇFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1602, in forward
+    mid = self.mid(e3)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+û	
+val_50val_51node_Erf_51"ErfJÅ
+	namespace·: __main__.DenoiserEncoderMotionDetector/mid: __main__.ConvBlock1D/mid.net: torch.nn.modules.container.Sequential/mid.net.5: torch.nn.modules.activation.GELU/gelu_7: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_7 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_7,), kwargs = {})JK
+pkg.torch.onnx.name_scopes-['', 'mid', 'mid.net', 'mid.net.5', 'gelu_7']Jæ
+pkg.torch.onnx.stack_traceÇFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1602, in forward
+    mid = self.mid(e3)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+‚
+
+val_51
+val_3val_53node_Add_53"AddJÅ
+	namespace·: __main__.DenoiserEncoderMotionDetector/mid: __main__.ConvBlock1D/mid.net: torch.nn.modules.container.Sequential/mid.net.5: torch.nn.modules.activation.GELU/gelu_7: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_7 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_7,), kwargs = {})JK
+pkg.torch.onnx.name_scopes-['', 'mid', 'mid.net', 'mid.net.5', 'gelu_7']Jæ
+pkg.torch.onnx.stack_traceÇFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1602, in forward
+    mid = self.mid(e3)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+‚
+
+val_5
+val_53val_55node_Mul_55"MulJÅ
+	namespace·: __main__.DenoiserEncoderMotionDetector/mid: __main__.ConvBlock1D/mid.net: torch.nn.modules.container.Sequential/mid.net.5: torch.nn.modules.activation.GELU/gelu_7: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_7 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_7,), kwargs = {})JK
+pkg.torch.onnx.name_scopes-['', 'mid', 'mid.net', 'mid.net.5', 'gelu_7']Jæ
+pkg.torch.onnx.stack_traceÇFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1602, in forward
+    mid = self.mid(e3)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+Œ
+
+instance_norm_7
+val_55gelu_7node_gelu_7"MulJÅ
+	namespace·: __main__.DenoiserEncoderMotionDetector/mid: __main__.ConvBlock1D/mid.net: torch.nn.modules.container.Sequential/mid.net.5: torch.nn.modules.activation.GELU/gelu_7: aten.gelu.defaultJÇ
+pkg.torch.onnx.class_hierarchy¤['__main__.DenoiserEncoderMotionDetector', '__main__.ConvBlock1D', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J
+pkg.torch.onnx.fx_nodet%gelu_7 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%instance_norm_7,), kwargs = {})JK
+pkg.torch.onnx.name_scopes-['', 'mid', 'mid.net', 'mid.net.5', 'gelu_7']Jæ
+pkg.torch.onnx.stack_traceÇFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1602, in forward
+    mid = self.mid(e3)
+  File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1432, in forward
+    return self.net(x)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+ 	
+gelu_7
+val_56	unsqueezenode_unsqueeze"	UnsqueezeJÅ
+	namespace·: __main__.DenoiserEncoderMotionDetector/motion_head: torch.nn.modules.container.Sequential/motion_head.0: torch.nn.modules.pooling.AdaptiveAvgPool1d/unsqueeze: aten.unsqueeze.defaultJ¾
+pkg.torch.onnx.class_hierarchy›['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool1d', 'aten.unsqueeze.default']J
+pkg.torch.onnx.fx_nodev%unsqueeze : [num_users=1] = call_function[target=torch.ops.aten.unsqueeze.default](args = (%gelu_7, -2), kwargs = {})JO
+pkg.torch.onnx.name_scopes1['', 'motion_head', 'motion_head.0', 'unsqueeze']Jú
+pkg.torch.onnx.stack_traceÛFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1603, in forward
+    return self.motion_head(mid).squeeze(1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/pooling.py", line 1460, in forward
+    return F.adaptive_avg_pool1d(input, self.output_size)
+­	
+	unsqueeze
+val_59mean	node_mean"
+ReduceMean*
+noop_with_empty_axes  *
+keepdims J·
+	namespace©: __main__.DenoiserEncoderMotionDetector/motion_head: torch.nn.modules.container.Sequential/motion_head.0: torch.nn.modules.pooling.AdaptiveAvgPool1d/mean: aten.mean.dimJµ
+pkg.torch.onnx.class_hierarchy’['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool1d', 'aten.mean.dim']J‘
+pkg.torch.onnx.fx_nodew%mean : [num_users=1] = call_function[target=torch.ops.aten.mean.dim](args = (%unsqueeze, [-1, -2], True), kwargs = {})JJ
+pkg.torch.onnx.name_scopes,['', 'motion_head', 'motion_head.0', 'mean']Jú
+pkg.torch.onnx.stack_traceÛFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1603, in forward
+    return self.motion_head(mid).squeeze(1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/pooling.py", line 1460, in forward
+    return F.adaptive_avg_pool1d(input, self.output_size)
+ş
+mean
+val_56squeezenode_squeeze"SqueezeJ½
+	namespace¯: __main__.DenoiserEncoderMotionDetector/motion_head: torch.nn.modules.container.Sequential/motion_head.0: torch.nn.modules.pooling.AdaptiveAvgPool1d/squeeze: aten.squeeze.dimJ¸
+pkg.torch.onnx.class_hierarchy•['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool1d', 'aten.squeeze.dim']J†
+pkg.torch.onnx.fx_nodel%squeeze : [num_users=1] = call_function[target=torch.ops.aten.squeeze.dim](args = (%mean, -2), kwargs = {})JM
+pkg.torch.onnx.name_scopes/['', 'motion_head', 'motion_head.0', 'squeeze']Jú
+pkg.torch.onnx.stack_traceÛFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1603, in forward
+    return self.motion_head(mid).squeeze(1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/pooling.py", line 1460, in forward
+    return F.adaptive_avg_pool1d(input, self.output_size)
+ö
+squeeze
+val_63view	node_view"Reshape*
+	allowzero J±
+	namespace£: __main__.DenoiserEncoderMotionDetector/motion_head: torch.nn.modules.container.Sequential/motion_head.1: torch.nn.modules.flatten.Flatten/view: aten.view.defaultJ¯
+pkg.torch.onnx.class_hierarchyŒ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.flatten.Flatten', 'aten.view.default']JŒ
+pkg.torch.onnx.fx_noder%view : [num_users=1] = call_function[target=torch.ops.aten.view.default](args = (%squeeze, [1, 96]), kwargs = {})JJ
+pkg.torch.onnx.name_scopes,['', 'motion_head', 'motion_head.1', 'view']Jõ
+pkg.torch.onnx.stack_traceÖFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1603, in forward
+    return self.motion_head(mid).squeeze(1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/flatten.py", line 56, in forward
+    return input.flatten(self.start_dim, self.end_dim)
+ì	
+view
+motion_head.2.weight
+motion_head.2.biaslinearnode_linear"Gemm*
+beta  €? *
+transB *
+alpha  €? *
+transA  J³
+	namespace¥: __main__.DenoiserEncoderMotionDetector/motion_head: torch.nn.modules.container.Sequential/motion_head.2: torch.nn.modules.linear.Linear/linear: aten.linear.defaultJ¯
+pkg.torch.onnx.class_hierarchyŒ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.linear.Linear', 'aten.linear.default']Jµ
+pkg.torch.onnx.fx_nodeš%linear : [num_users=1] = call_function[target=torch.ops.aten.linear.default](args = (%view, %p_motion_head_2_weight, %p_motion_head_2_bias), kwargs = {})JL
+pkg.torch.onnx.name_scopes.['', 'motion_head', 'motion_head.2', 'linear']Jñ
+pkg.torch.onnx.stack_traceÒFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1603, in forward
+    return self.motion_head(mid).squeeze(1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/linear.py", line 134, in forward
+    return F.linear(input, self.weight, self.bias)
+ã
+linear
+val_0val_65node_Div_65"DivJ³
+	namespace¥: __main__.DenoiserEncoderMotionDetector/motion_head: torch.nn.modules.container.Sequential/motion_head.3: torch.nn.modules.activation.GELU/gelu_8: aten.gelu.defaultJ¯
+pkg.torch.onnx.class_hierarchyŒ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J…
+pkg.torch.onnx.fx_nodek%gelu_8 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%linear,), kwargs = {})JL
+pkg.torch.onnx.name_scopes.['', 'motion_head', 'motion_head.3', 'gelu_8']Jù
+pkg.torch.onnx.stack_traceÚFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1603, in forward
+    return self.motion_head(mid).squeeze(1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+Ü
+val_65val_66node_Erf_66"ErfJ³
+	namespace¥: __main__.DenoiserEncoderMotionDetector/motion_head: torch.nn.modules.container.Sequential/motion_head.3: torch.nn.modules.activation.GELU/gelu_8: aten.gelu.defaultJ¯
+pkg.torch.onnx.class_hierarchyŒ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J…
+pkg.torch.onnx.fx_nodek%gelu_8 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%linear,), kwargs = {})JL
+pkg.torch.onnx.name_scopes.['', 'motion_head', 'motion_head.3', 'gelu_8']Jù
+pkg.torch.onnx.stack_traceÚFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1603, in forward
+    return self.motion_head(mid).squeeze(1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+ã
+val_66
+val_3val_68node_Add_68"AddJ³
+	namespace¥: __main__.DenoiserEncoderMotionDetector/motion_head: torch.nn.modules.container.Sequential/motion_head.3: torch.nn.modules.activation.GELU/gelu_8: aten.gelu.defaultJ¯
+pkg.torch.onnx.class_hierarchyŒ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J…
+pkg.torch.onnx.fx_nodek%gelu_8 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%linear,), kwargs = {})JL
+pkg.torch.onnx.name_scopes.['', 'motion_head', 'motion_head.3', 'gelu_8']Jù
+pkg.torch.onnx.stack_traceÚFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1603, in forward
+    return self.motion_head(mid).squeeze(1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+ã
+val_5
+val_68val_70node_Mul_70"MulJ³
+	namespace¥: __main__.DenoiserEncoderMotionDetector/motion_head: torch.nn.modules.container.Sequential/motion_head.3: torch.nn.modules.activation.GELU/gelu_8: aten.gelu.defaultJ¯
+pkg.torch.onnx.class_hierarchyŒ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J…
+pkg.torch.onnx.fx_nodek%gelu_8 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%linear,), kwargs = {})JL
+pkg.torch.onnx.name_scopes.['', 'motion_head', 'motion_head.3', 'gelu_8']Jù
+pkg.torch.onnx.stack_traceÚFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1603, in forward
+    return self.motion_head(mid).squeeze(1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+ä
+linear
+val_70gelu_8node_gelu_8"MulJ³
+	namespace¥: __main__.DenoiserEncoderMotionDetector/motion_head: torch.nn.modules.container.Sequential/motion_head.3: torch.nn.modules.activation.GELU/gelu_8: aten.gelu.defaultJ¯
+pkg.torch.onnx.class_hierarchyŒ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.GELU', 'aten.gelu.default']J…
+pkg.torch.onnx.fx_nodek%gelu_8 : [num_users=1] = call_function[target=torch.ops.aten.gelu.default](args = (%linear,), kwargs = {})JL
+pkg.torch.onnx.name_scopes.['', 'motion_head', 'motion_head.3', 'gelu_8']Jù
+pkg.torch.onnx.stack_traceÚFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1603, in forward
+    return self.motion_head(mid).squeeze(1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 816, in forward
+    return F.gelu(input, approximate=self.approximate)
+ù	
+gelu_8
+motion_head.5.weight
+motion_head.5.biaslinear_1node_linear_1"Gemm*
+beta  €? *
+transB *
+alpha  €? *
+transA  Jµ
+	namespace§: __main__.DenoiserEncoderMotionDetector/motion_head: torch.nn.modules.container.Sequential/motion_head.5: torch.nn.modules.linear.Linear/linear_1: aten.linear.defaultJ¯
+pkg.torch.onnx.class_hierarchyŒ['__main__.DenoiserEncoderMotionDetector', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.linear.Linear', 'aten.linear.default']J¸
+pkg.torch.onnx.fx_node%linear_1 : [num_users=1] = call_function[target=torch.ops.aten.linear.default](args = (%clone, %p_motion_head_5_weight, %p_motion_head_5_bias), kwargs = {})JN
+pkg.torch.onnx.name_scopes0['', 'motion_head', 'motion_head.5', 'linear_1']Jñ
+pkg.torch.onnx.stack_traceÒFile "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1603, in forward
+    return self.motion_head(mid).squeeze(1)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/container.py", line 250, in forward
+    input = module(input)
+  File "/home/trinker/anaconda3/envs/ml/lib/python3.11/site-packages/torch/nn/modules/linear.py", line 134, in forward
+    return F.linear(input, self.weight, self.bias)
+ã
+linear_1
+val_71motion_logitnode_squeeze_1"SqueezeJQ
+	namespaceD: __main__.DenoiserEncoderMotionDetector/squeeze_1: aten.squeeze.dimJ`
+pkg.torch.onnx.class_hierarchy>['__main__.DenoiserEncoderMotionDetector', 'aten.squeeze.dim']J‹
+pkg.torch.onnx.fx_nodeq%squeeze_1 : [num_users=1] = call_function[target=torch.ops.aten.squeeze.dim](args = (%linear_1, 1), kwargs = {})J/
+pkg.torch.onnx.name_scopes['', 'squeeze_1']J³
+pkg.torch.onnx.stack_trace”File "/home/trinker/Code/github/PPG-Frailty-pipeline/ppg_peak_hr_gating_train.py", line 1603, in forward
+    return self.motion_head(mid).squeeze(1)
+main_graph*wBenc1.net.0.biasJ`Bš2=å–†=¢k¡½<`è½2Úš½øF>üb‘=ù=°Ìˆ½Vf½÷Æ½‹Åà½äü=ªg¾=Ê‘=#d½Õ×Ñ=£y=„Ãô=µ=E>›†G=Æ…5½ş³ø¼*yBenc1.net.1.weightJ`)3{?ù2‚?êS€?¤‘?Ù€?Bë~?¶r~?ÂŠ?Óv?è?Öz?r?m	€?½|?ùß{?ê|ƒ?÷õv?EÆ?<~?`—z?+œy?Î€?,Æy?s%‚?*wBenc1.net.1.biasJ`Òq¯:oåç9ì ³<ÿ8 <¶íœ:x¹˜<~(Æ<ñÊñ»³{Å¼å–;Üh¼±ù»%„v<àé¸;a¼/)=BÓ¼ñƒÊ<ıªY<"pæ»ü„ä¼¬Á0<·g«;/µ‡¼*wBenc1.net.3.biasJ`Gx½å@H=	.¯=ÀsZ½òJÆ¼M=²C?½›«½×¤ô;¿·š½ <‰½}Pt=4½ÎA=“½;u<A¦Æ:vj\½è]=)ÈŒ=œa=L¦=1“=á7´½*yBenc1.net.4.weightJ`l‰‚?Õâ}?¿M?°Ÿt?”ƒ?‘}?©{?¶‚?èü{?®€?„=}?¢íƒ?TÂ‚?‚Ò|?\ô€?ß¬z??WE€?0éz?q%€?Á·€?c€?I#z?%Í}?*wBenc1.net.4.biasJ`0p<Ês¼Zbò:\%?¼Æj=6Ww;glÊ;†€á»“s¼Û;`¼ŞUB¼XÂ‘<J=Ë<»d¤Ø<y”¼VN:<w=£û¡¼µŞ;(²»ÇYó¼²ã…;ÂT<*Û0Bdown1.1.net.0.biasJÀb¿5½Äâ•=Àâƒ½èóV<Š”=c-ı¼ôS´=Çae=8w½Êm;ÿE‘½3ß=P"<&úŸ<†R–=ã€T=j¢=%s¤¼²ÃF=?¤<½ıZƒ½Ük=«,,½7éŠ;š¥ª=–e™=¬ıƒ=r_˜»£+W=Âk²=vh™=ıä	=Áœ½A=ï@»OÌª½Ù»³½Z¾›¼üù¢<p[P=æŠ„½ç&T<¨$w= ’<¦I½Î¸ö<?ë–<‘f½*İ0Bdown1.1.net.1.weightJÀãH‚?œ!€?â0€?}‚?q[?å½€?à‡€?¨ê?ò${?¸"~?®Ëx?cª?Áï|?>Ş?ìy?¾F€?l‚?bö€?p?¿¼|?Å6?u?•š‚?gÃ{?g?á¼y?<É~?w?Å ?bu~?­€?dZ}?û{?œ?ğ˜€?~Ü|?N~?:î?¾$?á|?ú{‚?^û?ˆ7€?íáy?çæv?y±|?ùş?Ö”~?*Û0Bdown1.1.net.1.biasJÀ¸N¼[‡¼üX»·˜ó<-â¼¾ñT¼ê¨›<é+½lß:NÂ:ÓİÕ¼¯ÓS<mä¦ºT=¦Ñ<’–<Í®ÿ: @|¼³±¼ÓxD½ªå<]"V»1Jµ<pñ½¼&;I§9dÓ<f†“¼ßÃÉ»L~½˜QØ¼ÖRÿ;b­:ŒDd8d„<*™½ÎÙ<İb.<š:µ<[7<¢Éµ¼óŒÏ<şÖğ¼ÃØ4¼“ÚR¼¡¼Œjµ¼RÌ¼*Û0Bdown1.1.net.3.biasJÀÛXª<¸Z<®|¥¼ŸY½ÈÛ=½ÆË<j Y½ƒW½µÓ»2!h½Z"½`x-½y“¾<ç&ä¼æ²p½°"½‹Ó5;—ÕË<ãNa½°U“<Ç¨ =Ü
+½Ê¼&½0lc=ÕC=´V½:v@½Üíğ¼ŸBP½jœ:ªA½!—Ğ<ø*¨;fíV»…t
+»^¢;Mù‚½ls3½]Aş9à€½İYI½hô.<Ü§+=$$—¼Cºı¸#Á€;«·o=*İ0Bdown1.1.net.4.weightJÀ|¢|?|Ïw?OB€?¸àz?‚,€?ñç€?óÔ~?å}?0
+‚?°„?ÊÕz?œ€?¥t‚?oÑ{??¦?Aà€?[mx?¡5€?3ú|?÷ù|?ª‚?«¾y?Ğˆy?—­w?ÙÔz?t?g“~?d$~?"\z?_©|?Y€?!C€?CW‚?$ªy?Rë}?–.?{_?Ú†?ñw?r¶{?8İ|?}ğ|?ës?÷õ€?ó ?ÏM{?Cb€?	O€?*Û0Bdown1.1.net.4.biasJÀ²Òœ;X ÿ¼	¨½4ü»~²u½<>•½Şû‰<ÒÚ&¼˜»û"Œ½’”»äñi½ÀŞ ¼Ÿ':ú)½:´0½ÑAè»ƒä<‡‰İ¼$¼òa=Şâ	½I/–¼¸'°¼œT¯¼&%´<¤vƒ<ÚŒ¹¼TWØ¹Ç9¼»+Z<.½r½œ§Ñ<5ßs¼\8 ¼c¶N<eG¼„&½º©{½,Ìm½ÅW½$ãŒ½.Ä<•7{½ğĞ0<ä¼»1B<ôÿŠ½*``Bdown2.1.net.0.biasj(
+locationA_denoiser_encoder.onnx.dataj
+offset0j
+length384p*d`Bdown2.1.net.1.weightj(
+locationA_denoiser_encoder.onnx.dataj
+offset384j
+length384p*b`Bdown2.1.net.1.biasj(
+locationA_denoiser_encoder.onnx.dataj
+offset768j
+length384p*c`Bdown2.1.net.3.biasj(
+locationA_denoiser_encoder.onnx.dataj
+offset1152j
+length384p*e`Bdown2.1.net.4.weightj(
+locationA_denoiser_encoder.onnx.dataj
+offset1536j
+length384p*c`Bdown2.1.net.4.biasj(
+locationA_denoiser_encoder.onnx.dataj
+offset1920j
+length384p*_`Bmid.net.0.biasj(
+locationA_denoiser_encoder.onnx.dataj
+offset2304j
+length384p*a`Bmid.net.1.weightj(
+locationA_denoiser_encoder.onnx.dataj
+offset2688j
+length384p*_`Bmid.net.1.biasj(
+locationA_denoiser_encoder.onnx.dataj
+offset3072j
+length384p*_`Bmid.net.3.biasj(
+locationA_denoiser_encoder.onnx.dataj
+offset3456j
+length384p*a`Bmid.net.4.weightj(
+locationA_denoiser_encoder.onnx.dataj
+offset3840j
+length384p*_`Bmid.net.4.biasj(
+locationA_denoiser_encoder.onnx.dataj
+offset4224j
+length384p*Û0Bmotion_head.2.biasJÀŞl×½.½@O>wtÙ½õ;7>SãÓ½¨ô½ñeT<ü*š<Ó7 >ñv1=w˜<èì…=Fô¯½-÷ü=à‘=û¹|½?ØC¼_aT=Y€é=Â/>âl>Ë„}=şİ»¦â> `k=Y¡)>Ğ…»¼>?Ü=¼>Ù<úhñ<W)>a…?<á[b½Õ%ˆ½Ëy¹½Á³Ï<ç©½ì/>=Ç½öõ=×’!>i!>Ü‡¯;r–Œ½wt*>*ß0Bmotion_head.5.weightJÀo`>Ú¢l>¶u¾z40>ù7>†Êı½éON>?ßk>'B¾Š2c¾ºâG¾¯Km¾IÜ!¾)Sk¾6t>ìHƒ¾Ìï¾]">ùøg¾ˆV»½¸£l¾=R¾¹µV¾0CZ>‚?/¾—94¾ˆ0>ãö7¾Û~>/LL¾DhP¾ù=K\y¾†r>¾Ütü½Jxv>°¾ğ=w¶->6ñó½ŒB:>Øàÿ½6$*>Ä_(¾µUR¾ğ|f¾f^T>…ni>—Éf¾*Bmotion_head.5.biasJ˜H½½*g
+Benc1.net.0.weightj(
+locationA_denoiser_encoder.onnx.dataj
+offset4608j
+length4800p*hBenc1.net.3.weightj(
+locationA_denoiser_encoder.onnx.dataj
+offset9408j
+length11520p*l0Bdown1.1.net.0.weightj(
+locationA_denoiser_encoder.onnx.dataj
+offset39360j
+length23040p*l00Bdown1.1.net.3.weightj(
+locationA_denoiser_encoder.onnx.dataj
+offset62400j
+length46080p*m`0Bdown2.1.net.0.weightj(
+locationA_denoiser_encoder.onnx.dataj
+offset108480j
+length92160p*n``Bdown2.1.net.3.weightj(
+locationA_denoiser_encoder.onnx.dataj
+offset200640j
+length184320p*j``Bmid.net.0.weightj(
+locationA_denoiser_encoder.onnx.dataj
+offset384960j
+length184320p*j``Bmid.net.3.weightj(
+locationA_denoiser_encoder.onnx.dataj
+offset569280j
+length184320p*j0`Bmotion_head.2.weightj(
+locationA_denoiser_encoder.onnx.dataj
+offset20928j
+length18432p*Bval_59Jÿÿÿÿÿÿÿÿşÿÿÿÿÿÿÿ*Bval_63J       `       *Bval_0Jóµ?*Bval_3J  €?*Bval_5J   ?*Bval_56Jşÿÿÿÿÿÿÿ*Bval_71J       ZÈ
+features
+
+s77
+
+
+€"=
+/pkg.torch.export.graph_signature.InputSpec.kind
+USER_INPUT"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"&
+!pkg.torch.onnx.original_node_namexb‹
+motion_logit
+
+
+"?
+0pkg.torch.export.graph_signature.OutputSpec.kindUSER_OUTPUT".
+!pkg.torch.onnx.original_node_name	squeeze_1jÒ
+enc1.net.0.bias
+
+
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"6
+!pkg.torch.onnx.original_node_namep_enc1_net_0_biasjÖ
+enc1.net.1.weight
+
+
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"8
+!pkg.torch.onnx.original_node_namep_enc1_net_1_weightjÒ
+enc1.net.1.bias
+
+
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"6
+!pkg.torch.onnx.original_node_namep_enc1_net_1_biasjÒ
+enc1.net.3.bias
+
+
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"6
+!pkg.torch.onnx.original_node_namep_enc1_net_3_biasjÖ
+enc1.net.4.weight
+
+
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"8
+!pkg.torch.onnx.original_node_namep_enc1_net_4_weightjÒ
+enc1.net.4.bias
+
+
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"6
+!pkg.torch.onnx.original_node_namep_enc1_net_4_biasjØ
+down1.1.net.0.bias
+
+
+0"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"9
+!pkg.torch.onnx.original_node_namep_down1_1_net_0_biasjÜ
+down1.1.net.1.weight
+
+
+0"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone";
+!pkg.torch.onnx.original_node_namep_down1_1_net_1_weightjØ
+down1.1.net.1.bias
+
+
+0"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"9
+!pkg.torch.onnx.original_node_namep_down1_1_net_1_biasjØ
+down1.1.net.3.bias
+
+
+0"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"9
+!pkg.torch.onnx.original_node_namep_down1_1_net_3_biasjÜ
+down1.1.net.4.weight
+
+
+0"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone";
+!pkg.torch.onnx.original_node_namep_down1_1_net_4_weightjØ
+down1.1.net.4.bias
+
+
+0"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"9
+!pkg.torch.onnx.original_node_namep_down1_1_net_4_biasjØ
+down2.1.net.0.bias
+
+
+`"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"9
+!pkg.torch.onnx.original_node_namep_down2_1_net_0_biasjÜ
+down2.1.net.1.weight
+
+
+`"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone";
+!pkg.torch.onnx.original_node_namep_down2_1_net_1_weightjØ
+down2.1.net.1.bias
+
+
+`"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"9
+!pkg.torch.onnx.original_node_namep_down2_1_net_1_biasjØ
+down2.1.net.3.bias
+
+
+`"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"9
+!pkg.torch.onnx.original_node_namep_down2_1_net_3_biasjÜ
+down2.1.net.4.weight
+
+
+`"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone";
+!pkg.torch.onnx.original_node_namep_down2_1_net_4_weightjØ
+down2.1.net.4.bias
+
+
+`"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"9
+!pkg.torch.onnx.original_node_namep_down2_1_net_4_biasjĞ
+mid.net.0.bias
+
+
+`"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"5
+!pkg.torch.onnx.original_node_namep_mid_net_0_biasjÔ
+mid.net.1.weight
+
+
+`"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"7
+!pkg.torch.onnx.original_node_namep_mid_net_1_weightjĞ
+mid.net.1.bias
+
+
+`"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"5
+!pkg.torch.onnx.original_node_namep_mid_net_1_biasjĞ
+mid.net.3.bias
+
+
+`"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"5
+!pkg.torch.onnx.original_node_namep_mid_net_3_biasjÔ
+mid.net.4.weight
+
+
+`"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"7
+!pkg.torch.onnx.original_node_namep_mid_net_4_weightjĞ
+mid.net.4.bias
+
+
+`"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"5
+!pkg.torch.onnx.original_node_namep_mid_net_4_biasjØ
+motion_head.2.bias
+
+
+0"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"9
+!pkg.torch.onnx.original_node_namep_motion_head_2_biasjà
+motion_head.5.weight
+
+
+0"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone";
+!pkg.torch.onnx.original_node_namep_motion_head_5_weightjØ
+motion_head.5.bias
+
+
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"9
+!pkg.torch.onnx.original_node_namep_motion_head_5_biasjŞ
+enc1.net.0.weight
+
+
+
+
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"8
+!pkg.torch.onnx.original_node_namep_enc1_net_0_weightjŞ
+enc1.net.3.weight
+
+
+
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"8
+!pkg.torch.onnx.original_node_namep_enc1_net_3_weightjä
+down1.1.net.0.weight
+
+0
+
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone";
+!pkg.torch.onnx.original_node_namep_down1_1_net_0_weightjä
+down1.1.net.3.weight
+
+0
+0
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone";
+!pkg.torch.onnx.original_node_namep_down1_1_net_3_weightjä
+down2.1.net.0.weight
+
+`
+0
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone";
+!pkg.torch.onnx.original_node_namep_down2_1_net_0_weightjä
+down2.1.net.3.weight
+
+`
+`
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone";
+!pkg.torch.onnx.original_node_namep_down2_1_net_3_weightjÜ
+mid.net.0.weight
+
+`
+`
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"7
+!pkg.torch.onnx.original_node_namep_mid_net_0_weightjÜ
+mid.net.3.weight
+
+`
+`
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"7
+!pkg.torch.onnx.original_node_namep_mid_net_3_weightjà
+motion_head.2.weight
+
+0
+`"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone";
+!pkg.torch.onnx.original_node_namep_motion_head_2_weightjR
+val_59
+
+
+"<
+$pkg.onnxscript.optimizer.folded_from['val_57', 'val_58']jR
+val_63
+
+
+"<
+$pkg.onnxscript.optimizer.folded_from['val_61', 'val_62']j
+val_0
+ j
+val_3
+ j
+val_5
+ j
+val_56
+
+
+j
+val_71
+
+
+j 
+conv1d
+
+s77
+
+€j$
+instance_norm
+
+
+
+€j
+val_1
+
+
+
+€j
+val_2
+
+
+
+€j
+val_4
+
+
+
+€j
+val_6
+
+
+
+€j
+gelu
+
+
+
+€j
+conv1d_1
+
+
+
+€j&
+instance_norm_1
+
+
+
+€j
+val_8
+
+
+
+€j
+val_9
+
+
+
+€j
+val_11
+
+
+
+€j
+val_13
+
+
+
+€j
+gelu_1
+
+
+
+€j!
+
+avg_pool1d
+
+
+
+€j
+conv1d_2
+
+
+0
+€j&
+instance_norm_2
+
+
+0
+€j
+val_15
+
+
+0
+€j
+val_16
+
+
+0
+€j
+val_18
+
+
+0
+€j
+val_20
+
+
+0
+€j
+gelu_2
+
+
+0
+€j
+conv1d_3
+
+
+0
+€j&
+instance_norm_3
+
+
+0
+€j
+val_22
+
+
+0
+€j
+val_23
+
+
+0
+€j
+val_25
+
+
+0
+€j
+val_27
+
+
+0
+€j
+gelu_3
+
+
+0
+€j"
+avg_pool1d_1
+
+
+0
+@j
+conv1d_4
+
+
+`
+@j%
+instance_norm_4
+
+
+`
+@j
+val_29
+
+
+`
+@j
+val_30
+
+
+`
+@j
+val_32
+
+
+`
+@j
+val_34
+
+
+`
+@j
+gelu_4
+
+
+`
+@j
+conv1d_5
+
+
+`
+@j%
+instance_norm_5
+
+
+`
+@j
+val_36
+
+
+`
+@j
+val_37
+
+
+`
+@j
+val_39
+
+
+`
+@j
+val_41
+
+
+`
+@j
+gelu_5
+
+
+`
+@j
+conv1d_6
+
+
+`
+@j%
+instance_norm_6
+
+
+`
+@j
+val_43
+
+
+`
+@j
+val_44
+
+
+`
+@j
+val_46
+
+
+`
+@j
+val_48
+
+
+`
+@j
+gelu_6
+
+
+`
+@j
+conv1d_7
+
+
+`
+@j%
+instance_norm_7
+
+
+`
+@j
+val_50
+
+
+`
+@j
+val_51
+
+
+`
+@j
+val_53
+
+
+`
+@j
+val_55
+
+
+`
+@j
+gelu_7
+
+
+`
+@j#
+	unsqueeze
+
+
+`
+
+@j
+mean
+
+
+`
+
+j
+squeeze
+
+
+`
+j
+view
+
+
+`j
+linear
+
+
+0j
+val_65
+
+
+0j
+val_66
+
+
+0j
+val_68
+
+
+0j
+val_70
+
+
+0j
+gelu_8
+
+
+0j
+linear_1
+
+
+‚·
+0pkg.torch.export.ExportedProgram.graph_signature‚
+# inputs
+p_enc1_net_0_weight: PARAMETER target='enc1.net.0.weight'
+p_enc1_net_0_bias: PARAMETER target='enc1.net.0.bias'
+p_enc1_net_1_weight: PARAMETER target='enc1.net.1.weight'
+p_enc1_net_1_bias: PARAMETER target='enc1.net.1.bias'
+p_enc1_net_3_weight: PARAMETER target='enc1.net.3.weight'
+p_enc1_net_3_bias: PARAMETER target='enc1.net.3.bias'
+p_enc1_net_4_weight: PARAMETER target='enc1.net.4.weight'
+p_enc1_net_4_bias: PARAMETER target='enc1.net.4.bias'
+p_down1_1_net_0_weight: PARAMETER target='down1.1.net.0.weight'
+p_down1_1_net_0_bias: PARAMETER target='down1.1.net.0.bias'
+p_down1_1_net_1_weight: PARAMETER target='down1.1.net.1.weight'
+p_down1_1_net_1_bias: PARAMETER target='down1.1.net.1.bias'
+p_down1_1_net_3_weight: PARAMETER target='down1.1.net.3.weight'
+p_down1_1_net_3_bias: PARAMETER target='down1.1.net.3.bias'
+p_down1_1_net_4_weight: PARAMETER target='down1.1.net.4.weight'
+p_down1_1_net_4_bias: PARAMETER target='down1.1.net.4.bias'
+p_down2_1_net_0_weight: PARAMETER target='down2.1.net.0.weight'
+p_down2_1_net_0_bias: PARAMETER target='down2.1.net.0.bias'
+p_down2_1_net_1_weight: PARAMETER target='down2.1.net.1.weight'
+p_down2_1_net_1_bias: PARAMETER target='down2.1.net.1.bias'
+p_down2_1_net_3_weight: PARAMETER target='down2.1.net.3.weight'
+p_down2_1_net_3_bias: PARAMETER target='down2.1.net.3.bias'
+p_down2_1_net_4_weight: PARAMETER target='down2.1.net.4.weight'
+p_down2_1_net_4_bias: PARAMETER target='down2.1.net.4.bias'
+p_mid_net_0_weight: PARAMETER target='mid.net.0.weight'
+p_mid_net_0_bias: PARAMETER target='mid.net.0.bias'
+p_mid_net_1_weight: PARAMETER target='mid.net.1.weight'
+p_mid_net_1_bias: PARAMETER target='mid.net.1.bias'
+p_mid_net_3_weight: PARAMETER target='mid.net.3.weight'
+p_mid_net_3_bias: PARAMETER target='mid.net.3.bias'
+p_mid_net_4_weight: PARAMETER target='mid.net.4.weight'
+p_mid_net_4_bias: PARAMETER target='mid.net.4.bias'
+p_motion_head_2_weight: PARAMETER target='motion_head.2.weight'
+p_motion_head_2_bias: PARAMETER target='motion_head.2.bias'
+p_motion_head_5_weight: PARAMETER target='motion_head.5.weight'
+p_motion_head_5_bias: PARAMETER target='motion_head.5.bias'
+x: USER_INPUT
+
+# outputs
+squeeze_1: USER_OUTPUT
+‚J
+2pkg.torch.export.ExportedProgram.range_constraints{s77: VR[0, int_oo]}B
+ 

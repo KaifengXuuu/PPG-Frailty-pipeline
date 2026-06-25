@@ -1,0 +1,772 @@
+{
+  "status": "completed",
+  "reason": null,
+  "detector_input": {
+    "channels": [
+      "ppg",
+      "acc_dyn_x",
+      "acc_dyn_y",
+      "acc_dyn_z",
+      "gyro_x",
+      "gyro_y",
+      "gyro_z",
+      "acc_mag",
+      "gyro_mag",
+      "jerk_mag"
+    ],
+    "uses_imu": true,
+    "unit_handling": "acceleration inferred per record and gravity removed; missing gyro zero-filled"
+  },
+  "split_counts": {
+    "train_records": 42,
+    "validation_records": 9,
+    "holdout_records": 15,
+    "extra_holdout_records": 13
+  },
+  "models": {
+    "A_denoiser_encoder": {
+      "fit_info": {
+        "history": [
+          {
+            "epoch": 1.0,
+            "train_loss": 0.23306032205881452,
+            "train_accuracy": 0.8723238614246789,
+            "val_loss": 0.10212941152675699,
+            "val_accuracy": 0.9711971197119712
+          }
+        ],
+        "best_epoch": 1,
+        "best_val_loss": 0.10212941152675699,
+        "num_train_windows": 5138,
+        "num_val_windows": 1111
+      },
+      "threshold": 0.95,
+      "validation": {
+        "counts": {
+          "windows": 1111
+        },
+        "motion_logit": {
+          "n": 1111,
+          "threshold": 0.95,
+          "positive_rate": 0.6687668766876688,
+          "accuracy": 0.9810981098109811,
+          "balanced_accuracy": 0.9714673913043479,
+          "precision": 0.9725130890052356,
+          "recall": 1.0,
+          "f1": 0.9860650298606503,
+          "confusion_matrix": [
+            [
+              347,
+              21
+            ],
+            [
+              0,
+              743
+            ]
+          ],
+          "roc_auc": 0.9999853707063022,
+          "pr_auc": 0.9999927615509105
+        },
+        "motion_diagnostics": {
+          "n": 1111,
+          "threshold": 0.95,
+          "true_motion_rate": 0.6687668766876688,
+          "pred_motion_rate": 0.6876687668766877,
+          "near_threshold_frac_0p05": 0.6903690369036903,
+          "score_quantiles": {
+            "q01": 0.0027801019605249166,
+            "q05": 0.003250707872211933,
+            "q25": 0.010183827020227909,
+            "q50": 0.9973128437995911,
+            "q75": 0.9978327751159668,
+            "q95": 0.998218297958374,
+            "q99": 0.9984197616577148
+          },
+          "threshold_percentile": 0.31233123312331235,
+          "rest_score_mean": 0.09384706616401672,
+          "rest_score_std": 0.2576378881931305,
+          "rest_score_q25": 0.0035102113615721464,
+          "rest_score_median": 0.005152731202542782,
+          "rest_score_q75": 0.009401974268257618,
+          "motion_score_mean": 0.9975275993347168,
+          "motion_score_std": 0.0007188433082774282,
+          "motion_score_q25": 0.9973109364509583,
+          "motion_score_median": 0.9977065324783325,
+          "motion_score_q75": 0.9979526996612549,
+          "class_score_gap": 0.9036805629730225,
+          "class_separation_cohen_d": 4.960346301229471,
+          "rest_false_motion_rate": 0.057065217391304345,
+          "motion_false_rest_rate": 0.0
+        }
+      },
+      "holdout": {
+        "counts": {
+          "windows": 1828
+        },
+        "motion_logit": {
+          "n": 1828,
+          "threshold": 0.95,
+          "positive_rate": 0.6668490153172867,
+          "accuracy": 0.9983588621444202,
+          "balanced_accuracy": 0.9975369458128078,
+          "precision": 0.997545008183306,
+          "recall": 1.0,
+          "f1": 0.9987709954936501,
+          "confusion_matrix": [
+            [
+              606,
+              3
+            ],
+            [
+              0,
+              1219
+            ]
+          ],
+          "roc_auc": 0.9999973059292456,
+          "pr_auc": 0.9999986546212667
+        },
+        "motion_diagnostics": {
+          "n": 1828,
+          "threshold": 0.95,
+          "true_motion_rate": 0.6668490153172867,
+          "pred_motion_rate": 0.6684901531728665,
+          "near_threshold_frac_0p05": 0.6695842450765864,
+          "score_quantiles": {
+            "q01": 0.0026719640009105206,
+            "q05": 0.003013746580109,
+            "q25": 0.006297206040471792,
+            "q50": 0.9973684549331665,
+            "q75": 0.9978896379470825,
+            "q95": 0.9982311725616455,
+            "q99": 0.9984437227249146
+          },
+          "threshold_percentile": 0.33150984682713347,
+          "rest_score_mean": 0.022991452366113663,
+          "rest_score_std": 0.11685238033533096,
+          "rest_score_q25": 0.0032154785003513098,
+          "rest_score_median": 0.00401643430814147,
+          "rest_score_q75": 0.006267547141760588,
+          "motion_score_mean": 0.9975988268852234,
+          "motion_score_std": 0.0006627714028581977,
+          "motion_score_q25": 0.9973684549331665,
+          "motion_score_median": 0.9977570176124573,
+          "motion_score_q75": 0.9980054497718811,
+          "class_score_gap": 0.9746073484420776,
+          "class_separation_cohen_d": 11.794195628460562,
+          "rest_false_motion_rate": 0.0049261083743842365,
+          "motion_false_rest_rate": 0.0
+        }
+      },
+      "extra_holdout": {
+        "counts": {
+          "windows": 6052
+        },
+        "motion_logit": {
+          "n": 6052,
+          "threshold": 0.95,
+          "positive_rate": 0.5423000660938533,
+          "accuracy": 0.7000991407799074,
+          "balanced_accuracy": 0.691840737245274,
+          "precision": 0.697442799461642,
+          "recall": 0.7894576477757465,
+          "f1": 0.7406031156209805,
+          "confusion_matrix": [
+            [
+              1646,
+              1124
+            ],
+            [
+              691,
+              2591
+            ]
+          ],
+          "roc_auc": 0.7774966065861928,
+          "pr_auc": 0.8119667508040348
+        },
+        "motion_diagnostics": {
+          "n": 6052,
+          "threshold": 0.95,
+          "true_motion_rate": 0.5423000660938533,
+          "pred_motion_rate": 0.6138466622604097,
+          "near_threshold_frac_0p05": 0.6592861863846662,
+          "score_quantiles": {
+            "q01": 0.003404467599466443,
+            "q05": 0.004687371198087931,
+            "q25": 0.21249064803123474,
+            "q50": 0.9806629419326782,
+            "q75": 0.9933507442474365,
+            "q95": 0.996473491191864,
+            "q99": 0.9975049495697021
+          },
+          "threshold_percentile": 0.3861533377395902,
+          "rest_score_mean": 0.560748815536499,
+          "rest_score_std": 0.44645893573760986,
+          "rest_score_q25": 0.016293387860059738,
+          "rest_score_median": 0.863166093826294,
+          "rest_score_q75": 0.980165421962738,
+          "motion_score_mean": 0.8409240245819092,
+          "motion_score_std": 0.3348764479160309,
+          "motion_score_q25": 0.9720316529273987,
+          "motion_score_median": 0.992117702960968,
+          "motion_score_q75": 0.9949066042900085,
+          "class_score_gap": 0.28017520904541016,
+          "class_separation_cohen_d": 0.709964637050939,
+          "rest_false_motion_rate": 0.40577617328519855,
+          "motion_false_rest_rate": 0.2105423522242535
+        }
+      },
+      "validation_by_dataset": {
+        "pulse_transit_time_ppg": {
+          "counts": {
+            "windows": 1111
+          },
+          "motion_logit": {
+            "n": 1111,
+            "threshold": 0.95,
+            "positive_rate": 0.6687668766876688,
+            "accuracy": 0.9810981098109811,
+            "balanced_accuracy": 0.9714673913043479,
+            "precision": 0.9725130890052356,
+            "recall": 1.0,
+            "f1": 0.9860650298606503,
+            "confusion_matrix": [
+              [
+                347,
+                21
+              ],
+              [
+                0,
+                743
+              ]
+            ],
+            "roc_auc": 0.9999853707063022,
+            "pr_auc": 0.9999927615509105
+          },
+          "motion_diagnostics": {
+            "n": 1111,
+            "threshold": 0.95,
+            "true_motion_rate": 0.6687668766876688,
+            "pred_motion_rate": 0.6876687668766877,
+            "near_threshold_frac_0p05": 0.6903690369036903,
+            "score_quantiles": {
+              "q01": 0.0027801019605249166,
+              "q05": 0.003250707872211933,
+              "q25": 0.010183827020227909,
+              "q50": 0.9973128437995911,
+              "q75": 0.9978327751159668,
+              "q95": 0.998218297958374,
+              "q99": 0.9984197616577148
+            },
+            "threshold_percentile": 0.31233123312331235,
+            "rest_score_mean": 0.09384706616401672,
+            "rest_score_std": 0.2576378881931305,
+            "rest_score_q25": 0.0035102113615721464,
+            "rest_score_median": 0.005152731202542782,
+            "rest_score_q75": 0.009401974268257618,
+            "motion_score_mean": 0.9975275993347168,
+            "motion_score_std": 0.0007188433082774282,
+            "motion_score_q25": 0.9973109364509583,
+            "motion_score_median": 0.9977065324783325,
+            "motion_score_q75": 0.9979526996612549,
+            "class_score_gap": 0.9036805629730225,
+            "class_separation_cohen_d": 4.960346301229471,
+            "rest_false_motion_rate": 0.057065217391304345,
+            "motion_false_rest_rate": 0.0
+          }
+        }
+      },
+      "holdout_by_dataset": {
+        "pulse_transit_time_ppg": {
+          "counts": {
+            "windows": 1828
+          },
+          "motion_logit": {
+            "n": 1828,
+            "threshold": 0.95,
+            "positive_rate": 0.6668490153172867,
+            "accuracy": 0.9983588621444202,
+            "balanced_accuracy": 0.9975369458128078,
+            "precision": 0.997545008183306,
+            "recall": 1.0,
+            "f1": 0.9987709954936501,
+            "confusion_matrix": [
+              [
+                606,
+                3
+              ],
+              [
+                0,
+                1219
+              ]
+            ],
+            "roc_auc": 0.9999973059292456,
+            "pr_auc": 0.9999986546212667
+          },
+          "motion_diagnostics": {
+            "n": 1828,
+            "threshold": 0.95,
+            "true_motion_rate": 0.6668490153172867,
+            "pred_motion_rate": 0.6684901531728665,
+            "near_threshold_frac_0p05": 0.6695842450765864,
+            "score_quantiles": {
+              "q01": 0.0026719640009105206,
+              "q05": 0.003013746580109,
+              "q25": 0.006297206040471792,
+              "q50": 0.9973684549331665,
+              "q75": 0.9978896379470825,
+              "q95": 0.9982311725616455,
+              "q99": 0.9984437227249146
+            },
+            "threshold_percentile": 0.33150984682713347,
+            "rest_score_mean": 0.022991452366113663,
+            "rest_score_std": 0.11685238033533096,
+            "rest_score_q25": 0.0032154785003513098,
+            "rest_score_median": 0.00401643430814147,
+            "rest_score_q75": 0.006267547141760588,
+            "motion_score_mean": 0.9975988268852234,
+            "motion_score_std": 0.0006627714028581977,
+            "motion_score_q25": 0.9973684549331665,
+            "motion_score_median": 0.9977570176124573,
+            "motion_score_q75": 0.9980054497718811,
+            "class_score_gap": 0.9746073484420776,
+            "class_separation_cohen_d": 11.794195628460562,
+            "rest_false_motion_rate": 0.0049261083743842365,
+            "motion_false_rest_rate": 0.0
+          }
+        }
+      },
+      "extra_holdout_by_dataset": {
+        "simultaneous_measurements": {
+          "counts": {
+            "windows": 6052
+          },
+          "motion_logit": {
+            "n": 6052,
+            "threshold": 0.95,
+            "positive_rate": 0.5423000660938533,
+            "accuracy": 0.7000991407799074,
+            "balanced_accuracy": 0.691840737245274,
+            "precision": 0.697442799461642,
+            "recall": 0.7894576477757465,
+            "f1": 0.7406031156209805,
+            "confusion_matrix": [
+              [
+                1646,
+                1124
+              ],
+              [
+                691,
+                2591
+              ]
+            ],
+            "roc_auc": 0.7774966065861928,
+            "pr_auc": 0.8119667508040348
+          },
+          "motion_diagnostics": {
+            "n": 6052,
+            "threshold": 0.95,
+            "true_motion_rate": 0.5423000660938533,
+            "pred_motion_rate": 0.6138466622604097,
+            "near_threshold_frac_0p05": 0.6592861863846662,
+            "score_quantiles": {
+              "q01": 0.003404467599466443,
+              "q05": 0.004687371198087931,
+              "q25": 0.21249064803123474,
+              "q50": 0.9806629419326782,
+              "q75": 0.9933507442474365,
+              "q95": 0.996473491191864,
+              "q99": 0.9975049495697021
+            },
+            "threshold_percentile": 0.3861533377395902,
+            "rest_score_mean": 0.560748815536499,
+            "rest_score_std": 0.44645893573760986,
+            "rest_score_q25": 0.016293387860059738,
+            "rest_score_median": 0.863166093826294,
+            "rest_score_q75": 0.980165421962738,
+            "motion_score_mean": 0.8409240245819092,
+            "motion_score_std": 0.3348764479160309,
+            "motion_score_q25": 0.9720316529273987,
+            "motion_score_median": 0.992117702960968,
+            "motion_score_q75": 0.9949066042900085,
+            "class_score_gap": 0.28017520904541016,
+            "class_separation_cohen_d": 0.709964637050939,
+            "rest_false_motion_rate": 0.40577617328519855,
+            "motion_false_rest_rate": 0.2105423522242535
+          }
+        }
+      }
+    },
+    "B_light_cnn": {
+      "fit_info": {
+        "history": [
+          {
+            "epoch": 1.0,
+            "train_loss": 0.15353454430049243,
+            "train_accuracy": 0.983067341377968,
+            "val_loss": 0.06576001482179956,
+            "val_accuracy": 0.9882988298829883
+          }
+        ],
+        "best_epoch": 1,
+        "best_val_loss": 0.06576001482179956,
+        "num_train_windows": 5138,
+        "num_val_windows": 1111
+      },
+      "threshold": 0.9,
+      "validation": {
+        "counts": {
+          "windows": 1111
+        },
+        "motion_logit": {
+          "n": 1111,
+          "threshold": 0.9,
+          "positive_rate": 0.6687668766876688,
+          "accuracy": 1.0,
+          "balanced_accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "confusion_matrix": [
+            [
+              368,
+              0
+            ],
+            [
+              0,
+              743
+            ]
+          ],
+          "roc_auc": 1.0,
+          "pr_auc": 1.0
+        },
+        "motion_diagnostics": {
+          "n": 1111,
+          "threshold": 0.9,
+          "true_motion_rate": 0.6687668766876688,
+          "pred_motion_rate": 0.6687668766876688,
+          "near_threshold_frac_0p05": 0.0027002700270027003,
+          "score_quantiles": {
+            "q01": 0.03148327395319939,
+            "q05": 0.032157041132450104,
+            "q25": 0.09018093347549438,
+            "q50": 0.968021035194397,
+            "q75": 0.9705473184585571,
+            "q95": 0.9721157550811768,
+            "q99": 0.972713053226471
+          },
+          "threshold_percentile": 0.33123312331233123,
+          "rest_score_mean": 0.10405789315700531,
+          "rest_score_std": 0.15067923069000244,
+          "rest_score_q25": 0.03271428868174553,
+          "rest_score_median": 0.035297125577926636,
+          "rest_score_q75": 0.08143304288387299,
+          "motion_score_mean": 0.9690649509429932,
+          "motion_score_std": 0.0030143670737743378,
+          "motion_score_q25": 0.9679778218269348,
+          "motion_score_median": 0.9698310494422913,
+          "motion_score_q75": 0.9711898565292358,
+          "class_score_gap": 0.8650070428848267,
+          "class_separation_cohen_d": 8.11662015750761,
+          "rest_false_motion_rate": 0.0,
+          "motion_false_rest_rate": 0.0
+        }
+      },
+      "holdout": {
+        "counts": {
+          "windows": 1828
+        },
+        "motion_logit": {
+          "n": 1828,
+          "threshold": 0.9,
+          "positive_rate": 0.6668490153172867,
+          "accuracy": 1.0,
+          "balanced_accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "confusion_matrix": [
+            [
+              609,
+              0
+            ],
+            [
+              0,
+              1219
+            ]
+          ],
+          "roc_auc": 1.0,
+          "pr_auc": 1.0
+        },
+        "motion_diagnostics": {
+          "n": 1828,
+          "threshold": 0.9,
+          "true_motion_rate": 0.6668490153172867,
+          "pred_motion_rate": 0.6668490153172867,
+          "near_threshold_frac_0p05": 0.006017505470459519,
+          "score_quantiles": {
+            "q01": 0.0316958986222744,
+            "q05": 0.032306648790836334,
+            "q25": 0.035399165004491806,
+            "q50": 0.9687908887863159,
+            "q75": 0.9710152745246887,
+            "q95": 0.9722930788993835,
+            "q99": 0.9728912115097046
+          },
+          "threshold_percentile": 0.33315098468271337,
+          "rest_score_mean": 0.035253558307886124,
+          "rest_score_std": 0.007534616626799107,
+          "rest_score_q25": 0.03260646015405655,
+          "rest_score_median": 0.03362994268536568,
+          "rest_score_q75": 0.035386309027671814,
+          "motion_score_mean": 0.9693332314491272,
+          "motion_score_std": 0.003978724591434002,
+          "motion_score_q25": 0.9687908887863159,
+          "motion_score_median": 0.9704588055610657,
+          "motion_score_q75": 0.9714665412902832,
+          "class_score_gap": 0.934079647064209,
+          "class_separation_cohen_d": 152.94224865989463,
+          "rest_false_motion_rate": 0.0,
+          "motion_false_rest_rate": 0.0
+        }
+      },
+      "extra_holdout": {
+        "counts": {
+          "windows": 6052
+        },
+        "motion_logit": {
+          "n": 6052,
+          "threshold": 0.9,
+          "positive_rate": 0.5423000660938533,
+          "accuracy": 0.5940185062789161,
+          "balanced_accuracy": 0.6254602833088039,
+          "precision": 0.990487514863258,
+          "recall": 0.2538086532602072,
+          "f1": 0.40407470288624786,
+          "confusion_matrix": [
+            [
+              2762,
+              8
+            ],
+            [
+              2449,
+              833
+            ]
+          ],
+          "roc_auc": 0.8510702178164675,
+          "pr_auc": 0.8929216624237802
+        },
+        "motion_diagnostics": {
+          "n": 6052,
+          "threshold": 0.9,
+          "true_motion_rate": 0.5423000660938533,
+          "pred_motion_rate": 0.13896232650363516,
+          "near_threshold_frac_0p05": 0.23678122934567086,
+          "score_quantiles": {
+            "q01": 0.03242350369691849,
+            "q05": 0.0333242192864418,
+            "q25": 0.03857402876019478,
+            "q50": 0.11680784821510315,
+            "q75": 0.8440695405006409,
+            "q95": 0.9298180937767029,
+            "q99": 0.9458419680595398
+          },
+          "threshold_percentile": 0.8610376734963648,
+          "rest_score_mean": 0.12034264206886292,
+          "rest_score_std": 0.1809106171131134,
+          "rest_score_q25": 0.0348646454513073,
+          "rest_score_median": 0.040618136525154114,
+          "rest_score_q75": 0.09484212100505829,
+          "motion_score_mean": 0.5847153067588806,
+          "motion_score_std": 0.3718016743659973,
+          "motion_score_q25": 0.10295082628726959,
+          "motion_score_median": 0.812833845615387,
+          "motion_score_q75": 0.900680422782898,
+          "class_score_gap": 0.4643726646900177,
+          "class_separation_cohen_d": 1.58827367325301,
+          "rest_false_motion_rate": 0.002888086642599278,
+          "motion_false_rest_rate": 0.7461913467397928
+        }
+      },
+      "validation_by_dataset": {
+        "pulse_transit_time_ppg": {
+          "counts": {
+            "windows": 1111
+          },
+          "motion_logit": {
+            "n": 1111,
+            "threshold": 0.9,
+            "positive_rate": 0.6687668766876688,
+            "accuracy": 1.0,
+            "balanced_accuracy": 1.0,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "confusion_matrix": [
+              [
+                368,
+                0
+              ],
+              [
+                0,
+                743
+              ]
+            ],
+            "roc_auc": 1.0,
+            "pr_auc": 1.0
+          },
+          "motion_diagnostics": {
+            "n": 1111,
+            "threshold": 0.9,
+            "true_motion_rate": 0.6687668766876688,
+            "pred_motion_rate": 0.6687668766876688,
+            "near_threshold_frac_0p05": 0.0027002700270027003,
+            "score_quantiles": {
+              "q01": 0.03148327395319939,
+              "q05": 0.032157041132450104,
+              "q25": 0.09018093347549438,
+              "q50": 0.968021035194397,
+              "q75": 0.9705473184585571,
+              "q95": 0.9721157550811768,
+              "q99": 0.972713053226471
+            },
+            "threshold_percentile": 0.33123312331233123,
+            "rest_score_mean": 0.10405789315700531,
+            "rest_score_std": 0.15067923069000244,
+            "rest_score_q25": 0.03271428868174553,
+            "rest_score_median": 0.035297125577926636,
+            "rest_score_q75": 0.08143304288387299,
+            "motion_score_mean": 0.9690649509429932,
+            "motion_score_std": 0.0030143670737743378,
+            "motion_score_q25": 0.9679778218269348,
+            "motion_score_median": 0.9698310494422913,
+            "motion_score_q75": 0.9711898565292358,
+            "class_score_gap": 0.8650070428848267,
+            "class_separation_cohen_d": 8.11662015750761,
+            "rest_false_motion_rate": 0.0,
+            "motion_false_rest_rate": 0.0
+          }
+        }
+      },
+      "holdout_by_dataset": {
+        "pulse_transit_time_ppg": {
+          "counts": {
+            "windows": 1828
+          },
+          "motion_logit": {
+            "n": 1828,
+            "threshold": 0.9,
+            "positive_rate": 0.6668490153172867,
+            "accuracy": 1.0,
+            "balanced_accuracy": 1.0,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "confusion_matrix": [
+              [
+                609,
+                0
+              ],
+              [
+                0,
+                1219
+              ]
+            ],
+            "roc_auc": 1.0,
+            "pr_auc": 1.0
+          },
+          "motion_diagnostics": {
+            "n": 1828,
+            "threshold": 0.9,
+            "true_motion_rate": 0.6668490153172867,
+            "pred_motion_rate": 0.6668490153172867,
+            "near_threshold_frac_0p05": 0.006017505470459519,
+            "score_quantiles": {
+              "q01": 0.0316958986222744,
+              "q05": 0.032306648790836334,
+              "q25": 0.035399165004491806,
+              "q50": 0.9687908887863159,
+              "q75": 0.9710152745246887,
+              "q95": 0.9722930788993835,
+              "q99": 0.9728912115097046
+            },
+            "threshold_percentile": 0.33315098468271337,
+            "rest_score_mean": 0.035253558307886124,
+            "rest_score_std": 0.007534616626799107,
+            "rest_score_q25": 0.03260646015405655,
+            "rest_score_median": 0.03362994268536568,
+            "rest_score_q75": 0.035386309027671814,
+            "motion_score_mean": 0.9693332314491272,
+            "motion_score_std": 0.003978724591434002,
+            "motion_score_q25": 0.9687908887863159,
+            "motion_score_median": 0.9704588055610657,
+            "motion_score_q75": 0.9714665412902832,
+            "class_score_gap": 0.934079647064209,
+            "class_separation_cohen_d": 152.94224865989463,
+            "rest_false_motion_rate": 0.0,
+            "motion_false_rest_rate": 0.0
+          }
+        }
+      },
+      "extra_holdout_by_dataset": {
+        "simultaneous_measurements": {
+          "counts": {
+            "windows": 6052
+          },
+          "motion_logit": {
+            "n": 6052,
+            "threshold": 0.9,
+            "positive_rate": 0.5423000660938533,
+            "accuracy": 0.5940185062789161,
+            "balanced_accuracy": 0.6254602833088039,
+            "precision": 0.990487514863258,
+            "recall": 0.2538086532602072,
+            "f1": 0.40407470288624786,
+            "confusion_matrix": [
+              [
+                2762,
+                8
+              ],
+              [
+                2449,
+                833
+              ]
+            ],
+            "roc_auc": 0.8510702178164675,
+            "pr_auc": 0.8929216624237802
+          },
+          "motion_diagnostics": {
+            "n": 6052,
+            "threshold": 0.9,
+            "true_motion_rate": 0.5423000660938533,
+            "pred_motion_rate": 0.13896232650363516,
+            "near_threshold_frac_0p05": 0.23678122934567086,
+            "score_quantiles": {
+              "q01": 0.03242350369691849,
+              "q05": 0.0333242192864418,
+              "q25": 0.03857402876019478,
+              "q50": 0.11680784821510315,
+              "q75": 0.8440695405006409,
+              "q95": 0.9298180937767029,
+              "q99": 0.9458419680595398
+            },
+            "threshold_percentile": 0.8610376734963648,
+            "rest_score_mean": 0.12034264206886292,
+            "rest_score_std": 0.1809106171131134,
+            "rest_score_q25": 0.0348646454513073,
+            "rest_score_median": 0.040618136525154114,
+            "rest_score_q75": 0.09484212100505829,
+            "motion_score_mean": 0.5847153067588806,
+            "motion_score_std": 0.3718016743659973,
+            "motion_score_q25": 0.10295082628726959,
+            "motion_score_median": 0.812833845615387,
+            "motion_score_q75": 0.900680422782898,
+            "class_score_gap": 0.4643726646900177,
+            "class_separation_cohen_d": 1.58827367325301,
+            "rest_false_motion_rate": 0.002888086642599278,
+            "motion_false_rest_rate": 0.7461913467397928
+          }
+        }
+      }
+    }
+  }
+}

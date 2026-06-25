@@ -1,0 +1,197 @@
+{
+  "results_root": ".CNN_results",
+  "run_name": "20260427-01_smoke_detector_ab",
+  "cv_folds": 2,
+  "final_train_epochs": 1,
+  "target_fs": 64.0,
+  "win_sec": 4.0,
+  "hop_sec": 4.0,
+  "batch_size": 32,
+  "lr": 0.001,
+  "seed": 42,
+  "base_channels": 32,
+  "norm_type": "instance",
+  "ibi_min_sec": 0.3,
+  "ibi_max_sec": 2.0,
+  "ibi_huber_delta": 0.08,
+  "lam_peak": 1.0,
+  "lam_beat": 0.1,
+  "lam_ibi": 0.35,
+  "lam_gate": 0.25,
+  "lam_domain": 0.0,
+  "worst_domain_weight": 0.25,
+  "domain_adversarial_lambda": 1.0,
+  "balanced_sampling": true,
+  "augmentation_enabled": true,
+  "augmentation": {
+    "enabled": true,
+    "amplitude_min": 0.7,
+    "amplitude_max": 1.3,
+    "noise_std": 0.025,
+    "drift_std": 0.05,
+    "dropout_prob": 0.15,
+    "dropout_max_frac": 0.08,
+    "respiration_mod_prob": 0.35,
+    "respiration_mod_depth": 0.12,
+    "motion_burst_prob": 0.25,
+    "motion_burst_std": 0.18,
+    "motion_burst_max_frac": 0.2,
+    "clip_prob": 0.12,
+    "clip_quantile": 0.96,
+    "lowpass_prob": 0.2,
+    "lowpass_min_hz": 3.5,
+    "lowpass_max_hz": 8.0,
+    "polarity_flip_prob": 0.05,
+    "time_warp_prob": 0.15,
+    "time_warp_max_frac": 0.04,
+    "target_jitter_sec": 0.02
+  },
+  "group_scorecards": true,
+  "delay_analysis": true,
+  "lodo_validation": false,
+  "lodo_max_datasets": 0,
+  "detector_benchmark": true,
+  "detector_epochs": 1,
+  "detector_patience": 3,
+  "detector_batch_size": 32,
+  "detector_lr": 0.001,
+  "detector_base_channels": 24,
+  "detector_cfg": {
+    "in_channels": 10,
+    "base_channels": 24,
+    "fs": 64.0,
+    "win_sec": 4.0,
+    "hop_sec": 4.0
+  },
+  "detector_benchmark_status": "completed",
+  "mimic_subsets": [
+    "mimic_perform_train_all_csv",
+    "mimic_perform_test_all_csv"
+  ],
+  "mimic_max_records": 1,
+  "include_mimic_special_extra_holdout": true,
+  "mimic_extra_holdout_subsets": [
+    "mimic_perform_af_csv",
+    "mimic_perform_non_af_csv"
+  ],
+  "mimic_extra_holdout_mat_files": [
+    "MIMIC_PERform_1_min_noisy.mat",
+    "MIMIC_PERform_1_min_neonate.mat"
+  ],
+  "mimic_extra_holdout_max_records": 1,
+  "enable_vitaldb": false,
+  "vitaldb_max_cases": 20,
+  "vitaldb_maxlen_sec": 600.0,
+  "ecg_detector_preflight": false,
+  "ecg_preflight_min_peak_f1": 0.95,
+  "ecg_preflight_min_ibi_accuracy": 0.95,
+  "ecg_preflight_tolerance_sec": 0.004,
+  "ecg_preflight_result": null,
+  "gate_input_audit": {
+    "model_input_channels": 1,
+    "model_input_names": [
+      "ppg"
+    ],
+    "gate_head_input": "shared PPG encoder mid-level features",
+    "uses_imu_in_gate_head": false,
+    "uses_imu_in_peak_or_ibi_heads": false,
+    "important_note": "This script trains a PPG-only gate. It should not be interpreted as the IMU-based static/dynamic detector.",
+    "raw_imu_availability": {
+      "pulse_transit_time_ppg": {
+        "raw_imu_columns_available": true,
+        "imu_like_columns": [
+          "a_x",
+          "a_y",
+          "a_z",
+          "g_x",
+          "g_y",
+          "g_z"
+        ],
+        "in_loaded_model_record": false,
+        "unit_status": "PTT a_x/a_y/a_z appear near m/s^2 scale; raw gravity component is present unless removed upstream",
+        "gravity_removal_status": "not standardized in this PPG-only training script"
+      },
+      "simultaneous_measurements": {
+        "raw_imu_columns_available": true,
+        "imu_like_columns": [
+          "FAROS/Accelerometer_X",
+          "FAROS/Accelerometer_Y",
+          "FAROS/Accelerometer_Z",
+          "HEXOSKIN/acceleration_X",
+          "HEXOSKIN/acceleration_Y",
+          "HEXOSKIN/acceleration_Z"
+        ],
+        "in_loaded_model_record": false,
+        "unit_status": "likely g for HEXOSKIN acceleration channels",
+        "gravity_removal_status": "not standardized in this PPG-only training script"
+      },
+      "iamwell": {
+        "raw_imu_columns_available": false,
+        "imu_like_columns": [],
+        "in_loaded_model_record": false,
+        "unit_status": "not_available",
+        "gravity_removal_status": "not_applicable"
+      },
+      "mimic_perform": {
+        "raw_imu_columns_available": false,
+        "imu_like_columns": [],
+        "in_loaded_model_record": false,
+        "unit_status": "not_available",
+        "gravity_removal_status": "not_applicable"
+      },
+      "vitaldb_open": {
+        "raw_imu_columns_available": false,
+        "imu_like_columns": [],
+        "in_loaded_model_record": false,
+        "unit_status": "not_available",
+        "gravity_removal_status": "not_applicable"
+      }
+    },
+    "split_input_audit": {
+      "train": {
+        "records": 64,
+        "datasets": [
+          "iamwell",
+          "mimic_perform",
+          "pulse_transit_time_ppg"
+        ],
+        "gate_label_sources": [
+          "explicit_activity",
+          "unlabeled"
+        ],
+        "records_with_loaded_imu_key": 0
+      },
+      "holdout": {
+        "records": 18,
+        "datasets": [
+          "iamwell",
+          "pulse_transit_time_ppg"
+        ],
+        "gate_label_sources": [
+          "explicit_activity",
+          "unlabeled"
+        ],
+        "records_with_loaded_imu_key": 0
+      },
+      "extra_holdout": {
+        "records": 14,
+        "datasets": [
+          "mimic_perform",
+          "simultaneous_measurements"
+        ],
+        "gate_label_sources": [
+          "aux_annotations",
+          "unlabeled"
+        ],
+        "records_with_loaded_imu_key": 0
+      }
+    }
+  },
+  "ppg_main_event_tolerance_sec": 0.02,
+  "ppg_layered_event_tolerance_secs": [
+    0.01,
+    0.02,
+    0.03,
+    0.04
+  ]
+}

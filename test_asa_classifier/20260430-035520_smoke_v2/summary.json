@@ -1,0 +1,716 @@
+{
+  "config": {
+    "args": {
+      "data_root": "physionet.org/files",
+      "results_root": "test_asa_classifier",
+      "run_name": "smoke_v2",
+      "target_fs": 64.0,
+      "maxlen_sec": 300.0,
+      "win_sec": 30.0,
+      "hop_sec": 15.0,
+      "base_channels": 32,
+      "fusion_dim": 128,
+      "batch_size": 4,
+      "epochs": 2,
+      "patience": 1,
+      "lr": 0.001,
+      "cv_folds": 5,
+      "seed": 42,
+      "num_workers": 0,
+      "augment": true,
+      "max_cases_per_class": 8,
+      "cache_dir": "",
+      "device": "cpu",
+      "ecg_preflight": false,
+      "ecg_preflight_tolerance_sec": 0.01,
+      "ecg_preflight_min_f1": 0.95,
+      "inspect_only": false
+    },
+    "cfg": {
+      "target_fs": 64.0,
+      "maxlen_sec": 300.0,
+      "win_sec": 30.0,
+      "hop_sec": 15.0,
+      "base_channels": 32,
+      "fusion_dim": 128,
+      "batch_size": 4,
+      "epochs": 2,
+      "patience": 1,
+      "lr": 0.001,
+      "cv_folds": 5,
+      "seed": 42,
+      "num_workers": 0,
+      "augment": true
+    }
+  },
+  "dataset": {
+    "total_cases_after_signal_loading": 24,
+    "train_cases": 19,
+    "test_cases": 5,
+    "train_subjects": 19,
+    "test_subjects": 5,
+    "distributions": {
+      "all": [
+        {
+          "asa": 1,
+          "case_count": 8,
+          "subjectid_count": 8,
+          "case_percent": 33.33,
+          "subject_percent": 33.33
+        },
+        {
+          "asa": 2,
+          "case_count": 8,
+          "subjectid_count": 8,
+          "case_percent": 33.33,
+          "subject_percent": 33.33
+        },
+        {
+          "asa": 3,
+          "case_count": 8,
+          "subjectid_count": 8,
+          "case_percent": 33.33,
+          "subject_percent": 33.33
+        }
+      ],
+      "train": [
+        {
+          "asa": 1,
+          "case_count": 7,
+          "subjectid_count": 7,
+          "case_percent": 36.84,
+          "subject_percent": 36.84
+        },
+        {
+          "asa": 2,
+          "case_count": 7,
+          "subjectid_count": 7,
+          "case_percent": 36.84,
+          "subject_percent": 36.84
+        },
+        {
+          "asa": 3,
+          "case_count": 5,
+          "subjectid_count": 5,
+          "case_percent": 26.32,
+          "subject_percent": 26.32
+        }
+      ],
+      "test": [
+        {
+          "asa": 1,
+          "case_count": 1,
+          "subjectid_count": 1,
+          "case_percent": 20.0,
+          "subject_percent": 20.0
+        },
+        {
+          "asa": 2,
+          "case_count": 1,
+          "subjectid_count": 1,
+          "case_percent": 20.0,
+          "subject_percent": 20.0
+        },
+        {
+          "asa": 3,
+          "case_count": 3,
+          "subjectid_count": 3,
+          "case_percent": 60.0,
+          "subject_percent": 60.0
+        }
+      ]
+    }
+  },
+  "ecg_preflight": null,
+  "folds": [
+    {
+      "fold": 1,
+      "train_cases": 15,
+      "val_cases": 4,
+      "train_subjects": 15,
+      "val_subjects": 4,
+      "best_epoch": 1,
+      "best_val_macro_f1": 0.38888888888888884,
+      "val_eval": {
+        "loss": 1.0571434497833252,
+        "case": {
+          "n": 4,
+          "accuracy": 0.5,
+          "balanced_accuracy": 0.5,
+          "macro_f1": 0.38888888888888884,
+          "weighted_f1": 0.4583333333333333,
+          "confusion_matrix": [
+            [
+              0,
+              0,
+              1
+            ],
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "classification_report": {
+            "ASA1": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
+              "support": 1.0
+            },
+            "ASA2": {
+              "precision": 1.0,
+              "recall": 0.5,
+              "f1-score": 0.6666666666666666,
+              "support": 2.0
+            },
+            "ASA3": {
+              "precision": 0.3333333333333333,
+              "recall": 1.0,
+              "f1-score": 0.5,
+              "support": 1.0
+            },
+            "accuracy": 0.5,
+            "macro avg": {
+              "precision": 0.4444444444444444,
+              "recall": 0.5,
+              "f1-score": 0.38888888888888884,
+              "support": 4.0
+            },
+            "weighted avg": {
+              "precision": 0.5833333333333334,
+              "recall": 0.5,
+              "f1-score": 0.4583333333333333,
+              "support": 4.0
+            }
+          },
+          "roc_auc_ovr_macro": 0.5555555555555557,
+          "pr_auc_macro": 0.5555555555555555
+        },
+        "caseids": [
+          759,
+          5471,
+          1269,
+          2484
+        ],
+        "case_true": [
+          0,
+          1,
+          1,
+          2
+        ],
+        "case_prob": [
+          [
+            0.2178191989660263,
+            0.3883053958415985,
+            0.3938754200935364
+          ],
+          [
+            0.21169361472129822,
+            0.3921971619129181,
+            0.3961092233657837
+          ],
+          [
+            0.22302116453647614,
+            0.3928292989730835,
+            0.38414958119392395
+          ],
+          [
+            0.22050677239894867,
+            0.38924771547317505,
+            0.3902454972267151
+          ]
+        ]
+      }
+    },
+    {
+      "fold": 2,
+      "train_cases": 15,
+      "val_cases": 4,
+      "train_subjects": 15,
+      "val_subjects": 4,
+      "best_epoch": 1,
+      "best_val_macro_f1": 0.2222222222222222,
+      "val_eval": {
+        "loss": 1.41746985912323,
+        "case": {
+          "n": 4,
+          "accuracy": 0.25,
+          "balanced_accuracy": 0.25,
+          "macro_f1": 0.2222222222222222,
+          "weighted_f1": 0.3333333333333333,
+          "confusion_matrix": [
+            [
+              1,
+              0,
+              1
+            ],
+            [
+              0,
+              0,
+              2
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "classification_report": {
+            "ASA1": {
+              "precision": 1.0,
+              "recall": 0.5,
+              "f1-score": 0.6666666666666666,
+              "support": 2.0
+            },
+            "ASA2": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
+              "support": 2.0
+            },
+            "ASA3": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
+              "support": 0.0
+            },
+            "accuracy": 0.25,
+            "macro avg": {
+              "precision": 0.3333333333333333,
+              "recall": 0.16666666666666666,
+              "f1-score": 0.2222222222222222,
+              "support": 4.0
+            },
+            "weighted avg": {
+              "precision": 0.5,
+              "recall": 0.25,
+              "f1-score": 0.3333333333333333,
+              "support": 4.0
+            }
+          },
+          "roc_auc_ovr_macro": null,
+          "pr_auc_macro": null
+        },
+        "caseids": [
+          3941,
+          5342,
+          4795,
+          5702
+        ],
+        "case_true": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "case_prob": [
+          [
+            0.42331090569496155,
+            0.138102725148201,
+            0.43858635425567627
+          ],
+          [
+            0.43535685539245605,
+            0.14248228073120117,
+            0.42216092348098755
+          ],
+          [
+            0.42917951941490173,
+            0.13760362565517426,
+            0.4332168400287628
+          ],
+          [
+            0.43051567673683167,
+            0.13597773015499115,
+            0.433506578207016
+          ]
+        ]
+      }
+    },
+    {
+      "fold": 3,
+      "train_cases": 15,
+      "val_cases": 4,
+      "train_subjects": 15,
+      "val_subjects": 4,
+      "best_epoch": 2,
+      "best_val_macro_f1": 0.13333333333333333,
+      "val_eval": {
+        "loss": 1.3949390649795532,
+        "case": {
+          "n": 4,
+          "accuracy": 0.25,
+          "balanced_accuracy": 0.25,
+          "macro_f1": 0.13333333333333333,
+          "weighted_f1": 0.2,
+          "confusion_matrix": [
+            [
+              0,
+              0,
+              2
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              1
+            ]
+          ],
+          "classification_report": {
+            "ASA1": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
+              "support": 2.0
+            },
+            "ASA2": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
+              "support": 0.0
+            },
+            "ASA3": {
+              "precision": 0.3333333333333333,
+              "recall": 0.5,
+              "f1-score": 0.4,
+              "support": 2.0
+            },
+            "micro avg": {
+              "precision": 0.25,
+              "recall": 0.25,
+              "f1-score": 0.25,
+              "support": 4.0
+            },
+            "macro avg": {
+              "precision": 0.1111111111111111,
+              "recall": 0.16666666666666666,
+              "f1-score": 0.13333333333333333,
+              "support": 4.0
+            },
+            "weighted avg": {
+              "precision": 0.16666666666666666,
+              "recall": 0.25,
+              "f1-score": 0.2,
+              "support": 4.0
+            }
+          },
+          "roc_auc_ovr_macro": null,
+          "pr_auc_macro": null
+        },
+        "caseids": [
+          907,
+          5651,
+          1831,
+          3136
+        ],
+        "case_true": [
+          0,
+          0,
+          2,
+          2
+        ],
+        "case_prob": [
+          [
+            0.13721716403961182,
+            0.426713228225708,
+            0.43606969714164734
+          ],
+          [
+            0.12352617084980011,
+            0.43419158458709717,
+            0.44228222966194153
+          ],
+          [
+            0.40567314624786377,
+            0.2935473918914795,
+            0.3007795512676239
+          ],
+          [
+            0.12463589757680893,
+            0.4331369400024414,
+            0.4422271251678467
+          ]
+        ]
+      }
+    },
+    {
+      "fold": 4,
+      "train_cases": 16,
+      "val_cases": 3,
+      "train_subjects": 16,
+      "val_subjects": 3,
+      "best_epoch": 1,
+      "best_val_macro_f1": 0.0,
+      "val_eval": {
+        "loss": 1.5952012538909912,
+        "case": {
+          "n": 3,
+          "accuracy": 0.0,
+          "balanced_accuracy": 0.0,
+          "macro_f1": 0.0,
+          "weighted_f1": 0.0,
+          "confusion_matrix": [
+            [
+              0,
+              0,
+              2
+            ],
+            [
+              0,
+              0,
+              1
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "classification_report": {
+            "ASA1": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
+              "support": 2.0
+            },
+            "ASA2": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
+              "support": 1.0
+            },
+            "ASA3": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
+              "support": 0.0
+            },
+            "accuracy": 0.0,
+            "macro avg": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
+              "support": 3.0
+            },
+            "weighted avg": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
+              "support": 3.0
+            }
+          },
+          "roc_auc_ovr_macro": null,
+          "pr_auc_macro": null
+        },
+        "caseids": [
+          5423,
+          2348,
+          1993
+        ],
+        "case_true": [
+          0,
+          0,
+          1
+        ],
+        "case_prob": [
+          [
+            0.20232711732387543,
+            0.21561795473098755,
+            0.5820549130439758
+          ],
+          [
+            0.19758890569210052,
+            0.2165243774652481,
+            0.5858867168426514
+          ],
+          [
+            0.19075310230255127,
+            0.21006019413471222,
+            0.5991867184638977
+          ]
+        ]
+      }
+    },
+    {
+      "fold": 5,
+      "train_cases": 15,
+      "val_cases": 4,
+      "train_subjects": 15,
+      "val_subjects": 4,
+      "best_epoch": 2,
+      "best_val_macro_f1": 0.13333333333333333,
+      "val_eval": {
+        "loss": 1.35036039352417,
+        "case": {
+          "n": 4,
+          "accuracy": 0.25,
+          "balanced_accuracy": 0.25,
+          "macro_f1": 0.13333333333333333,
+          "weighted_f1": 0.2,
+          "confusion_matrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              2,
+              0
+            ]
+          ],
+          "classification_report": {
+            "ASA1": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
+              "support": 0.0
+            },
+            "ASA2": {
+              "precision": 0.3333333333333333,
+              "recall": 0.5,
+              "f1-score": 0.4,
+              "support": 2.0
+            },
+            "ASA3": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
+              "support": 2.0
+            },
+            "accuracy": 0.25,
+            "macro avg": {
+              "precision": 0.1111111111111111,
+              "recall": 0.16666666666666666,
+              "f1-score": 0.13333333333333333,
+              "support": 4.0
+            },
+            "weighted avg": {
+              "precision": 0.16666666666666666,
+              "recall": 0.25,
+              "f1-score": 0.2,
+              "support": 4.0
+            }
+          },
+          "roc_auc_ovr_macro": null,
+          "pr_auc_macro": null
+        },
+        "caseids": [
+          1335,
+          4507,
+          4731,
+          5084
+        ],
+        "case_true": [
+          1,
+          1,
+          2,
+          2
+        ],
+        "case_prob": [
+          [
+            0.413855642080307,
+            0.3647536635398865,
+            0.2213907241821289
+          ],
+          [
+            0.3107767105102539,
+            0.5078652501106262,
+            0.18135808408260345
+          ],
+          [
+            0.3152488172054291,
+            0.5038466453552246,
+            0.1809045374393463
+          ],
+          [
+            0.3301524221897125,
+            0.46789538860321045,
+            0.20195218920707703
+          ]
+        ]
+      }
+    }
+  ],
+  "cv_summary": {
+    "macro_f1_mean": 0.17555555555555552,
+    "macro_f1_std": 0.12812031382577396,
+    "balanced_accuracy_mean": 0.25,
+    "balanced_accuracy_std": 0.15811388300841897
+  },
+  "test_case": {
+    "n": 5,
+    "accuracy": 0.6,
+    "balanced_accuracy": 0.3333333333333333,
+    "macro_f1": 0.25,
+    "weighted_f1": 0.45,
+    "confusion_matrix": [
+      [
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        0,
+        3
+      ]
+    ],
+    "classification_report": {
+      "ASA1": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1-score": 0.0,
+        "support": 1.0
+      },
+      "ASA2": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1-score": 0.0,
+        "support": 1.0
+      },
+      "ASA3": {
+        "precision": 0.6,
+        "recall": 1.0,
+        "f1-score": 0.75,
+        "support": 3.0
+      },
+      "accuracy": 0.6,
+      "macro avg": {
+        "precision": 0.19999999999999998,
+        "recall": 0.3333333333333333,
+        "f1-score": 0.25,
+        "support": 5.0
+      },
+      "weighted avg": {
+        "precision": 0.36,
+        "recall": 0.6,
+        "f1-score": 0.45,
+        "support": 5.0
+      }
+    },
+    "roc_auc_ovr_macro": 0.27777777777777773,
+    "pr_auc_macro": 0.41111111111111115
+  },
+  "sklearn_reference": "https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.StratifiedGroupKFold.html"
+}

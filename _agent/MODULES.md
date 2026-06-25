@@ -1,0 +1,665 @@
+# MODULES
+
+状态：draft  
+来源：用户项目总纲、用户当前进度说明、`_agent/PROJECT_HANDOFF.md`、代码结构检查。  
+最后手动更新时间：2026-06-21  
+用途：记录本项目各核心模块的用途、输入输出、脚本/函数对应关系、历史版本、当前状态、已实现内容、待实现内容、算法思路和改进方向。
+
+## 模块总览
+
+本项目目标是开发并评估一个 Python-based PPG signal processing pipeline，用于从 PPG 信号及 IMU 辅助信息中提取 frailty 相关特征，并完成 `frail / pre-frail / non-frail` 或当前数据定义下的 `Pre-Frail / Robust-Non-Frail / Young` 三分类。核心要求是透明、可复现，并且核心信号处理组件不依赖 opaque third-party toolkits。
+
+当前主线分为：
+
+1. PPG 静态/基础预处理与特征提取。
+2. Aboy++ PPG peak detection、PPI、HRV。
+3. IMU-led motion/static detector。
+4. 动态 PPG heartbeat / IBI / HRV 提取。
+5. frailty3 三分类模型。
+6. overfitting sweep、sweep analysis、strict holdout evaluation。
+7. 已失败但保留历史价值的 dynamic PPG denoiser 路线。
+8. ShapeFormer、ASA 等旁支模型试验。
+
+---
+
+### 1. PPG 预处理与基础特征模块
+
+- 当前最新版本：暂定可用。
+- 相关文件：
+  - `funcs.py`
+  - `ppg.py`
+  - `frailty_3class_classifier.py`
+- 关键函数：
+  - `highpass_filter`
+  - `bandpass_filter`
+  - `notch_filter`
+  - `wavelet_denoise`
+  - `preprocess_ppg_min`
+  - `time_features`
+  - `spectral_features`
+  - `extract_file_features`
+- 模块用途：
+  - 对原始 PPG 信号做基础滤波、去趋势、频域/时域基础特征提取。
+  - 为静态 PPG 波形分析、peak detection、HRV 计算和 frailty classifier 提供基础输入。
+- 输入：
+  - 原始 PPG 通道，主要为 `RED`、`IR`。
+  - 在 frailty3 主线中也会与 IMU 通道共同组成 window。
+- 输出：
+  - 预处理后的 PPG 序列。
+  - 基础时域/频域特征。
+  - 可供 peak detection 或 classifier 使用的 cleaned/minimal-preprocessed signal。
+- 已实现内容：
+  - 高通、带通、notch、wavelet denoise 等基础处理函数。
+  - frailty3 脚本中已有文件级特征提取与窗口构建逻辑。
+- 待实现内容：
+  - 明确每批原始数据的采样率、时间戳、重采样策略，并写入数据规范。
+  - 整理哪些预处理步骤属于 thesis core pipeline，哪些只是 notebook/诊断辅助。
+  - 对 `funcs.py` 与 `ppg.py` 中重复函数做归档或来源说明，避免后续 chat 误用旧入口。
+- 历史版本与更新目的：
+  - `ppg.py` 是较早的交互式/可视化入口，用户已明确指出其过时。
+  - `ppg_analyse4_calib.ipynb` 是当前主分析 notebook，应逐步替代旧 `ppg.py` 的入口作用。
+- 算法思路：
+  - 先用透明基础滤波和最小必要预处理保留 PPG waveform morphology。
+  - 避免 opaque toolkit 直接输出最终特征，以满足 thesis 对透明性和可复现性的要求。
+- 可能改进方向：
+  - 建立统一 preprocessing API。
+  - 为静态段和动态段区分不同处理策略。
+  - 增加每一步处理前后可视化与质量指标。
+- 验证状态：
+  - 暂定可用，但采样率/时间戳处理仍需系统核查。
+- 后续建议：
+  - 将最终采用的预处理流程单独整理成 thesis-ready 文档和代码注释。
+
+---
+
+### 2. Aboy++ Peak Detection、PPI、HRV 模块
+
+- 当前最新版本：可用。
+- 相关文件：
+  - `funcs.py`
+  - `ppg.py`
+  - `frailty_3class_classifier.py`
+- 关键函数：
+  - `aboypp_peak_hr`
+  - `aboypp_peak_hr_windowed`
+  - `calculate_hrv`
+  - `ppi_from_peaks`
+  - `hrv_compare_from_aboy_ir`
+  - `detect_ppg_peaks`
+  - `detect_common_peaks`
+  - `reject_artifacts`
+  - `caculate_clean_peaks`
+  - `ppi_hrv_features`
+- 模块用途：
+  - 从 PPG 中检测 pulse peaks。
+  - 计算 PPI、beat-to-beat intervals、HRV/manual features。
+  - 为静态 PPG 分析和 frailty3 classifier 提供可解释手工特征。
+- 输入：
+  - 预处理后的 PPG，主要为 `IR` 或 `RED/IR`。
+  - 采样率或时间戳信息。
+- 输出：
+  - peak indices。
+  - PPI sequence。
+  - HR/HRV features，例如 SDNN、RMSSD 等候选指标。
+  - 在 frailty3 pipeline 中作为 fold 内标准化后的 tabular extra features。
+- 已实现内容：
+  - Aboy++ peak/HR 计算。
+  - windowed peak/HR 计算。
+  - HRV/manual features 提取。
+  - frailty3 中支持 `extra_input=0/PPI/HRV`。
+- 待实现内容：
+  - 明确哪些 HRV 指标进入最终 thesis evaluation。
+  - 对静态段 HRV 与动态段 HRV 分开评估。
+  - 对 peak detection 在不同 frailty 状态、不同 role、不同运动状态下的失败模式做记录。
+- 历史版本与更新目的：
+  - 早期 peak detection 主要服务于 PPG 分析与可视化。
+  - 后续加入 frailty3 classifier，PPI/HRV 作为额外手工特征参与 MLP fusion。
+- 算法思路：
+  - 使用自定义 peak detection 和 artifact rejection，而不是依赖 opaque third-party toolkit。
+  - PPI/HRV 不作为 raw time-series channel 拼入 `[N,8,T]`，而是作为 fold 内标准化表格特征，经 MLP 与深度特征融合。
+- 可能改进方向：
+  - 加入 ECG reference 或高质量静态段人工标注对 peak detection 做 benchmark。
+  - 增加 HRV 指标层评价，而不仅评价 peak timing。
+  - 比较静态 HRV、动态 HRV、relax-stage heart-rate recovery speed 对 frailty 分类的贡献。
+- 验证状态：
+  - Aboy++ 峰值检测当前可用。
+  - 动态段 peak/HRV 尚未稳定成功。
+- 后续建议：
+  - 将 Aboy++ 算法流程、阈值、artifact rejection 规则整理为 thesis algorithm design 部分。
+
+---
+
+### 3. IMU-led Motion / Static Detection 模块
+
+- 当前最新版本：
+  - 部署端需要微调版：半可用。
+  - 高度泛化机器学习模型复用版：待完成，尚未成功。
+- 相关文件：
+  - `funcs.py`
+  - `ppg.py`
+  - `pttppg_detector_v8_scores_audit_fix9.py`
+  - `ppg_peak_hr_gating_train.py`
+- 关键函数/类：
+  - `imu_preprocess_with_kf`
+  - `classify_motion_from_df`
+  - `v8_detector_predict`
+  - `extract_window_features`
+  - `build_window_table`
+  - `DenoiserEncoderMotionDetector`
+  - `LightCnnMotionDetector`
+  - `run_motion_detector_benchmark`
+- 模块用途：
+  - 根据 IMU 信号或 PPG+IMU 表征判断静止/运动状态。
+  - 为动态段处理、静态段 waveform analysis 和最终 frailty fusion 提供状态信息。
+- 输入：
+  - IMU 6 通道：`AX, AY, AZ, GX, GY, GZ`。
+  - 可选 PPG 信号或 denoiser encoder 特征。
+- 输出：
+  - motion/static labels 或概率。
+  - detector benchmark scorecard。
+  - 可用于后续动态 heartbeat extraction 的 gating/state 信息。
+- 已实现内容：
+  - 基于 IMU 的预处理与 motion classification 函数。
+  - 旧 detector v8 分数审计脚本。
+  - `ppg_peak_hr_gating_train.py` 中已包含 motion detector A/B benchmark：
+    - A：denoiser encoder motion head。
+    - B：lightweight CNN detector。
+- 待实现内容：
+  - 决定最终 motion detector 使用方案。
+  - 基于 extra-holdout、per-dataset、per-subject、per-activity 结果比较 A/B。
+  - 将最终 detector 部署到 `ppg_analyse4_calib.ipynb`。
+- 历史版本与更新目的：
+  - 旧 denoiser/gating 路线虽无法完成可靠动态去噪，但暴露出 gating/static-motion recognition 有价值。
+  - 后续从 denoising 目标转向独立 motion detector 和 dynamic heartbeat extractor。
+- 算法思路：
+  - 不把 IMU 直接当作 artifact teacher。
+  - 将 IMU 作为运动状态、信号质量、动态段分层判断依据。
+  - 通过分层评估确认 detector 是否跨数据集泛化。
+- 可能改进方向：
+  - 使用 lightweight model 做部署端 detector。
+  - 将 detector 输出作为 frailty classifier 的额外状态特征。
+  - 将 detector 与动态 peak/IBI 模型联合或级联。
+- 验证状态：
+  - 半可用。
+  - 需要正式 benchmark 和 extra-holdout 结果后定版。
+- 后续建议：
+  - 当前不要把旧 detector 或 denoiser gating 自动视为最终方案，应先比较并记录 A/B 结果。
+
+---
+
+### 4. Dynamic PPG Denoising 模块，已失败路线
+
+- 当前最新版本：deprecated / experimental，不作为当前主线。
+- 相关文件：
+  - `pttppg_denoiser_hybrid_core.py`
+  - `pttppg_denoiser_hybrid_train.py`
+  - `pttppg_denoiser_hybrid_preview.py`
+  - `pttppg_denoiser_hybrid_ab_compare.py`
+  - `pttppg_denoiser_hybrid_export_onnx.py`
+  - `pttppg_denoiser_onnx_runtime.py`
+  - `pttppg_denoiser_v8_masknet.py`
+  - `pttppg_stage2_denoiser.py`
+  - `pttppg_pipeline_v7_4_noleak_viz_ae.py`
+- 关键函数/类：
+  - `HybridArtifactRefiner`
+  - `CleanPriorAutoencoder`
+  - `MaskNet`
+  - `train_hybrid_model`
+  - `denoise_record`
+  - `denoise_record_onnx`
+  - `eval_denoiser`
+  - `train_one_activity`
+  - `export_bundle_to_onnx`
+  - `load_bundle`
+- 模块用途：
+  - 早期尝试从动态 PPG 中恢复 clean waveform。
+  - 目前主要作为失败路线、诊断工具和 ONNX 部署经验保留。
+- 输入：
+  - Denoiser A：`raw PPG + IMU`。
+  - Denoiser B：`raw PPG + IMU + linear baseline`。
+  - 曾尝试 sit prior、peak prior、clean prior、artifact relation learning。
+- 输出：
+  - 去噪后的 PPG waveform。
+  - denoiser preview plots。
+  - old denoiser ONNX bundle/runtime。
+- 已实现内容：
+  - hybrid denoiser 训练、预览、A/B 对比、ONNX 导出和 ONNX runtime。
+  - 输出目录包括：
+    - `results_hybrid_denoiser_raw_imu/`
+    - `results_hybrid_denoiser_raw_imu_baseline/`
+    - `denoiser_preview_output/`
+- 待实现内容：
+  - 如果继续保留，应归档并明确 deprecated 状态。
+  - 不建议继续作为动态 PPG 去噪主线。
+  - 可作为 frailty classifier 输入做探索性实验，但必须标注高风险。
+- 历史版本与更新目的：
+  - 初始假设 IMU 与 motion artifact 存在线性/非线性关系，可学习 artifact removal。
+  - 用户指出 IMU 与 artifact 的关系不能被预设为 teacher，关系本身才是要学习的目标。
+  - 实验显示动态段泛化失败。
+- 算法思路：
+  - 旧路线试图恢复完整 clean waveform。
+  - 当前结论是：在无真实 motion clean PPG、无可靠部署端 motion peaks、ECG-PPG 存在生理 delay 的条件下，该目标不稳健。
+- 失败原因：
+  - Denoiser A 输出接近复制 raw PPG，动态段无稳定周期恢复。
+  - Denoiser B 出现双倍伪峰、峰谷错位、梯形/非生理形态。
+  - static/sit 段看似很好，可能只是 identity mapping 或 gating 抑制修正，不能证明动态去噪有效。
+  - motion artifact、motion clean PPG 和 IMU-artifact 数学关系都缺少可靠监督。
+- 保留下来的价值：
+  - gating/static-motion behavior 可能有价值。
+  - ONNX/CPU-only 部署经验可迁移到新 detector 或 peak/IBI 模型。
+- 可能改进方向：
+  - 不再追求 full clean waveform reconstruction。
+  - 转向 direct peak/IBI extraction 或信号质量分层。
+- 验证状态：
+  - 动态去噪路线失败。
+  - 无 clean 对照数据时难以评价准确率。
+- 后续建议：
+  - 在文档中明确 deprecated，避免后续 chat 误认为这是当前主线。
+
+---
+
+### 5. Dynamic Heartbeat / Peak / IBI / HRV Extraction 模块
+
+- 当前最新版本：待完成，尚未成功定版。
+- 相关文件：
+  - `ppg_peak_hr_gating_train.py`
+- 关键函数/类：
+  - `WindowConfig`
+  - `LossConfig`
+  - `ModelConfig`
+  - `AugmentConfig`
+  - `DetectorConfig`
+  - `MultiDatasetPeakWindowDataset`
+  - `PeakIntervalGateNet`
+  - `PeakIntervalGateOnnxWrapper`
+  - `detect_ecg_rpeaks`
+  - `detect_ppg_pulse_peaks`
+  - `build_peak_target`
+  - `build_rr_track`
+  - `fit_model_with_validation`
+  - `compute_event_metrics`
+  - `analyze_ppg_ecg_delay`
+  - `run_cross_validation`
+  - `run_leave_one_dataset_out`
+  - `export_deploy_bundle`
+  - `write_scorecard_markdown`
+- 模块用途：
+  - 从动态 PPG 中直接提取可靠 heartbeats、IBI、HR/HRV。
+  - 替代失败的 dynamic denoising 路线。
+  - 为最终 frailty classifier 提供动态生理参数。
+- 输入：
+  - 动态 PPG 原信号。
+  - 同步 ECG reference 用于监督。
+  - 可选 IMU/motion state。
+  - 多数据集来源：PTT、MIMIC、iAMwell、simultaneous、VitalDB 等。
+- 输出：
+  - peak sequence。
+  - HR interval / IBI sequence。
+  - gate logits。
+  - per-dataset/per-subject/per-activity scorecard。
+  - cross-validation、holdout、extra-holdout、LODO 结果。
+  - 可部署 bundle / ONNX runtime 方向。
+- 已实现内容：
+  - ECG detector preflight。
+  - beat-level peak supervision。
+  - IBI Huber loss 与生理范围约束。
+  - dataset/activity-balanced training。
+  - domain-aware augmentation。
+  - instance norm / adversarial domain generalization。
+  - delay analysis。
+  - LODO。
+  - GroupDRO / worst-domain 思路。
+  - motion detector A/B benchmark。
+  - PPG 主指标改为 ±20 ms，并分层报告 ±10/20/30/40 ms。
+- 待实现内容：
+  - 跑正式全量训练，不只 smoke。
+  - 系统读取 scorecard。
+  - 决定最终部署模型是 peak/IBI 主模型、IMU motion detector，还是二者组合。
+  - 输出 ONNX/CPU-only 部署模块。
+  - 与 `ppg_analyse4_calib.ipynb` 集成。
+  - 进一步做 ECG detector 与 PPG delay 校准。
+  - 做 HRV 指标层评估。
+- 历史版本与更新目的：
+  - 从“恢复 clean waveform”转向“直接提取 reliable beat timing / IBI”。
+  - 原因是 frailty pipeline 真正需要的是 HR/HRV 等中间参数，而不是视觉上 clean 的动态 PPG。
+- 算法思路：
+  - 使用 ECG reference 监督 peak timing。
+  - 不假设 motion clean PPG 可恢复。
+  - 重点评价 beat timing、IBI continuity、漏检/误检，而不是 waveform reconstruction。
+- 可能改进方向：
+  - 加强 PPG-ECG delay 建模。
+  - 针对 AF/noisy/neonate 等困难子集做分层失败分析。
+  - 将输出 HRV 特征接入 frailty3 pipeline。
+- 验证状态：
+  - 代码结构已实现较多。
+  - 正式训练和稳定评估尚未完成。
+- 后续建议：
+  - 这是动态段当前最重要路线，应优先推进。
+
+---
+
+### 6. Frailty3 三分类主模型模块
+
+- 当前最新版本：主线进行中，当前最好约 63%，目标/及格线为 73% 以上，尚未成功。
+- 相关文件：
+  - `frailty_3class_classifier.py`
+  - `frailty_3class_cnn_fusion.py`
+  - `shapeformer_port.py`
+- 关键函数/类：
+  - `RunConfig`
+  - `build_manifest`
+  - `build_cnn_window_table`
+  - `InceptionTimeClassifier`
+  - `FeatureFusionClassifier`
+  - `train_cnn_model`
+  - `evaluate_cnn`
+  - `train_shapeformer_model`
+  - `PortedShapeFormer`
+  - `ShapeBlock`
+  - `discover_shapelets`
+  - `discover_shapelets_pisd`
+- 当前主线：
+  - `results_frailty3` 下的三分类 frailty-status pipeline。
+  - 使用 RED/IR 双通道 PPG + IMU 6 维信号区分 `Pre-Frail`、`Robust/Non-Frail`、`Young`。
+- 数据来源：
+  - `PPG_Testing_05_01_2026/StudyData_frailtyScored/StudyData_V7_standard.csv`
+  - `PPG_Testing_05_01_2026/StudyData`
+  - `PPG_Testing_05_01_2026/TestDataYoungers`
+- 标签定义：
+  - `FRAILTY-STATUS=2` -> `Pre-Frail`
+  - `FRAILTY-STATUS=3` -> `Robust/Non-Frail`
+  - `TestDataYoungers` -> `Young`
+- 文件纳入规则：
+  - `STE072` 已纠正，可以纳入。
+  - 当前只采用 role/suffix 为 `B,R1,R2,R3,R4` 的文件。
+- 输入：
+  - raw window 8 通道：
+    - `RED`
+    - `IR`
+    - `AX`
+    - `AY`
+    - `AZ`
+    - `GX`
+    - `GY`
+    - `GZ`
+  - 深度模型输入张量形状：`[N, 8, T]`
+  - 可选额外特征：`PPI`、`HRV`
+- 输出：
+  - subject-level、file-level、window-level metrics。
+  - confusion matrix。
+  - learning curves。
+  - per-run CSV/report。
+  - model artifacts。
+- 已实现内容：
+  - 数据读取与 label mapping。
+  - role filter：`B,R1,R2,R3,R4`。
+  - `STE072` 纳入。
+  - PPG peak detection、PPI、HRV/manual features。
+  - 1D-CNN。
+  - InceptionTime。
+  - ShapeFormer core port。
+  - ShapeFormer-PISD wrapper。
+  - PPI/HRV feature fusion。
+  - subject-level `StratifiedGroupKFold`。
+  - learning curve plot。
+  - auto sweep。
+  - incremental CSV/report。
+- 待实现内容：
+  - 继续 InceptionTime anti-overfitting grid search。
+  - 诊断 Pre-Frail vs Robust/Non-Frail 混淆。
+  - 尝试不同输入组合：
+    - dynamic raw signal。
+    - dynamic coarse-denoised signal，高风险，仅探索。
+    - dynamic HR/HRV。
+    - static HR/HRV。
+    - relax-stage HR recovery speed。
+  - 最终选定 config 后重新训练部署模型。
+  - 保存 scaler、label map、window 参数、feature schema。
+- 历史版本与更新目的：
+  - 从单一 CNN 分类脚本扩展为统一训练和 sweep 框架。
+  - `frailty_3class_cnn_fusion.py` 是早期 raw window + handcrafted feature fusion 旁支，新主脚本已吸收其 `extra_input=PPI/HRV` 思路。
+  - ShapeFormer 被保留为接口和实验记录，但当前不作为主要优化方向。
+- 算法思路：
+  - 使用 subject-level split，避免同一 subject windows 同时出现在 train/validation。
+  - 用 config-level mean/std/CI 判断模型，不按单次最好 repeat 选择。
+  - 当前不把 runtime/cost/Pareto efficiency 作为 leaderboard 排名依据。
+- 可能改进方向：
+  - cost-sensitive objective。
+  - per-class threshold。
+  - subject-level calibration。
+  - 更稳定的 final training/export pipeline。
+  - 增加动态 heartbeat features 后重新评估。
+- 验证状态：
+  - 当前 best holdout/sweep 仍低于目标。
+  - 主要瓶颈是 `Pre-Frail` 与 `Robust/Non-Frail` 混淆，而不是 Young。
+- 后续建议：
+  - 当前最可信候选仍是 InceptionTime raw 5s / 50% overlap / patience20 附近配置，但需要继续 overfitting sweep 和 strict holdout 验证。
+
+---
+
+### 7. Sweep Analysis 与 Strict Holdout Evaluation 模块
+
+- 当前最新版本：可用，但需要继续维护默认参数和实验协议。
+- 相关文件：
+  - `analyze_sweep.py`
+  - `frailty_3class_holdout_eval.py`
+  - `frailty_3class_overfitting_sweep.py`
+- 关键函数/逻辑：
+  - `aggregate_config_summary`
+  - `build_leaderboard`
+  - `train_eval_holdout_once`
+  - `stage1_grid`
+  - `stage2_grid`
+  - `train_eval_groupkfold_once`
+- 模块用途：
+  - 对 frailty3 sweep 结果进行 config-level 汇总。
+  - 选择 top configs。
+  - 做 strict holdout 复核。
+  - 做 overfitting/regularization sweep。
+- 输入：
+  - `results_frailty3/` 下的 sweep run outputs。
+  - `results_frailty3/_sweep_analyse/`
+  - `results_frailty3/_holdout_eval/`
+  - `results_frailty3/_overfitting_sweep/`
+- 输出：
+  - `clean_runs.csv`
+  - `config_summary.csv`
+  - `leaderboard_top_configs.csv`
+  - `incomplete_configs.csv`
+  - `class_level_summary.csv`
+  - `top_config_confusion_matrices_long.csv`
+  - `analysis_report.md`
+  - holdout summary/report/plots。
+  - overfitting sweep summary。
+- 已实现内容：
+  - `analyze_sweep.py` 当前分析 360 runs、72 config groups 的 CNN/InceptionTime sweep。
+  - strict holdout 支持 train/inner-val/test 三分法。
+  - overfitting sweep 已支持 no-early-stopping fixed final epoch、5-fold StratifiedGroupKFold、stage1/stage2。
+- 关键实验结果：
+  - sweep analysis 目录：
+    - `results_frailty3/_sweep_analyse/20260601_0941_cnn_inceptiontime`
+  - 360 runs、72 config groups，complete。
+  - Top 10 主要为 InceptionTime/raw/5s。
+  - sweep rank 1：
+    - InceptionTime raw，5s window，30% overlap，patience 20。
+  - sweep rank 2：
+    - InceptionTime raw，5s window，50% overlap，patience 20。
+  - sweep rank 7：
+    - CNN raw，5s window，50% overlap，patience 20。
+  - strict holdout 目录：
+    - `results_frailty3/_holdout_eval/20260607_0935_rank1-2-7_holdout`
+  - rank 1：
+    - test balanced accuracy mean 约 0.600。
+    - macro F1 约 0.547。
+    - worst-class F1 约 0.133。
+  - rank 2：
+    - test balanced accuracy mean 约 0.600。
+    - macro F1 约 0.580。
+    - worst-class F1 约 0.380。
+    - 当前更推荐，因为更平衡。
+  - rank 7：
+    - test balanced accuracy mean 约 0.567。
+    - macro F1 约 0.513。
+    - worst-class F1 约 0.180。
+- overfitting sweep 最新状态：
+  - 脚本：`frailty_3class_overfitting_sweep.py`
+  - 输出根目录：`results_frailty3/_overfitting_sweep`
+  - 最新 stage1 目录：
+    - `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2`
+  - 完整性：
+    - 185 configs × 5 repeats + reference × 5 = 930 runs。
+  - reference：
+    - `ref_rank2_fixed_epoch`
+    - rank2 原始参数，关闭 early stopping。
+    - `cnn_patience=0`
+    - `cnn_select_best_epoch=False`
+  - stage1 epoch grid：
+    - `5,8,10,12,15`
+  - Top configs：
+    - `s1_085`：dropout=0, epoch=10, BA 约 0.623, macro F1 约 0.626, worst-class F1 约 0.526。
+    - `s1_091`：dropout=0.7, epoch=10, BA 约 0.621, macro F1 约 0.622, worst-class F1 约 0.530。
+    - `s1_105`：wd=0.005, dropout=0.5, label_smoothing=0.2, epoch=10, BA 约 0.616, macro F1 约 0.625, worst-class F1 约 0.541。
+    - `s1_163`：dropout=0.5, epoch=15, BA 约 0.612, std 约 0.031, worst-class F1 约 0.557。
+- 待实现内容：
+  - stage2 不应只用自动 Top2，建议纳入 Top4：`s1_085`, `s1_091`, `s1_105`, `s1_163`。
+  - 增加 shorter-epoch baseline reference，以区分 epoch effect 与 regularization effect。
+  - 后续分析同时看 mean BA、macro F1、worst-class F1、CI low、std、Pre-Frail vs Robust confusion。
+- 算法思路：
+  - config-level 聚合，避免单 run 偶然性。
+  - strict holdout 中 test 不参与 early stopping。
+  - final deployment model 不从 5 个 CV fold 里挑最高分，而是在选定 config 后重新训练。
+- 验证状态：
+  - sweep / holdout / overfitting stage1 均已有 confirmed 输出。
+  - 仍需 stage2 和最终定版训练。
+- 后续建议：
+  - 在进入最终模型之前，先锁定评估协议和默认 CLI 参数。
+
+---
+
+### 8. ShapeFormer 模块
+
+- 当前最新版本：port 已实现，但不是当前主优先级。
+- 相关文件：
+  - `shapeformer_port.py`
+  - `frailty_3class_classifier.py`
+- 关键函数/类：
+  - `ShapeletBundle`
+  - `ShapeFormerAttention`
+  - `LearnablePositionalEncoding`
+  - `ShapeBlock`
+  - `PortedShapeFormer`
+  - `discover_shapelets`
+  - `discover_shapelets_pisd`
+  - `train_shapeformer_model`
+- 模块用途：
+  - 将 ShapeFormer/ShapeFormer-PISD 思路接入 frailty3 time-series classifier。
+- 输入：
+  - frailty3 raw windows。
+  - 可选 PPI/HRV fusion features。
+- 输出：
+  - ShapeFormer model predictions。
+  - 与 CNN/InceptionTime 可比的 CV/sweep 指标。
+- 已实现内容：
+  - 核心结构移植。
+  - PISD discovery wrapper。
+  - `forward_features()` 与 feature fusion 对接。
+- 待实现内容：
+  - 如果继续，应做小范围 ablation，不应放入超大 sweep。
+  - 需要明确其 ranking metric 是否与 CNN/InceptionTime 完全一致。
+- 历史版本与更新目的：
+  - 用户关注 ShapeFormer 移植完整性和结果不提升原因。
+  - 当前结论是原版不能无改动套用，需要适配数据接口、input dimension、device/batch、shapelet discovery、output head。
+- 算法思路：
+  - `shapeformer` 使用较快的 effect-size discovery。
+  - `shapeformer_pisd` 使用原版 PISD discovery wrapper，但运行成本高。
+- 可能改进方向：
+  - 仅在 InceptionTime/CNN 达到稳定基线后，再用小规模实验验证 ShapeFormer 是否有必要。
+- 验证状态：
+  - 已实现，但提升不明确。
+- 后续建议：
+  - 保留接口和记录，不作为当前提分主路径。
+
+---
+
+### 9. ASA 旁支实验模块
+
+- 当前最新版本：旁支实验，不纳入 frailty pipeline 主线。
+- 相关文件：
+  - `asa_classifier.py`
+  - `test_asa_classifier/`
+  - `test_asa_classifier/_vitaldb_signal_cache/`
+- 关键函数/类：
+  - `AsaConfig`
+  - `PpgRawBranch`
+  - `PpgSpecBranch`
+  - `RrSeqBranch`
+  - `HrvBranch`
+  - `PpgFeatureBranch`
+  - `MultiBranchAsaModel`
+  - `train_fold`
+- 模块用途：
+  - VitalDB ASA 1/2/3 三分类实验。
+  - 仅作为模型试验/方法验证。
+- 输入：
+  - VitalDB 中同时包含 ASA、PLETH、ECG_II 的数据。
+  - 删除 ASA 4/6/NaN。
+  - 支持 PPG-only、ECG-only、ECG-peaks-only 输入。
+- 输出：
+  - ASA classifier scorecard、summary、模型、图表、预测 CSV。
+- 已实现内容：
+  - subject-level split。
+  - StratifiedGroupKFold。
+  - class weighting。
+  - fold 内 normalization 防泄漏。
+- 待实现内容：
+  - 无需纳入 frailty 主线。
+  - 如果保留，应明确标注为 side experiment。
+- 历史版本与更新目的：
+  - 用于验证 PPG/ECG/peaks 在 ASA 分类中的可分类性。
+- 算法思路：
+  - 多分支模型融合 raw/spec/RR/HRV/features。
+- 可能改进方向：
+  - 仅作为方法参考，不迁移结论到 frailty。
+- 验证状态：
+  - 非主线。
+- 后续建议：
+  - 防止后续 chat 把 ASA 当作 frailty 结果。
+
+---
+
+### 10. 当前主分析 Notebook 与旧入口关系
+
+- 当前最新版本：
+  - `ppg_analyse4_calib.ipynb` 是当前主分析 notebook。
+  - `ppg.py` 已过时。
+- 相关文件：
+  - `ppg_analyse4_calib.ipynb`
+  - `ppg.py`
+  - `funcs.py`
+- 模块用途：
+  - 主 notebook 应作为最终整合入口，连接预处理、motion detector、dynamic heartbeat extractor、静态 waveform analysis 和 frailty features。
+- 输入：
+  - 项目 PPG/IMU 数据。
+  - detector / peak-IBI 模型输出。
+- 输出：
+  - 分析图、校准结果、pipeline 中间结果。
+- 已实现内容：
+  - 旧阶段曾整合 denoiser 复用、compare plot、ONNX runtime 方向。
+- 待实现内容：
+  - 将旧 denoiser 路线替换为 motion detector + dynamic heartbeat extractor。
+  - 整合 `ppg_peak_hr_gating_train.py` 的输出。
+  - 明确 notebook 与脚本模块之间的职责边界。
+- 历史版本与更新目的：
+  - `ppg.py` 曾是旧入口，但用户已明确其过时。
+  - `ppg_analyse4_calib.ipynb` 应作为当前主分析 notebook。
+- 算法思路：
+  - notebook 负责集成、校准、可视化和人工检查。
+  - 可复用逻辑应尽量沉淀回 `.py` 模块，避免 notebook-only 隐性状态。
+- 可能改进方向：
+  - 建立 notebook 到 script 的清晰接口。
+  - 输出固定格式中间结果，便于 frailty classifier 使用。
+- 验证状态：
+  - notebook 主入口地位 confirmed。
+  - 新 detector + peak/IBI 集成未完成。
+- 后续建议：
+  - 优先把动态心搏模块接入 notebook。

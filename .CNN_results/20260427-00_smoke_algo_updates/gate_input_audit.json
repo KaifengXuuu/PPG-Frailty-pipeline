@@ -1,0 +1,93 @@
+{
+  "model_input_channels": 1,
+  "model_input_names": [
+    "ppg"
+  ],
+  "gate_head_input": "shared PPG encoder mid-level features",
+  "uses_imu_in_gate_head": false,
+  "uses_imu_in_peak_or_ibi_heads": false,
+  "important_note": "This script trains a PPG-only gate. It should not be interpreted as the IMU-based static/dynamic detector.",
+  "raw_imu_availability": {
+    "pulse_transit_time_ppg": {
+      "raw_imu_columns_available": false,
+      "imu_like_columns": [],
+      "in_loaded_model_record": false,
+      "unit_status": "not_available",
+      "gravity_removal_status": "not_applicable"
+    },
+    "simultaneous_measurements": {
+      "raw_imu_columns_available": true,
+      "imu_like_columns": [
+        "FAROS/Accelerometer_X",
+        "FAROS/Accelerometer_Y",
+        "FAROS/Accelerometer_Z",
+        "HEXOSKIN/acceleration_X",
+        "HEXOSKIN/acceleration_Y",
+        "HEXOSKIN/acceleration_Z"
+      ],
+      "in_loaded_model_record": false,
+      "unit_status": "likely g for HEXOSKIN acceleration channels",
+      "gravity_removal_status": "not standardized in this PPG-only training script"
+    },
+    "iamwell": {
+      "raw_imu_columns_available": false,
+      "imu_like_columns": [],
+      "in_loaded_model_record": false,
+      "unit_status": "not_available",
+      "gravity_removal_status": "not_applicable"
+    },
+    "mimic_perform": {
+      "raw_imu_columns_available": false,
+      "imu_like_columns": [],
+      "in_loaded_model_record": false,
+      "unit_status": "not_available",
+      "gravity_removal_status": "not_applicable"
+    },
+    "vitaldb_open": {
+      "raw_imu_columns_available": false,
+      "imu_like_columns": [],
+      "in_loaded_model_record": false,
+      "unit_status": "not_available",
+      "gravity_removal_status": "not_applicable"
+    }
+  },
+  "split_input_audit": {
+    "train": {
+      "records": 65,
+      "datasets": [
+        "iamwell",
+        "mimic_perform",
+        "pulse_transit_time_ppg"
+      ],
+      "gate_label_sources": [
+        "explicit_activity",
+        "unlabeled"
+      ],
+      "records_with_loaded_imu_key": 0
+    },
+    "holdout": {
+      "records": 18,
+      "datasets": [
+        "iamwell",
+        "pulse_transit_time_ppg"
+      ],
+      "gate_label_sources": [
+        "explicit_activity",
+        "unlabeled"
+      ],
+      "records_with_loaded_imu_key": 0
+    },
+    "extra_holdout": {
+      "records": 15,
+      "datasets": [
+        "mimic_perform",
+        "simultaneous_measurements"
+      ],
+      "gate_label_sources": [
+        "aux_annotations",
+        "unlabeled"
+      ],
+      "records_with_loaded_imu_key": 0
+    }
+  }
+}
