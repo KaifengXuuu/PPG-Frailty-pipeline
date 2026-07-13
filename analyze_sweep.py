@@ -169,11 +169,19 @@ def resolve_artifact_path(raw_value: object, sweep_dir: Path, fallback_subdir: s
     candidates.append(path)
     if not path.is_absolute():
         candidates.append(Path.cwd() / path)
+    parts = path.parts
+    if len(parts) >= 3 and parts[0] == "results_frailty3" and parts[1] == sweep_dir.name:
+        candidates.append(sweep_dir.joinpath(*parts[2:]))
     candidates.append(sweep_dir / fallback_subdir / path.name)
     candidates.append(sweep_dir / path.name)
     for candidate in candidates:
         if candidate.exists():
             return str(candidate.resolve())
+    fallback_root = sweep_dir / fallback_subdir
+    if fallback_root.exists() and path.name:
+        for candidate in fallback_root.rglob(path.name):
+            if candidate.exists():
+                return str(candidate.resolve())
     return raw_text
 
 
@@ -401,6 +409,17 @@ def prepare_runs(sweep_dir: Path, models: Sequence[str]) -> Tuple[pd.DataFrame, 
             runs[col] = extracted[col]
     runs["config_key"] = runs.apply(make_config_key, axis=1)
     runs["expected_repeats"] = int(expected_repeats)
+    reference_repeats = safe_float(manifest.get("reference_repeats")) if manifest else np.nan
+    if math.isfinite(reference_repeats) and reference_repeats > 0:
+        reference_mask = pd.Series(False, index=runs.index)
+        if "is_reference" in runs.columns:
+            reference_mask = reference_mask | runs["is_reference"].astype(str).str.lower().isin({"true", "1", "yes"})
+        if "overfit_stage" in runs.columns:
+            reference_mask = reference_mask | runs["overfit_stage"].astype(str).str.lower().isin({"reference", "fixed_reference"})
+        if "overfit_config_id" in runs.columns:
+            reference_mask = reference_mask | runs["overfit_config_id"].astype(str).str.startswith("ref_")
+        runs.loc[reference_mask, "source_expected_repeats"] = int(round(reference_repeats))
+        runs.loc[reference_mask, "expected_repeats"] = int(round(reference_repeats))
     return runs, manifest, int(expected_repeats)
 
 

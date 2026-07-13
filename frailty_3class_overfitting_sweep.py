@@ -28,6 +28,8 @@ from frailty_3class_classifier import (
     normalize_loss_type,
     normalize_manual_features,
     normalize_sqi_mode,
+    normalize_window_sampler,
+    normalize_windows_per_subject,
     save_learning_curve_artifacts,
     select_extra_feature_columns,
     sqi_keep_mask,
@@ -66,8 +68,13 @@ OVERFIT_COLUMNS = [
     "manual_features",
     "loss_type",
     "class_weight_mode",
+    "window_sampler",
+    "windows_per_subject_per_epoch",
+    "train_overlap_pct",
     "dynamic_data_mode",
     "stage2_fixed_epoch",
+    "reference_source",
+    "reference_source_config_id",
 ]
 SUMMARY_GROUP_COLUMNS = ["rank"] + CONFIG_COLUMNS + OVERFIT_COLUMNS
 RANK_METRICS = [
@@ -82,10 +89,17 @@ REFERENCE_CONFIG_ID = "ref_rank2_fixed_epoch"
 REFERENCE_REPEATS_DEFAULT = 5
 CV_FOLDS_DEFAULT = 5
 STAGE1_EPOCHS_DEFAULT = "9,10,15"
+GENERALIZATION_EPOCHS_DEFAULT = "10,15"
+GENERALIZATION_WINDOWS_PER_SUBJECT_DEFAULT = "50%,16,32"
+GENERALIZATION_TRAIN_OVERLAPS_DEFAULT = "0,30"
 
 
 def parse_float_list(value: str) -> List[float]:
     return [float(item.strip()) for item in str(value).split(",") if item.strip()]
+
+
+def parse_text_list(value: str) -> List[str]:
+    return [item.strip() for item in str(value).split(",") if item.strip()]
 
 
 def unique_output_dir(root: Path, stage: str, ranks: Sequence[int]) -> Path:
@@ -274,6 +288,79 @@ def stage1_grid(args: argparse.Namespace) -> List[Dict[str, object]]:
     return rows
 
 
+def _token(value: object) -> str:
+    return str(value).replace(".", "p").replace("-", "m").replace("+", "").replace("%", "pct")
+
+
+def generalization_grid(args: argparse.Namespace) -> List[Dict[str, object]]:
+    epochs = parse_int_list(args.generalization_epochs)
+    windows_per_subject_values = [normalize_windows_per_subject(item) for item in parse_text_list(args.generalization_windows_per_subject)]
+    train_overlaps = parse_float_list(args.generalization_train_overlaps)
+    if not epochs:
+        raise ValueError("--generalization-epochs must contain at least one epoch value.")
+    if not windows_per_subject_values:
+        raise ValueError("--generalization-windows-per-subject must contain at least one value.")
+    if not train_overlaps:
+        raise ValueError("--generalization-train-overlaps must contain at least one value.")
+    models = [
+        ("inceptiontime", "inception_time"),
+        ("small_inceptiontime", "small_inception_time"),
+    ]
+    regularizations = [
+        ("wd0.005_do0.5_ls0.2", 5e-3, 0.5, 0.20),
+        ("wd0.01_do0.5_ls0.3", 1e-2, 0.5, 0.30),
+    ]
+    sqi_modes = ["none", "top50_quality"]
+    samplers = ["none", "subject_balanced", "class_subject_balanced"]
+    rows: List[Dict[str, object]] = []
+    for model, resolved_model in models:
+        for epoch in epochs:
+            for reg_name, weight_decay, dropout, label_smoothing in regularizations:
+                for sqi_mode in sqi_modes:
+                    for sampler in samplers:
+                        sampler_windows = ["all"] if sampler == "none" else windows_per_subject_values
+                        for windows_per_subject in sampler_windows:
+                            for train_overlap in train_overlaps:
+                                config_id = f"gen_{len(rows) + 1:03d}"
+                                rows.append(
+                                    {
+                                        "overfit_stage": "generalization",
+                                        "overfit_config_id": config_id,
+                                        "overfit_config_name": (
+                                            f"generalization_{model}_ep{int(epoch)}_{reg_name}_"
+                                            f"sqi{sqi_mode}_sampler{sampler}_wps{_token(windows_per_subject)}_"
+                                            f"trainov{int(round(float(train_overlap))):02d}"
+                                        ),
+                                        "stage1_screen_group": "generalization",
+                                        "stage1_regularization_factor": "generalization_grid",
+                                        "stage1_regularization_value": reg_name,
+                                        "stage2_source_config_id": "",
+                                        "cnn_lr": 1e-3,
+                                        "cnn_weight_decay": float(weight_decay),
+                                        "cnn_dropout": float(dropout),
+                                        "cnn_label_smoothing": float(label_smoothing),
+                                        "sqi_mode": normalize_sqi_mode(sqi_mode),
+                                        "aggregation": "mean_prob",
+                                        "manual_features": "none",
+                                        "loss_type": "weighted_ce",
+                                        "class_weight_mode": "inverse_subject_count",
+                                        "window_sampler": normalize_window_sampler(sampler),
+                                        "windows_per_subject_per_epoch": windows_per_subject,
+                                        "train_overlap_pct": float(train_overlap),
+                                        "dynamic_data_mode": "static_only",
+                                        "stage2_fixed_epoch": 0,
+                                        "cnn_epochs": int(epoch),
+                                        "cnn_patience": 0,
+                                        "max_windows_fraction": 0.9,
+                                        "rank_model": model,
+                                        "rank_resolved_model": resolved_model,
+                                        "reference_source": "",
+                                        "reference_source_config_id": "",
+                                    }
+                                )
+    return rows
+
+
 def normalize_dynamic_data_mode(value: str) -> str:
     text = str(value).strip().lower().replace("-", "_")
     aliases = {
@@ -392,6 +479,8 @@ def build_grid(args: argparse.Namespace) -> List[Dict[str, object]]:
         grids.extend(stage1_grid(args))
     if args.stage in {"stage2", "both"}:
         grids.extend(stage2_grid(args))
+    if args.stage == "generalization":
+        grids.extend(generalization_grid(args))
     if args.max_configs > 0:
         grids = grids[: int(args.max_configs)]
     return grids
@@ -454,16 +543,144 @@ def reference_grid_row(epoch: int = 0) -> Dict[str, object]:
         "manual_features": "none",
         "loss_type": "weighted_ce",
         "class_weight_mode": "inverse_subject_count",
+        "window_sampler": "none",
+        "windows_per_subject_per_epoch": "all",
+        "train_overlap_pct": -1.0,
         "dynamic_data_mode": "static_only",
         "stage2_fixed_epoch": int(epoch),
         "cnn_epochs": int(epoch),
         "cnn_patience": 0,
         "max_windows_fraction": -1.0,
+        "reference_source": "original_rank_parameters",
+        "reference_source_config_id": config_id,
         "is_reference": True,
     }
 
 
+def _source_float(row: pd.Series, name: str, default: float) -> float:
+    try:
+        value = float(row.get(name, default))
+    except (TypeError, ValueError):
+        return float(default)
+    return value if math.isfinite(value) else float(default)
+
+
+def _source_str(row: pd.Series, name: str, default: str) -> str:
+    value = row.get(name, default)
+    if pd.isna(value):
+        return default
+    return str(value)
+
+
+def fixed_reference_row_from_source(
+    *,
+    source: str,
+    source_id: str,
+    source_rank: int,
+    row: pd.Series,
+    config_index: int,
+    no_early_stop: bool = True,
+) -> Dict[str, object]:
+    model = _source_str(row, "model", "inceptiontime")
+    resolved_model = _source_str(row, "resolved_model", "inception_time")
+    epoch = int(round(_source_float(row, "cnn_epochs", 50)))
+    overlap_pct = _source_float(row, "overlap_pct", 50.0)
+    config_id = f"ref_{source}_top{int(config_index)}_{source_id}".replace(".", "p").replace("-", "m")
+    return {
+        "overfit_stage": "fixed_reference",
+        "overfit_config_id": config_id,
+        "overfit_config_name": f"{source}_{source_id}_no_early_stop_fixed_reference",
+        "stage1_screen_group": "fixed_reference",
+        "stage1_regularization_factor": source,
+        "stage1_regularization_value": source_id,
+        "stage2_source_config_id": "",
+        "cnn_lr": _source_float(row, "cnn_lr", 1e-3),
+        "cnn_weight_decay": _source_float(row, "cnn_weight_decay", 1e-4),
+        "cnn_dropout": _source_float(row, "cnn_dropout", -1.0),
+        "cnn_label_smoothing": _source_float(row, "cnn_label_smoothing", 0.0),
+        "sqi_mode": normalize_sqi_mode(_source_str(row, "sqi_mode", "none")),
+        "aggregation": normalize_aggregation(_source_str(row, "aggregation", "mean_prob")),
+        "manual_features": normalize_manual_features(_source_str(row, "manual_features", "none")),
+        "loss_type": normalize_loss_type(_source_str(row, "loss_type", "weighted_ce")),
+        "class_weight_mode": normalize_class_weight_mode(_source_str(row, "class_weight_mode", "inverse_subject_count")),
+        "window_sampler": "none",
+        "windows_per_subject_per_epoch": "all",
+        "train_overlap_pct": float(overlap_pct),
+        "dynamic_data_mode": _source_str(row, "dynamic_data_mode", "static_only"),
+        "stage2_fixed_epoch": int(epoch),
+        "cnn_epochs": int(epoch),
+        "cnn_patience": 0 if no_early_stop else int(round(_source_float(row, "cnn_patience", 0))),
+        "max_windows_fraction": _source_float(row, "max_windows_fraction", 0.9),
+        "rank": int(source_rank),
+        "rank_model": model,
+        "rank_resolved_model": resolved_model,
+        "rank_extra_input": normalize_extra_input(_source_str(row, "extra_input", "0")),
+        "rank_window_sec": _source_float(row, "window_sec", 5.0),
+        "rank_hop_sec": _source_float(row, "hop_sec", 2.5),
+        "rank_overlap_pct": float(overlap_pct),
+        "rank_max_windows_fraction": _source_float(row, "max_windows_fraction", 0.9),
+        "reference_source": source,
+        "reference_source_config_id": source_id,
+        "is_reference": True,
+    }
+
+
+def fixed_reference_grid_rows(args: argparse.Namespace) -> List[Dict[str, object]]:
+    rows: List[Dict[str, object]] = []
+
+    sweep_20260527 = normalize_user_path(args.reference_20260527_dir) / "sweep_summary.csv"
+    if not sweep_20260527.exists():
+        raise FileNotFoundError(f"Missing 20260527 reference summary: {sweep_20260527}")
+    summary_20260527 = pd.read_csv(sweep_20260527)
+    summary_20260527 = summary_20260527.sort_values(
+        by=["subject_balanced_accuracy_mean", "subject_macro_f1_mean", "subject_balanced_accuracy_std"],
+        ascending=[False, False, True],
+        na_position="last",
+    ).head(2)
+    for idx, (_, source_row) in enumerate(summary_20260527.iterrows(), start=1):
+        source_id = f"g{int(source_row['group_id']):04d}"
+        rows.append(
+            fixed_reference_row_from_source(
+                source="20260527",
+                source_id=source_id,
+                source_rank=idx,
+                row=source_row,
+                config_index=idx,
+            )
+        )
+
+    source_specs = [
+        ("20260608", normalize_user_path(args.reference_20260608_dir) / "overfitting_summary.csv", 4),
+        ("20260625", normalize_user_path(args.reference_20260625_dir) / "overfitting_summary.csv", 2),
+    ]
+    for source_name, path, top_n in source_specs:
+        if not path.exists():
+            raise FileNotFoundError(f"Missing {source_name} reference summary: {path}")
+        summary = pd.read_csv(path)
+        if "overfit_stage" in summary.columns:
+            summary = summary[~summary["overfit_stage"].astype(str).isin({"reference", "fixed_reference"})].copy()
+        summary = summary.sort_values(
+            by=["subject_balanced_accuracy_mean", "subject_macro_f1_mean", "worst_class_f1_mean", "subject_balanced_accuracy_std"],
+            ascending=[False, False, False, True],
+            na_position="last",
+        ).head(top_n)
+        for idx, (_, source_row) in enumerate(summary.iterrows(), start=1):
+            source_id = _source_str(source_row, "overfit_config_id", f"top{idx}")
+            rows.append(
+                fixed_reference_row_from_source(
+                    source=source_name,
+                    source_id=source_id,
+                    source_rank=int(round(_source_float(source_row, "rank", 2))),
+                    row=source_row,
+                    config_index=idx,
+                )
+            )
+    return rows
+
+
 def reference_grid_rows(args: argparse.Namespace, grid: Sequence[Dict[str, object]]) -> List[Dict[str, object]]:
+    if args.stage == "generalization":
+        return fixed_reference_grid_rows(args)
     epochs = sorted(
         {
             int(value)
@@ -504,6 +721,25 @@ def original_config_from_rank_row(args: argparse.Namespace, row: pd.Series, grid
     return config
 
 
+def effective_rank_row(rank_row: pd.Series, grid: Dict[str, object]) -> pd.Series:
+    row = rank_row.copy()
+    override_map = {
+        "rank_model": "model",
+        "rank_resolved_model": "resolved_model",
+        "rank_extra_input": "extra_input",
+        "rank_window_sec": "window_sec",
+        "rank_hop_sec": "hop_sec",
+        "rank_overlap_pct": "overlap_pct",
+        "rank_max_windows_fraction": "max_windows_fraction",
+    }
+    for source_col, target_col in override_map.items():
+        if source_col in grid and str(grid.get(source_col, "")).strip() != "":
+            row[target_col] = grid[source_col]
+    if "rank" in grid and str(grid.get("rank", "")).strip() != "":
+        row["rank"] = int(grid["rank"])
+    return row
+
+
 def apply_overfit_config(config: RunConfig, grid: Dict[str, object], args: argparse.Namespace) -> RunConfig:
     config.cnn_lr = float(grid["cnn_lr"])
     config.cnn_weight_decay = float(grid["cnn_weight_decay"])
@@ -514,6 +750,9 @@ def apply_overfit_config(config: RunConfig, grid: Dict[str, object], args: argpa
     config.manual_features = normalize_manual_features(grid.get("manual_features", "none"))
     config.loss_type = normalize_loss_type(grid.get("loss_type", "weighted_ce"))
     config.class_weight_mode = normalize_class_weight_mode(grid.get("class_weight_mode", "inverse_subject_count"))
+    config.window_sampler = normalize_window_sampler(grid.get("window_sampler", "none"))
+    config.windows_per_subject_per_epoch = normalize_windows_per_subject(grid.get("windows_per_subject_per_epoch", "all"))
+    config.train_overlap_pct = float(grid.get("train_overlap_pct", -1.0))
     config.cnn_patience = int(grid["cnn_patience"])
     config.cnn_max_windows_fraction = float(grid["max_windows_fraction"])
     config.role_mode = "all_roles" if normalize_dynamic_data_mode(grid.get("dynamic_data_mode", "static_only")) == "train_all_roles" else "static_only"
@@ -521,7 +760,7 @@ def apply_overfit_config(config: RunConfig, grid: Dict[str, object], args: argpa
         config.cnn_epochs = int(grid["cnn_epochs"])
     if str(grid.get("overfit_stage", "")) == "stage2":
         config.cnn_epochs = int(grid["stage2_fixed_epoch"])
-    if str(grid.get("overfit_stage", "")) in {"stage1", "stage2"}:
+    if str(grid.get("overfit_stage", "")) in {"stage1", "stage2", "generalization", "fixed_reference"}:
         config.cnn_patience = 0
         config.cnn_select_best_epoch = False
     if int(args.epochs_override) > 0:
@@ -632,7 +871,7 @@ def train_eval_with_train_all_roles_once(
     eval_config = RunConfig(**asdict(config))
     eval_config.role_mode = "static_only"
 
-    x_train_all, y_train_all, _subject_train_all, file_train_all, train_cache_path = build_cnn_window_table(
+    x_train_all, y_train_all, subject_train_all, file_train_all, train_cache_path = build_cnn_window_table(
         all_role_features,
         train_config,
         refresh=refresh_cnn_windows,
@@ -668,6 +907,7 @@ def train_eval_with_train_all_roles_once(
         y_val=y_static[val_mask],
         extra_train=train_window_extra[train_mask] if train_window_extra is not None else None,
         extra_val=static_window_extra[val_mask] if static_window_extra is not None else None,
+        subject_train=subject_train_all[train_mask],
     )
 
     validation_eval = evaluate_window_subset(
@@ -699,6 +939,7 @@ def train_eval_with_train_all_roles_once(
         "n_val_files": int(len(val_idx_static)),
         "n_test_files": int(len(test_idx_static)),
         "n_train_windows": int(np.sum(train_mask)),
+        "train_samples_per_epoch": int(train_info.get("train_samples_per_epoch", np.sum(train_mask))),
         "n_val_windows": int(np.sum(val_mask)),
         "n_test_windows": int(np.sum(test_mask)),
         "val_subjects": split_meta["val_subjects"],
@@ -865,19 +1106,35 @@ def train_eval_groupkfold_once(
         eval_config,
         refresh=refresh_cnn_windows,
     )
+    sqi_static = compute_window_sqi_scores(x_static, fs=config.fs)
     train_config = RunConfig(**asdict(config))
     train_config.role_mode = "all_roles" if mode == "train_all_roles" else "static_only"
+    train_overlap_pct = float(getattr(config, "train_overlap_pct", -1.0))
+    if 0.0 <= train_overlap_pct < 100.0:
+        train_config.cnn_hop_sec = max(1.0 / float(config.fs), float(config.cnn_seq_sec) * (1.0 - train_overlap_pct / 100.0))
     if mode == "train_all_roles":
-        x_train_source, y_train_source, _subject_train_source, file_train_source, train_cache_path = build_cnn_window_table(
+        x_train_source, y_train_source, subject_train_source, file_train_source, train_cache_path = build_cnn_window_table(
             all_role_features,
             train_config,
             refresh=refresh_cnn_windows,
         )
         train_feature_source = all_role_features
     else:
-        x_train_source, y_train_source, _subject_train_source, file_train_source = x_static, y_static, subject_static, file_static
-        train_cache_path = eval_cache_path
         train_feature_source = static_features
+        use_eval_windows_for_train = (
+            abs(float(train_config.cnn_seq_sec) - float(eval_config.cnn_seq_sec)) < 1e-9
+            and abs(float(train_config.cnn_hop_sec) - float(eval_config.cnn_hop_sec)) < 1e-9
+            and abs(float(train_config.cnn_max_windows_fraction) - float(eval_config.cnn_max_windows_fraction)) < 1e-9
+        )
+        if use_eval_windows_for_train:
+            x_train_source, y_train_source, subject_train_source, file_train_source = x_static, y_static, subject_static, file_static
+            train_cache_path = eval_cache_path
+        else:
+            x_train_source, y_train_source, subject_train_source, file_train_source, train_cache_path = build_cnn_window_table(
+                static_features,
+                train_config,
+                refresh=refresh_cnn_windows,
+            )
     sqi_train_source = sqi_static if mode != "train_all_roles" else compute_window_sqi_scores(x_train_source, fs=config.fs)
 
     extra_cols = select_extra_feature_columns(static_features, config.extra_input, config.manual_features)
@@ -925,6 +1182,7 @@ def train_eval_groupkfold_once(
             extra_train=train_window_extra[train_mask] if train_window_extra is not None else None,
             extra_val=static_window_extra[val_mask] if static_window_extra is not None else None,
             class_count_labels=static_features.iloc[train_idx_static].groupby("subject")["label"].first().to_numpy(dtype=int),
+            subject_train=subject_train_source[train_mask],
         )
         probs = cnn_predict_proba(
             model,
@@ -970,6 +1228,7 @@ def train_eval_groupkfold_once(
                 "n_dynamic_added_train_files": int(max(0, len(train_idx_source) - len(train_idx_static))),
                 "n_val_files": int(len(val_idx_static)),
                 "n_train_windows": int(np.sum(train_mask)),
+                "train_samples_per_epoch": int(fold_info.get("train_samples_per_epoch", np.sum(train_mask))),
                 "n_val_windows": int(np.sum(val_mask)),
                 "n_file_aggregation_windows": int(fold_file_used),
                 "n_subject_aggregation_windows": int(fold_subject_used),
@@ -1040,6 +1299,7 @@ def train_eval_groupkfold_once(
         "n_subjects": int(static_features["subject"].nunique()),
         "n_windows": int(len(y_static)),
         "n_train_windows": int(total_train_windows),
+        "n_train_samples_per_epoch": int(sum(int(fold.get("train_samples_per_epoch", 0)) for fold in fold_summaries)),
         "n_val_windows": int(total_val_windows),
         "n_test_windows": int(total_val_windows),
         "n_file_aggregation_windows": int(sum(int(fold.get("n_file_aggregation_windows", 0)) for fold in fold_summaries)),
@@ -1053,6 +1313,9 @@ def train_eval_groupkfold_once(
         "aggregation": normalize_aggregation(config.aggregation),
         "loss_type": normalize_loss_type(config.loss_type),
         "class_weight_mode": normalize_class_weight_mode(config.class_weight_mode),
+        "window_sampler": normalize_window_sampler(config.window_sampler),
+        "windows_per_subject_per_epoch": normalize_windows_per_subject(config.windows_per_subject_per_epoch),
+        "train_overlap_pct": finite_float(getattr(config, "train_overlap_pct", -1.0)),
         "n_extra_features": int(len(extra_cols)),
         "mean_window_sqi": finite_float(np.mean(sqi_static)) if sqi_static.size else 0.0,
         "cnn_cache": str(eval_cache_path),
@@ -1098,6 +1361,11 @@ def overfit_run_row(report: Dict[str, object], rank_row: pd.Series, report_path:
     row["manual_features"] = str(grid.get("manual_features", report.get("manual_features", "none")))
     row["loss_type"] = str(grid.get("loss_type", report.get("loss_type", "weighted_ce")))
     row["class_weight_mode"] = str(grid.get("class_weight_mode", report.get("class_weight_mode", "inverse_subject_count")))
+    row["window_sampler"] = str(grid.get("window_sampler", report.get("window_sampler", "none")))
+    row["windows_per_subject_per_epoch"] = str(grid.get("windows_per_subject_per_epoch", report.get("windows_per_subject_per_epoch", "all")))
+    row["train_overlap_pct"] = finite_float(grid.get("train_overlap_pct", report.get("train_overlap_pct", -1.0)))
+    row["reference_source"] = str(grid.get("reference_source", ""))
+    row["reference_source_config_id"] = str(grid.get("reference_source_config_id", ""))
     row["train_role_mode"] = str(report.get("train_role_mode", "static_only"))
     row["validation_role_mode"] = str(report.get("validation_role_mode", "static_only"))
     row["test_role_mode"] = str(report.get("test_role_mode", "static_only"))
@@ -1111,6 +1379,7 @@ def overfit_run_row(report: Dict[str, object], rank_row: pd.Series, report_path:
     row["mean_window_sqi"] = finite_float(report.get("mean_window_sqi", 0.0))
     row["n_file_aggregation_windows"] = int(report.get("n_file_aggregation_windows", 0) or 0)
     row["n_subject_aggregation_windows"] = int(report.get("n_subject_aggregation_windows", 0) or 0)
+    row["n_train_samples_per_epoch"] = int(report.get("n_train_samples_per_epoch", 0) or 0)
     fold_best_epochs = [safe_float(fold.get("best_epoch")) for fold in report.get("folds", [])]
     fold_best_epochs = [value for value in fold_best_epochs if math.isfinite(value)]
     if fold_best_epochs:
@@ -1147,6 +1416,7 @@ def build_overfit_summary(run_rows: List[Dict[str, object]]) -> pd.DataFrame:
         "mean_window_sqi",
         "n_file_aggregation_windows",
         "n_subject_aggregation_windows",
+        "n_train_samples_per_epoch",
     ]
     for values, sub in runs.groupby(group_cols, dropna=False, sort=False):
         row = {col: value for col, value in zip(group_cols, values)}
@@ -1223,9 +1493,21 @@ def write_manifest(
                 "Take top non-reference stage1 configs, use the fixed epoch from the most stable top config, "
                 "disable early stopping for tuned configs, and evaluate with StratifiedGroupKFold."
             ),
+            "generalization": (
+                "Focused no-early-stopping generalization sweep using inceptiontime and small_inceptiontime, "
+                "two fixed regularization templates, SQI none/top50, train-overlap 0/30 percent, and "
+                "subject-balanced or class-subject-balanced per-epoch window sampling."
+            ),
             "all_stages_eval_protocol": "5-fold StratifiedGroupKFold by subject unless --cv-folds is changed.",
-            "reference": "Reference configs use original rank parameters with cnn_select_best_epoch=False, cnn_patience=0, and the same fixed epoch values as the active grid.",
+            "reference": (
+                "For stage=generalization, fixed references are top2 no-early-stop configs from 20260527, "
+                "top4 from 20260608, and top2 from 20260625. Other stages use original rank parameters with "
+                "cnn_select_best_epoch=False, cnn_patience=0, and the same fixed epoch values as the active grid."
+            ),
             "stage1_epochs": parse_int_list(args.stage1_epochs),
+            "generalization_epochs": parse_int_list(args.generalization_epochs),
+            "generalization_windows_per_subject": [normalize_windows_per_subject(item) for item in parse_text_list(args.generalization_windows_per_subject)],
+            "generalization_train_overlaps": parse_float_list(args.generalization_train_overlaps),
             "stage2_top_n": int(args.stage2_top_n),
             "stage2_requested_cv_folds": int(requested_cv_folds(args)),
             "stage2_fixed_epoch_override": int(args.stage2_fixed_epoch),
@@ -1241,14 +1523,14 @@ def write_manifest(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the two-stage overfitting sweep for selected leaderboard ranks.")
+    parser = argparse.ArgumentParser(description="Run overfitting/generalization sweeps for selected leaderboard ranks.")
     parser.add_argument("--analysis-dir", default="", help="Analysis directory containing leaderboard_top_configs.csv. Defaults to latest.")
     parser.add_argument("--analysis-root", default="results_frailty3/_sweep_analyse")
     parser.add_argument("--output-root", default="results_frailty3/_overfitting_sweep")
     parser.add_argument("--data-root", default="PPG_Testing_05_01_2026")
     parser.add_argument("--ranks", default="2")
-    parser.add_argument("--stage", choices=("stage1", "stage2", "both"), default="stage1")
-    parser.add_argument("--repeats", type=int, default=10)
+    parser.add_argument("--stage", choices=("stage1", "stage2", "both", "generalization"), default="stage1")
+    parser.add_argument("--repeats", type=int, default=5)
     parser.add_argument("--seeds", default="")
     parser.add_argument(
         "--reference-repeats",
@@ -1271,6 +1553,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs-override", type=int, default=0)
     parser.add_argument("--patience-override", type=int, default=0)
     parser.add_argument("--stage1-epochs", default=STAGE1_EPOCHS_DEFAULT)
+    parser.add_argument("--generalization-epochs", default=GENERALIZATION_EPOCHS_DEFAULT)
+    parser.add_argument("--generalization-windows-per-subject", default=GENERALIZATION_WINDOWS_PER_SUBJECT_DEFAULT)
+    parser.add_argument("--generalization-train-overlaps", default=GENERALIZATION_TRAIN_OVERLAPS_DEFAULT)
+    parser.add_argument("--reference-20260527-dir", default="results_frailty3/20260527_1320_cnn_inceptionTime")
+    parser.add_argument("--reference-20260608-dir", default="results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2")
+    parser.add_argument("--reference-20260625-dir", default="results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2")
     parser.add_argument("--stage2-source-dir", default="")
     parser.add_argument("--stage2-top-n", type=int, default=2)
     parser.add_argument("--stage2-lrs", default="0.001,0.0005,0.0002")
@@ -1321,6 +1609,19 @@ def main() -> None:
         for reference_row in reference_grid
         for repeat, seed in enumerate(reference_seeds, start=1)
     ]
+    if args.stage == "generalization":
+        base_rank_row = rank_configs.iloc[0]
+        reference_jobs = [
+            (
+                effective_rank_row(base_rank_row, reference_row),
+                int(effective_rank_row(base_rank_row, reference_row).get("rank", base_rank_row["rank"])),
+                reference_row,
+                repeat,
+                seed,
+            )
+            for reference_row in reference_grid
+            for repeat, seed in enumerate(reference_seeds, start=1)
+        ]
     jobs = grid_jobs + reference_jobs
     if args.max_runs > 0:
         jobs = jobs[: int(args.max_runs)]
@@ -1357,7 +1658,9 @@ def main() -> None:
     summary_csv = out_dir / "overfitting_summary.csv"
 
     for job_idx, (rank_row, rank, grid_row, repeat, seed) in enumerate(jobs, start=1):
-        if bool(grid_row.get("is_reference", False)):
+        rank_row = effective_rank_row(rank_row, grid_row)
+        rank = int(rank_row.get("rank", rank))
+        if str(grid_row.get("overfit_stage", "")) == "reference":
             config = original_config_from_rank_row(args, rank_row, grid_row)
         else:
             config = config_from_rank_row(args, rank_row)

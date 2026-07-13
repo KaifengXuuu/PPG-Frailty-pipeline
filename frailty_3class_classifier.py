@@ -34,12 +34,13 @@ from sklearn.svm import SVC
 try:
     import torch
     import torch.nn as nn
-    from torch.utils.data import DataLoader, Dataset
+    from torch.utils.data import DataLoader, Dataset, Sampler
 except Exception:
     torch = None
     nn = None
     DataLoader = None
     Dataset = object
+    Sampler = object
 
 try:
     from shapeformer_port import PortedShapeFormer, ShapeletBundle, discover_shapelets, discover_shapelets_pisd
@@ -71,16 +72,19 @@ MODEL_CHOICES = (
     "cnn1d",
     "inceptiontime",
     "inception_time",
+    "small_inceptiontime",
+    "small_inception_time",
     "shapeformer_pisd",
     "shapeformer",
 )
-SWEEP_MODEL_CHOICES = ("cnn", "inceptiontime", "shapeformer_pisd", "shapeformer")
+SWEEP_MODEL_CHOICES = ("cnn", "inceptiontime", "small_inceptiontime", "shapeformer_pisd", "shapeformer")
 EXTRA_INPUT_CHOICES = ("0", "PPI", "HRV")
 MANUAL_FEATURE_CHOICES = ("none", "morphology", "morphology_ppi_hrv_filelevel")
 SQI_MODE_CHOICES = ("none", "top70_quality", "top50_quality")
 AGGREGATION_CHOICES = ("mean_prob", "quality_weighted_mean")
 LOSS_TYPE_CHOICES = ("weighted_ce", "balanced_softmax", "focal_loss")
 CLASS_WEIGHT_CHOICES = ("inverse_subject_count", "effective_number")
+WINDOW_SAMPLER_CHOICES = ("none", "subject_balanced", "class_subject_balanced")
 META_COLS = {"path", "dataset", "subject", "role", "class_name", "label"}
 PPI_FEATURE_SUFFIXES = (
     "peak_count",
@@ -140,6 +144,9 @@ class RunConfig:
     cnn_dropout: float = -1.0
     cnn_label_smoothing: float = 0.0
     cnn_select_best_epoch: bool = True
+    window_sampler: str = "none"
+    windows_per_subject_per_epoch: str = "all"
+    train_overlap_pct: float = -1.0
     role_mode: str = "static_only"
     extra_input: str = "0"
     manual_features: str = "none"
@@ -174,6 +181,8 @@ class RunConfig:
         self.aggregation = normalize_aggregation(self.aggregation)
         self.loss_type = normalize_loss_type(self.loss_type)
         self.class_weight_mode = normalize_class_weight_mode(self.class_weight_mode)
+        self.window_sampler = normalize_window_sampler(self.window_sampler)
+        self.windows_per_subject_per_epoch = normalize_windows_per_subject(self.windows_per_subject_per_epoch)
 
 
 def finite_float(value: float) -> float:
@@ -981,6 +990,45 @@ def normalize_class_weight_mode(value: str) -> str:
     return aliases[text]
 
 
+def normalize_window_sampler(value: str) -> str:
+    text = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "": "none",
+        "0": "none",
+        "none": "none",
+        "off": "none",
+        "no": "none",
+        "subject": "subject_balanced",
+        "subject_balanced": "subject_balanced",
+        "balanced_subject": "subject_balanced",
+        "class_subject": "class_subject_balanced",
+        "class_subject_balanced": "class_subject_balanced",
+        "class_balanced_subject": "class_subject_balanced",
+    }
+    if text not in aliases:
+        raise ValueError(f"Unknown window sampler: {value}. Use one of {WINDOW_SAMPLER_CHOICES}.")
+    return aliases[text]
+
+
+def normalize_windows_per_subject(value: object) -> str:
+    text = str(value).strip().lower()
+    if text in {"", "0", "none", "all", "-1"}:
+        return "all"
+    if text.endswith("%"):
+        number = float(text[:-1].strip())
+        if not (0.0 < number <= 100.0):
+            raise ValueError("Percent windows_per_subject_per_epoch must be in (0, 100].")
+        return f"{number:g}%"
+    number = float(text)
+    if number <= 0:
+        return "all"
+    if abs(number - round(number)) > 1e-6:
+        if not (0.0 < number <= 1.0):
+            raise ValueError("Fraction windows_per_subject_per_epoch must be in (0, 1].")
+        return f"{number * 100.0:g}%"
+    return str(int(round(number)))
+
+
 def select_extra_feature_columns(features: pd.DataFrame, extra_input: str, manual_features: str = "none") -> List[str]:
     mode = normalize_extra_input(extra_input)
     manual_mode = normalize_manual_features(manual_features)
@@ -1185,6 +1233,33 @@ if nn is not None:
             features = self.head[2](features)
             return self.head[3](features)
 
+
+    class SmallInceptionTimeClassifier(nn.Module):
+        def __init__(self, n_channels: int, n_classes: int, dropout: float = 0.0) -> None:
+            super().__init__()
+            dropout = max(0.0, float(dropout))
+            self.encoder = InceptionBlock(
+                in_channels=n_channels,
+                depth=3,
+                n_filters=16,
+                bottleneck_channels=16,
+            )
+            self.head = nn.Sequential(
+                nn.AdaptiveAvgPool1d(1),
+                nn.Flatten(),
+                nn.Dropout(dropout),
+                nn.Linear(self.encoder.out_channels, n_classes),
+            )
+            self.feature_dim = int(self.encoder.out_channels)
+
+        def forward_features(self, x: "torch.Tensor") -> "torch.Tensor":
+            return self.head[:2](self.encoder(x))
+
+        def forward(self, x: "torch.Tensor") -> "torch.Tensor":
+            features = self.forward_features(x)
+            features = self.head[2](features)
+            return self.head[3](features)
+
 else:
 
     class Cnn1DClassifier:  # type: ignore[no-redef]
@@ -1192,6 +1267,10 @@ else:
 
 
     class InceptionTimeClassifier:  # type: ignore[no-redef]
+        pass
+
+
+    class SmallInceptionTimeClassifier:  # type: ignore[no-redef]
         pass
 
 
@@ -1222,6 +1301,112 @@ class CnnWindowFeatureDataset(Dataset):
             torch.from_numpy(self.extra[idx]),
             torch.tensor(self.y[idx], dtype=torch.long),
         )
+
+
+def _subject_window_quota(n_available: int, spec: str) -> int:
+    spec = normalize_windows_per_subject(spec)
+    n_available = int(n_available)
+    if n_available <= 0:
+        return 0
+    if spec == "all":
+        return n_available
+    if spec.endswith("%"):
+        pct = float(spec[:-1]) / 100.0
+        return max(1, int(math.ceil(n_available * pct)))
+    return max(1, int(spec))
+
+
+if torch is not None:
+
+    class SubjectWindowSampler(Sampler[int]):
+        def __init__(
+            self,
+            subjects: Sequence[object],
+            labels: Sequence[int],
+            mode: str,
+            windows_per_subject: str,
+            seed: int,
+        ) -> None:
+            self.subjects = np.asarray([str(item) for item in subjects], dtype=object)
+            self.labels = np.asarray(labels, dtype=np.int64)
+            self.mode = normalize_window_sampler(mode)
+            self.windows_per_subject = normalize_windows_per_subject(windows_per_subject)
+            self.seed = int(seed)
+            self.epoch = 0
+            self.subject_to_indices: Dict[str, np.ndarray] = {}
+            self.subject_to_label: Dict[str, int] = {}
+            for subject in np.unique(self.subjects):
+                idxs = np.flatnonzero(self.subjects == subject).astype(np.int64)
+                if idxs.size == 0:
+                    continue
+                self.subject_to_indices[str(subject)] = idxs
+                subject_labels = self.labels[idxs]
+                counts = np.bincount(subject_labels, minlength=len(CLASS_NAMES))
+                self.subject_to_label[str(subject)] = int(np.argmax(counts))
+            self.subjects_sorted = sorted(self.subject_to_indices)
+            self.class_to_subjects: Dict[int, List[str]] = {idx: [] for idx in range(len(CLASS_NAMES))}
+            for subject in self.subjects_sorted:
+                self.class_to_subjects[self.subject_to_label[subject]].append(subject)
+            self.length = self._estimate_length()
+
+        def _subject_quota(self, subject: str) -> int:
+            return _subject_window_quota(len(self.subject_to_indices[subject]), self.windows_per_subject)
+
+        def _estimate_length(self) -> int:
+            if self.mode == "none":
+                return int(len(self.labels))
+            if self.mode == "class_subject_balanced":
+                non_empty = [subjects for subjects in self.class_to_subjects.values() if subjects]
+                if not non_empty:
+                    return int(len(self.labels))
+                target_slots = max(len(subjects) for subjects in non_empty)
+                total = 0
+                for subjects in non_empty:
+                    mean_quota = int(round(float(np.mean([self._subject_quota(subject) for subject in subjects]))))
+                    total += target_slots * max(1, mean_quota)
+                return int(total)
+            return int(sum(self._subject_quota(subject) for subject in self.subjects_sorted))
+
+        def __len__(self) -> int:
+            return max(1, int(self.length))
+
+        def _sample_subject_windows(self, rng: np.random.Generator, subject: str) -> List[int]:
+            idxs = self.subject_to_indices[subject]
+            quota = self._subject_quota(subject)
+            if quota <= 0:
+                return []
+            replace = quota > len(idxs)
+            return rng.choice(idxs, size=quota, replace=replace).astype(np.int64).tolist()
+
+        def __iter__(self):
+            rng = np.random.default_rng(self.seed + self.epoch * 104729)
+            self.epoch += 1
+            if self.mode == "none":
+                order = np.arange(len(self.labels), dtype=np.int64)
+                rng.shuffle(order)
+                return iter(order.tolist())
+            sampled: List[int] = []
+            if self.mode == "class_subject_balanced":
+                non_empty = [subjects for subjects in self.class_to_subjects.values() if subjects]
+                target_slots = max((len(subjects) for subjects in non_empty), default=0)
+                for subjects in non_empty:
+                    subject_arr = np.asarray(subjects, dtype=object)
+                    replace_subjects = len(subject_arr) < target_slots
+                    chosen_subjects = rng.choice(subject_arr, size=target_slots, replace=replace_subjects)
+                    for subject in chosen_subjects.tolist():
+                        sampled.extend(self._sample_subject_windows(rng, str(subject)))
+            else:
+                subjects = list(self.subjects_sorted)
+                rng.shuffle(subjects)
+                for subject in subjects:
+                    sampled.extend(self._sample_subject_windows(rng, subject))
+            rng.shuffle(sampled)
+            return iter(sampled)
+
+else:
+
+    class SubjectWindowSampler:  # type: ignore[no-redef]
+        pass
 
 
 if nn is not None:
@@ -1472,6 +1657,9 @@ def make_torch_window_model(model_name: str, n_channels: int, n_classes: int, dr
     if model_name == "inception_time":
         inception_dropout = 0.0 if float(dropout) < 0.0 else float(dropout)
         return InceptionTimeClassifier(n_channels=n_channels, n_classes=n_classes, dropout=inception_dropout)
+    if model_name == "small_inception_time":
+        inception_dropout = 0.0 if float(dropout) < 0.0 else float(dropout)
+        return SmallInceptionTimeClassifier(n_channels=n_channels, n_classes=n_classes, dropout=inception_dropout)
     raise ValueError(f"Unknown torch window model: {model_name}")
 
 
@@ -1647,6 +1835,7 @@ def train_cnn_model(
     extra_train: Optional[np.ndarray] = None,
     extra_val: Optional[np.ndarray] = None,
     class_count_labels: Optional[np.ndarray] = None,
+    subject_train: Optional[Sequence[object]] = None,
 ) -> Tuple["nn.Module", Dict[str, object]]:
     ensure_torch()
     set_all_seeds(seed)
@@ -1686,10 +1875,24 @@ def train_cnn_model(
         if extra_train is not None
         else CnnWindowDataset(x_train, y_train)
     )
+    sampler = None
+    sampler_mode = normalize_window_sampler(getattr(config, "window_sampler", "none"))
+    windows_per_subject = normalize_windows_per_subject(getattr(config, "windows_per_subject_per_epoch", "all"))
+    if sampler_mode != "none":
+        if subject_train is None or len(subject_train) != len(y_train):
+            raise ValueError("subject_train must be provided when window_sampler is enabled.")
+        sampler = SubjectWindowSampler(
+            subjects=subject_train,
+            labels=y_train,
+            mode=sampler_mode,
+            windows_per_subject=windows_per_subject,
+            seed=int(seed),
+        )
     train_loader = DataLoader(
         dataset,
         batch_size=config.cnn_batch_size,
-        shuffle=True,
+        shuffle=sampler is None,
+        sampler=sampler,
         num_workers=config.cnn_num_workers,
     )
 
@@ -1766,7 +1969,15 @@ def train_cnn_model(
                 break
 
     model.load_state_dict({k: v.to(device) for k, v in best_state.items()})
-    return model, {"best_epoch": int(best_epoch), "best_window_balanced_accuracy": finite_float(best_score), "history": history}
+    samples_per_epoch = len(sampler) if sampler is not None else len(dataset)
+    return model, {
+        "best_epoch": int(best_epoch),
+        "best_window_balanced_accuracy": finite_float(best_score),
+        "history": history,
+        "window_sampler": sampler_mode,
+        "windows_per_subject_per_epoch": windows_per_subject,
+        "train_samples_per_epoch": int(samples_per_epoch),
+    }
 
 
 def evaluate_cnn(
@@ -1816,6 +2027,7 @@ def evaluate_cnn(
             extra_train=window_extra[train_mask] if window_extra is not None else None,
             extra_val=window_extra[test_mask] if window_extra is not None else None,
             class_count_labels=features.iloc[train_idx].groupby("subject")["label"].first().to_numpy(dtype=int),
+            subject_train=subject_win[train_mask],
         )
         probs = cnn_predict_proba(
             model,
@@ -2392,7 +2604,7 @@ def save_final_cnn_model(
 ) -> Path:
     ensure_torch()
     features = features.reset_index(drop=True)
-    x_win, y_win, _, _, cnn_cache_path = build_cnn_window_table(features, config, refresh=refresh_cnn)
+    x_win, y_win, subject_win, _, cnn_cache_path = build_cnn_window_table(features, config, refresh=refresh_cnn)
     extra_cols = select_extra_feature_columns(features, config.extra_input, config.manual_features)
     extra_win: Optional[np.ndarray] = None
     if extra_cols:
@@ -2407,6 +2619,7 @@ def save_final_cnn_model(
         seed=config.seed,
         model_name=model_name,
         extra_train=extra_win,
+        subject_train=subject_win,
     )
     out_dir = Path("models")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -2787,6 +3000,8 @@ def resolve_model_alias(model_name: str) -> Tuple[str, str]:
         "cnn1d": ("cnn1d", "cnn1d"),
         "inceptiontime": ("inception_time", "inceptiontime"),
         "inception_time": ("inception_time", "inception_time"),
+        "small_inceptiontime": ("small_inception_time", "small_inceptiontime"),
+        "small_inception_time": ("small_inception_time", "small_inception_time"),
         "shapeformer": ("shapeformer", "shapeformer"),
         "shapeformer_pisd": ("shapeformer", "shapeformer_pisd"),
     }
@@ -2854,7 +3069,7 @@ def evaluate_deep_model(
     elif display_model == "shapeformer":
         config.shapeformer_discovery_method = "effect_size"
 
-    if resolved_model in {"cnn1d", "inception_time"}:
+    if resolved_model in {"cnn1d", "inception_time", "small_inception_time"}:
         report = evaluate_cnn(features, config, model_name=resolved_model, refresh_cnn=refresh_cnn)
     elif resolved_model == "shapeformer":
         report = evaluate_shapeformer(features, config, refresh_cnn=refresh_cnn)
@@ -3280,7 +3495,7 @@ def main() -> None:
     features, skipped, cache_path = build_feature_table(config, refresh=args.refresh_features)
     print_dataset_summary(features, skipped)
 
-    if resolved_model in {"cnn1d", "inception_time"}:
+    if resolved_model in {"cnn1d", "inception_time", "small_inception_time"}:
         report = evaluate_cnn(features, config, model_name=resolved_model, refresh_cnn=args.refresh_cnn_windows)
     elif resolved_model == "shapeformer":
         report = evaluate_shapeformer(features, config, refresh_cnn=args.refresh_cnn_windows)
@@ -3304,7 +3519,7 @@ def main() -> None:
     print(f"report: {report_path}")
 
     if not args.no_save_model:
-        if resolved_model in {"cnn1d", "inception_time"}:
+        if resolved_model in {"cnn1d", "inception_time", "small_inception_time"}:
             model_path = save_final_cnn_model(features, config, report, model_name=resolved_model, refresh_cnn=False)
         elif resolved_model == "shapeformer":
             model_path = save_final_shapeformer_model(features, config, report, refresh_cnn=False)

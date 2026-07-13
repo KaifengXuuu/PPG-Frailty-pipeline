@@ -100,14 +100,16 @@ def load_rank_configs(analysis_dir: Path, ranks: Sequence[int]) -> pd.DataFrame:
 
 def resolve_model_name(row: pd.Series) -> str:
     resolved = str(row.get("resolved_model", "")).strip()
-    if resolved in {"cnn1d", "inception_time"}:
+    if resolved in {"cnn1d", "inception_time", "small_inception_time"}:
         return resolved
     model = str(row.get("model", "")).strip().lower()
     if model == "cnn":
         return "cnn1d"
     if model in {"inceptiontime", "inception_time"}:
         return "inception_time"
-    raise ValueError(f"Holdout script currently supports cnn/inceptiontime only, got: {model}")
+    if model in {"small_inceptiontime", "small_inception_time"}:
+        return "small_inception_time"
+    raise ValueError(f"Holdout script currently supports cnn/inceptiontime/small_inceptiontime only, got: {model}")
 
 
 def config_from_rank_row(args: argparse.Namespace, row: pd.Series) -> RunConfig:
@@ -336,6 +338,7 @@ def train_eval_holdout_once(
         y_val=y_win[val_mask],
         extra_train=window_extra[train_mask] if window_extra is not None else None,
         extra_val=window_extra[val_mask] if window_extra is not None else None,
+        subject_train=subject_win[train_mask],
     )
 
     validation_eval = evaluate_window_subset(
