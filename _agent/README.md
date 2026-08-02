@@ -34,7 +34,7 @@
 | `_agent/ROADMAP.md` | 项目中长期路线、阶段目标和主线演化。 |
 | `_agent/NOTES.md` | 临时观察、风险、用户偏好、推测和待验证问题。 |
 | `_agent/docs/decision-log.md` | 已定案的重要技术和流程决策。 |
-| `_agent/PROJECT_STRUCTURE.md` | 项目文件结构、文件内容描述和最后手动更新时间。 |
+| `_agent/PROJECT_STRUCTURE.md` | 完整项目树、根目录及代码文件清单、来源、作用、叶目录统计和数据库边界。 |
 | `_agent/CHANGELOG.md` | 已发生的重要项目记录变更。 |
 | `_agent/arc/PROJECT_HANDOFF.md` | 归档的原始 handoff 文件，仅作历史追溯。 |
 

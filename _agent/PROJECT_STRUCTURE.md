@@ -1,53 +1,3939 @@
 # PROJECT_STRUCTURE
 
-状态：confirmed
-来源：`_agent/arc/PROJECT_HANDOFF.md`、代码/数据/结果目录检查、用户说明
-最后手动更新时间：2026-07-26
+## 永不可更改的写入规则
 
-| 路径 | 类型 | 内容描述 | 状态 | 来源 | 最后手动更新时间 |
-|---|---|---|---|---|---|
-| `AGENTS.md` | file | 项目级 agent 长期规则和铁则。 | confirmed | 用户确认 | 2026-07-26 |
-| `_agent/` | dir | 跨 chat 项目记录、模块状态、待办、决策和交接文档。 | confirmed | 用户确认 | 2026-07-26 |
-| `_agent/README.md` | file | `_agent` 入口、阅读顺序和当前接手重点。 | confirmed | 本次录入 | 2026-07-26 |
-| `_agent/WRITE_RULES.md` | file | `_agent` 写入规范、职责划分和归档规则；本次未修改。 | existing | 文件检查 | 2026-07-26 |
-| `_agent/MODULES.md` | file | 核心模块、脚本、函数、算法、实验结果和状态。 | confirmed | 本次录入 | 2026-07-26 |
-| `_agent/TODO.md` | file | P0/P1 可执行任务、验收条件、依赖和历史状态迁移。 | confirmed | 本次录入 | 2026-07-26 |
-| `_agent/ROADMAP.md` | file | benchmark、两条新模型路线、消融和最终导出的阶段关系。 | confirmed | 本次录入 | 2026-07-26 |
-| `_agent/NOTES.md` | file | 观察、风险、用户偏好和待验证假设。 | confirmed | 本次录入 | 2026-07-26 |
-| `_agent/docs/decision-log.md` | file | 已定案的重要技术和流程决策。 | confirmed | 本次录入 | 2026-07-26 |
-| `_agent/CHANGELOG.md` | file | 已发生的重要文档、代码和实验里程碑。 | confirmed | 本次录入 | 2026-07-26 |
-| `_agent/arc/PROJECT_HANDOFF.md` | archived file | 截止约 2026-06-10 的原始 handoff；只作历史追溯，本次未修改。 | archived | 历史归档 | 2026-06-10 |
-| `PPG_Testing_05_01_2026/` | readonly raw dir | Frailty 标签、StudyData 和 Young 数据源；不得作为输出目录。 | confirmed/readonly | 权限与数据检查 | 2026-07-15 |
-| `physionet.org/` | readonly raw dir | 外部生理数据来源；不得被训练脚本原地修改。 | confirmed/readonly | 权限检查 | 2026-07-15 |
-| `datasets/` | cache dir | frailty3 manifest/features 等生成与读取 cache，不是 raw input source。 | confirmed | 代码与目录检查 | 2026-07-26 |
-| `datasets/frailty3_features_v2_aboy_morph_gravity_B_R1_R2_R3_R4_fs400_w10_h5.csv` | generated cache | 400 Hz、Aboy++/morphology/gravity-removal 静态 file features；145 files、29 subjects。 | confirmed | 数据检查 | 2026-07-26 |
-| `funcs.py` | file | PPG preprocessing、Aboy++ peak/HR/HRV、IMU motion helper 等函数集合。 | confirmed | 代码检查 | 2026-07-26 |
-| `ppg.py` | file | 旧交互式/可视化入口；frailty3 未直接调用其完整预处理/Aboy++ pipeline。 | legacy/reference | 用户评价 + 代码检查 | 2026-07-26 |
-| `ppg_analyse4_calib.ipynb` | file | 当前主分析 notebook；计划接入 motion detector、dynamic heartbeat 和阶段特征。 | active/pending integration | handoff | 2026-07-26 |
-| `ppg_peak_hr_gating_train.py` | file | 动态 peak/IBI/HRV extraction 与 motion detector benchmark 主脚本。 | implemented, validation pending | handoff + 代码检查 | 2026-07-26 |
-| `frailty_3class_classifier.py` | file | frailty3 数据读取、400 Hz window、模型训练/CV、manual fusion、SQI 和报告核心。 | active | 代码检查 | 2026-07-26 |
-| `frailty_3class_overfitting_sweep.py` | file | 5-fold fixed-epoch/no-early-stopping regularization/generalization sweep。 | active | 代码检查 | 2026-07-26 |
-| `analyze_sweep.py` | file | 单个/多个输入目录的 config-level leaderboard、class summary、CM 和图表。 | active; config schema improvement pending | 代码检查 | 2026-07-26 |
-| `frailty_3class_holdout_eval.py` | file | train/inner-validation/test holdout 复核脚本；非当前主 CV 协议。 | available/reference | 代码检查 | 2026-07-26 |
-| `frailty_3class_cnn_fusion.py` | file | 早期 CNN/manual-feature fusion 旁支，核心思路已由主脚本吸收。 | legacy/reference | handoff | 2026-07-26 |
-| `shapeformer_port.py` | file | ShapeFormer/ShapeFormer-PISD 移植模块。 | available; low-priority ablation | handoff + 代码检查 | 2026-07-26 |
-| `frailty_3class_benchmark.py` | planned file | 统一 manifest/folds/protocol/model wrappers/metrics 的 Frailty3 benchmark。 | not implemented | 2026-07-26 approved plan | 2026-07-26 |
-| `analyze_all_frailty_experiments.py` | planned file | 跨 sweep metadata normalization、paired analysis、消融和严格 Top 5。 | not implemented | 2026-07-26 approved plan | 2026-07-26 |
-| `frailty_3class_hierarchical.py` | planned file | Young-vs-Old 后 Pre-Frail-vs-Robust 的两层 InceptionTime。 | not implemented | 2026-07-26 approved plan | 2026-07-26 |
-| `asa_classifier.py` | file | VitalDB ASA 旁支分类实验，不属于 frailty 主线。 | side experiment | handoff + 代码检查 | 2026-07-26 |
-| `pttppg_denoiser_hybrid_*.py` | file group | 旧 dynamic denoising 训练、预览、A/B、ONNX 和 runtime。 | deprecated/reference | handoff + 用户评价 | 2026-07-26 |
-| `pttppg_stage2_denoiser.py` | file | 旧 denoiser 相关实验。 | deprecated/reference | handoff | 2026-07-26 |
-| `pttppg_pipeline_v7_4_noleak_viz_ae.py` | file | 旧 denoiser/AE 思路来源。 | deprecated/reference | handoff | 2026-07-26 |
-| `pttppg_detector_v8_scores.py` | file | 旧 detector scoring，部分版本可能位于 `Arc/`。 | deprecated/inferred | git 状态 + handoff | 2026-07-26 |
-| `pttppg_detector_v8_scores_audit_fix9.py` | file | 旧 detector audit/fix baseline。 | reference | handoff + 代码检查 | 2026-07-26 |
-| `results_frailty3/` | output dir | frailty3 sweep、holdout、overfitting 和报告输出根目录。 | active | 目录检查 | 2026-07-26 |
-| `results_frailty3/_sweep_analyse/` | output dir | `analyze_sweep.py` 的时间戳分析报告。 | active | 目录检查 | 2026-07-26 |
-| `results_frailty3/_holdout_eval/` | output dir | strict holdout 复核输出。 | reference | 目录检查 | 2026-07-26 |
-| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/` | result dir | 930 runs、186 configs 的 fixed-epoch stage1 baseline。 | complete | 结果检查 | 2026-07-26 |
-| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/` | result dir | SQI/manual/loss/class-weight sweep；645 runs、129 configs。 | complete | 结果检查 | 2026-07-26 |
-| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/` | result dir | model/sampler/quota/overlap generalization sweep；1160 runs、232 configs。 | complete | 结果检查 | 2026-07-26 |
-| `.CNN_results/` | output dir | `ppg_peak_hr_gating_train.py` 动态 peak/IBI/detector 输出。 | active/pending full run | handoff | 2026-07-26 |
-| `results_hybrid_denoiser_raw_imu/` | output dir | old denoiser A 输出。 | deprecated | handoff | 2026-07-26 |
-| `results_hybrid_denoiser_raw_imu_baseline/` | output dir | old denoiser B 输出。 | deprecated | handoff | 2026-07-26 |
-| `denoiser_preview_output/` | output dir | old denoiser preview 图。 | deprecated | handoff | 2026-07-26 |
-| `test_asa_classifier/` | output dir | ASA 旁支实验输出。 | side experiment | handoff | 2026-07-26 |
+本节为永不可更改规则。任何 chat/AI agent 均不得删除、改写、弱化、移动或覆盖本节。
+
+遍历项目目录中的所有文件，检查并在 `PROJECT_STRUCTURE` 中补充所有尚未记录在 `PROJECT_STRUCTURE` 中的文件。着重记录文件树状结构、作用、来源！如果不清楚每个文件对应的作用或来源，可以留空，不要瞎写！
+
+除了代码文件以外，文件夹按最低级子文件夹为单位表述，表述方式为树状。详细描述同源最高级文件夹的来源、子文件夹成分和作用；详细描述同源最低级子文件夹的内容、文件数和文件类别。
+
+项目根目录的所有文件都需要独占一行并补充路径。数据库文件不需要单独列出，数据库文件只以各个数据库为最小单位，而不是每个数据文件，列出文件夹名称和路径。
+
+## 扫描口径
+
+- 最后手动更新时间：`2026-08-02`
+- 项目文件总数（不含 `.git/**`）：`35214`
+- 项目目录总数（不含 `.git/**`）：`2026`
+- 根目录文件：`45`；嵌套代码文件：`21`；数据库：`26`。
+- 代码文件按文件独占一行记录：`.py`、`.ipynb`、`.m`。
+- 非代码文件按最低级目录汇总；父目录直属非代码文件使用 `[本级文件]` 作为虚拟叶节点。
+- 数据库内部文件不逐项记录；数据库根目录及其统计见“数据库目录”。
+- “作用”或“来源”没有可靠依据时留空。
+
+## 项目根目录文件
+
+| 路径 | 内容描述 | 来源 | 最后手动更新时间 |
+|---|---|---|---|
+| `.codex` |  |  | 2026-08-02 |
+| `.dockerignore` |  |  | 2026-08-02 |
+| `.env` |  |  | 2026-08-02 |
+| `.env.example` |  |  | 2026-08-02 |
+| `.gitignore` |  |  | 2026-08-02 |
+| `AGENTS.md` | 项目级 agent 长期规则和铁则。 | 用户确认 | 2026-08-02 |
+| `analyze_sweep.py` | 单个/多个输入目录的 config-level leaderboard、class summary、CM 和图表。 | 代码检查 | 2026-08-02 |
+| `asa_classifier.py` | VitalDB ASA 旁支分类实验，不属于 frailty 主线。 | handoff + 代码检查 | 2026-08-02 |
+| `cnnppg_v7.py` |  |  | 2026-08-02 |
+| `detector_v8_calib.npz` |  |  | 2026-08-02 |
+| `docker-compose.yml` |  |  | 2026-08-02 |
+| `Dockerfile` |  |  | 2026-08-02 |
+| `frailty_3class_classifier.py` | frailty3 数据读取、400 Hz window、模型训练/CV、manual fusion、SQI 和报告核心。 | 代码检查 | 2026-08-02 |
+| `frailty_3class_cnn_fusion.py` | 早期 CNN/manual-feature fusion 旁支，核心思路已由主脚本吸收。 | handoff | 2026-08-02 |
+| `frailty_3class_holdout_eval.py` | train/inner-validation/test holdout 复核脚本；非当前主 CV 协议。 | 代码检查 | 2026-08-02 |
+| `frailty_3class_overfitting_sweep.py` | 5-fold fixed-epoch/no-early-stopping regularization/generalization sweep。 | 代码检查 | 2026-08-02 |
+| `funcs.py` | PPG preprocessing、Aboy++ peak/HR/HRV、IMU motion helper 等函数集合。 | 代码检查 | 2026-08-02 |
+| `LICENSE` |  |  | 2026-08-02 |
+| `ppg.py` | 旧交互式/可视化入口；frailty3 未直接调用其完整预处理/Aboy++ pipeline。 | 用户评价 + 代码检查 | 2026-08-02 |
+| `PPG_Analy_Visual_test.ipynb` |  |  | 2026-08-02 |
+| `ppg_analyse3.ipynb` |  |  | 2026-08-02 |
+| `ppg_analyse4_calib.ipynb` | 当前主分析 notebook；计划接入 motion detector、dynamic heartbeat 和阶段特征。 | handoff | 2026-08-02 |
+| `ppg_denoiser_dash_utils.py` |  |  | 2026-08-02 |
+| `ppg_peak_hr_gating_train.py` | 动态 peak/IBI/HRV extraction 与 motion detector benchmark 主脚本。 | handoff + 代码检查 | 2026-08-02 |
+| `pttppg_denoiser_hybrid_ab_compare.py` |  |  | 2026-08-02 |
+| `pttppg_denoiser_hybrid_core.py` |  |  | 2026-08-02 |
+| `pttppg_denoiser_hybrid_export_onnx.py` |  |  | 2026-08-02 |
+| `pttppg_denoiser_hybrid_preview.py` |  |  | 2026-08-02 |
+| `pttppg_denoiser_hybrid_train.py` |  |  | 2026-08-02 |
+| `pttppg_denoiser_onnx_runtime.py` |  |  | 2026-08-02 |
+| `pttppg_denoiser_v8_masknet.py` |  |  | 2026-08-02 |
+| `pttppg_detector_v8_scores_audit_fix9.py` | 旧 detector audit/fix baseline。 | handoff + 代码检查 | 2026-08-02 |
+| `pttppg_detector_v8_scores_audit_fix9.py:Zone.Identifier` |  |  | 2026-08-02 |
+| `pttppg_pipeline_v7.py` |  |  | 2026-08-02 |
+| `pttppg_pipeline_v7_4_noleak_viz_ae.py` | 旧 denoiser/AE 思路来源。 | handoff | 2026-08-02 |
+| `pttppg_pipeline_v7_4_noleak_viz_ae.py:Zone.Identifier` |  |  | 2026-08-02 |
+| `pttppg_stage2_denoiser.py` | 旧 denoiser 相关实验。 | handoff | 2026-08-02 |
+| `pttppg_stage2_denoiser.py:Zone.Identifier` |  |  | 2026-08-02 |
+| `pyproject.toml` |  |  | 2026-08-02 |
+| `README.md` |  |  | 2026-08-02 |
+| `Script_struc.txt` |  |  | 2026-08-02 |
+| `shapeformer_port.py` | ShapeFormer/ShapeFormer-PISD 移植模块。 | handoff + 代码检查 | 2026-08-02 |
+| `svm2_dataset_train.ipynb` |  |  | 2026-08-02 |
+| `svm2_dataset_train.py` |  |  | 2026-08-02 |
+| `template_test.ipynb` |  |  | 2026-08-02 |
+
+## 代码文件
+
+| 路径 | 内容描述 | 来源 | 最后手动更新时间 |
+|---|---|---|---|
+| `Arc/ppg_analy2.ipynb` |  |  | 2026-08-02 |
+| `Arc/ppg_with_detector_v8.py` |  |  | 2026-08-02 |
+| `Arc/ppg_with_detector_v8_npz_select.py` |  |  | 2026-08-02 |
+| `Arc/ppg_with_detector_v8_npz_select_viz.py` |  |  | 2026-08-02 |
+| `Arc/pttppg_dash.ipynb` |  |  | 2026-08-02 |
+| `Arc/pttppg_detector_v8_scores.py` |  |  | 2026-08-02 |
+| `Arc/pttppg_detector_v8_scores_audit.py` |  |  | 2026-08-02 |
+| `Arc/pttppg_detector_v8_scores_audit_fix2.py` |  |  | 2026-08-02 |
+| `Arc/pttppg_detector_v8_scores_audit_fix3.py` |  |  | 2026-08-02 |
+| `Arc/pttppg_detector_v8_scores_audit_fix6.py` |  |  | 2026-08-02 |
+| `Arc/pttppg_detector_v8_scores_audit_fix8.py` |  |  | 2026-08-02 |
+| `Arc/pttppg_pipeline_v7_2_noleak_viz.py` |  |  | 2026-08-02 |
+| `Arc/pttppg_pipeline_v7_3_noleak_viz.py` |  |  | 2026-08-02 |
+| `Arc/pttppg_stage1_detector.py` |  |  | 2026-08-02 |
+| `Arc/svm_dataset_train.ipynb` |  |  | 2026-08-02 |
+| `archiv/frailty_3class_classifier - Copy_8channels_08062026.py` |  |  | 2026-08-02 |
+| `PPG_Testing_05_01_2026/Archive/ptt_ppg_dataset_analysis.py` |  |  | 2026-08-02 |
+| `PPG_Testing_05_01_2026/Archive/ptt_ppg_dataset_analysis_esther.py` |  |  | 2026-08-02 |
+| `PPG_Testing_05_01_2026/Archive/ptt_ppg_dataset_analysis_fingertiponly.py` |  |  | 2026-08-02 |
+| `PPG_Testing_05_01_2026/Archive/ptt_ppg_dataset_analysisv2.py` |  |  | 2026-08-02 |
+| `PPG_Testing_05_01_2026/ptt_ppg_dataset_analysis_16July2025.py` |  |  | 2026-08-02 |
+
+## 非代码目录树
+
+以下按同源最高级目录分节。目录树覆盖全部非数据库内部目录；每节末尾汇总最低级目录及父目录直属非代码文件。
+
+### `.agents/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，0 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `.agents/` - 空目录
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `.agents/` |  | 0 |  |  |
+
+### `.CNN_results/`
+
+- 来源：handoff
+- 作用：`ppg_peak_hr_gating_train.py` 动态 peak/IBI/detector 输出。
+- 子文件夹成分：20260413-06、20260420-02、20260420-02_smoke_event_eval、20260420-03、20260420-03_smoke_vital_mimic_extra、20260420-04_peak_hr_gate_v1、20260421-06_peak_hr_gate_v1、20260427-00_smoke_algo_updates、20260427-01_peak_hr_gate_balanced_v2、20260427-01_smoke_detector_ab、peak_hr_gate、smoke_eval
+- 范围统计：63 个目录，0 个代码文件，687 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `.CNN_results/` - 12 个直属子文件夹
+  - `20260413-06/` - 4 个直属子文件夹；14 个直属非代码文件
+    - `cross_validation/` - 17 个直属非代码文件
+    - `deploy_bundle/` - 5 个直属非代码文件
+    - `extra_holdout/` - 11 个直属非代码文件
+    - `holdout/` - 11 个直属非代码文件
+    - `[本级文件]` - 14 个非代码文件；类别：.json、.md、.png、.pt
+  - `20260420-02/` - 3 个直属子文件夹
+    - `cross_validation/` - 空目录
+    - `extra_holdout/` - 空目录
+    - `holdout/` - 空目录
+  - `20260420-02_smoke_event_eval/` - 4 个直属子文件夹；16 个直属非代码文件
+    - `cross_validation/` - 21 个直属非代码文件
+    - `deploy_bundle/` - 5 个直属非代码文件
+    - `extra_holdout/` - 13 个直属非代码文件
+    - `holdout/` - 13 个直属非代码文件
+    - `[本级文件]` - 16 个非代码文件；类别：.json、.md、.png、.pt
+  - `20260420-03/` - 3 个直属子文件夹
+    - `cross_validation/` - 空目录
+    - `extra_holdout/` - 空目录
+    - `holdout/` - 空目录
+  - `20260420-03_smoke_vital_mimic_extra/` - 4 个直属子文件夹；17 个直属非代码文件
+    - `cross_validation/` - 21 个直属非代码文件
+    - `deploy_bundle/` - 5 个直属非代码文件
+    - `extra_holdout/` - 13 个直属非代码文件
+    - `holdout/` - 13 个直属非代码文件
+    - `[本级文件]` - 17 个非代码文件；类别：.json、.md、.png、.pt
+  - `20260420-04_peak_hr_gate_v1/` - 4 个直属子文件夹；17 个直属非代码文件
+    - `cross_validation/` - 21 个直属非代码文件
+    - `deploy_bundle/` - 5 个直属非代码文件
+    - `extra_holdout/` - 13 个直属非代码文件
+    - `holdout/` - 13 个直属非代码文件
+    - `[本级文件]` - 17 个非代码文件；类别：.json、.md、.png、.pt
+  - `20260421-06_peak_hr_gate_v1/` - 4 个直属子文件夹；17 个直属非代码文件
+    - `cross_validation/` - 21 个直属非代码文件
+    - `deploy_bundle/` - 5 个直属非代码文件
+    - `extra_holdout/` - 13 个直属非代码文件
+    - `holdout/` - 13 个直属非代码文件
+    - `[本级文件]` - 17 个非代码文件；类别：.json、.md、.png、.pt
+  - `20260427-00_smoke_algo_updates/` - 4 个直属子文件夹；21 个直属非代码文件
+    - `cross_validation/` - 21 个直属非代码文件
+    - `deploy_bundle/` - 5 个直属非代码文件
+    - `extra_holdout/` - 13 个直属非代码文件
+    - `holdout/` - 13 个直属非代码文件
+    - `[本级文件]` - 21 个非代码文件；类别：.json、.md、.png、.pt
+  - `20260427-01_peak_hr_gate_balanced_v2/` - 5 个直属子文件夹；23 个直属非代码文件
+    - `cross_validation/` - 21 个直属非代码文件
+    - `deploy_bundle/` - 5 个直属非代码文件
+    - `detector_benchmark/` - 2 个直属子文件夹；2 个直属非代码文件
+      - `A_denoiser_encoder/` - 19 个直属非代码文件
+      - `B_light_cnn/` - 19 个直属非代码文件
+      - `[本级文件]` - 2 个非代码文件；类别：.json、.png
+    - `extra_holdout/` - 13 个直属非代码文件
+    - `holdout/` - 13 个直属非代码文件
+    - `[本级文件]` - 23 个非代码文件；类别：.json、.md、.png、.pt
+  - `20260427-01_smoke_detector_ab/` - 5 个直属子文件夹；22 个直属非代码文件
+    - `cross_validation/` - 21 个直属非代码文件
+    - `deploy_bundle/` - 5 个直属非代码文件
+    - `detector_benchmark/` - 2 个直属子文件夹；2 个直属非代码文件
+      - `A_denoiser_encoder/` - 19 个直属非代码文件
+      - `B_light_cnn/` - 19 个直属非代码文件
+      - `[本级文件]` - 2 个非代码文件；类别：.json、.png
+    - `extra_holdout/` - 13 个直属非代码文件
+    - `holdout/` - 13 个直属非代码文件
+    - `[本级文件]` - 22 个非代码文件；类别：.json、.md、.png、.pt
+  - `peak_hr_gate/` - 3 个直属子文件夹
+    - `cross_validation/` - 空目录
+    - `extra_holdout/` - 空目录
+    - `holdout/` - 空目录
+  - `smoke_eval/` - 3 个直属子文件夹；13 个直属非代码文件
+    - `cross_validation/` - 17 个直属非代码文件
+    - `extra_holdout/` - 11 个直属非代码文件
+    - `holdout/` - 11 个直属非代码文件
+    - `[本级文件]` - 13 个非代码文件；类别：.json、.md、.png、.pt
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `.CNN_results/20260413-06/[本级文件]/` |  | 14 | .json、.md、.png、.pt |  |
+| `.CNN_results/20260413-06/cross_validation/` |  | 17 | .png |  |
+| `.CNN_results/20260413-06/deploy_bundle/` |  | 5 | .data、.json、.onnx、.txt |  |
+| `.CNN_results/20260413-06/extra_holdout/` |  | 11 | .png |  |
+| `.CNN_results/20260413-06/holdout/` |  | 11 | .png |  |
+| `.CNN_results/20260420-02/cross_validation/` |  | 0 |  |  |
+| `.CNN_results/20260420-02/extra_holdout/` |  | 0 |  |  |
+| `.CNN_results/20260420-02/holdout/` |  | 0 |  |  |
+| `.CNN_results/20260420-02_smoke_event_eval/[本级文件]/` |  | 16 | .json、.md、.png、.pt |  |
+| `.CNN_results/20260420-02_smoke_event_eval/cross_validation/` |  | 21 | .png |  |
+| `.CNN_results/20260420-02_smoke_event_eval/deploy_bundle/` |  | 5 | .data、.json、.onnx、.txt |  |
+| `.CNN_results/20260420-02_smoke_event_eval/extra_holdout/` |  | 13 | .png |  |
+| `.CNN_results/20260420-02_smoke_event_eval/holdout/` |  | 13 | .png |  |
+| `.CNN_results/20260420-03/cross_validation/` |  | 0 |  |  |
+| `.CNN_results/20260420-03/extra_holdout/` |  | 0 |  |  |
+| `.CNN_results/20260420-03/holdout/` |  | 0 |  |  |
+| `.CNN_results/20260420-03_smoke_vital_mimic_extra/[本级文件]/` |  | 17 | .json、.md、.png、.pt |  |
+| `.CNN_results/20260420-03_smoke_vital_mimic_extra/cross_validation/` |  | 21 | .png |  |
+| `.CNN_results/20260420-03_smoke_vital_mimic_extra/deploy_bundle/` |  | 5 | .data、.json、.onnx、.txt |  |
+| `.CNN_results/20260420-03_smoke_vital_mimic_extra/extra_holdout/` |  | 13 | .png |  |
+| `.CNN_results/20260420-03_smoke_vital_mimic_extra/holdout/` |  | 13 | .png |  |
+| `.CNN_results/20260420-04_peak_hr_gate_v1/[本级文件]/` |  | 17 | .json、.md、.png、.pt |  |
+| `.CNN_results/20260420-04_peak_hr_gate_v1/cross_validation/` |  | 21 | .png |  |
+| `.CNN_results/20260420-04_peak_hr_gate_v1/deploy_bundle/` |  | 5 | .data、.json、.onnx、.txt |  |
+| `.CNN_results/20260420-04_peak_hr_gate_v1/extra_holdout/` |  | 13 | .png |  |
+| `.CNN_results/20260420-04_peak_hr_gate_v1/holdout/` |  | 13 | .png |  |
+| `.CNN_results/20260421-06_peak_hr_gate_v1/[本级文件]/` |  | 17 | .json、.md、.png、.pt |  |
+| `.CNN_results/20260421-06_peak_hr_gate_v1/cross_validation/` |  | 21 | .png |  |
+| `.CNN_results/20260421-06_peak_hr_gate_v1/deploy_bundle/` |  | 5 | .data、.json、.onnx、.txt |  |
+| `.CNN_results/20260421-06_peak_hr_gate_v1/extra_holdout/` |  | 13 | .png |  |
+| `.CNN_results/20260421-06_peak_hr_gate_v1/holdout/` |  | 13 | .png |  |
+| `.CNN_results/20260427-00_smoke_algo_updates/[本级文件]/` |  | 21 | .json、.md、.png、.pt |  |
+| `.CNN_results/20260427-00_smoke_algo_updates/cross_validation/` |  | 21 | .png |  |
+| `.CNN_results/20260427-00_smoke_algo_updates/deploy_bundle/` |  | 5 | .data、.json、.onnx、.txt |  |
+| `.CNN_results/20260427-00_smoke_algo_updates/extra_holdout/` |  | 13 | .png |  |
+| `.CNN_results/20260427-00_smoke_algo_updates/holdout/` |  | 13 | .png |  |
+| `.CNN_results/20260427-01_peak_hr_gate_balanced_v2/[本级文件]/` |  | 23 | .json、.md、.png、.pt |  |
+| `.CNN_results/20260427-01_peak_hr_gate_balanced_v2/cross_validation/` |  | 21 | .png |  |
+| `.CNN_results/20260427-01_peak_hr_gate_balanced_v2/deploy_bundle/` |  | 5 | .data、.json、.onnx、.txt |  |
+| `.CNN_results/20260427-01_peak_hr_gate_balanced_v2/detector_benchmark/[本级文件]/` |  | 2 | .json、.png |  |
+| `.CNN_results/20260427-01_peak_hr_gate_balanced_v2/detector_benchmark/A_denoiser_encoder/` |  | 19 | .data、.json、.onnx、.png、.pt |  |
+| `.CNN_results/20260427-01_peak_hr_gate_balanced_v2/detector_benchmark/B_light_cnn/` |  | 19 | .data、.json、.onnx、.png、.pt |  |
+| `.CNN_results/20260427-01_peak_hr_gate_balanced_v2/extra_holdout/` |  | 13 | .png |  |
+| `.CNN_results/20260427-01_peak_hr_gate_balanced_v2/holdout/` |  | 13 | .png |  |
+| `.CNN_results/20260427-01_smoke_detector_ab/[本级文件]/` |  | 22 | .json、.md、.png、.pt |  |
+| `.CNN_results/20260427-01_smoke_detector_ab/cross_validation/` |  | 21 | .png |  |
+| `.CNN_results/20260427-01_smoke_detector_ab/deploy_bundle/` |  | 5 | .data、.json、.onnx、.txt |  |
+| `.CNN_results/20260427-01_smoke_detector_ab/detector_benchmark/[本级文件]/` |  | 2 | .json、.png |  |
+| `.CNN_results/20260427-01_smoke_detector_ab/detector_benchmark/A_denoiser_encoder/` |  | 19 | .data、.json、.onnx、.png、.pt |  |
+| `.CNN_results/20260427-01_smoke_detector_ab/detector_benchmark/B_light_cnn/` |  | 19 | .data、.json、.onnx、.png、.pt |  |
+| `.CNN_results/20260427-01_smoke_detector_ab/extra_holdout/` |  | 13 | .png |  |
+| `.CNN_results/20260427-01_smoke_detector_ab/holdout/` |  | 13 | .png |  |
+| `.CNN_results/peak_hr_gate/cross_validation/` |  | 0 |  |  |
+| `.CNN_results/peak_hr_gate/extra_holdout/` |  | 0 |  |  |
+| `.CNN_results/peak_hr_gate/holdout/` |  | 0 |  |  |
+| `.CNN_results/smoke_eval/[本级文件]/` |  | 13 | .json、.md、.png、.pt |  |
+| `.CNN_results/smoke_eval/cross_validation/` |  | 17 | .png |  |
+| `.CNN_results/smoke_eval/extra_holdout/` |  | 11 | .png |  |
+| `.CNN_results/smoke_eval/holdout/` |  | 11 | .png |  |
+
+### `.vscode/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，1 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `.vscode/` - 1 个直属非代码文件
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `.vscode/` |  | 1 | .json |  |
+
+### `__pycache__/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，22 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `__pycache__/` - 22 个直属非代码文件
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `__pycache__/` |  | 22 | .pyc |  |
+
+### `_agent/`
+
+- 来源：用户确认
+- 作用：跨 chat 项目记录、模块状态、待办、决策和交接文档。
+- 子文件夹成分：arc、docs
+- 范围统计：3 个目录，0 个代码文件，11 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `_agent/` - 2 个直属子文件夹；9 个直属非代码文件
+  - `arc/` - 1 个直属非代码文件
+  - `docs/` - 1 个直属非代码文件
+  - `[本级文件]` - 9 个非代码文件；类别：.md
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `_agent/[本级文件]/` |  | 9 | .md |  |
+| `_agent/arc/` |  | 1 | .md |  |
+| `_agent/docs/` |  | 1 | .md |  |
+
+### `Arc/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：
+- 范围统计：1 个目录，15 个代码文件，12 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `Arc/` - 15 个直属代码文件；12 个直属非代码文件
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `Arc/` |  | 12 | .gitattributes_test、.identifier、.txt |  |
+
+### `archiv/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：
+- 范围统计：1 个目录，1 个代码文件，0 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `archiv/` - 1 个直属代码文件
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `archiv/` |  | 0 |  |  |
+
+### `Aufgabenstellungen/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，8 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `Aufgabenstellungen/` - 8 个直属非代码文件
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `Aufgabenstellungen/` |  | 8 | .docx、.identifier、.pdf |  |
+
+### `datasets/`
+
+- 来源：代码与目录检查
+- 作用：frailty3 manifest/features 等生成与读取 cache，不是 raw input source。
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，0 个非代码文件，1 个数据库。
+
+#### 目录树
+
+- `datasets/` - 数据库；内部文件不逐项列出
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+
+### `denoiser_preview_output/`
+
+- 来源：handoff
+- 作用：old denoiser preview 图。
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，8 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `denoiser_preview_output/` - 8 个直属非代码文件
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `denoiser_preview_output/` | old denoiser preview 图。 | 8 | .png | handoff |
+
+### `final_v0/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，0 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `final_v0/` - 空目录
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `final_v0/` |  | 0 |  |  |
+
+### `Literature/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，24 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `Literature/` - 24 个直属非代码文件
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `Literature/` |  | 24 | .identifier、.pdf、.txt |  |
+
+### `models/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，653 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `models/` - 653 个直属非代码文件
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `models/` |  | 653 | .joblib、.pkl、.pt |  |
+
+### `physionet.org/`
+
+- 来源：权限检查
+- 作用：外部生理数据来源；不得被训练脚本原地修改。
+- 子文件夹成分：files
+- 范围统计：8 个目录，0 个代码文件，1 个非代码文件，6 个数据库。
+
+#### 目录树
+
+- `physionet.org/` - 1 个直属子文件夹；1 个直属非代码文件
+  - `files/` - 6 个直属子文件夹
+    - `ECSMP/` - 数据库；内部文件不逐项列出
+    - `iAMwell Dataset - Intelligent Athlete Monitoring for Cardiovascular Wellness/` - 数据库；内部文件不逐项列出
+    - `MIMIC/` - 数据库；内部文件不逐项列出
+    - `pulse-transit-time-ppg/` - 数据库；内部文件不逐项列出
+    - `simultaneous-measurements/` - 数据库；内部文件不逐项列出
+    - `VitalDB/` - 数据库；内部文件不逐项列出
+  - `[本级文件]` - 1 个非代码文件；类别：.txt
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `physionet.org/[本级文件]/` |  | 1 | .txt |  |
+
+### `PPG_Testing_05_01_2026/`
+
+- 来源：权限与数据检查
+- 作用：Frailty 标签、StudyData 和 Young 数据源；不得作为输出目录。
+- 子文件夹成分：###AAA_training、13Aug25、25July25、3Sep25、Archive、EstherThesis_FinalData、output_plots、StudyData、StudyData_frailtyScored、TestDataYoungers、WF-PPG (3rd) Dataset
+- 范围统计：17 个目录，5 个代码文件，37 个非代码文件，14 个数据库。
+
+#### 目录树
+
+- `PPG_Testing_05_01_2026/` - 11 个直属子文件夹；1 个直属代码文件；5 个直属非代码文件
+  - `###AAA_training/` - 数据库；内部文件不逐项列出
+  - `13Aug25/` - 数据库；内部文件不逐项列出
+  - `25July25/` - 数据库；内部文件不逐项列出
+  - `3Sep25/` - 数据库；内部文件不逐项列出
+  - `Archive/` - 5 个直属子文件夹；4 个直属代码文件
+    - `20250627TestData/` - 数据库；内部文件不逐项列出
+    - `7-8-2025/` - 数据库；内部文件不逐项列出
+    - `FilteredWalkTest/` - 数据库；内部文件不逐项列出
+    - `path_to_your_data_folder/` - 数据库；内部文件不逐项列出
+    - `PPGdf/` - 数据库；内部文件不逐项列出
+  - `EstherThesis_FinalData/` - 数据库；内部文件不逐项列出
+  - `output_plots/` - 32 个直属非代码文件
+  - `StudyData/` - 数据库；内部文件不逐项列出
+  - `StudyData_frailtyScored/` - 数据库；内部文件不逐项列出
+  - `TestDataYoungers/` - 数据库；内部文件不逐项列出
+  - `WF-PPG (3rd) Dataset/` - 数据库；内部文件不逐项列出
+  - `[本级文件]` - 5 个非代码文件；类别：.csv
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `PPG_Testing_05_01_2026/[本级文件]/` |  | 5 | .csv |  |
+| `PPG_Testing_05_01_2026/output_plots/` |  | 32 | .csv、.png |  |
+
+### `results/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：setup1、setup2
+- 范围统计：3 个目录，0 个代码文件，5 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `results/` - 2 个直属子文件夹；1 个直属非代码文件
+  - `setup1/` - 2 个直属非代码文件
+  - `setup2/` - 2 个直属非代码文件
+  - `[本级文件]` - 1 个非代码文件；类别：.json
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `results/[本级文件]/` |  | 1 | .json |  |
+| `results/setup1/` |  | 2 | .json |  |
+| `results/setup2/` |  | 2 | .json |  |
+
+### `results_denoiser_v8/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：walk
+- 范围统计：2 个目录，0 个代码文件，0 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `results_denoiser_v8/` - 1 个直属子文件夹
+  - `walk/` - 空目录
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `results_denoiser_v8/walk/` |  | 0 |  |  |
+
+### `results_detector_v8/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，6 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `results_detector_v8/` - 6 个直属非代码文件
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `results_detector_v8/` |  | 6 | .json、.npz、.png |  |
+
+### `results_frailty3/`
+
+- 来源：目录检查
+- 作用：frailty3 sweep、holdout、overfitting 和报告输出根目录。
+- 子文件夹成分：_holdout_eval、_overfitting_sweep、_sweep_analyse、20260525_0652、20260525_0652_02、20260525_0655、20260525_0710、20260525_0713、20260525_0728、20260525_0728_02、20260525_0729、20260525_0729_02、20260525_0732、20260525_0807、20260525_1421、20260527_0655、20260527_1320_cnn_inceptionTime、20260528_1045_shapeformer_0extra、20260601_0848、learning_curves
+- 范围统计：1390 个目录，0 个代码文件，14496 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `results_frailty3/` - 20 个直属子文件夹；9 个直属非代码文件
+  - `_holdout_eval/` - 6 个直属子文件夹
+    - `20260601_0940_rank1-2-7_holdout/` - 2 个直属子文件夹；1 个直属非代码文件
+      - `learning_curves/` - 空目录
+      - `reports/` - 空目录
+      - `[本级文件]` - 1 个非代码文件；类别：.json
+    - `20260601_0940_rank1-2-7_holdout_02/` - 3 个直属子文件夹；3 个直属非代码文件
+      - `confusion_matrices/` - 2 个直属非代码文件
+      - `learning_curves/` - 2 个直属非代码文件
+      - `reports/` - 1 个直属非代码文件
+      - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+    - `20260607_0930_rank1-2-7_holdout/` - 2 个直属子文件夹；1 个直属非代码文件
+      - `learning_curves/` - 空目录
+      - `reports/` - 空目录
+      - `[本级文件]` - 1 个非代码文件；类别：.json
+    - `20260607_0930_rank1-2-7_holdout_02/` - 3 个直属子文件夹；3 个直属非代码文件
+      - `confusion_matrices/` - 2 个直属非代码文件
+      - `learning_curves/` - 2 个直属非代码文件
+      - `reports/` - 1 个直属非代码文件
+      - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+    - `20260607_0935_rank1-2-7_holdout/` - 3 个直属子文件夹；3 个直属非代码文件
+      - `confusion_matrices/` - 6 个直属非代码文件
+      - `learning_curves/` - 30 个直属非代码文件
+      - `reports/` - 15 个直属非代码文件
+      - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+    - `20260607_1027_rank1-2-7_holdout/` - 3 个直属子文件夹；3 个直属非代码文件
+      - `confusion_matrices/` - 6 个直属非代码文件
+      - `learning_curves/` - 90 个直属非代码文件
+      - `reports/` - 45 个直属非代码文件
+      - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+  - `_overfitting_sweep/` - 27 个直属子文件夹
+    - `20260608_0718_overfitting_sweep_stage1_rank2/` - 2 个直属子文件夹；1 个直属非代码文件
+      - `learning_curves/` - 空目录
+      - `reports/` - 空目录
+      - `[本级文件]` - 1 个非代码文件；类别：.json
+    - `20260608_0718_overfitting_sweep_stage1_rank2_02/` - 3 个直属子文件夹；3 个直属非代码文件
+      - `confusion_matrices/` - 2 个直属非代码文件
+      - `learning_curves/` - 1 个直属子文件夹
+        - `s1_001/` - 2 个直属非代码文件
+      - `reports/` - 1 个直属子文件夹
+        - `s1_001/` - 1 个直属非代码文件
+      - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+    - `20260608_0728_overfitting_sweep_stage2_rank2/` - 2 个直属子文件夹；1 个直属非代码文件
+      - `learning_curves/` - 空目录
+      - `reports/` - 空目录
+      - `[本级文件]` - 1 个非代码文件；类别：.json
+    - `20260608_0728_overfitting_sweep_stage2_rank2_02/` - 2 个直属子文件夹；1 个直属非代码文件
+      - `learning_curves/` - 空目录
+      - `reports/` - 空目录
+      - `[本级文件]` - 1 个非代码文件；类别：.json
+    - `20260608_0734_overfitting_sweep_stage1_rank2/` - 2 个直属子文件夹；1 个直属非代码文件
+      - `learning_curves/` - 空目录
+      - `reports/` - 空目录
+      - `[本级文件]` - 1 个非代码文件；类别：.json
+    - `20260608_0734_overfitting_sweep_stage2_rank2/` - 2 个直属子文件夹；1 个直属非代码文件
+      - `learning_curves/` - 空目录
+      - `reports/` - 空目录
+      - `[本级文件]` - 1 个非代码文件；类别：.json
+    - `20260608_0910_overfitting_sweep_stage2_rank2/` - 2 个直属子文件夹；1 个直属非代码文件
+      - `learning_curves/` - 空目录
+      - `reports/` - 空目录
+      - `[本级文件]` - 1 个非代码文件；类别：.json
+    - `20260608_0922_overfitting_sweep_stage2_rank2/` - 3 个直属子文件夹；3 个直属非代码文件
+      - `confusion_matrices/` - 18 个直属非代码文件
+      - `learning_curves/` - 9 个直属子文件夹
+        - `ref_original/` - 10 个直属非代码文件
+        - `s2_001/` - 10 个直属非代码文件
+        - `s2_002/` - 10 个直属非代码文件
+        - `s2_003/` - 10 个直属非代码文件
+        - `s2_004/` - 10 个直属非代码文件
+        - `s2_005/` - 10 个直属非代码文件
+        - `s2_006/` - 10 个直属非代码文件
+        - `s2_007/` - 10 个直属非代码文件
+        - `s2_008/` - 10 个直属非代码文件
+      - `reports/` - 9 个直属子文件夹
+        - `ref_original/` - 5 个直属非代码文件
+        - `s2_001/` - 5 个直属非代码文件
+        - `s2_002/` - 5 个直属非代码文件
+        - `s2_003/` - 5 个直属非代码文件
+        - `s2_004/` - 5 个直属非代码文件
+        - `s2_005/` - 5 个直属非代码文件
+        - `s2_006/` - 5 个直属非代码文件
+        - `s2_007/` - 5 个直属非代码文件
+        - `s2_008/` - 5 个直属非代码文件
+      - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+    - `20260608_1148_overfitting_sweep_stage1_rank2/` - 2 个直属子文件夹；1 个直属非代码文件
+      - `learning_curves/` - 空目录
+      - `reports/` - 空目录
+      - `[本级文件]` - 1 个非代码文件；类别：.json
+    - `20260608_1148_overfitting_sweep_stage1_rank2_02/` - 3 个直属子文件夹；3 个直属非代码文件
+      - `confusion_matrices/` - 2 个直属非代码文件
+      - `learning_curves/` - 1 个直属子文件夹
+        - `s1_001/` - 2 个直属非代码文件
+      - `reports/` - 1 个直属子文件夹
+        - `s1_001/` - 1 个直属非代码文件
+      - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+    - `20260608_1148_overfitting_sweep_stage2_rank2/` - 2 个直属子文件夹；1 个直属非代码文件
+      - `learning_curves/` - 空目录
+      - `reports/` - 空目录
+      - `[本级文件]` - 1 个非代码文件；类别：.json
+    - `20260608_1157_overfitting_sweep_stage1_rank2/` - 2 个直属子文件夹；1 个直属非代码文件
+      - `learning_curves/` - 空目录
+      - `reports/` - 空目录
+      - `[本级文件]` - 1 个非代码文件；类别：.json
+    - `20260608_1158_overfitting_sweep_stage1_rank2/` - 3 个直属子文件夹；3 个直属非代码文件
+      - `confusion_matrices/` - 2 个直属非代码文件
+      - `learning_curves/` - 1 个直属子文件夹
+        - `s1_001/` - 2 个直属非代码文件
+      - `reports/` - 1 个直属子文件夹
+        - `s1_001/` - 1 个直属非代码文件
+      - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+    - `20260608_1206_overfitting_sweep_stage1_rank2/` - 3 个直属子文件夹；3 个直属非代码文件
+      - `confusion_matrices/` - 372 个直属非代码文件
+      - `learning_curves/` - 186 个直属子文件夹
+        - `ref_rank2_fixed_epoch/` - 10 个直属非代码文件
+        - `s1_001/` - 10 个直属非代码文件
+        - `s1_002/` - 10 个直属非代码文件
+        - `s1_003/` - 10 个直属非代码文件
+        - `s1_004/` - 10 个直属非代码文件
+        - `s1_005/` - 10 个直属非代码文件
+        - `s1_006/` - 10 个直属非代码文件
+        - `s1_007/` - 10 个直属非代码文件
+        - `s1_008/` - 10 个直属非代码文件
+        - `s1_009/` - 10 个直属非代码文件
+        - `s1_010/` - 10 个直属非代码文件
+        - `s1_011/` - 10 个直属非代码文件
+        - `s1_012/` - 10 个直属非代码文件
+        - `s1_013/` - 10 个直属非代码文件
+        - `s1_014/` - 10 个直属非代码文件
+        - `s1_015/` - 10 个直属非代码文件
+        - `s1_016/` - 10 个直属非代码文件
+        - `s1_017/` - 10 个直属非代码文件
+        - `s1_018/` - 10 个直属非代码文件
+        - `s1_019/` - 10 个直属非代码文件
+        - `s1_020/` - 10 个直属非代码文件
+        - `s1_021/` - 10 个直属非代码文件
+        - `s1_022/` - 10 个直属非代码文件
+        - `s1_023/` - 10 个直属非代码文件
+        - `s1_024/` - 10 个直属非代码文件
+        - `s1_025/` - 10 个直属非代码文件
+        - `s1_026/` - 10 个直属非代码文件
+        - `s1_027/` - 10 个直属非代码文件
+        - `s1_028/` - 10 个直属非代码文件
+        - `s1_029/` - 10 个直属非代码文件
+        - `s1_030/` - 10 个直属非代码文件
+        - `s1_031/` - 10 个直属非代码文件
+        - `s1_032/` - 10 个直属非代码文件
+        - `s1_033/` - 10 个直属非代码文件
+        - `s1_034/` - 10 个直属非代码文件
+        - `s1_035/` - 10 个直属非代码文件
+        - `s1_036/` - 10 个直属非代码文件
+        - `s1_037/` - 10 个直属非代码文件
+        - `s1_038/` - 10 个直属非代码文件
+        - `s1_039/` - 10 个直属非代码文件
+        - `s1_040/` - 10 个直属非代码文件
+        - `s1_041/` - 10 个直属非代码文件
+        - `s1_042/` - 10 个直属非代码文件
+        - `s1_043/` - 10 个直属非代码文件
+        - `s1_044/` - 10 个直属非代码文件
+        - `s1_045/` - 10 个直属非代码文件
+        - `s1_046/` - 10 个直属非代码文件
+        - `s1_047/` - 10 个直属非代码文件
+        - `s1_048/` - 10 个直属非代码文件
+        - `s1_049/` - 10 个直属非代码文件
+        - `s1_050/` - 10 个直属非代码文件
+        - `s1_051/` - 10 个直属非代码文件
+        - `s1_052/` - 10 个直属非代码文件
+        - `s1_053/` - 10 个直属非代码文件
+        - `s1_054/` - 10 个直属非代码文件
+        - `s1_055/` - 10 个直属非代码文件
+        - `s1_056/` - 10 个直属非代码文件
+        - `s1_057/` - 10 个直属非代码文件
+        - `s1_058/` - 10 个直属非代码文件
+        - `s1_059/` - 10 个直属非代码文件
+        - `s1_060/` - 10 个直属非代码文件
+        - `s1_061/` - 10 个直属非代码文件
+        - `s1_062/` - 10 个直属非代码文件
+        - `s1_063/` - 10 个直属非代码文件
+        - `s1_064/` - 10 个直属非代码文件
+        - `s1_065/` - 10 个直属非代码文件
+        - `s1_066/` - 10 个直属非代码文件
+        - `s1_067/` - 10 个直属非代码文件
+        - `s1_068/` - 10 个直属非代码文件
+        - `s1_069/` - 10 个直属非代码文件
+        - `s1_070/` - 10 个直属非代码文件
+        - `s1_071/` - 10 个直属非代码文件
+        - `s1_072/` - 10 个直属非代码文件
+        - `s1_073/` - 10 个直属非代码文件
+        - `s1_074/` - 10 个直属非代码文件
+        - `s1_075/` - 10 个直属非代码文件
+        - `s1_076/` - 10 个直属非代码文件
+        - `s1_077/` - 10 个直属非代码文件
+        - `s1_078/` - 10 个直属非代码文件
+        - `s1_079/` - 10 个直属非代码文件
+        - `s1_080/` - 10 个直属非代码文件
+        - `s1_081/` - 10 个直属非代码文件
+        - `s1_082/` - 10 个直属非代码文件
+        - `s1_083/` - 10 个直属非代码文件
+        - `s1_084/` - 10 个直属非代码文件
+        - `s1_085/` - 10 个直属非代码文件
+        - `s1_086/` - 10 个直属非代码文件
+        - `s1_087/` - 10 个直属非代码文件
+        - `s1_088/` - 10 个直属非代码文件
+        - `s1_089/` - 10 个直属非代码文件
+        - `s1_090/` - 10 个直属非代码文件
+        - `s1_091/` - 10 个直属非代码文件
+        - `s1_092/` - 10 个直属非代码文件
+        - `s1_093/` - 10 个直属非代码文件
+        - `s1_094/` - 10 个直属非代码文件
+        - `s1_095/` - 10 个直属非代码文件
+        - `s1_096/` - 10 个直属非代码文件
+        - `s1_097/` - 10 个直属非代码文件
+        - `s1_098/` - 10 个直属非代码文件
+        - `s1_099/` - 10 个直属非代码文件
+        - `s1_100/` - 10 个直属非代码文件
+        - `s1_101/` - 10 个直属非代码文件
+        - `s1_102/` - 10 个直属非代码文件
+        - `s1_103/` - 10 个直属非代码文件
+        - `s1_104/` - 10 个直属非代码文件
+        - `s1_105/` - 10 个直属非代码文件
+        - `s1_106/` - 10 个直属非代码文件
+        - `s1_107/` - 10 个直属非代码文件
+        - `s1_108/` - 10 个直属非代码文件
+        - `s1_109/` - 10 个直属非代码文件
+        - `s1_110/` - 10 个直属非代码文件
+        - `s1_111/` - 10 个直属非代码文件
+        - `s1_112/` - 10 个直属非代码文件
+        - `s1_113/` - 10 个直属非代码文件
+        - `s1_114/` - 10 个直属非代码文件
+        - `s1_115/` - 10 个直属非代码文件
+        - `s1_116/` - 10 个直属非代码文件
+        - `s1_117/` - 10 个直属非代码文件
+        - `s1_118/` - 10 个直属非代码文件
+        - `s1_119/` - 10 个直属非代码文件
+        - `s1_120/` - 10 个直属非代码文件
+        - `s1_121/` - 10 个直属非代码文件
+        - `s1_122/` - 10 个直属非代码文件
+        - `s1_123/` - 10 个直属非代码文件
+        - `s1_124/` - 10 个直属非代码文件
+        - `s1_125/` - 10 个直属非代码文件
+        - `s1_126/` - 10 个直属非代码文件
+        - `s1_127/` - 10 个直属非代码文件
+        - `s1_128/` - 10 个直属非代码文件
+        - `s1_129/` - 10 个直属非代码文件
+        - `s1_130/` - 10 个直属非代码文件
+        - `s1_131/` - 10 个直属非代码文件
+        - `s1_132/` - 10 个直属非代码文件
+        - `s1_133/` - 10 个直属非代码文件
+        - `s1_134/` - 10 个直属非代码文件
+        - `s1_135/` - 10 个直属非代码文件
+        - `s1_136/` - 10 个直属非代码文件
+        - `s1_137/` - 10 个直属非代码文件
+        - `s1_138/` - 10 个直属非代码文件
+        - `s1_139/` - 10 个直属非代码文件
+        - `s1_140/` - 10 个直属非代码文件
+        - `s1_141/` - 10 个直属非代码文件
+        - `s1_142/` - 10 个直属非代码文件
+        - `s1_143/` - 10 个直属非代码文件
+        - `s1_144/` - 10 个直属非代码文件
+        - `s1_145/` - 10 个直属非代码文件
+        - `s1_146/` - 10 个直属非代码文件
+        - `s1_147/` - 10 个直属非代码文件
+        - `s1_148/` - 10 个直属非代码文件
+        - `s1_149/` - 10 个直属非代码文件
+        - `s1_150/` - 10 个直属非代码文件
+        - `s1_151/` - 10 个直属非代码文件
+        - `s1_152/` - 10 个直属非代码文件
+        - `s1_153/` - 10 个直属非代码文件
+        - `s1_154/` - 10 个直属非代码文件
+        - `s1_155/` - 10 个直属非代码文件
+        - `s1_156/` - 10 个直属非代码文件
+        - `s1_157/` - 10 个直属非代码文件
+        - `s1_158/` - 10 个直属非代码文件
+        - `s1_159/` - 10 个直属非代码文件
+        - `s1_160/` - 10 个直属非代码文件
+        - `s1_161/` - 10 个直属非代码文件
+        - `s1_162/` - 10 个直属非代码文件
+        - `s1_163/` - 10 个直属非代码文件
+        - `s1_164/` - 10 个直属非代码文件
+        - `s1_165/` - 10 个直属非代码文件
+        - `s1_166/` - 10 个直属非代码文件
+        - `s1_167/` - 10 个直属非代码文件
+        - `s1_168/` - 10 个直属非代码文件
+        - `s1_169/` - 10 个直属非代码文件
+        - `s1_170/` - 10 个直属非代码文件
+        - `s1_171/` - 10 个直属非代码文件
+        - `s1_172/` - 10 个直属非代码文件
+        - `s1_173/` - 10 个直属非代码文件
+        - `s1_174/` - 10 个直属非代码文件
+        - `s1_175/` - 10 个直属非代码文件
+        - `s1_176/` - 10 个直属非代码文件
+        - `s1_177/` - 10 个直属非代码文件
+        - `s1_178/` - 10 个直属非代码文件
+        - `s1_179/` - 10 个直属非代码文件
+        - `s1_180/` - 10 个直属非代码文件
+        - `s1_181/` - 10 个直属非代码文件
+        - `s1_182/` - 10 个直属非代码文件
+        - `s1_183/` - 10 个直属非代码文件
+        - `s1_184/` - 10 个直属非代码文件
+        - `s1_185/` - 10 个直属非代码文件
+      - `reports/` - 186 个直属子文件夹
+        - `ref_rank2_fixed_epoch/` - 5 个直属非代码文件
+        - `s1_001/` - 5 个直属非代码文件
+        - `s1_002/` - 5 个直属非代码文件
+        - `s1_003/` - 5 个直属非代码文件
+        - `s1_004/` - 5 个直属非代码文件
+        - `s1_005/` - 5 个直属非代码文件
+        - `s1_006/` - 5 个直属非代码文件
+        - `s1_007/` - 5 个直属非代码文件
+        - `s1_008/` - 5 个直属非代码文件
+        - `s1_009/` - 5 个直属非代码文件
+        - `s1_010/` - 5 个直属非代码文件
+        - `s1_011/` - 5 个直属非代码文件
+        - `s1_012/` - 5 个直属非代码文件
+        - `s1_013/` - 5 个直属非代码文件
+        - `s1_014/` - 5 个直属非代码文件
+        - `s1_015/` - 5 个直属非代码文件
+        - `s1_016/` - 5 个直属非代码文件
+        - `s1_017/` - 5 个直属非代码文件
+        - `s1_018/` - 5 个直属非代码文件
+        - `s1_019/` - 5 个直属非代码文件
+        - `s1_020/` - 5 个直属非代码文件
+        - `s1_021/` - 5 个直属非代码文件
+        - `s1_022/` - 5 个直属非代码文件
+        - `s1_023/` - 5 个直属非代码文件
+        - `s1_024/` - 5 个直属非代码文件
+        - `s1_025/` - 5 个直属非代码文件
+        - `s1_026/` - 5 个直属非代码文件
+        - `s1_027/` - 5 个直属非代码文件
+        - `s1_028/` - 5 个直属非代码文件
+        - `s1_029/` - 5 个直属非代码文件
+        - `s1_030/` - 5 个直属非代码文件
+        - `s1_031/` - 5 个直属非代码文件
+        - `s1_032/` - 5 个直属非代码文件
+        - `s1_033/` - 5 个直属非代码文件
+        - `s1_034/` - 5 个直属非代码文件
+        - `s1_035/` - 5 个直属非代码文件
+        - `s1_036/` - 5 个直属非代码文件
+        - `s1_037/` - 5 个直属非代码文件
+        - `s1_038/` - 5 个直属非代码文件
+        - `s1_039/` - 5 个直属非代码文件
+        - `s1_040/` - 5 个直属非代码文件
+        - `s1_041/` - 5 个直属非代码文件
+        - `s1_042/` - 5 个直属非代码文件
+        - `s1_043/` - 5 个直属非代码文件
+        - `s1_044/` - 5 个直属非代码文件
+        - `s1_045/` - 5 个直属非代码文件
+        - `s1_046/` - 5 个直属非代码文件
+        - `s1_047/` - 5 个直属非代码文件
+        - `s1_048/` - 5 个直属非代码文件
+        - `s1_049/` - 5 个直属非代码文件
+        - `s1_050/` - 5 个直属非代码文件
+        - `s1_051/` - 5 个直属非代码文件
+        - `s1_052/` - 5 个直属非代码文件
+        - `s1_053/` - 5 个直属非代码文件
+        - `s1_054/` - 5 个直属非代码文件
+        - `s1_055/` - 5 个直属非代码文件
+        - `s1_056/` - 5 个直属非代码文件
+        - `s1_057/` - 5 个直属非代码文件
+        - `s1_058/` - 5 个直属非代码文件
+        - `s1_059/` - 5 个直属非代码文件
+        - `s1_060/` - 5 个直属非代码文件
+        - `s1_061/` - 5 个直属非代码文件
+        - `s1_062/` - 5 个直属非代码文件
+        - `s1_063/` - 5 个直属非代码文件
+        - `s1_064/` - 5 个直属非代码文件
+        - `s1_065/` - 5 个直属非代码文件
+        - `s1_066/` - 5 个直属非代码文件
+        - `s1_067/` - 5 个直属非代码文件
+        - `s1_068/` - 5 个直属非代码文件
+        - `s1_069/` - 5 个直属非代码文件
+        - `s1_070/` - 5 个直属非代码文件
+        - `s1_071/` - 5 个直属非代码文件
+        - `s1_072/` - 5 个直属非代码文件
+        - `s1_073/` - 5 个直属非代码文件
+        - `s1_074/` - 5 个直属非代码文件
+        - `s1_075/` - 5 个直属非代码文件
+        - `s1_076/` - 5 个直属非代码文件
+        - `s1_077/` - 5 个直属非代码文件
+        - `s1_078/` - 5 个直属非代码文件
+        - `s1_079/` - 5 个直属非代码文件
+        - `s1_080/` - 5 个直属非代码文件
+        - `s1_081/` - 5 个直属非代码文件
+        - `s1_082/` - 5 个直属非代码文件
+        - `s1_083/` - 5 个直属非代码文件
+        - `s1_084/` - 5 个直属非代码文件
+        - `s1_085/` - 5 个直属非代码文件
+        - `s1_086/` - 5 个直属非代码文件
+        - `s1_087/` - 5 个直属非代码文件
+        - `s1_088/` - 5 个直属非代码文件
+        - `s1_089/` - 5 个直属非代码文件
+        - `s1_090/` - 5 个直属非代码文件
+        - `s1_091/` - 5 个直属非代码文件
+        - `s1_092/` - 5 个直属非代码文件
+        - `s1_093/` - 5 个直属非代码文件
+        - `s1_094/` - 5 个直属非代码文件
+        - `s1_095/` - 5 个直属非代码文件
+        - `s1_096/` - 5 个直属非代码文件
+        - `s1_097/` - 5 个直属非代码文件
+        - `s1_098/` - 5 个直属非代码文件
+        - `s1_099/` - 5 个直属非代码文件
+        - `s1_100/` - 5 个直属非代码文件
+        - `s1_101/` - 5 个直属非代码文件
+        - `s1_102/` - 5 个直属非代码文件
+        - `s1_103/` - 5 个直属非代码文件
+        - `s1_104/` - 5 个直属非代码文件
+        - `s1_105/` - 5 个直属非代码文件
+        - `s1_106/` - 5 个直属非代码文件
+        - `s1_107/` - 5 个直属非代码文件
+        - `s1_108/` - 5 个直属非代码文件
+        - `s1_109/` - 5 个直属非代码文件
+        - `s1_110/` - 5 个直属非代码文件
+        - `s1_111/` - 5 个直属非代码文件
+        - `s1_112/` - 5 个直属非代码文件
+        - `s1_113/` - 5 个直属非代码文件
+        - `s1_114/` - 5 个直属非代码文件
+        - `s1_115/` - 5 个直属非代码文件
+        - `s1_116/` - 5 个直属非代码文件
+        - `s1_117/` - 5 个直属非代码文件
+        - `s1_118/` - 5 个直属非代码文件
+        - `s1_119/` - 5 个直属非代码文件
+        - `s1_120/` - 5 个直属非代码文件
+        - `s1_121/` - 5 个直属非代码文件
+        - `s1_122/` - 5 个直属非代码文件
+        - `s1_123/` - 5 个直属非代码文件
+        - `s1_124/` - 5 个直属非代码文件
+        - `s1_125/` - 5 个直属非代码文件
+        - `s1_126/` - 5 个直属非代码文件
+        - `s1_127/` - 5 个直属非代码文件
+        - `s1_128/` - 5 个直属非代码文件
+        - `s1_129/` - 5 个直属非代码文件
+        - `s1_130/` - 5 个直属非代码文件
+        - `s1_131/` - 5 个直属非代码文件
+        - `s1_132/` - 5 个直属非代码文件
+        - `s1_133/` - 5 个直属非代码文件
+        - `s1_134/` - 5 个直属非代码文件
+        - `s1_135/` - 5 个直属非代码文件
+        - `s1_136/` - 5 个直属非代码文件
+        - `s1_137/` - 5 个直属非代码文件
+        - `s1_138/` - 5 个直属非代码文件
+        - `s1_139/` - 5 个直属非代码文件
+        - `s1_140/` - 5 个直属非代码文件
+        - `s1_141/` - 5 个直属非代码文件
+        - `s1_142/` - 5 个直属非代码文件
+        - `s1_143/` - 5 个直属非代码文件
+        - `s1_144/` - 5 个直属非代码文件
+        - `s1_145/` - 5 个直属非代码文件
+        - `s1_146/` - 5 个直属非代码文件
+        - `s1_147/` - 5 个直属非代码文件
+        - `s1_148/` - 5 个直属非代码文件
+        - `s1_149/` - 5 个直属非代码文件
+        - `s1_150/` - 5 个直属非代码文件
+        - `s1_151/` - 5 个直属非代码文件
+        - `s1_152/` - 5 个直属非代码文件
+        - `s1_153/` - 5 个直属非代码文件
+        - `s1_154/` - 5 个直属非代码文件
+        - `s1_155/` - 5 个直属非代码文件
+        - `s1_156/` - 5 个直属非代码文件
+        - `s1_157/` - 5 个直属非代码文件
+        - `s1_158/` - 5 个直属非代码文件
+        - `s1_159/` - 5 个直属非代码文件
+        - `s1_160/` - 5 个直属非代码文件
+        - `s1_161/` - 5 个直属非代码文件
+        - `s1_162/` - 5 个直属非代码文件
+        - `s1_163/` - 5 个直属非代码文件
+        - `s1_164/` - 5 个直属非代码文件
+        - `s1_165/` - 5 个直属非代码文件
+        - `s1_166/` - 5 个直属非代码文件
+        - `s1_167/` - 5 个直属非代码文件
+        - `s1_168/` - 5 个直属非代码文件
+        - `s1_169/` - 5 个直属非代码文件
+        - `s1_170/` - 5 个直属非代码文件
+        - `s1_171/` - 5 个直属非代码文件
+        - `s1_172/` - 5 个直属非代码文件
+        - `s1_173/` - 5 个直属非代码文件
+        - `s1_174/` - 5 个直属非代码文件
+        - `s1_175/` - 5 个直属非代码文件
+        - `s1_176/` - 5 个直属非代码文件
+        - `s1_177/` - 5 个直属非代码文件
+        - `s1_178/` - 5 个直属非代码文件
+        - `s1_179/` - 5 个直属非代码文件
+        - `s1_180/` - 5 个直属非代码文件
+        - `s1_181/` - 5 个直属非代码文件
+        - `s1_182/` - 5 个直属非代码文件
+        - `s1_183/` - 5 个直属非代码文件
+        - `s1_184/` - 5 个直属非代码文件
+        - `s1_185/` - 5 个直属非代码文件
+      - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+    - `20260625_2231_overfitting_sweep_stage1_rank2/` - 2 个直属子文件夹；1 个直属非代码文件
+      - `learning_curves/` - 空目录
+      - `reports/` - 空目录
+      - `[本级文件]` - 1 个非代码文件；类别：.json
+    - `20260625_2241_overfitting_sweep_stage1_rank2/` - 2 个直属子文件夹；1 个直属非代码文件
+      - `learning_curves/` - 1 个直属子文件夹
+        - `s1_001/` - 空目录
+      - `reports/` - 1 个直属子文件夹
+        - `s1_001/` - 空目录
+      - `[本级文件]` - 1 个非代码文件；类别：.json
+    - `20260625_2300_overfitting_sweep_stage1_rank2/` - 3 个直属子文件夹；3 个直属非代码文件
+      - `confusion_matrices/` - 2 个直属非代码文件
+      - `learning_curves/` - 1 个直属子文件夹
+        - `s1_001/` - 2 个直属非代码文件
+      - `reports/` - 1 个直属子文件夹
+        - `s1_001/` - 1 个直属非代码文件
+      - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+    - `20260625_2320_overfitting_sweep_stage1_rank2/` - 3 个直属子文件夹；3 个直属非代码文件
+      - `confusion_matrices/` - 258 个直属非代码文件
+      - `learning_curves/` - 129 个直属子文件夹
+        - `ref_rank2_fixed_epoch_ep10/` - 10 个直属非代码文件
+        - `ref_rank2_fixed_epoch_ep15/` - 10 个直属非代码文件
+        - `ref_rank2_fixed_epoch_ep9/` - 10 个直属非代码文件
+        - `s1_001/` - 10 个直属非代码文件
+        - `s1_002/` - 10 个直属非代码文件
+        - `s1_003/` - 10 个直属非代码文件
+        - `s1_004/` - 10 个直属非代码文件
+        - `s1_005/` - 10 个直属非代码文件
+        - `s1_006/` - 10 个直属非代码文件
+        - `s1_007/` - 10 个直属非代码文件
+        - `s1_008/` - 10 个直属非代码文件
+        - `s1_009/` - 10 个直属非代码文件
+        - `s1_010/` - 10 个直属非代码文件
+        - `s1_011/` - 10 个直属非代码文件
+        - `s1_012/` - 10 个直属非代码文件
+        - `s1_013/` - 10 个直属非代码文件
+        - `s1_014/` - 10 个直属非代码文件
+        - `s1_015/` - 10 个直属非代码文件
+        - `s1_016/` - 10 个直属非代码文件
+        - `s1_017/` - 10 个直属非代码文件
+        - `s1_018/` - 10 个直属非代码文件
+        - `s1_019/` - 10 个直属非代码文件
+        - `s1_020/` - 10 个直属非代码文件
+        - `s1_021/` - 10 个直属非代码文件
+        - `s1_022/` - 10 个直属非代码文件
+        - `s1_023/` - 10 个直属非代码文件
+        - `s1_024/` - 10 个直属非代码文件
+        - `s1_025/` - 10 个直属非代码文件
+        - `s1_026/` - 10 个直属非代码文件
+        - `s1_027/` - 10 个直属非代码文件
+        - `s1_028/` - 10 个直属非代码文件
+        - `s1_029/` - 10 个直属非代码文件
+        - `s1_030/` - 10 个直属非代码文件
+        - `s1_031/` - 10 个直属非代码文件
+        - `s1_032/` - 10 个直属非代码文件
+        - `s1_033/` - 10 个直属非代码文件
+        - `s1_034/` - 10 个直属非代码文件
+        - `s1_035/` - 10 个直属非代码文件
+        - `s1_036/` - 10 个直属非代码文件
+        - `s1_037/` - 10 个直属非代码文件
+        - `s1_038/` - 10 个直属非代码文件
+        - `s1_039/` - 10 个直属非代码文件
+        - `s1_040/` - 10 个直属非代码文件
+        - `s1_041/` - 10 个直属非代码文件
+        - `s1_042/` - 10 个直属非代码文件
+        - `s1_043/` - 10 个直属非代码文件
+        - `s1_044/` - 10 个直属非代码文件
+        - `s1_045/` - 10 个直属非代码文件
+        - `s1_046/` - 10 个直属非代码文件
+        - `s1_047/` - 10 个直属非代码文件
+        - `s1_048/` - 10 个直属非代码文件
+        - `s1_049/` - 10 个直属非代码文件
+        - `s1_050/` - 10 个直属非代码文件
+        - `s1_051/` - 10 个直属非代码文件
+        - `s1_052/` - 10 个直属非代码文件
+        - `s1_053/` - 10 个直属非代码文件
+        - `s1_054/` - 10 个直属非代码文件
+        - `s1_055/` - 10 个直属非代码文件
+        - `s1_056/` - 10 个直属非代码文件
+        - `s1_057/` - 10 个直属非代码文件
+        - `s1_058/` - 10 个直属非代码文件
+        - `s1_059/` - 10 个直属非代码文件
+        - `s1_060/` - 10 个直属非代码文件
+        - `s1_061/` - 10 个直属非代码文件
+        - `s1_062/` - 10 个直属非代码文件
+        - `s1_063/` - 10 个直属非代码文件
+        - `s1_064/` - 10 个直属非代码文件
+        - `s1_065/` - 10 个直属非代码文件
+        - `s1_066/` - 10 个直属非代码文件
+        - `s1_067/` - 10 个直属非代码文件
+        - `s1_068/` - 10 个直属非代码文件
+        - `s1_069/` - 10 个直属非代码文件
+        - `s1_070/` - 10 个直属非代码文件
+        - `s1_071/` - 10 个直属非代码文件
+        - `s1_072/` - 10 个直属非代码文件
+        - `s1_073/` - 10 个直属非代码文件
+        - `s1_074/` - 10 个直属非代码文件
+        - `s1_075/` - 10 个直属非代码文件
+        - `s1_076/` - 10 个直属非代码文件
+        - `s1_077/` - 10 个直属非代码文件
+        - `s1_078/` - 10 个直属非代码文件
+        - `s1_079/` - 10 个直属非代码文件
+        - `s1_080/` - 10 个直属非代码文件
+        - `s1_081/` - 10 个直属非代码文件
+        - `s1_082/` - 10 个直属非代码文件
+        - `s1_083/` - 10 个直属非代码文件
+        - `s1_084/` - 10 个直属非代码文件
+        - `s1_085/` - 10 个直属非代码文件
+        - `s1_086/` - 10 个直属非代码文件
+        - `s1_087/` - 10 个直属非代码文件
+        - `s1_088/` - 10 个直属非代码文件
+        - `s1_089/` - 10 个直属非代码文件
+        - `s1_090/` - 10 个直属非代码文件
+        - `s1_091/` - 10 个直属非代码文件
+        - `s1_092/` - 10 个直属非代码文件
+        - `s1_093/` - 10 个直属非代码文件
+        - `s1_094/` - 10 个直属非代码文件
+        - `s1_095/` - 10 个直属非代码文件
+        - `s1_096/` - 10 个直属非代码文件
+        - `s1_097/` - 10 个直属非代码文件
+        - `s1_098/` - 10 个直属非代码文件
+        - `s1_099/` - 10 个直属非代码文件
+        - `s1_100/` - 10 个直属非代码文件
+        - `s1_101/` - 10 个直属非代码文件
+        - `s1_102/` - 10 个直属非代码文件
+        - `s1_103/` - 10 个直属非代码文件
+        - `s1_104/` - 10 个直属非代码文件
+        - `s1_105/` - 10 个直属非代码文件
+        - `s1_106/` - 10 个直属非代码文件
+        - `s1_107/` - 10 个直属非代码文件
+        - `s1_108/` - 10 个直属非代码文件
+        - `s1_109/` - 10 个直属非代码文件
+        - `s1_110/` - 10 个直属非代码文件
+        - `s1_111/` - 10 个直属非代码文件
+        - `s1_112/` - 10 个直属非代码文件
+        - `s1_113/` - 10 个直属非代码文件
+        - `s1_114/` - 10 个直属非代码文件
+        - `s1_115/` - 10 个直属非代码文件
+        - `s1_116/` - 10 个直属非代码文件
+        - `s1_117/` - 10 个直属非代码文件
+        - `s1_118/` - 10 个直属非代码文件
+        - `s1_119/` - 10 个直属非代码文件
+        - `s1_120/` - 10 个直属非代码文件
+        - `s1_121/` - 10 个直属非代码文件
+        - `s1_122/` - 10 个直属非代码文件
+        - `s1_123/` - 10 个直属非代码文件
+        - `s1_124/` - 10 个直属非代码文件
+        - `s1_125/` - 10 个直属非代码文件
+        - `s1_126/` - 10 个直属非代码文件
+      - `reports/` - 129 个直属子文件夹
+        - `ref_rank2_fixed_epoch_ep10/` - 5 个直属非代码文件
+        - `ref_rank2_fixed_epoch_ep15/` - 5 个直属非代码文件
+        - `ref_rank2_fixed_epoch_ep9/` - 5 个直属非代码文件
+        - `s1_001/` - 5 个直属非代码文件
+        - `s1_002/` - 5 个直属非代码文件
+        - `s1_003/` - 5 个直属非代码文件
+        - `s1_004/` - 5 个直属非代码文件
+        - `s1_005/` - 5 个直属非代码文件
+        - `s1_006/` - 5 个直属非代码文件
+        - `s1_007/` - 5 个直属非代码文件
+        - `s1_008/` - 5 个直属非代码文件
+        - `s1_009/` - 5 个直属非代码文件
+        - `s1_010/` - 5 个直属非代码文件
+        - `s1_011/` - 5 个直属非代码文件
+        - `s1_012/` - 5 个直属非代码文件
+        - `s1_013/` - 5 个直属非代码文件
+        - `s1_014/` - 5 个直属非代码文件
+        - `s1_015/` - 5 个直属非代码文件
+        - `s1_016/` - 5 个直属非代码文件
+        - `s1_017/` - 5 个直属非代码文件
+        - `s1_018/` - 5 个直属非代码文件
+        - `s1_019/` - 5 个直属非代码文件
+        - `s1_020/` - 5 个直属非代码文件
+        - `s1_021/` - 5 个直属非代码文件
+        - `s1_022/` - 5 个直属非代码文件
+        - `s1_023/` - 5 个直属非代码文件
+        - `s1_024/` - 5 个直属非代码文件
+        - `s1_025/` - 5 个直属非代码文件
+        - `s1_026/` - 5 个直属非代码文件
+        - `s1_027/` - 5 个直属非代码文件
+        - `s1_028/` - 5 个直属非代码文件
+        - `s1_029/` - 5 个直属非代码文件
+        - `s1_030/` - 5 个直属非代码文件
+        - `s1_031/` - 5 个直属非代码文件
+        - `s1_032/` - 5 个直属非代码文件
+        - `s1_033/` - 5 个直属非代码文件
+        - `s1_034/` - 5 个直属非代码文件
+        - `s1_035/` - 5 个直属非代码文件
+        - `s1_036/` - 5 个直属非代码文件
+        - `s1_037/` - 5 个直属非代码文件
+        - `s1_038/` - 5 个直属非代码文件
+        - `s1_039/` - 5 个直属非代码文件
+        - `s1_040/` - 5 个直属非代码文件
+        - `s1_041/` - 5 个直属非代码文件
+        - `s1_042/` - 5 个直属非代码文件
+        - `s1_043/` - 5 个直属非代码文件
+        - `s1_044/` - 5 个直属非代码文件
+        - `s1_045/` - 5 个直属非代码文件
+        - `s1_046/` - 5 个直属非代码文件
+        - `s1_047/` - 5 个直属非代码文件
+        - `s1_048/` - 5 个直属非代码文件
+        - `s1_049/` - 5 个直属非代码文件
+        - `s1_050/` - 5 个直属非代码文件
+        - `s1_051/` - 5 个直属非代码文件
+        - `s1_052/` - 5 个直属非代码文件
+        - `s1_053/` - 5 个直属非代码文件
+        - `s1_054/` - 5 个直属非代码文件
+        - `s1_055/` - 5 个直属非代码文件
+        - `s1_056/` - 5 个直属非代码文件
+        - `s1_057/` - 5 个直属非代码文件
+        - `s1_058/` - 5 个直属非代码文件
+        - `s1_059/` - 5 个直属非代码文件
+        - `s1_060/` - 5 个直属非代码文件
+        - `s1_061/` - 5 个直属非代码文件
+        - `s1_062/` - 5 个直属非代码文件
+        - `s1_063/` - 5 个直属非代码文件
+        - `s1_064/` - 5 个直属非代码文件
+        - `s1_065/` - 5 个直属非代码文件
+        - `s1_066/` - 5 个直属非代码文件
+        - `s1_067/` - 5 个直属非代码文件
+        - `s1_068/` - 5 个直属非代码文件
+        - `s1_069/` - 5 个直属非代码文件
+        - `s1_070/` - 5 个直属非代码文件
+        - `s1_071/` - 5 个直属非代码文件
+        - `s1_072/` - 5 个直属非代码文件
+        - `s1_073/` - 5 个直属非代码文件
+        - `s1_074/` - 5 个直属非代码文件
+        - `s1_075/` - 5 个直属非代码文件
+        - `s1_076/` - 5 个直属非代码文件
+        - `s1_077/` - 5 个直属非代码文件
+        - `s1_078/` - 5 个直属非代码文件
+        - `s1_079/` - 5 个直属非代码文件
+        - `s1_080/` - 5 个直属非代码文件
+        - `s1_081/` - 5 个直属非代码文件
+        - `s1_082/` - 5 个直属非代码文件
+        - `s1_083/` - 5 个直属非代码文件
+        - `s1_084/` - 5 个直属非代码文件
+        - `s1_085/` - 5 个直属非代码文件
+        - `s1_086/` - 5 个直属非代码文件
+        - `s1_087/` - 5 个直属非代码文件
+        - `s1_088/` - 5 个直属非代码文件
+        - `s1_089/` - 5 个直属非代码文件
+        - `s1_090/` - 5 个直属非代码文件
+        - `s1_091/` - 5 个直属非代码文件
+        - `s1_092/` - 5 个直属非代码文件
+        - `s1_093/` - 5 个直属非代码文件
+        - `s1_094/` - 5 个直属非代码文件
+        - `s1_095/` - 5 个直属非代码文件
+        - `s1_096/` - 5 个直属非代码文件
+        - `s1_097/` - 5 个直属非代码文件
+        - `s1_098/` - 5 个直属非代码文件
+        - `s1_099/` - 5 个直属非代码文件
+        - `s1_100/` - 5 个直属非代码文件
+        - `s1_101/` - 5 个直属非代码文件
+        - `s1_102/` - 5 个直属非代码文件
+        - `s1_103/` - 5 个直属非代码文件
+        - `s1_104/` - 5 个直属非代码文件
+        - `s1_105/` - 5 个直属非代码文件
+        - `s1_106/` - 5 个直属非代码文件
+        - `s1_107/` - 5 个直属非代码文件
+        - `s1_108/` - 5 个直属非代码文件
+        - `s1_109/` - 5 个直属非代码文件
+        - `s1_110/` - 5 个直属非代码文件
+        - `s1_111/` - 5 个直属非代码文件
+        - `s1_112/` - 5 个直属非代码文件
+        - `s1_113/` - 5 个直属非代码文件
+        - `s1_114/` - 5 个直属非代码文件
+        - `s1_115/` - 5 个直属非代码文件
+        - `s1_116/` - 5 个直属非代码文件
+        - `s1_117/` - 5 个直属非代码文件
+        - `s1_118/` - 5 个直属非代码文件
+        - `s1_119/` - 5 个直属非代码文件
+        - `s1_120/` - 5 个直属非代码文件
+        - `s1_121/` - 5 个直属非代码文件
+        - `s1_122/` - 5 个直属非代码文件
+        - `s1_123/` - 5 个直属非代码文件
+        - `s1_124/` - 5 个直属非代码文件
+        - `s1_125/` - 5 个直属非代码文件
+        - `s1_126/` - 5 个直属非代码文件
+      - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+    - `20260630_0617_overfitting_sweep_generalization_rank2/` - 2 个直属子文件夹；1 个直属非代码文件
+      - `learning_curves/` - 空目录
+      - `reports/` - 空目录
+      - `[本级文件]` - 1 个非代码文件；类别：.json
+    - `20260630_0618_overfitting_sweep_generalization_rank2/` - 3 个直属子文件夹；3 个直属非代码文件
+      - `confusion_matrices/` - 2 个直属非代码文件
+      - `learning_curves/` - 1 个直属子文件夹
+        - `gen_001/` - 2 个直属非代码文件
+      - `reports/` - 1 个直属子文件夹
+        - `gen_001/` - 1 个直属非代码文件
+      - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+    - `20260630_0619_overfitting_sweep_generalization_rank2/` - 3 个直属子文件夹；3 个直属非代码文件
+      - `confusion_matrices/` - 6 个直属非代码文件
+      - `learning_curves/` - 3 个直属子文件夹
+        - `gen_001/` - 2 个直属非代码文件
+        - `gen_002/` - 2 个直属非代码文件
+        - `gen_003/` - 2 个直属非代码文件
+      - `reports/` - 3 个直属子文件夹
+        - `gen_001/` - 1 个直属非代码文件
+        - `gen_002/` - 1 个直属非代码文件
+        - `gen_003/` - 1 个直属非代码文件
+      - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+    - `20260630_0630_overfitting_sweep_generalization_rank2/` - 5 个直属子文件夹；3 个直属非代码文件
+      - `analysis_report_20260703_1202/` - 2 个直属子文件夹；2 个直属非代码文件
+        - `figures/` - 14 个直属非代码文件
+        - `tables/` - 27 个直属非代码文件
+        - `[本级文件]` - 2 个非代码文件；类别：.json、.md
+      - `analysis_report_20260703_1217_complete_refs/` - 2 个直属子文件夹；2 个直属非代码文件
+        - `figures/` - 17 个直属非代码文件
+        - `tables/` - 31 个直属非代码文件
+        - `[本级文件]` - 2 个非代码文件；类别：.json、.md
+      - `confusion_matrices/` - 464 个直属非代码文件
+      - `learning_curves/` - 232 个直属子文件夹
+        - `gen_001/` - 10 个直属非代码文件
+        - `gen_002/` - 10 个直属非代码文件
+        - `gen_003/` - 10 个直属非代码文件
+        - `gen_004/` - 10 个直属非代码文件
+        - `gen_005/` - 10 个直属非代码文件
+        - `gen_006/` - 10 个直属非代码文件
+        - `gen_007/` - 10 个直属非代码文件
+        - `gen_008/` - 10 个直属非代码文件
+        - `gen_009/` - 10 个直属非代码文件
+        - `gen_010/` - 10 个直属非代码文件
+        - `gen_011/` - 10 个直属非代码文件
+        - `gen_012/` - 10 个直属非代码文件
+        - `gen_013/` - 10 个直属非代码文件
+        - `gen_014/` - 10 个直属非代码文件
+        - `gen_015/` - 10 个直属非代码文件
+        - `gen_016/` - 10 个直属非代码文件
+        - `gen_017/` - 10 个直属非代码文件
+        - `gen_018/` - 10 个直属非代码文件
+        - `gen_019/` - 10 个直属非代码文件
+        - `gen_020/` - 10 个直属非代码文件
+        - `gen_021/` - 10 个直属非代码文件
+        - `gen_022/` - 10 个直属非代码文件
+        - `gen_023/` - 10 个直属非代码文件
+        - `gen_024/` - 10 个直属非代码文件
+        - `gen_025/` - 10 个直属非代码文件
+        - `gen_026/` - 10 个直属非代码文件
+        - `gen_027/` - 10 个直属非代码文件
+        - `gen_028/` - 10 个直属非代码文件
+        - `gen_029/` - 10 个直属非代码文件
+        - `gen_030/` - 10 个直属非代码文件
+        - `gen_031/` - 10 个直属非代码文件
+        - `gen_032/` - 10 个直属非代码文件
+        - `gen_033/` - 10 个直属非代码文件
+        - `gen_034/` - 10 个直属非代码文件
+        - `gen_035/` - 10 个直属非代码文件
+        - `gen_036/` - 10 个直属非代码文件
+        - `gen_037/` - 10 个直属非代码文件
+        - `gen_038/` - 10 个直属非代码文件
+        - `gen_039/` - 10 个直属非代码文件
+        - `gen_040/` - 10 个直属非代码文件
+        - `gen_041/` - 10 个直属非代码文件
+        - `gen_042/` - 10 个直属非代码文件
+        - `gen_043/` - 10 个直属非代码文件
+        - `gen_044/` - 10 个直属非代码文件
+        - `gen_045/` - 10 个直属非代码文件
+        - `gen_046/` - 10 个直属非代码文件
+        - `gen_047/` - 10 个直属非代码文件
+        - `gen_048/` - 10 个直属非代码文件
+        - `gen_049/` - 10 个直属非代码文件
+        - `gen_050/` - 10 个直属非代码文件
+        - `gen_051/` - 10 个直属非代码文件
+        - `gen_052/` - 10 个直属非代码文件
+        - `gen_053/` - 10 个直属非代码文件
+        - `gen_054/` - 10 个直属非代码文件
+        - `gen_055/` - 10 个直属非代码文件
+        - `gen_056/` - 10 个直属非代码文件
+        - `gen_057/` - 10 个直属非代码文件
+        - `gen_058/` - 10 个直属非代码文件
+        - `gen_059/` - 10 个直属非代码文件
+        - `gen_060/` - 10 个直属非代码文件
+        - `gen_061/` - 10 个直属非代码文件
+        - `gen_062/` - 10 个直属非代码文件
+        - `gen_063/` - 10 个直属非代码文件
+        - `gen_064/` - 10 个直属非代码文件
+        - `gen_065/` - 10 个直属非代码文件
+        - `gen_066/` - 10 个直属非代码文件
+        - `gen_067/` - 10 个直属非代码文件
+        - `gen_068/` - 10 个直属非代码文件
+        - `gen_069/` - 10 个直属非代码文件
+        - `gen_070/` - 10 个直属非代码文件
+        - `gen_071/` - 10 个直属非代码文件
+        - `gen_072/` - 10 个直属非代码文件
+        - `gen_073/` - 10 个直属非代码文件
+        - `gen_074/` - 10 个直属非代码文件
+        - `gen_075/` - 10 个直属非代码文件
+        - `gen_076/` - 10 个直属非代码文件
+        - `gen_077/` - 10 个直属非代码文件
+        - `gen_078/` - 10 个直属非代码文件
+        - `gen_079/` - 10 个直属非代码文件
+        - `gen_080/` - 10 个直属非代码文件
+        - `gen_081/` - 10 个直属非代码文件
+        - `gen_082/` - 10 个直属非代码文件
+        - `gen_083/` - 10 个直属非代码文件
+        - `gen_084/` - 10 个直属非代码文件
+        - `gen_085/` - 10 个直属非代码文件
+        - `gen_086/` - 10 个直属非代码文件
+        - `gen_087/` - 10 个直属非代码文件
+        - `gen_088/` - 10 个直属非代码文件
+        - `gen_089/` - 10 个直属非代码文件
+        - `gen_090/` - 10 个直属非代码文件
+        - `gen_091/` - 10 个直属非代码文件
+        - `gen_092/` - 10 个直属非代码文件
+        - `gen_093/` - 10 个直属非代码文件
+        - `gen_094/` - 10 个直属非代码文件
+        - `gen_095/` - 10 个直属非代码文件
+        - `gen_096/` - 10 个直属非代码文件
+        - `gen_097/` - 10 个直属非代码文件
+        - `gen_098/` - 10 个直属非代码文件
+        - `gen_099/` - 10 个直属非代码文件
+        - `gen_100/` - 10 个直属非代码文件
+        - `gen_101/` - 10 个直属非代码文件
+        - `gen_102/` - 10 个直属非代码文件
+        - `gen_103/` - 10 个直属非代码文件
+        - `gen_104/` - 10 个直属非代码文件
+        - `gen_105/` - 10 个直属非代码文件
+        - `gen_106/` - 10 个直属非代码文件
+        - `gen_107/` - 10 个直属非代码文件
+        - `gen_108/` - 10 个直属非代码文件
+        - `gen_109/` - 10 个直属非代码文件
+        - `gen_110/` - 10 个直属非代码文件
+        - `gen_111/` - 10 个直属非代码文件
+        - `gen_112/` - 10 个直属非代码文件
+        - `gen_113/` - 10 个直属非代码文件
+        - `gen_114/` - 10 个直属非代码文件
+        - `gen_115/` - 10 个直属非代码文件
+        - `gen_116/` - 10 个直属非代码文件
+        - `gen_117/` - 10 个直属非代码文件
+        - `gen_118/` - 10 个直属非代码文件
+        - `gen_119/` - 10 个直属非代码文件
+        - `gen_120/` - 10 个直属非代码文件
+        - `gen_121/` - 10 个直属非代码文件
+        - `gen_122/` - 10 个直属非代码文件
+        - `gen_123/` - 10 个直属非代码文件
+        - `gen_124/` - 10 个直属非代码文件
+        - `gen_125/` - 10 个直属非代码文件
+        - `gen_126/` - 10 个直属非代码文件
+        - `gen_127/` - 10 个直属非代码文件
+        - `gen_128/` - 10 个直属非代码文件
+        - `gen_129/` - 10 个直属非代码文件
+        - `gen_130/` - 10 个直属非代码文件
+        - `gen_131/` - 10 个直属非代码文件
+        - `gen_132/` - 10 个直属非代码文件
+        - `gen_133/` - 10 个直属非代码文件
+        - `gen_134/` - 10 个直属非代码文件
+        - `gen_135/` - 10 个直属非代码文件
+        - `gen_136/` - 10 个直属非代码文件
+        - `gen_137/` - 10 个直属非代码文件
+        - `gen_138/` - 10 个直属非代码文件
+        - `gen_139/` - 10 个直属非代码文件
+        - `gen_140/` - 10 个直属非代码文件
+        - `gen_141/` - 10 个直属非代码文件
+        - `gen_142/` - 10 个直属非代码文件
+        - `gen_143/` - 10 个直属非代码文件
+        - `gen_144/` - 10 个直属非代码文件
+        - `gen_145/` - 10 个直属非代码文件
+        - `gen_146/` - 10 个直属非代码文件
+        - `gen_147/` - 10 个直属非代码文件
+        - `gen_148/` - 10 个直属非代码文件
+        - `gen_149/` - 10 个直属非代码文件
+        - `gen_150/` - 10 个直属非代码文件
+        - `gen_151/` - 10 个直属非代码文件
+        - `gen_152/` - 10 个直属非代码文件
+        - `gen_153/` - 10 个直属非代码文件
+        - `gen_154/` - 10 个直属非代码文件
+        - `gen_155/` - 10 个直属非代码文件
+        - `gen_156/` - 10 个直属非代码文件
+        - `gen_157/` - 10 个直属非代码文件
+        - `gen_158/` - 10 个直属非代码文件
+        - `gen_159/` - 10 个直属非代码文件
+        - `gen_160/` - 10 个直属非代码文件
+        - `gen_161/` - 10 个直属非代码文件
+        - `gen_162/` - 10 个直属非代码文件
+        - `gen_163/` - 10 个直属非代码文件
+        - `gen_164/` - 10 个直属非代码文件
+        - `gen_165/` - 10 个直属非代码文件
+        - `gen_166/` - 10 个直属非代码文件
+        - `gen_167/` - 10 个直属非代码文件
+        - `gen_168/` - 10 个直属非代码文件
+        - `gen_169/` - 10 个直属非代码文件
+        - `gen_170/` - 10 个直属非代码文件
+        - `gen_171/` - 10 个直属非代码文件
+        - `gen_172/` - 10 个直属非代码文件
+        - `gen_173/` - 10 个直属非代码文件
+        - `gen_174/` - 10 个直属非代码文件
+        - `gen_175/` - 10 个直属非代码文件
+        - `gen_176/` - 10 个直属非代码文件
+        - `gen_177/` - 10 个直属非代码文件
+        - `gen_178/` - 10 个直属非代码文件
+        - `gen_179/` - 10 个直属非代码文件
+        - `gen_180/` - 10 个直属非代码文件
+        - `gen_181/` - 10 个直属非代码文件
+        - `gen_182/` - 10 个直属非代码文件
+        - `gen_183/` - 10 个直属非代码文件
+        - `gen_184/` - 10 个直属非代码文件
+        - `gen_185/` - 10 个直属非代码文件
+        - `gen_186/` - 10 个直属非代码文件
+        - `gen_187/` - 10 个直属非代码文件
+        - `gen_188/` - 10 个直属非代码文件
+        - `gen_189/` - 10 个直属非代码文件
+        - `gen_190/` - 10 个直属非代码文件
+        - `gen_191/` - 10 个直属非代码文件
+        - `gen_192/` - 10 个直属非代码文件
+        - `gen_193/` - 10 个直属非代码文件
+        - `gen_194/` - 10 个直属非代码文件
+        - `gen_195/` - 10 个直属非代码文件
+        - `gen_196/` - 10 个直属非代码文件
+        - `gen_197/` - 10 个直属非代码文件
+        - `gen_198/` - 10 个直属非代码文件
+        - `gen_199/` - 10 个直属非代码文件
+        - `gen_200/` - 10 个直属非代码文件
+        - `gen_201/` - 10 个直属非代码文件
+        - `gen_202/` - 10 个直属非代码文件
+        - `gen_203/` - 10 个直属非代码文件
+        - `gen_204/` - 10 个直属非代码文件
+        - `gen_205/` - 10 个直属非代码文件
+        - `gen_206/` - 10 个直属非代码文件
+        - `gen_207/` - 10 个直属非代码文件
+        - `gen_208/` - 10 个直属非代码文件
+        - `gen_209/` - 10 个直属非代码文件
+        - `gen_210/` - 10 个直属非代码文件
+        - `gen_211/` - 10 个直属非代码文件
+        - `gen_212/` - 10 个直属非代码文件
+        - `gen_213/` - 10 个直属非代码文件
+        - `gen_214/` - 10 个直属非代码文件
+        - `gen_215/` - 10 个直属非代码文件
+        - `gen_216/` - 10 个直属非代码文件
+        - `gen_217/` - 10 个直属非代码文件
+        - `gen_218/` - 10 个直属非代码文件
+        - `gen_219/` - 10 个直属非代码文件
+        - `gen_220/` - 10 个直属非代码文件
+        - `gen_221/` - 10 个直属非代码文件
+        - `gen_222/` - 10 个直属非代码文件
+        - `gen_223/` - 10 个直属非代码文件
+        - `gen_224/` - 10 个直属非代码文件
+        - `ref_20260527_top1_g0068/` - 10 个直属非代码文件
+        - `ref_20260527_top2_g0056/` - 10 个直属非代码文件
+        - `ref_20260608_top1_s1_085/` - 10 个直属非代码文件
+        - `ref_20260608_top2_s1_091/` - 10 个直属非代码文件
+        - `ref_20260608_top3_s1_105/` - 10 个直属非代码文件
+        - `ref_20260608_top4_s1_163/` - 10 个直属非代码文件
+        - `ref_20260625_top1_s1_122/` - 10 个直属非代码文件
+        - `ref_20260625_top2_s1_102/` - 10 个直属非代码文件
+      - `reports/` - 232 个直属子文件夹
+        - `gen_001/` - 5 个直属非代码文件
+        - `gen_002/` - 5 个直属非代码文件
+        - `gen_003/` - 5 个直属非代码文件
+        - `gen_004/` - 5 个直属非代码文件
+        - `gen_005/` - 5 个直属非代码文件
+        - `gen_006/` - 5 个直属非代码文件
+        - `gen_007/` - 5 个直属非代码文件
+        - `gen_008/` - 5 个直属非代码文件
+        - `gen_009/` - 5 个直属非代码文件
+        - `gen_010/` - 5 个直属非代码文件
+        - `gen_011/` - 5 个直属非代码文件
+        - `gen_012/` - 5 个直属非代码文件
+        - `gen_013/` - 5 个直属非代码文件
+        - `gen_014/` - 5 个直属非代码文件
+        - `gen_015/` - 5 个直属非代码文件
+        - `gen_016/` - 5 个直属非代码文件
+        - `gen_017/` - 5 个直属非代码文件
+        - `gen_018/` - 5 个直属非代码文件
+        - `gen_019/` - 5 个直属非代码文件
+        - `gen_020/` - 5 个直属非代码文件
+        - `gen_021/` - 5 个直属非代码文件
+        - `gen_022/` - 5 个直属非代码文件
+        - `gen_023/` - 5 个直属非代码文件
+        - `gen_024/` - 5 个直属非代码文件
+        - `gen_025/` - 5 个直属非代码文件
+        - `gen_026/` - 5 个直属非代码文件
+        - `gen_027/` - 5 个直属非代码文件
+        - `gen_028/` - 5 个直属非代码文件
+        - `gen_029/` - 5 个直属非代码文件
+        - `gen_030/` - 5 个直属非代码文件
+        - `gen_031/` - 5 个直属非代码文件
+        - `gen_032/` - 5 个直属非代码文件
+        - `gen_033/` - 5 个直属非代码文件
+        - `gen_034/` - 5 个直属非代码文件
+        - `gen_035/` - 5 个直属非代码文件
+        - `gen_036/` - 5 个直属非代码文件
+        - `gen_037/` - 5 个直属非代码文件
+        - `gen_038/` - 5 个直属非代码文件
+        - `gen_039/` - 5 个直属非代码文件
+        - `gen_040/` - 5 个直属非代码文件
+        - `gen_041/` - 5 个直属非代码文件
+        - `gen_042/` - 5 个直属非代码文件
+        - `gen_043/` - 5 个直属非代码文件
+        - `gen_044/` - 5 个直属非代码文件
+        - `gen_045/` - 5 个直属非代码文件
+        - `gen_046/` - 5 个直属非代码文件
+        - `gen_047/` - 5 个直属非代码文件
+        - `gen_048/` - 5 个直属非代码文件
+        - `gen_049/` - 5 个直属非代码文件
+        - `gen_050/` - 5 个直属非代码文件
+        - `gen_051/` - 5 个直属非代码文件
+        - `gen_052/` - 5 个直属非代码文件
+        - `gen_053/` - 5 个直属非代码文件
+        - `gen_054/` - 5 个直属非代码文件
+        - `gen_055/` - 5 个直属非代码文件
+        - `gen_056/` - 5 个直属非代码文件
+        - `gen_057/` - 5 个直属非代码文件
+        - `gen_058/` - 5 个直属非代码文件
+        - `gen_059/` - 5 个直属非代码文件
+        - `gen_060/` - 5 个直属非代码文件
+        - `gen_061/` - 5 个直属非代码文件
+        - `gen_062/` - 5 个直属非代码文件
+        - `gen_063/` - 5 个直属非代码文件
+        - `gen_064/` - 5 个直属非代码文件
+        - `gen_065/` - 5 个直属非代码文件
+        - `gen_066/` - 5 个直属非代码文件
+        - `gen_067/` - 5 个直属非代码文件
+        - `gen_068/` - 5 个直属非代码文件
+        - `gen_069/` - 5 个直属非代码文件
+        - `gen_070/` - 5 个直属非代码文件
+        - `gen_071/` - 5 个直属非代码文件
+        - `gen_072/` - 5 个直属非代码文件
+        - `gen_073/` - 5 个直属非代码文件
+        - `gen_074/` - 5 个直属非代码文件
+        - `gen_075/` - 5 个直属非代码文件
+        - `gen_076/` - 5 个直属非代码文件
+        - `gen_077/` - 5 个直属非代码文件
+        - `gen_078/` - 5 个直属非代码文件
+        - `gen_079/` - 5 个直属非代码文件
+        - `gen_080/` - 5 个直属非代码文件
+        - `gen_081/` - 5 个直属非代码文件
+        - `gen_082/` - 5 个直属非代码文件
+        - `gen_083/` - 5 个直属非代码文件
+        - `gen_084/` - 5 个直属非代码文件
+        - `gen_085/` - 5 个直属非代码文件
+        - `gen_086/` - 5 个直属非代码文件
+        - `gen_087/` - 5 个直属非代码文件
+        - `gen_088/` - 5 个直属非代码文件
+        - `gen_089/` - 5 个直属非代码文件
+        - `gen_090/` - 5 个直属非代码文件
+        - `gen_091/` - 5 个直属非代码文件
+        - `gen_092/` - 5 个直属非代码文件
+        - `gen_093/` - 5 个直属非代码文件
+        - `gen_094/` - 5 个直属非代码文件
+        - `gen_095/` - 5 个直属非代码文件
+        - `gen_096/` - 5 个直属非代码文件
+        - `gen_097/` - 5 个直属非代码文件
+        - `gen_098/` - 5 个直属非代码文件
+        - `gen_099/` - 5 个直属非代码文件
+        - `gen_100/` - 5 个直属非代码文件
+        - `gen_101/` - 5 个直属非代码文件
+        - `gen_102/` - 5 个直属非代码文件
+        - `gen_103/` - 5 个直属非代码文件
+        - `gen_104/` - 5 个直属非代码文件
+        - `gen_105/` - 5 个直属非代码文件
+        - `gen_106/` - 5 个直属非代码文件
+        - `gen_107/` - 5 个直属非代码文件
+        - `gen_108/` - 5 个直属非代码文件
+        - `gen_109/` - 5 个直属非代码文件
+        - `gen_110/` - 5 个直属非代码文件
+        - `gen_111/` - 5 个直属非代码文件
+        - `gen_112/` - 5 个直属非代码文件
+        - `gen_113/` - 5 个直属非代码文件
+        - `gen_114/` - 5 个直属非代码文件
+        - `gen_115/` - 5 个直属非代码文件
+        - `gen_116/` - 5 个直属非代码文件
+        - `gen_117/` - 5 个直属非代码文件
+        - `gen_118/` - 5 个直属非代码文件
+        - `gen_119/` - 5 个直属非代码文件
+        - `gen_120/` - 5 个直属非代码文件
+        - `gen_121/` - 5 个直属非代码文件
+        - `gen_122/` - 5 个直属非代码文件
+        - `gen_123/` - 5 个直属非代码文件
+        - `gen_124/` - 5 个直属非代码文件
+        - `gen_125/` - 5 个直属非代码文件
+        - `gen_126/` - 5 个直属非代码文件
+        - `gen_127/` - 5 个直属非代码文件
+        - `gen_128/` - 5 个直属非代码文件
+        - `gen_129/` - 5 个直属非代码文件
+        - `gen_130/` - 5 个直属非代码文件
+        - `gen_131/` - 5 个直属非代码文件
+        - `gen_132/` - 5 个直属非代码文件
+        - `gen_133/` - 5 个直属非代码文件
+        - `gen_134/` - 5 个直属非代码文件
+        - `gen_135/` - 5 个直属非代码文件
+        - `gen_136/` - 5 个直属非代码文件
+        - `gen_137/` - 5 个直属非代码文件
+        - `gen_138/` - 5 个直属非代码文件
+        - `gen_139/` - 5 个直属非代码文件
+        - `gen_140/` - 5 个直属非代码文件
+        - `gen_141/` - 5 个直属非代码文件
+        - `gen_142/` - 5 个直属非代码文件
+        - `gen_143/` - 5 个直属非代码文件
+        - `gen_144/` - 5 个直属非代码文件
+        - `gen_145/` - 5 个直属非代码文件
+        - `gen_146/` - 5 个直属非代码文件
+        - `gen_147/` - 5 个直属非代码文件
+        - `gen_148/` - 5 个直属非代码文件
+        - `gen_149/` - 5 个直属非代码文件
+        - `gen_150/` - 5 个直属非代码文件
+        - `gen_151/` - 5 个直属非代码文件
+        - `gen_152/` - 5 个直属非代码文件
+        - `gen_153/` - 5 个直属非代码文件
+        - `gen_154/` - 5 个直属非代码文件
+        - `gen_155/` - 5 个直属非代码文件
+        - `gen_156/` - 5 个直属非代码文件
+        - `gen_157/` - 5 个直属非代码文件
+        - `gen_158/` - 5 个直属非代码文件
+        - `gen_159/` - 5 个直属非代码文件
+        - `gen_160/` - 5 个直属非代码文件
+        - `gen_161/` - 5 个直属非代码文件
+        - `gen_162/` - 5 个直属非代码文件
+        - `gen_163/` - 5 个直属非代码文件
+        - `gen_164/` - 5 个直属非代码文件
+        - `gen_165/` - 5 个直属非代码文件
+        - `gen_166/` - 5 个直属非代码文件
+        - `gen_167/` - 5 个直属非代码文件
+        - `gen_168/` - 5 个直属非代码文件
+        - `gen_169/` - 5 个直属非代码文件
+        - `gen_170/` - 5 个直属非代码文件
+        - `gen_171/` - 5 个直属非代码文件
+        - `gen_172/` - 5 个直属非代码文件
+        - `gen_173/` - 5 个直属非代码文件
+        - `gen_174/` - 5 个直属非代码文件
+        - `gen_175/` - 5 个直属非代码文件
+        - `gen_176/` - 5 个直属非代码文件
+        - `gen_177/` - 5 个直属非代码文件
+        - `gen_178/` - 5 个直属非代码文件
+        - `gen_179/` - 5 个直属非代码文件
+        - `gen_180/` - 5 个直属非代码文件
+        - `gen_181/` - 5 个直属非代码文件
+        - `gen_182/` - 5 个直属非代码文件
+        - `gen_183/` - 5 个直属非代码文件
+        - `gen_184/` - 5 个直属非代码文件
+        - `gen_185/` - 5 个直属非代码文件
+        - `gen_186/` - 5 个直属非代码文件
+        - `gen_187/` - 5 个直属非代码文件
+        - `gen_188/` - 5 个直属非代码文件
+        - `gen_189/` - 5 个直属非代码文件
+        - `gen_190/` - 5 个直属非代码文件
+        - `gen_191/` - 5 个直属非代码文件
+        - `gen_192/` - 5 个直属非代码文件
+        - `gen_193/` - 5 个直属非代码文件
+        - `gen_194/` - 5 个直属非代码文件
+        - `gen_195/` - 5 个直属非代码文件
+        - `gen_196/` - 5 个直属非代码文件
+        - `gen_197/` - 5 个直属非代码文件
+        - `gen_198/` - 5 个直属非代码文件
+        - `gen_199/` - 5 个直属非代码文件
+        - `gen_200/` - 5 个直属非代码文件
+        - `gen_201/` - 5 个直属非代码文件
+        - `gen_202/` - 5 个直属非代码文件
+        - `gen_203/` - 5 个直属非代码文件
+        - `gen_204/` - 5 个直属非代码文件
+        - `gen_205/` - 5 个直属非代码文件
+        - `gen_206/` - 5 个直属非代码文件
+        - `gen_207/` - 5 个直属非代码文件
+        - `gen_208/` - 5 个直属非代码文件
+        - `gen_209/` - 5 个直属非代码文件
+        - `gen_210/` - 5 个直属非代码文件
+        - `gen_211/` - 5 个直属非代码文件
+        - `gen_212/` - 5 个直属非代码文件
+        - `gen_213/` - 5 个直属非代码文件
+        - `gen_214/` - 5 个直属非代码文件
+        - `gen_215/` - 5 个直属非代码文件
+        - `gen_216/` - 5 个直属非代码文件
+        - `gen_217/` - 5 个直属非代码文件
+        - `gen_218/` - 5 个直属非代码文件
+        - `gen_219/` - 5 个直属非代码文件
+        - `gen_220/` - 5 个直属非代码文件
+        - `gen_221/` - 5 个直属非代码文件
+        - `gen_222/` - 5 个直属非代码文件
+        - `gen_223/` - 5 个直属非代码文件
+        - `gen_224/` - 5 个直属非代码文件
+        - `ref_20260527_top1_g0068/` - 5 个直属非代码文件
+        - `ref_20260527_top2_g0056/` - 5 个直属非代码文件
+        - `ref_20260608_top1_s1_085/` - 5 个直属非代码文件
+        - `ref_20260608_top2_s1_091/` - 5 个直属非代码文件
+        - `ref_20260608_top3_s1_105/` - 5 个直属非代码文件
+        - `ref_20260608_top4_s1_163/` - 5 个直属非代码文件
+        - `ref_20260625_top1_s1_122/` - 5 个直属非代码文件
+        - `ref_20260625_top2_s1_102/` - 5 个直属非代码文件
+      - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+    - `overfitting_20260608_0743/` - 2 个直属子文件夹；1 个直属非代码文件
+      - `learning_curves/` - 空目录
+      - `reports/` - 空目录
+      - `[本级文件]` - 1 个非代码文件；类别：.json
+    - `overfitting_20260608_0746/` - 3 个直属子文件夹；3 个直属非代码文件
+      - `confusion_matrices/` - 2 个直属非代码文件
+      - `learning_curves/` - 1 个直属子文件夹
+        - `s1_001/` - 2 个直属非代码文件
+      - `reports/` - 1 个直属子文件夹
+        - `s1_001/` - 1 个直属非代码文件
+      - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+    - `overfitting_20260608_0748/` - 2 个直属子文件夹；1 个直属非代码文件
+      - `learning_curves/` - 空目录
+      - `reports/` - 空目录
+      - `[本级文件]` - 1 个非代码文件；类别：.json
+    - `overfitting_20260608_0751/` - 2 个直属子文件夹；1 个直属非代码文件
+      - `learning_curves/` - 1 个直属子文件夹
+        - `s1_001/` - 空目录
+      - `reports/` - 1 个直属子文件夹
+        - `s1_001/` - 空目录
+      - `[本级文件]` - 1 个非代码文件；类别：.json
+    - `overfitting_20260608_0752/` - 3 个直属子文件夹；3 个直属非代码文件
+      - `confusion_matrices/` - 14 个直属非代码文件
+      - `learning_curves/` - 7 个直属子文件夹
+        - `ref_original/` - 10 个直属非代码文件
+        - `s1_001/` - 20 个直属非代码文件
+        - `s1_002/` - 20 个直属非代码文件
+        - `s1_003/` - 20 个直属非代码文件
+        - `s1_004/` - 20 个直属非代码文件
+        - `s1_005/` - 20 个直属非代码文件
+        - `s1_006/` - 20 个直属非代码文件
+      - `reports/` - 7 个直属子文件夹
+        - `ref_original/` - 5 个直属非代码文件
+        - `s1_001/` - 10 个直属非代码文件
+        - `s1_002/` - 10 个直属非代码文件
+        - `s1_003/` - 10 个直属非代码文件
+        - `s1_004/` - 10 个直属非代码文件
+        - `s1_005/` - 10 个直属非代码文件
+        - `s1_006/` - 10 个直属非代码文件
+      - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+  - `_sweep_analyse/` - 14 个直属子文件夹
+    - `20260601_0904_cnn_inceptiontime/` - 空目录
+    - `20260601_0904_cnn_inceptiontime_02/` - 3 个直属子文件夹；6 个直属非代码文件
+      - `figures/` - 9 个直属非代码文件
+      - `top_confusion_matrices/` - 20 个直属非代码文件
+      - `top_learning_curve_png/` - 50 个直属非代码文件
+      - `[本级文件]` - 6 个非代码文件；类别：.csv
+    - `20260601_0904_cnn_inceptiontime_03/` - 3 个直属子文件夹；7 个直属非代码文件
+      - `figures/` - 9 个直属非代码文件
+      - `top_confusion_matrices/` - 20 个直属非代码文件
+      - `top_learning_curve_png/` - 50 个直属非代码文件
+      - `[本级文件]` - 7 个非代码文件；类别：.csv、.md
+    - `20260601_0905_cnn_inceptiontime/` - 3 个直属子文件夹；7 个直属非代码文件
+      - `figures/` - 9 个直属非代码文件
+      - `top_confusion_matrices/` - 20 个直属非代码文件
+      - `top_learning_curve_png/` - 50 个直属非代码文件
+      - `[本级文件]` - 7 个非代码文件；类别：.csv、.md
+    - `20260601_0940_cnn_inceptiontime/` - 2 个直属子文件夹；8 个直属非代码文件
+      - `top_confusion_matrices/` - 20 个直属非代码文件
+      - `top_learning_curve_png/` - 50 个直属非代码文件
+      - `[本级文件]` - 8 个非代码文件；类别：.csv、.md
+    - `20260601_0941_cnn_inceptiontime/` - 3 个直属子文件夹；8 个直属非代码文件
+      - `figures/` - 11 个直属非代码文件
+      - `top_confusion_matrices/` - 20 个直属非代码文件
+      - `top_learning_curve_png/` - 50 个直属非代码文件
+      - `[本级文件]` - 8 个非代码文件；类别：.csv、.md
+    - `20260608_0655_shapeformer/` - 3 个直属子文件夹；8 个直属非代码文件
+      - `figures/` - 11 个直属非代码文件
+      - `top_confusion_matrices/` - 24 个直属非代码文件
+      - `top_learning_curve_png/` - 60 个直属非代码文件
+      - `[本级文件]` - 8 个非代码文件；类别：.csv、.md
+    - `20260608_0659_combined_cnn_inceptiontime_shapeformer/` - 3 个直属子文件夹；8 个直属非代码文件
+      - `figures/` - 11 个直属非代码文件
+      - `top_confusion_matrices/` - 60 个直属非代码文件
+      - `top_learning_curve_png/` - 150 个直属非代码文件
+      - `[本级文件]` - 8 个非代码文件；类别：.csv、.md
+    - `20260616_1139_overfitting_inceptiontime/` - 3 个直属子文件夹；15 个直属非代码文件
+      - `figures/` - 18 个直属非代码文件
+      - `top_confusion_matrices/` - 40 个直属非代码文件
+      - `top_learning_curve_png/` - 100 个直属非代码文件
+      - `[本级文件]` - 15 个非代码文件；类别：.csv、.md
+    - `20260616_1143_overfitting_inceptiontime/` - 3 个直属子文件夹；15 个直属非代码文件
+      - `figures/` - 18 个直属非代码文件
+      - `top_confusion_matrices/` - 40 个直属非代码文件
+      - `top_learning_curve_png/` - 100 个直属非代码文件
+      - `[本级文件]` - 15 个非代码文件；类别：.csv、.md
+    - `20260706_0946_overfitting_inceptiontime_small_inceptiontime/` - 3 个直属子文件夹；12 个直属非代码文件
+      - `figures/` - 17 个直属非代码文件
+      - `top_confusion_matrices/` - 12 个直属非代码文件
+      - `top_learning_curve_png/` - 60 个直属非代码文件
+      - `[本级文件]` - 12 个非代码文件；类别：.csv、.md
+    - `20260706_0947_overfitting_inceptiontime_small_inceptiontime/` - 3 个直属子文件夹；12 个直属非代码文件
+      - `figures/` - 17 个直属非代码文件
+      - `top_confusion_matrices/` - 14 个直属非代码文件
+      - `top_learning_curve_png/` - 65 个直属非代码文件
+      - `[本级文件]` - 12 个非代码文件；类别：.csv、.md
+    - `20260706_0947_overfitting_inceptiontime_small_inceptiontime_02/` - 3 个直属子文件夹；15 个直属非代码文件
+      - `figures/` - 18 个直属非代码文件
+      - `top_confusion_matrices/` - 80 个直属非代码文件
+      - `top_learning_curve_png/` - 200 个直属非代码文件
+      - `[本级文件]` - 15 个非代码文件；类别：.csv、.md
+    - `20260706_0956_overfitting_inceptiontime/` - 3 个直属子文件夹；15 个直属非代码文件
+      - `figures/` - 18 个直属非代码文件
+      - `top_confusion_matrices/` - 80 个直属非代码文件
+      - `top_learning_curve_png/` - 200 个直属非代码文件
+      - `[本级文件]` - 15 个非代码文件；类别：.csv、.md
+  - `20260525_0652/` - 3 个直属子文件夹；1 个直属非代码文件
+    - `learning_curves/` - 空目录
+    - `reports/` - 空目录
+    - `study_curve/` - 空目录
+    - `[本级文件]` - 1 个非代码文件；类别：.json
+  - `20260525_0652_02/` - 3 个直属子文件夹；3 个直属非代码文件
+    - `learning_curves/` - 2 个直属非代码文件
+    - `reports/` - 1 个直属非代码文件
+    - `study_curve/` - 1 个直属非代码文件
+    - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+  - `20260525_0655/` - 3 个直属子文件夹；1 个直属非代码文件
+    - `learning_curves/` - 空目录
+    - `reports/` - 空目录
+    - `study_curve/` - 空目录
+    - `[本级文件]` - 1 个非代码文件；类别：.json
+  - `20260525_0710/` - 3 个直属子文件夹；1 个直属非代码文件
+    - `learning_curves/` - 空目录
+    - `reports/` - 空目录
+    - `study_curve/` - 空目录
+    - `[本级文件]` - 1 个非代码文件；类别：.json
+  - `20260525_0713/` - 3 个直属子文件夹；3 个直属非代码文件
+    - `learning_curves/` - 16 个直属非代码文件
+    - `reports/` - 8 个直属非代码文件
+    - `study_curve/` - 8 个直属非代码文件
+    - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+  - `20260525_0728/` - 3 个直属子文件夹；1 个直属非代码文件
+    - `learning_curves/` - 空目录
+    - `reports/` - 空目录
+    - `study_curve/` - 空目录
+    - `[本级文件]` - 1 个非代码文件；类别：.json
+  - `20260525_0728_02/` - 3 个直属子文件夹；3 个直属非代码文件
+    - `learning_curves/` - 2 个直属非代码文件
+    - `reports/` - 1 个直属非代码文件
+    - `study_curve/` - 1 个直属非代码文件
+    - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+  - `20260525_0729/` - 3 个直属子文件夹；1 个直属非代码文件
+    - `learning_curves/` - 空目录
+    - `reports/` - 空目录
+    - `study_curve/` - 空目录
+    - `[本级文件]` - 1 个非代码文件；类别：.json
+  - `20260525_0729_02/` - 3 个直属子文件夹；3 个直属非代码文件
+    - `learning_curves/` - 2 个直属非代码文件
+    - `reports/` - 1 个直属非代码文件
+    - `study_curve/` - 1 个直属非代码文件
+    - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+  - `20260525_0732/` - 3 个直属子文件夹；3 个直属非代码文件
+    - `learning_curves/` - 46 个直属非代码文件
+    - `reports/` - 23 个直属非代码文件
+    - `study_curve/` - 23 个直属非代码文件
+    - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+  - `20260525_0807/` - 3 个直属子文件夹；3 个直属非代码文件
+    - `learning_curves/` - 92 个直属非代码文件
+    - `reports/` - 46 个直属非代码文件
+    - `study_curve/` - 46 个直属非代码文件
+    - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+  - `20260525_1421/` - 3 个直属子文件夹；3 个直属非代码文件
+    - `learning_curves/` - 136 个直属非代码文件
+    - `reports/` - 68 个直属非代码文件
+    - `study_curve/` - 68 个直属非代码文件
+    - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+  - `20260527_0655/` - 3 个直属子文件夹；3 个直属非代码文件
+    - `learning_curves/` - 84 个直属非代码文件
+    - `reports/` - 42 个直属非代码文件
+    - `study_curve/` - 42 个直属非代码文件
+    - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+  - `20260527_1320_cnn_inceptionTime/` - 3 个直属子文件夹；3 个直属非代码文件
+    - `learning_curves/` - 720 个直属非代码文件
+    - `reports/` - 360 个直属非代码文件
+    - `study_curve/` - 360 个直属非代码文件
+    - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+  - `20260528_1045_shapeformer_0extra/` - 3 个直属子文件夹；3 个直属非代码文件
+    - `learning_curves/` - 120 个直属非代码文件
+    - `reports/` - 60 个直属非代码文件
+    - `study_curve/` - 60 个直属非代码文件
+    - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+  - `20260601_0848/` - 3 个直属子文件夹；1 个直属非代码文件
+    - `learning_curves/` - 空目录
+    - `reports/` - 空目录
+    - `study_curve/` - 空目录
+    - `[本级文件]` - 1 个非代码文件；类别：.json
+  - `learning_curves/` - 8 个直属非代码文件
+  - `[本级文件]` - 9 个非代码文件；类别：.json
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `results_frailty3/[本级文件]/` |  | 9 | .json |  |
+| `results_frailty3/_holdout_eval/20260601_0940_rank1-2-7_holdout/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/_holdout_eval/20260601_0940_rank1-2-7_holdout/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/_holdout_eval/20260601_0940_rank1-2-7_holdout/reports/` |  | 0 |  |  |
+| `results_frailty3/_holdout_eval/20260601_0940_rank1-2-7_holdout_02/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/_holdout_eval/20260601_0940_rank1-2-7_holdout_02/confusion_matrices/` |  | 2 | .csv |  |
+| `results_frailty3/_holdout_eval/20260601_0940_rank1-2-7_holdout_02/learning_curves/` |  | 2 | .csv、.png |  |
+| `results_frailty3/_holdout_eval/20260601_0940_rank1-2-7_holdout_02/reports/` |  | 1 | .json |  |
+| `results_frailty3/_holdout_eval/20260607_0930_rank1-2-7_holdout/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/_holdout_eval/20260607_0930_rank1-2-7_holdout/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/_holdout_eval/20260607_0930_rank1-2-7_holdout/reports/` |  | 0 |  |  |
+| `results_frailty3/_holdout_eval/20260607_0930_rank1-2-7_holdout_02/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/_holdout_eval/20260607_0930_rank1-2-7_holdout_02/confusion_matrices/` |  | 2 | .csv |  |
+| `results_frailty3/_holdout_eval/20260607_0930_rank1-2-7_holdout_02/learning_curves/` |  | 2 | .csv、.png |  |
+| `results_frailty3/_holdout_eval/20260607_0930_rank1-2-7_holdout_02/reports/` |  | 1 | .json |  |
+| `results_frailty3/_holdout_eval/20260607_0935_rank1-2-7_holdout/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/_holdout_eval/20260607_0935_rank1-2-7_holdout/confusion_matrices/` |  | 6 | .csv |  |
+| `results_frailty3/_holdout_eval/20260607_0935_rank1-2-7_holdout/learning_curves/` |  | 30 | .csv、.png |  |
+| `results_frailty3/_holdout_eval/20260607_0935_rank1-2-7_holdout/reports/` |  | 15 | .json |  |
+| `results_frailty3/_holdout_eval/20260607_1027_rank1-2-7_holdout/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/_holdout_eval/20260607_1027_rank1-2-7_holdout/confusion_matrices/` |  | 6 | .csv |  |
+| `results_frailty3/_holdout_eval/20260607_1027_rank1-2-7_holdout/learning_curves/` |  | 90 | .csv、.png |  |
+| `results_frailty3/_holdout_eval/20260607_1027_rank1-2-7_holdout/reports/` |  | 45 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0718_overfitting_sweep_stage1_rank2/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0718_overfitting_sweep_stage1_rank2/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_0718_overfitting_sweep_stage1_rank2/reports/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_0718_overfitting_sweep_stage1_rank2_02/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0718_overfitting_sweep_stage1_rank2_02/confusion_matrices/` |  | 2 | .csv |  |
+| `results_frailty3/_overfitting_sweep/20260608_0718_overfitting_sweep_stage1_rank2_02/learning_curves/s1_001/` |  | 2 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_0718_overfitting_sweep_stage1_rank2_02/reports/s1_001/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0728_overfitting_sweep_stage2_rank2/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0728_overfitting_sweep_stage2_rank2/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_0728_overfitting_sweep_stage2_rank2/reports/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_0728_overfitting_sweep_stage2_rank2_02/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0728_overfitting_sweep_stage2_rank2_02/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_0728_overfitting_sweep_stage2_rank2_02/reports/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_0734_overfitting_sweep_stage1_rank2/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0734_overfitting_sweep_stage1_rank2/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_0734_overfitting_sweep_stage1_rank2/reports/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_0734_overfitting_sweep_stage2_rank2/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0734_overfitting_sweep_stage2_rank2/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_0734_overfitting_sweep_stage2_rank2/reports/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_0910_overfitting_sweep_stage2_rank2/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0910_overfitting_sweep_stage2_rank2/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_0910_overfitting_sweep_stage2_rank2/reports/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/confusion_matrices/` |  | 18 | .csv |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/learning_curves/ref_original/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/learning_curves/s2_001/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/learning_curves/s2_002/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/learning_curves/s2_003/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/learning_curves/s2_004/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/learning_curves/s2_005/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/learning_curves/s2_006/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/learning_curves/s2_007/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/learning_curves/s2_008/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/reports/ref_original/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/reports/s2_001/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/reports/s2_002/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/reports/s2_003/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/reports/s2_004/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/reports/s2_005/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/reports/s2_006/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/reports/s2_007/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_0922_overfitting_sweep_stage2_rank2/reports/s2_008/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1148_overfitting_sweep_stage1_rank2/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1148_overfitting_sweep_stage1_rank2/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_1148_overfitting_sweep_stage1_rank2/reports/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_1148_overfitting_sweep_stage1_rank2_02/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1148_overfitting_sweep_stage1_rank2_02/confusion_matrices/` |  | 2 | .csv |  |
+| `results_frailty3/_overfitting_sweep/20260608_1148_overfitting_sweep_stage1_rank2_02/learning_curves/s1_001/` |  | 2 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1148_overfitting_sweep_stage1_rank2_02/reports/s1_001/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1148_overfitting_sweep_stage2_rank2/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1148_overfitting_sweep_stage2_rank2/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_1148_overfitting_sweep_stage2_rank2/reports/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_1157_overfitting_sweep_stage1_rank2/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1157_overfitting_sweep_stage1_rank2/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_1157_overfitting_sweep_stage1_rank2/reports/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260608_1158_overfitting_sweep_stage1_rank2/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1158_overfitting_sweep_stage1_rank2/confusion_matrices/` |  | 2 | .csv |  |
+| `results_frailty3/_overfitting_sweep/20260608_1158_overfitting_sweep_stage1_rank2/learning_curves/s1_001/` |  | 2 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1158_overfitting_sweep_stage1_rank2/reports/s1_001/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/confusion_matrices/` |  | 372 | .csv |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/ref_rank2_fixed_epoch/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_001/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_002/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_003/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_004/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_005/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_006/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_007/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_008/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_009/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_010/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_011/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_012/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_013/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_014/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_015/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_016/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_017/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_018/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_019/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_020/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_021/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_022/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_023/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_024/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_025/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_026/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_027/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_028/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_029/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_030/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_031/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_032/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_033/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_034/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_035/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_036/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_037/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_038/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_039/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_040/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_041/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_042/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_043/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_044/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_045/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_046/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_047/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_048/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_049/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_050/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_051/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_052/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_053/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_054/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_055/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_056/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_057/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_058/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_059/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_060/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_061/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_062/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_063/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_064/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_065/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_066/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_067/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_068/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_069/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_070/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_071/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_072/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_073/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_074/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_075/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_076/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_077/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_078/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_079/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_080/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_081/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_082/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_083/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_084/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_085/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_086/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_087/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_088/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_089/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_090/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_091/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_092/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_093/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_094/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_095/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_096/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_097/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_098/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_099/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_100/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_101/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_102/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_103/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_104/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_105/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_106/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_107/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_108/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_109/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_110/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_111/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_112/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_113/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_114/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_115/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_116/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_117/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_118/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_119/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_120/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_121/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_122/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_123/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_124/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_125/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_126/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_127/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_128/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_129/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_130/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_131/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_132/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_133/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_134/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_135/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_136/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_137/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_138/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_139/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_140/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_141/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_142/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_143/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_144/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_145/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_146/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_147/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_148/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_149/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_150/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_151/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_152/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_153/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_154/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_155/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_156/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_157/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_158/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_159/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_160/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_161/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_162/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_163/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_164/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_165/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_166/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_167/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_168/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_169/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_170/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_171/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_172/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_173/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_174/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_175/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_176/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_177/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_178/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_179/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_180/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_181/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_182/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_183/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_184/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/learning_curves/s1_185/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/ref_rank2_fixed_epoch/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_001/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_002/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_003/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_004/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_005/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_006/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_007/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_008/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_009/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_010/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_011/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_012/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_013/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_014/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_015/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_016/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_017/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_018/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_019/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_020/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_021/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_022/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_023/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_024/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_025/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_026/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_027/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_028/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_029/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_030/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_031/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_032/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_033/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_034/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_035/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_036/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_037/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_038/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_039/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_040/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_041/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_042/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_043/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_044/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_045/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_046/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_047/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_048/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_049/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_050/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_051/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_052/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_053/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_054/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_055/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_056/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_057/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_058/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_059/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_060/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_061/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_062/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_063/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_064/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_065/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_066/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_067/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_068/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_069/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_070/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_071/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_072/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_073/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_074/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_075/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_076/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_077/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_078/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_079/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_080/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_081/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_082/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_083/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_084/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_085/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_086/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_087/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_088/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_089/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_090/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_091/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_092/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_093/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_094/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_095/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_096/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_097/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_098/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_099/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_100/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_101/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_102/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_103/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_104/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_105/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_106/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_107/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_108/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_109/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_110/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_111/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_112/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_113/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_114/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_115/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_116/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_117/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_118/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_119/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_120/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_121/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_122/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_123/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_124/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_125/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_126/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_127/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_128/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_129/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_130/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_131/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_132/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_133/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_134/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_135/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_136/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_137/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_138/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_139/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_140/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_141/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_142/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_143/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_144/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_145/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_146/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_147/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_148/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_149/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_150/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_151/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_152/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_153/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_154/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_155/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_156/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_157/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_158/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_159/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_160/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_161/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_162/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_163/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_164/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_165/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_166/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_167/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_168/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_169/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_170/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_171/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_172/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_173/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_174/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_175/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_176/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_177/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_178/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_179/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_180/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_181/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_182/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_183/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_184/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2/reports/s1_185/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2231_overfitting_sweep_stage1_rank2/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2231_overfitting_sweep_stage1_rank2/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260625_2231_overfitting_sweep_stage1_rank2/reports/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260625_2241_overfitting_sweep_stage1_rank2/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2241_overfitting_sweep_stage1_rank2/learning_curves/s1_001/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260625_2241_overfitting_sweep_stage1_rank2/reports/s1_001/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260625_2300_overfitting_sweep_stage1_rank2/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2300_overfitting_sweep_stage1_rank2/confusion_matrices/` |  | 2 | .csv |  |
+| `results_frailty3/_overfitting_sweep/20260625_2300_overfitting_sweep_stage1_rank2/learning_curves/s1_001/` |  | 2 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2300_overfitting_sweep_stage1_rank2/reports/s1_001/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/confusion_matrices/` |  | 258 | .csv |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/ref_rank2_fixed_epoch_ep10/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/ref_rank2_fixed_epoch_ep15/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/ref_rank2_fixed_epoch_ep9/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_001/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_002/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_003/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_004/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_005/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_006/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_007/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_008/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_009/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_010/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_011/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_012/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_013/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_014/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_015/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_016/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_017/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_018/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_019/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_020/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_021/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_022/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_023/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_024/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_025/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_026/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_027/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_028/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_029/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_030/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_031/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_032/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_033/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_034/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_035/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_036/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_037/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_038/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_039/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_040/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_041/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_042/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_043/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_044/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_045/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_046/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_047/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_048/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_049/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_050/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_051/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_052/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_053/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_054/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_055/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_056/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_057/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_058/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_059/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_060/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_061/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_062/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_063/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_064/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_065/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_066/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_067/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_068/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_069/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_070/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_071/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_072/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_073/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_074/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_075/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_076/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_077/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_078/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_079/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_080/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_081/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_082/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_083/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_084/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_085/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_086/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_087/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_088/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_089/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_090/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_091/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_092/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_093/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_094/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_095/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_096/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_097/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_098/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_099/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_100/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_101/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_102/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_103/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_104/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_105/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_106/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_107/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_108/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_109/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_110/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_111/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_112/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_113/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_114/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_115/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_116/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_117/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_118/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_119/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_120/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_121/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_122/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_123/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_124/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_125/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/learning_curves/s1_126/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/ref_rank2_fixed_epoch_ep10/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/ref_rank2_fixed_epoch_ep15/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/ref_rank2_fixed_epoch_ep9/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_001/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_002/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_003/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_004/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_005/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_006/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_007/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_008/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_009/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_010/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_011/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_012/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_013/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_014/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_015/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_016/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_017/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_018/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_019/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_020/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_021/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_022/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_023/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_024/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_025/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_026/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_027/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_028/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_029/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_030/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_031/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_032/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_033/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_034/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_035/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_036/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_037/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_038/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_039/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_040/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_041/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_042/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_043/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_044/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_045/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_046/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_047/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_048/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_049/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_050/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_051/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_052/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_053/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_054/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_055/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_056/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_057/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_058/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_059/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_060/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_061/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_062/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_063/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_064/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_065/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_066/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_067/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_068/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_069/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_070/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_071/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_072/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_073/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_074/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_075/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_076/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_077/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_078/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_079/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_080/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_081/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_082/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_083/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_084/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_085/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_086/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_087/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_088/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_089/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_090/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_091/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_092/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_093/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_094/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_095/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_096/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_097/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_098/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_099/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_100/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_101/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_102/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_103/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_104/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_105/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_106/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_107/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_108/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_109/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_110/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_111/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_112/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_113/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_114/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_115/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_116/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_117/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_118/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_119/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_120/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_121/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_122/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_123/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_124/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_125/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260625_2320_overfitting_sweep_stage1_rank2/reports/s1_126/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0617_overfitting_sweep_generalization_rank2/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0617_overfitting_sweep_generalization_rank2/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260630_0617_overfitting_sweep_generalization_rank2/reports/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/20260630_0618_overfitting_sweep_generalization_rank2/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0618_overfitting_sweep_generalization_rank2/confusion_matrices/` |  | 2 | .csv |  |
+| `results_frailty3/_overfitting_sweep/20260630_0618_overfitting_sweep_generalization_rank2/learning_curves/gen_001/` |  | 2 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0618_overfitting_sweep_generalization_rank2/reports/gen_001/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0619_overfitting_sweep_generalization_rank2/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0619_overfitting_sweep_generalization_rank2/confusion_matrices/` |  | 6 | .csv |  |
+| `results_frailty3/_overfitting_sweep/20260630_0619_overfitting_sweep_generalization_rank2/learning_curves/gen_001/` |  | 2 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0619_overfitting_sweep_generalization_rank2/learning_curves/gen_002/` |  | 2 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0619_overfitting_sweep_generalization_rank2/learning_curves/gen_003/` |  | 2 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0619_overfitting_sweep_generalization_rank2/reports/gen_001/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0619_overfitting_sweep_generalization_rank2/reports/gen_002/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0619_overfitting_sweep_generalization_rank2/reports/gen_003/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/analysis_report_20260703_1202/[本级文件]/` |  | 2 | .json、.md |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/analysis_report_20260703_1202/figures/` |  | 14 | .png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/analysis_report_20260703_1202/tables/` |  | 27 | .csv |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/analysis_report_20260703_1217_complete_refs/[本级文件]/` |  | 2 | .json、.md |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/analysis_report_20260703_1217_complete_refs/figures/` |  | 17 | .png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/analysis_report_20260703_1217_complete_refs/tables/` |  | 31 | .csv |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/confusion_matrices/` |  | 464 | .csv |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_001/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_002/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_003/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_004/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_005/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_006/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_007/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_008/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_009/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_010/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_011/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_012/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_013/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_014/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_015/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_016/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_017/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_018/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_019/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_020/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_021/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_022/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_023/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_024/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_025/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_026/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_027/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_028/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_029/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_030/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_031/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_032/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_033/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_034/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_035/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_036/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_037/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_038/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_039/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_040/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_041/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_042/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_043/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_044/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_045/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_046/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_047/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_048/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_049/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_050/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_051/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_052/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_053/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_054/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_055/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_056/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_057/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_058/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_059/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_060/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_061/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_062/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_063/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_064/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_065/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_066/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_067/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_068/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_069/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_070/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_071/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_072/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_073/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_074/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_075/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_076/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_077/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_078/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_079/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_080/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_081/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_082/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_083/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_084/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_085/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_086/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_087/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_088/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_089/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_090/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_091/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_092/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_093/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_094/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_095/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_096/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_097/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_098/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_099/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_100/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_101/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_102/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_103/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_104/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_105/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_106/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_107/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_108/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_109/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_110/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_111/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_112/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_113/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_114/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_115/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_116/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_117/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_118/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_119/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_120/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_121/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_122/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_123/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_124/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_125/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_126/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_127/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_128/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_129/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_130/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_131/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_132/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_133/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_134/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_135/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_136/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_137/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_138/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_139/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_140/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_141/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_142/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_143/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_144/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_145/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_146/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_147/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_148/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_149/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_150/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_151/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_152/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_153/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_154/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_155/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_156/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_157/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_158/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_159/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_160/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_161/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_162/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_163/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_164/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_165/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_166/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_167/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_168/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_169/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_170/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_171/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_172/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_173/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_174/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_175/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_176/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_177/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_178/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_179/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_180/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_181/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_182/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_183/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_184/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_185/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_186/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_187/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_188/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_189/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_190/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_191/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_192/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_193/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_194/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_195/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_196/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_197/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_198/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_199/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_200/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_201/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_202/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_203/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_204/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_205/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_206/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_207/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_208/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_209/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_210/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_211/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_212/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_213/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_214/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_215/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_216/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_217/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_218/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_219/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_220/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_221/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_222/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_223/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/gen_224/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/ref_20260527_top1_g0068/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/ref_20260527_top2_g0056/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/ref_20260608_top1_s1_085/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/ref_20260608_top2_s1_091/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/ref_20260608_top3_s1_105/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/ref_20260608_top4_s1_163/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/ref_20260625_top1_s1_122/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/learning_curves/ref_20260625_top2_s1_102/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_001/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_002/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_003/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_004/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_005/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_006/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_007/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_008/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_009/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_010/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_011/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_012/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_013/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_014/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_015/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_016/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_017/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_018/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_019/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_020/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_021/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_022/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_023/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_024/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_025/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_026/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_027/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_028/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_029/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_030/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_031/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_032/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_033/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_034/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_035/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_036/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_037/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_038/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_039/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_040/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_041/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_042/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_043/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_044/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_045/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_046/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_047/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_048/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_049/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_050/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_051/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_052/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_053/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_054/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_055/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_056/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_057/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_058/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_059/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_060/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_061/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_062/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_063/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_064/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_065/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_066/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_067/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_068/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_069/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_070/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_071/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_072/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_073/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_074/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_075/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_076/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_077/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_078/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_079/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_080/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_081/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_082/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_083/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_084/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_085/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_086/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_087/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_088/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_089/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_090/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_091/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_092/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_093/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_094/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_095/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_096/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_097/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_098/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_099/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_100/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_101/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_102/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_103/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_104/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_105/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_106/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_107/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_108/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_109/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_110/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_111/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_112/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_113/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_114/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_115/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_116/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_117/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_118/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_119/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_120/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_121/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_122/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_123/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_124/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_125/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_126/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_127/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_128/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_129/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_130/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_131/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_132/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_133/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_134/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_135/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_136/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_137/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_138/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_139/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_140/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_141/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_142/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_143/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_144/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_145/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_146/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_147/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_148/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_149/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_150/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_151/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_152/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_153/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_154/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_155/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_156/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_157/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_158/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_159/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_160/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_161/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_162/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_163/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_164/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_165/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_166/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_167/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_168/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_169/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_170/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_171/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_172/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_173/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_174/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_175/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_176/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_177/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_178/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_179/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_180/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_181/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_182/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_183/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_184/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_185/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_186/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_187/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_188/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_189/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_190/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_191/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_192/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_193/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_194/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_195/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_196/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_197/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_198/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_199/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_200/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_201/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_202/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_203/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_204/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_205/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_206/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_207/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_208/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_209/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_210/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_211/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_212/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_213/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_214/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_215/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_216/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_217/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_218/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_219/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_220/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_221/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_222/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_223/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/gen_224/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/ref_20260527_top1_g0068/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/ref_20260527_top2_g0056/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/ref_20260608_top1_s1_085/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/ref_20260608_top2_s1_091/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/ref_20260608_top3_s1_105/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/ref_20260608_top4_s1_163/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/ref_20260625_top1_s1_122/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/20260630_0630_overfitting_sweep_generalization_rank2/reports/ref_20260625_top2_s1_102/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0743/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0743/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0743/reports/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0746/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0746/confusion_matrices/` |  | 2 | .csv |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0746/learning_curves/s1_001/` |  | 2 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0746/reports/s1_001/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0748/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0748/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0748/reports/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0751/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0751/learning_curves/s1_001/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0751/reports/s1_001/` |  | 0 |  |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0752/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0752/confusion_matrices/` |  | 14 | .csv |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0752/learning_curves/ref_original/` |  | 10 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0752/learning_curves/s1_001/` |  | 20 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0752/learning_curves/s1_002/` |  | 20 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0752/learning_curves/s1_003/` |  | 20 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0752/learning_curves/s1_004/` |  | 20 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0752/learning_curves/s1_005/` |  | 20 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0752/learning_curves/s1_006/` |  | 20 | .csv、.png |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0752/reports/ref_original/` |  | 5 | .json |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0752/reports/s1_001/` |  | 10 | .json |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0752/reports/s1_002/` |  | 10 | .json |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0752/reports/s1_003/` |  | 10 | .json |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0752/reports/s1_004/` |  | 10 | .json |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0752/reports/s1_005/` |  | 10 | .json |  |
+| `results_frailty3/_overfitting_sweep/overfitting_20260608_0752/reports/s1_006/` |  | 10 | .json |  |
+| `results_frailty3/_sweep_analyse/20260601_0904_cnn_inceptiontime/` |  | 0 |  |  |
+| `results_frailty3/_sweep_analyse/20260601_0904_cnn_inceptiontime_02/[本级文件]/` |  | 6 | .csv |  |
+| `results_frailty3/_sweep_analyse/20260601_0904_cnn_inceptiontime_02/figures/` |  | 9 | .png |  |
+| `results_frailty3/_sweep_analyse/20260601_0904_cnn_inceptiontime_02/top_confusion_matrices/` |  | 20 | .csv |  |
+| `results_frailty3/_sweep_analyse/20260601_0904_cnn_inceptiontime_02/top_learning_curve_png/` |  | 50 | .png |  |
+| `results_frailty3/_sweep_analyse/20260601_0904_cnn_inceptiontime_03/[本级文件]/` |  | 7 | .csv、.md |  |
+| `results_frailty3/_sweep_analyse/20260601_0904_cnn_inceptiontime_03/figures/` |  | 9 | .png |  |
+| `results_frailty3/_sweep_analyse/20260601_0904_cnn_inceptiontime_03/top_confusion_matrices/` |  | 20 | .csv |  |
+| `results_frailty3/_sweep_analyse/20260601_0904_cnn_inceptiontime_03/top_learning_curve_png/` |  | 50 | .png |  |
+| `results_frailty3/_sweep_analyse/20260601_0905_cnn_inceptiontime/[本级文件]/` |  | 7 | .csv、.md |  |
+| `results_frailty3/_sweep_analyse/20260601_0905_cnn_inceptiontime/figures/` |  | 9 | .png |  |
+| `results_frailty3/_sweep_analyse/20260601_0905_cnn_inceptiontime/top_confusion_matrices/` |  | 20 | .csv |  |
+| `results_frailty3/_sweep_analyse/20260601_0905_cnn_inceptiontime/top_learning_curve_png/` |  | 50 | .png |  |
+| `results_frailty3/_sweep_analyse/20260601_0940_cnn_inceptiontime/[本级文件]/` |  | 8 | .csv、.md |  |
+| `results_frailty3/_sweep_analyse/20260601_0940_cnn_inceptiontime/top_confusion_matrices/` |  | 20 | .csv |  |
+| `results_frailty3/_sweep_analyse/20260601_0940_cnn_inceptiontime/top_learning_curve_png/` |  | 50 | .png |  |
+| `results_frailty3/_sweep_analyse/20260601_0941_cnn_inceptiontime/[本级文件]/` |  | 8 | .csv、.md |  |
+| `results_frailty3/_sweep_analyse/20260601_0941_cnn_inceptiontime/figures/` |  | 11 | .png |  |
+| `results_frailty3/_sweep_analyse/20260601_0941_cnn_inceptiontime/top_confusion_matrices/` |  | 20 | .csv |  |
+| `results_frailty3/_sweep_analyse/20260601_0941_cnn_inceptiontime/top_learning_curve_png/` |  | 50 | .png |  |
+| `results_frailty3/_sweep_analyse/20260608_0655_shapeformer/[本级文件]/` |  | 8 | .csv、.md |  |
+| `results_frailty3/_sweep_analyse/20260608_0655_shapeformer/figures/` |  | 11 | .png |  |
+| `results_frailty3/_sweep_analyse/20260608_0655_shapeformer/top_confusion_matrices/` |  | 24 | .csv |  |
+| `results_frailty3/_sweep_analyse/20260608_0655_shapeformer/top_learning_curve_png/` |  | 60 | .png |  |
+| `results_frailty3/_sweep_analyse/20260608_0659_combined_cnn_inceptiontime_shapeformer/[本级文件]/` |  | 8 | .csv、.md |  |
+| `results_frailty3/_sweep_analyse/20260608_0659_combined_cnn_inceptiontime_shapeformer/figures/` |  | 11 | .png |  |
+| `results_frailty3/_sweep_analyse/20260608_0659_combined_cnn_inceptiontime_shapeformer/top_confusion_matrices/` |  | 60 | .csv |  |
+| `results_frailty3/_sweep_analyse/20260608_0659_combined_cnn_inceptiontime_shapeformer/top_learning_curve_png/` |  | 150 | .png |  |
+| `results_frailty3/_sweep_analyse/20260616_1139_overfitting_inceptiontime/[本级文件]/` |  | 15 | .csv、.md |  |
+| `results_frailty3/_sweep_analyse/20260616_1139_overfitting_inceptiontime/figures/` |  | 18 | .png |  |
+| `results_frailty3/_sweep_analyse/20260616_1139_overfitting_inceptiontime/top_confusion_matrices/` |  | 40 | .csv |  |
+| `results_frailty3/_sweep_analyse/20260616_1139_overfitting_inceptiontime/top_learning_curve_png/` |  | 100 | .png |  |
+| `results_frailty3/_sweep_analyse/20260616_1143_overfitting_inceptiontime/[本级文件]/` |  | 15 | .csv、.md |  |
+| `results_frailty3/_sweep_analyse/20260616_1143_overfitting_inceptiontime/figures/` |  | 18 | .png |  |
+| `results_frailty3/_sweep_analyse/20260616_1143_overfitting_inceptiontime/top_confusion_matrices/` |  | 40 | .csv |  |
+| `results_frailty3/_sweep_analyse/20260616_1143_overfitting_inceptiontime/top_learning_curve_png/` |  | 100 | .png |  |
+| `results_frailty3/_sweep_analyse/20260706_0946_overfitting_inceptiontime_small_inceptiontime/[本级文件]/` |  | 12 | .csv、.md |  |
+| `results_frailty3/_sweep_analyse/20260706_0946_overfitting_inceptiontime_small_inceptiontime/figures/` |  | 17 | .png |  |
+| `results_frailty3/_sweep_analyse/20260706_0946_overfitting_inceptiontime_small_inceptiontime/top_confusion_matrices/` |  | 12 | .csv |  |
+| `results_frailty3/_sweep_analyse/20260706_0946_overfitting_inceptiontime_small_inceptiontime/top_learning_curve_png/` |  | 60 | .png |  |
+| `results_frailty3/_sweep_analyse/20260706_0947_overfitting_inceptiontime_small_inceptiontime/[本级文件]/` |  | 12 | .csv、.md |  |
+| `results_frailty3/_sweep_analyse/20260706_0947_overfitting_inceptiontime_small_inceptiontime/figures/` |  | 17 | .png |  |
+| `results_frailty3/_sweep_analyse/20260706_0947_overfitting_inceptiontime_small_inceptiontime/top_confusion_matrices/` |  | 14 | .csv |  |
+| `results_frailty3/_sweep_analyse/20260706_0947_overfitting_inceptiontime_small_inceptiontime/top_learning_curve_png/` |  | 65 | .png |  |
+| `results_frailty3/_sweep_analyse/20260706_0947_overfitting_inceptiontime_small_inceptiontime_02/[本级文件]/` |  | 15 | .csv、.md |  |
+| `results_frailty3/_sweep_analyse/20260706_0947_overfitting_inceptiontime_small_inceptiontime_02/figures/` |  | 18 | .png |  |
+| `results_frailty3/_sweep_analyse/20260706_0947_overfitting_inceptiontime_small_inceptiontime_02/top_confusion_matrices/` |  | 80 | .csv |  |
+| `results_frailty3/_sweep_analyse/20260706_0947_overfitting_inceptiontime_small_inceptiontime_02/top_learning_curve_png/` |  | 200 | .png |  |
+| `results_frailty3/_sweep_analyse/20260706_0956_overfitting_inceptiontime/[本级文件]/` |  | 15 | .csv、.md |  |
+| `results_frailty3/_sweep_analyse/20260706_0956_overfitting_inceptiontime/figures/` |  | 18 | .png |  |
+| `results_frailty3/_sweep_analyse/20260706_0956_overfitting_inceptiontime/top_confusion_matrices/` |  | 80 | .csv |  |
+| `results_frailty3/_sweep_analyse/20260706_0956_overfitting_inceptiontime/top_learning_curve_png/` |  | 200 | .png |  |
+| `results_frailty3/20260525_0652/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/20260525_0652/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/20260525_0652/reports/` |  | 0 |  |  |
+| `results_frailty3/20260525_0652/study_curve/` |  | 0 |  |  |
+| `results_frailty3/20260525_0652_02/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/20260525_0652_02/learning_curves/` |  | 2 | .csv、.png |  |
+| `results_frailty3/20260525_0652_02/reports/` |  | 1 | .json |  |
+| `results_frailty3/20260525_0652_02/study_curve/` |  | 1 | .png |  |
+| `results_frailty3/20260525_0655/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/20260525_0655/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/20260525_0655/reports/` |  | 0 |  |  |
+| `results_frailty3/20260525_0655/study_curve/` |  | 0 |  |  |
+| `results_frailty3/20260525_0710/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/20260525_0710/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/20260525_0710/reports/` |  | 0 |  |  |
+| `results_frailty3/20260525_0710/study_curve/` |  | 0 |  |  |
+| `results_frailty3/20260525_0713/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/20260525_0713/learning_curves/` |  | 16 | .csv、.png |  |
+| `results_frailty3/20260525_0713/reports/` |  | 8 | .json |  |
+| `results_frailty3/20260525_0713/study_curve/` |  | 8 | .png |  |
+| `results_frailty3/20260525_0728/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/20260525_0728/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/20260525_0728/reports/` |  | 0 |  |  |
+| `results_frailty3/20260525_0728/study_curve/` |  | 0 |  |  |
+| `results_frailty3/20260525_0728_02/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/20260525_0728_02/learning_curves/` |  | 2 | .csv、.png |  |
+| `results_frailty3/20260525_0728_02/reports/` |  | 1 | .json |  |
+| `results_frailty3/20260525_0728_02/study_curve/` |  | 1 | .png |  |
+| `results_frailty3/20260525_0729/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/20260525_0729/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/20260525_0729/reports/` |  | 0 |  |  |
+| `results_frailty3/20260525_0729/study_curve/` |  | 0 |  |  |
+| `results_frailty3/20260525_0729_02/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/20260525_0729_02/learning_curves/` |  | 2 | .csv、.png |  |
+| `results_frailty3/20260525_0729_02/reports/` |  | 1 | .json |  |
+| `results_frailty3/20260525_0729_02/study_curve/` |  | 1 | .png |  |
+| `results_frailty3/20260525_0732/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/20260525_0732/learning_curves/` |  | 46 | .csv、.png |  |
+| `results_frailty3/20260525_0732/reports/` |  | 23 | .json |  |
+| `results_frailty3/20260525_0732/study_curve/` |  | 23 | .png |  |
+| `results_frailty3/20260525_0807/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/20260525_0807/learning_curves/` |  | 92 | .csv、.png |  |
+| `results_frailty3/20260525_0807/reports/` |  | 46 | .json |  |
+| `results_frailty3/20260525_0807/study_curve/` |  | 46 | .png |  |
+| `results_frailty3/20260525_1421/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/20260525_1421/learning_curves/` |  | 136 | .csv、.png |  |
+| `results_frailty3/20260525_1421/reports/` |  | 68 | .json |  |
+| `results_frailty3/20260525_1421/study_curve/` |  | 68 | .png |  |
+| `results_frailty3/20260527_0655/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/20260527_0655/learning_curves/` |  | 84 | .csv、.png |  |
+| `results_frailty3/20260527_0655/reports/` |  | 42 | .json |  |
+| `results_frailty3/20260527_0655/study_curve/` |  | 42 | .png |  |
+| `results_frailty3/20260527_1320_cnn_inceptionTime/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/20260527_1320_cnn_inceptionTime/learning_curves/` |  | 720 | .csv、.png |  |
+| `results_frailty3/20260527_1320_cnn_inceptionTime/reports/` |  | 360 | .json |  |
+| `results_frailty3/20260527_1320_cnn_inceptionTime/study_curve/` |  | 360 | .png |  |
+| `results_frailty3/20260528_1045_shapeformer_0extra/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_frailty3/20260528_1045_shapeformer_0extra/learning_curves/` |  | 120 | .csv、.png |  |
+| `results_frailty3/20260528_1045_shapeformer_0extra/reports/` |  | 60 | .json |  |
+| `results_frailty3/20260528_1045_shapeformer_0extra/study_curve/` |  | 60 | .png |  |
+| `results_frailty3/20260601_0848/[本级文件]/` |  | 1 | .json |  |
+| `results_frailty3/20260601_0848/learning_curves/` |  | 0 |  |  |
+| `results_frailty3/20260601_0848/reports/` |  | 0 |  |  |
+| `results_frailty3/20260601_0848/study_curve/` |  | 0 |  |  |
+| `results_frailty3/learning_curves/` |  | 8 | .csv、.png |  |
+
+### `results_hybrid_denoiser/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，6 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `results_hybrid_denoiser/` - 6 个直属非代码文件
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `results_hybrid_denoiser/` |  | 6 | .json、.pt |  |
+
+### `results_hybrid_denoiser_raw_imu/`
+
+- 来源：handoff
+- 作用：old denoiser A 输出。
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，8 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `results_hybrid_denoiser_raw_imu/` - 8 个直属非代码文件
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `results_hybrid_denoiser_raw_imu/` | old denoiser A 输出。 | 8 | .data、.json、.onnx、.pt | handoff |
+
+### `results_hybrid_denoiser_raw_imu_baseline/`
+
+- 来源：handoff
+- 作用：old denoiser B 输出。
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，8 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `results_hybrid_denoiser_raw_imu_baseline/` - 8 个直属非代码文件
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `results_hybrid_denoiser_raw_imu_baseline/` | old denoiser B 输出。 | 8 | .data、.json、.onnx、.pt | handoff |
+
+### `results_stage1/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，17 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `results_stage1/` - 17 个直属非代码文件
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `results_stage1/` |  | 17 | .json、.npz、.png |  |
+
+### `results_stage2/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，0 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `results_stage2/` - 空目录
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `results_stage2/` |  | 0 |  |  |
+
+### `results_v7_3/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：denoiser、detector
+- 范围统计：11 个目录，0 个代码文件，33 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `results_v7_3/` - 2 个直属子文件夹；2 个直属非代码文件
+  - `denoiser/` - 2 个直属子文件夹；1 个直属非代码文件
+    - `run/` - 4 个直属非代码文件
+    - `walk/` - 6 个直属非代码文件
+    - `[本级文件]` - 1 个非代码文件；类别：.json
+  - `detector/` - 6 个直属子文件夹；2 个直属非代码文件
+    - `cv_fold1/` - 3 个直属非代码文件
+    - `cv_fold2/` - 3 个直属非代码文件
+    - `cv_fold3/` - 3 个直属非代码文件
+    - `cv_fold4/` - 3 个直属非代码文件
+    - `cv_fold5/` - 3 个直属非代码文件
+    - `holdout/` - 3 个直属非代码文件
+    - `[本级文件]` - 2 个非代码文件；类别：.json
+  - `[本级文件]` - 2 个非代码文件；类别：.json
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `results_v7_3/[本级文件]/` |  | 2 | .json |  |
+| `results_v7_3/denoiser/[本级文件]/` |  | 1 | .json |  |
+| `results_v7_3/denoiser/run/` |  | 4 | .json、.pt |  |
+| `results_v7_3/denoiser/walk/` |  | 6 | .data、.json、.onnx、.pt |  |
+| `results_v7_3/detector/[本级文件]/` |  | 2 | .json |  |
+| `results_v7_3/detector/cv_fold1/` |  | 3 | .png |  |
+| `results_v7_3/detector/cv_fold2/` |  | 3 | .png |  |
+| `results_v7_3/detector/cv_fold3/` |  | 3 | .png |  |
+| `results_v7_3/detector/cv_fold4/` |  | 3 | .png |  |
+| `results_v7_3/detector/cv_fold5/` |  | 3 | .png |  |
+| `results_v7_3/detector/holdout/` |  | 3 | .png |  |
+
+### `results_v7_4/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：denoiser、detector
+- 范围统计：11 个目录，0 个代码文件，55 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `results_v7_4/` - 2 个直属子文件夹；2 个直属非代码文件
+  - `denoiser/` - 2 个直属子文件夹；1 个直属非代码文件
+    - `run/` - 6 个直属非代码文件
+    - `walk/` - 6 个直属非代码文件
+    - `[本级文件]` - 1 个非代码文件；类别：.json
+  - `detector/` - 6 个直属子文件夹；4 个直属非代码文件
+    - `cv_fold1/` - 6 个直属非代码文件
+    - `cv_fold2/` - 6 个直属非代码文件
+    - `cv_fold3/` - 6 个直属非代码文件
+    - `cv_fold4/` - 6 个直属非代码文件
+    - `cv_fold5/` - 6 个直属非代码文件
+    - `holdout/` - 6 个直属非代码文件
+    - `[本级文件]` - 4 个非代码文件；类别：.json、.npz、.pt
+  - `[本级文件]` - 2 个非代码文件；类别：.json
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `results_v7_4/[本级文件]/` |  | 2 | .json |  |
+| `results_v7_4/denoiser/[本级文件]/` |  | 1 | .json |  |
+| `results_v7_4/denoiser/run/` |  | 6 | .data、.json、.onnx、.pt |  |
+| `results_v7_4/denoiser/walk/` |  | 6 | .data、.json、.onnx、.pt |  |
+| `results_v7_4/detector/[本级文件]/` |  | 4 | .json、.npz、.pt |  |
+| `results_v7_4/detector/cv_fold1/` |  | 6 | .png |  |
+| `results_v7_4/detector/cv_fold2/` |  | 6 | .png |  |
+| `results_v7_4/detector/cv_fold3/` |  | 6 | .png |  |
+| `results_v7_4/detector/cv_fold4/` |  | 6 | .png |  |
+| `results_v7_4/detector/cv_fold5/` |  | 6 | .png |  |
+| `results_v7_4/detector/holdout/` |  | 6 | .png |  |
+
+### `results_v72_noleak/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：ae、denoise
+- 范围统计：5 个目录，0 个代码文件，16 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `results_v72_noleak/` - 2 个直属子文件夹；3 个直属非代码文件
+  - `ae/` - 1 个直属非代码文件
+  - `denoise/` - 2 个直属子文件夹
+    - `setup1/` - 6 个直属非代码文件
+    - `setup2/` - 6 个直属非代码文件
+  - `[本级文件]` - 3 个非代码文件；类别：.csv、.json
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `results_v72_noleak/[本级文件]/` |  | 3 | .csv、.json |  |
+| `results_v72_noleak/ae/` |  | 1 | .json |  |
+| `results_v72_noleak/denoise/setup1/` |  | 6 | .csv、.json、.png |  |
+| `results_v72_noleak/denoise/setup2/` |  | 6 | .csv、.json、.png |  |
+
+### `results_v8_audit/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：1_0.5、2_0.5、6_1
+- 范围统计：7 个目录，0 个代码文件，30 个非代码文件，0 个数据库。
+
+#### 目录树
+
+- `results_v8_audit/` - 3 个直属子文件夹；3 个直属非代码文件
+  - `1_0.5/` - 1 个直属子文件夹；1 个直属非代码文件
+    - `audit/` - 8 个直属非代码文件
+    - `[本级文件]` - 1 个非代码文件；类别：.json
+  - `2_0.5/` - 1 个直属子文件夹；1 个直属非代码文件
+    - `audit/` - 8 个直属非代码文件
+    - `[本级文件]` - 1 个非代码文件；类别：.json
+  - `6_1/` - 1 个直属子文件夹；1 个直属非代码文件
+    - `audit/` - 8 个直属非代码文件
+    - `[本级文件]` - 1 个非代码文件；类别：.json
+  - `[本级文件]` - 3 个非代码文件；类别：.npz
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `results_v8_audit/[本级文件]/` |  | 3 | .npz |  |
+| `results_v8_audit/1_0.5/[本级文件]/` |  | 1 | .json |  |
+| `results_v8_audit/1_0.5/audit/` |  | 8 | .json、.png |  |
+| `results_v8_audit/2_0.5/[本级文件]/` |  | 1 | .json |  |
+| `results_v8_audit/2_0.5/audit/` |  | 8 | .json、.png |  |
+| `results_v8_audit/6_1/[本级文件]/` |  | 1 | .json |  |
+| `results_v8_audit/6_1/audit/` |  | 8 | .json、.png |  |
+
+### `test_asa_classifier/`
+
+- 来源：handoff
+- 作用：ASA 旁支实验输出。
+- 子文件夹成分：_vitaldb_signal_cache、20260428-093510_smoke、20260428-093917_asa_vitaldb_v1、20260430-035520_smoke_v2、20260430-041925_asa_multibranch_v1、20260504-071549_asa_30min_ablation_v2、20260504-071602_asa_30min_ablation_v2、20260509-223438_asa_30min_ppg_pooling_v3
+- 范围统计：92 个目录，0 个代码文件，676 个非代码文件，1 个数据库。
+
+#### 目录树
+
+- `test_asa_classifier/` - 8 个直属子文件夹
+  - `_vitaldb_signal_cache/` - 数据库；内部文件不逐项列出
+  - `20260428-093510_smoke/` - 3 个直属子文件夹；9 个直属非代码文件
+    - `ecg/` - 5 个直属子文件夹；9 个直属非代码文件
+      - `fold_1/` - 8 个直属非代码文件
+      - `fold_2/` - 8 个直属非代码文件
+      - `fold_3/` - 8 个直属非代码文件
+      - `fold_4/` - 8 个直属非代码文件
+      - `fold_5/` - 8 个直属非代码文件
+      - `[本级文件]` - 9 个非代码文件；类别：.csv、.json、.png、.pt
+    - `ecg_peaks/` - 5 个直属子文件夹；9 个直属非代码文件
+      - `fold_1/` - 8 个直属非代码文件
+      - `fold_2/` - 8 个直属非代码文件
+      - `fold_3/` - 8 个直属非代码文件
+      - `fold_4/` - 8 个直属非代码文件
+      - `fold_5/` - 8 个直属非代码文件
+      - `[本级文件]` - 9 个非代码文件；类别：.csv、.json、.png、.pt
+    - `ppg/` - 5 个直属子文件夹；9 个直属非代码文件
+      - `fold_1/` - 8 个直属非代码文件
+      - `fold_2/` - 8 个直属非代码文件
+      - `fold_3/` - 8 个直属非代码文件
+      - `fold_4/` - 8 个直属非代码文件
+      - `fold_5/` - 8 个直属非代码文件
+      - `[本级文件]` - 9 个非代码文件；类别：.csv、.json、.png、.pt
+    - `[本级文件]` - 9 个非代码文件；类别：.csv、.json、.md
+  - `20260428-093917_asa_vitaldb_v1/` - 3 个直属子文件夹；10 个直属非代码文件
+    - `ecg/` - 5 个直属子文件夹；9 个直属非代码文件
+      - `fold_1/` - 8 个直属非代码文件
+      - `fold_2/` - 8 个直属非代码文件
+      - `fold_3/` - 8 个直属非代码文件
+      - `fold_4/` - 8 个直属非代码文件
+      - `fold_5/` - 8 个直属非代码文件
+      - `[本级文件]` - 9 个非代码文件；类别：.csv、.json、.png、.pt
+    - `ecg_peaks/` - 5 个直属子文件夹；9 个直属非代码文件
+      - `fold_1/` - 8 个直属非代码文件
+      - `fold_2/` - 8 个直属非代码文件
+      - `fold_3/` - 8 个直属非代码文件
+      - `fold_4/` - 8 个直属非代码文件
+      - `fold_5/` - 8 个直属非代码文件
+      - `[本级文件]` - 9 个非代码文件；类别：.csv、.json、.png、.pt
+    - `ppg/` - 5 个直属子文件夹；9 个直属非代码文件
+      - `fold_1/` - 8 个直属非代码文件
+      - `fold_2/` - 8 个直属非代码文件
+      - `fold_3/` - 8 个直属非代码文件
+      - `fold_4/` - 8 个直属非代码文件
+      - `fold_5/` - 8 个直属非代码文件
+      - `[本级文件]` - 9 个非代码文件；类别：.csv、.json、.png、.pt
+    - `[本级文件]` - 10 个非代码文件；类别：.csv、.json、.md
+  - `20260430-035520_smoke_v2/` - 1 个直属子文件夹；13 个直属非代码文件
+    - `folds/` - 5 个直属子文件夹
+      - `fold_1/` - 8 个直属非代码文件
+      - `fold_2/` - 8 个直属非代码文件
+      - `fold_3/` - 8 个直属非代码文件
+      - `fold_4/` - 8 个直属非代码文件
+      - `fold_5/` - 8 个直属非代码文件
+    - `[本级文件]` - 13 个非代码文件；类别：.csv、.json、.md、.png
+  - `20260430-041925_asa_multibranch_v1/` - 1 个直属子文件夹；14 个直属非代码文件
+    - `folds/` - 5 个直属子文件夹
+      - `fold_1/` - 8 个直属非代码文件
+      - `fold_2/` - 8 个直属非代码文件
+      - `fold_3/` - 8 个直属非代码文件
+      - `fold_4/` - 8 个直属非代码文件
+      - `fold_5/` - 8 个直属非代码文件
+    - `[本级文件]` - 14 个非代码文件；类别：.csv、.json、.md、.png
+  - `20260504-071549_asa_30min_ablation_v2/` - 1 个直属非代码文件
+  - `20260504-071602_asa_30min_ablation_v2/` - 4 个直属子文件夹；10 个直属非代码文件
+    - `full/` - 1 个直属子文件夹；7 个直属非代码文件
+      - `folds/` - 5 个直属子文件夹
+        - `fold_1/` - 8 个直属非代码文件
+        - `fold_2/` - 8 个直属非代码文件
+        - `fold_3/` - 8 个直属非代码文件
+        - `fold_4/` - 8 个直属非代码文件
+        - `fold_5/` - 8 个直属非代码文件
+      - `[本级文件]` - 7 个非代码文件；类别：.csv、.json、.md、.png
+    - `ppg/` - 1 个直属子文件夹；7 个直属非代码文件
+      - `folds/` - 5 个直属子文件夹
+        - `fold_1/` - 8 个直属非代码文件
+        - `fold_2/` - 8 个直属非代码文件
+        - `fold_3/` - 8 个直属非代码文件
+        - `fold_4/` - 8 个直属非代码文件
+        - `fold_5/` - 8 个直属非代码文件
+      - `[本级文件]` - 7 个非代码文件；类别：.csv、.json、.md、.png
+    - `ppg_rr/` - 1 个直属子文件夹；7 个直属非代码文件
+      - `folds/` - 5 个直属子文件夹
+        - `fold_1/` - 8 个直属非代码文件
+        - `fold_2/` - 8 个直属非代码文件
+        - `fold_3/` - 8 个直属非代码文件
+        - `fold_4/` - 8 个直属非代码文件
+        - `fold_5/` - 8 个直属非代码文件
+      - `[本级文件]` - 7 个非代码文件；类别：.csv、.json、.md、.png
+    - `ppg_spec/` - 1 个直属子文件夹；7 个直属非代码文件
+      - `folds/` - 5 个直属子文件夹
+        - `fold_1/` - 8 个直属非代码文件
+        - `fold_2/` - 8 个直属非代码文件
+        - `fold_3/` - 8 个直属非代码文件
+        - `fold_4/` - 8 个直属非代码文件
+        - `fold_5/` - 8 个直属非代码文件
+      - `[本级文件]` - 7 个非代码文件；类别：.csv、.json、.md、.png
+    - `[本级文件]` - 10 个非代码文件；类别：.csv、.json、.md
+  - `20260509-223438_asa_30min_ppg_pooling_v3/` - 1 个直属子文件夹；10 个直属非代码文件
+    - `ppg/` - 1 个直属子文件夹；7 个直属非代码文件
+      - `folds/` - 5 个直属子文件夹
+        - `fold_1/` - 8 个直属非代码文件
+        - `fold_2/` - 8 个直属非代码文件
+        - `fold_3/` - 8 个直属非代码文件
+        - `fold_4/` - 8 个直属非代码文件
+        - `fold_5/` - 8 个直属非代码文件
+      - `[本级文件]` - 7 个非代码文件；类别：.csv、.json、.md、.png
+    - `[本级文件]` - 10 个非代码文件；类别：.csv、.json、.md
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+| `test_asa_classifier/20260428-093510_smoke/[本级文件]/` |  | 9 | .csv、.json、.md |  |
+| `test_asa_classifier/20260428-093510_smoke/ecg/[本级文件]/` |  | 9 | .csv、.json、.png、.pt |  |
+| `test_asa_classifier/20260428-093510_smoke/ecg/fold_1/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093510_smoke/ecg/fold_2/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093510_smoke/ecg/fold_3/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093510_smoke/ecg/fold_4/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093510_smoke/ecg/fold_5/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093510_smoke/ecg_peaks/[本级文件]/` |  | 9 | .csv、.json、.png、.pt |  |
+| `test_asa_classifier/20260428-093510_smoke/ecg_peaks/fold_1/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093510_smoke/ecg_peaks/fold_2/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093510_smoke/ecg_peaks/fold_3/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093510_smoke/ecg_peaks/fold_4/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093510_smoke/ecg_peaks/fold_5/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093510_smoke/ppg/[本级文件]/` |  | 9 | .csv、.json、.png、.pt |  |
+| `test_asa_classifier/20260428-093510_smoke/ppg/fold_1/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093510_smoke/ppg/fold_2/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093510_smoke/ppg/fold_3/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093510_smoke/ppg/fold_4/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093510_smoke/ppg/fold_5/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/[本级文件]/` |  | 10 | .csv、.json、.md |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ecg/[本级文件]/` |  | 9 | .csv、.json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ecg/fold_1/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ecg/fold_2/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ecg/fold_3/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ecg/fold_4/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ecg/fold_5/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ecg_peaks/[本级文件]/` |  | 9 | .csv、.json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ecg_peaks/fold_1/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ecg_peaks/fold_2/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ecg_peaks/fold_3/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ecg_peaks/fold_4/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ecg_peaks/fold_5/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ppg/[本级文件]/` |  | 9 | .csv、.json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ppg/fold_1/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ppg/fold_2/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ppg/fold_3/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ppg/fold_4/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260428-093917_asa_vitaldb_v1/ppg/fold_5/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260430-035520_smoke_v2/[本级文件]/` |  | 13 | .csv、.json、.md、.png |  |
+| `test_asa_classifier/20260430-035520_smoke_v2/folds/fold_1/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260430-035520_smoke_v2/folds/fold_2/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260430-035520_smoke_v2/folds/fold_3/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260430-035520_smoke_v2/folds/fold_4/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260430-035520_smoke_v2/folds/fold_5/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260430-041925_asa_multibranch_v1/[本级文件]/` |  | 14 | .csv、.json、.md、.png |  |
+| `test_asa_classifier/20260430-041925_asa_multibranch_v1/folds/fold_1/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260430-041925_asa_multibranch_v1/folds/fold_2/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260430-041925_asa_multibranch_v1/folds/fold_3/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260430-041925_asa_multibranch_v1/folds/fold_4/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260430-041925_asa_multibranch_v1/folds/fold_5/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071549_asa_30min_ablation_v2/` |  | 1 | .json |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/[本级文件]/` |  | 10 | .csv、.json、.md |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/full/[本级文件]/` |  | 7 | .csv、.json、.md、.png |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/full/folds/fold_1/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/full/folds/fold_2/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/full/folds/fold_3/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/full/folds/fold_4/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/full/folds/fold_5/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg/[本级文件]/` |  | 7 | .csv、.json、.md、.png |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg/folds/fold_1/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg/folds/fold_2/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg/folds/fold_3/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg/folds/fold_4/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg/folds/fold_5/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg_rr/[本级文件]/` |  | 7 | .csv、.json、.md、.png |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg_rr/folds/fold_1/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg_rr/folds/fold_2/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg_rr/folds/fold_3/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg_rr/folds/fold_4/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg_rr/folds/fold_5/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg_spec/[本级文件]/` |  | 7 | .csv、.json、.md、.png |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg_spec/folds/fold_1/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg_spec/folds/fold_2/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg_spec/folds/fold_3/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg_spec/folds/fold_4/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260504-071602_asa_30min_ablation_v2/ppg_spec/folds/fold_5/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260509-223438_asa_30min_ppg_pooling_v3/[本级文件]/` |  | 10 | .csv、.json、.md |  |
+| `test_asa_classifier/20260509-223438_asa_30min_ppg_pooling_v3/ppg/[本级文件]/` |  | 7 | .csv、.json、.md、.png |  |
+| `test_asa_classifier/20260509-223438_asa_30min_ppg_pooling_v3/ppg/folds/fold_1/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260509-223438_asa_30min_ppg_pooling_v3/ppg/folds/fold_2/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260509-223438_asa_30min_ppg_pooling_v3/ppg/folds/fold_3/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260509-223438_asa_30min_ppg_pooling_v3/ppg/folds/fold_4/` |  | 8 | .json、.png、.pt |  |
+| `test_asa_classifier/20260509-223438_asa_30min_ppg_pooling_v3/ppg/folds/fold_5/` |  | 8 | .json、.png、.pt |  |
+
+### `train_labeled/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，0 个非代码文件，1 个数据库。
+
+#### 目录树
+
+- `train_labeled/` - 数据库；内部文件不逐项列出
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+
+### `train_raw/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，0 个非代码文件，1 个数据库。
+
+#### 目录树
+
+- `train_raw/` - 数据库；内部文件不逐项列出
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+
+### `train_val/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，0 个非代码文件，1 个数据库。
+
+#### 目录树
+
+- `train_val/` - 数据库；内部文件不逐项列出
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+
+### `train_window/`
+
+- 来源：
+- 作用：
+- 子文件夹成分：
+- 范围统计：1 个目录，0 个代码文件，0 个非代码文件，1 个数据库。
+
+#### 目录树
+
+- `train_window/` - 数据库；内部文件不逐项列出
+
+#### 最低级目录与本级文件汇总
+
+| 路径 | 内容说明 | 非代码文件数 | 非代码文件类别 | 来源 |
+|---|---|---:|---|---|
+
+## 数据库目录
+
+以下每行代表一个数据库最小单位。数据库内部数据文件不逐项展开。
+
+| 数据库路径 | 来源 | 作用 | 子文件夹成分 | 文件数 | 文件类别 | 最后手动更新时间 |
+|---|---|---|---|---:|---|---|
+| `datasets/` | 代码与目录检查 | frailty3 manifest/features 等生成与读取 cache，不是 raw input source。 | 根级文件：327 个 | 327 | .csv、.npz | 2026-08-02 |
+| `physionet.org/files/ECSMP/` | PhysioNet |  | 直属子文件夹：vn5nknh3mn-2 | 1068 | .bin、.csv、.html、.m、.mat、.pdf、.txt、.xlsx | 2026-08-02 |
+| `physionet.org/files/iAMwell Dataset - Intelligent Athlete Monitoring for Cardiovascular Wellness/` | PhysioNet |  | 根级文件：46 个 | 46 | .acq、.mat、.txt、.xls、.xlsx | 2026-08-02 |
+| `physionet.org/files/MIMIC/` | PhysioNet |  | 直属子文件夹：__MACOSX、mimic_perform_af_csv、mimic_perform_af_wfdb、mimic_perform_non_af_csv、mimic_perform_non_af_wfdb、mimic_perform_test_a_csv、mimic_perform_test_a_wfdb、mimic_perform_test_all_csv、mimic_perform_test_all_wfdb、mimic_perform_test_n_csv、mimic_perform_test_n_wfdb、mimic_perform_train_a_csv、mimic_perform_train_a_wfdb、mimic_perform_train_all_csv、mimic_perform_train_all_wfdb、mimic_perform_train_n_csv、mimic_perform_train_n_wfdb、New folder；根级文件：18 个 | 3400 | ._license、.csv、.dat、.hea、.mat、.txt、.zip、[无扩展名] | 2026-08-02 |
+| `physionet.org/files/pulse-transit-time-ppg/` | PhysioNet |  | 直属子文件夹：1.1.0 | 273 | .atr、.csv、.dat、.hea、.html、.png、.txt、[无扩展名] | 2026-08-02 |
+| `physionet.org/files/simultaneous-measurements/` | PhysioNet |  | 直属子文件夹：1.0.0 | 128 | .atr、.aux、.dat、.edf、.hea、.hrm、.html、.md、.png、.txt、[无扩展名] | 2026-08-02 |
+| `physionet.org/files/VitalDB/` | PhysioNet |  | 根级文件：4 个 | 4 | .docx、.pdf | 2026-08-02 |
+| `PPG_Testing_05_01_2026/###AAA_training/` | PPG_Testing_05_01_2026 |  | 根级文件：6 个 | 6 | .csv | 2026-08-02 |
+| `PPG_Testing_05_01_2026/13Aug25/` | PPG_Testing_05_01_2026 |  | 根级文件：30 个 | 30 | .csv | 2026-08-02 |
+| `PPG_Testing_05_01_2026/25July25/` | PPG_Testing_05_01_2026 |  | 根级文件：29 个 | 29 | .csv | 2026-08-02 |
+| `PPG_Testing_05_01_2026/3Sep25/` | PPG_Testing_05_01_2026 |  | 根级文件：51 个 | 51 | .csv | 2026-08-02 |
+| `PPG_Testing_05_01_2026/Archive/20250627TestData/` | PPG_Testing_05_01_2026 |  | 直属子文件夹：Base；根级文件：8 个 | 9 | .csv | 2026-08-02 |
+| `PPG_Testing_05_01_2026/Archive/7-8-2025/` | PPG_Testing_05_01_2026 |  | 直属子文件夹：plots；根级文件：11 个 | 20 | .csv、.png、.py | 2026-08-02 |
+| `PPG_Testing_05_01_2026/Archive/FilteredWalkTest/` | PPG_Testing_05_01_2026 |  | 根级文件：2 个 | 2 | .csv、.ipynb | 2026-08-02 |
+| `PPG_Testing_05_01_2026/Archive/path_to_your_data_folder/` | PPG_Testing_05_01_2026 |  | 直属子文件夹：plots_fingertip | 1 | .csv | 2026-08-02 |
+| `PPG_Testing_05_01_2026/Archive/PPGdf/` | PPG_Testing_05_01_2026 |  | 直属子文件夹：plots；根级文件：20 个 | 38 | .csv、.png | 2026-08-02 |
+| `PPG_Testing_05_01_2026/EstherThesis_FinalData/` | PPG_Testing_05_01_2026 |  | 直属子文件夹：HRV_outputs_IR、HRV_outputs_IR_young、HRV_outputs_R、HRV_outputs_R_young | 310 | .csv | 2026-08-02 |
+| `PPG_Testing_05_01_2026/StudyData/` | PPG_Testing_05_01_2026 |  | 根级文件：189 个 | 189 | .csv | 2026-08-02 |
+| `PPG_Testing_05_01_2026/StudyData_frailtyScored/` | PPG_Testing_05_01_2026 |  | 根级文件：3 个 | 3 | .csv、.xlsx | 2026-08-02 |
+| `PPG_Testing_05_01_2026/TestDataYoungers/` | PPG_Testing_05_01_2026 |  | 根级文件：72 个 | 72 | .csv | 2026-08-02 |
+| `PPG_Testing_05_01_2026/WF-PPG (3rd) Dataset/` | PPG_Testing_05_01_2026 |  | 直属子文件夹：01、02、03、04、05、06、07、08、09、10、11、12、13、14、15、16、17、18、19、20、21、22、23、24、25、26、27；根级文件：2 个 | 332 | .csv、.md | 2026-08-02 |
+| `test_asa_classifier/_vitaldb_signal_cache/` |  |  | 根级文件：11966 个 | 11966 | .npz | 2026-08-02 |
+| `train_labeled/` |  |  | 根级文件：4 个 | 4 | .csv | 2026-08-02 |
+| `train_raw/` |  |  | 根级文件：7 个 | 7 | .csv | 2026-08-02 |
+| `train_val/` |  |  | 根级文件：1 个 | 1 | .csv | 2026-08-02 |
+| `train_window/` |  |  | 根级文件：12 个 | 12 | .csv | 2026-08-02 |
+
+## 完整性校验摘要
+
+- 根目录文件逐项记录：`45`。
+- 嵌套代码文件逐项记录：`21`。
+- 非代码目录汇总行：`1560`；覆盖非数据库、非根目录、非代码文件：`16820/16820`。
+- 数据库目录：`26`；数据库内部文件：`18328`。
+- 文件分类恒等式：`45 + 21 + 16820 + 18328 = 35214`。
