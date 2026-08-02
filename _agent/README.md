@@ -1,8 +1,8 @@
 # README
 
-状态：draft  
-来源：用户要求、`AGENTS.md`、`_agent/WRITE_RULES.md`、`_agent/PROJECT_HANDOFF.md`  
-最后手动更新时间：2026-06-23
+状态：confirmed
+来源：用户要求、`AGENTS.md`、`_agent/WRITE_RULES.md`、`_agent/arc/PROJECT_HANDOFF.md`、2026-06-10 后代码与结果复核
+最后手动更新时间：2026-07-26
 
 ## `_agent` 目录用途
 
@@ -42,9 +42,16 @@
 
 当前项目主线是 Python-based PPG signal processing pipeline for frailty classification。重点包括：
 
-- 静态 PPG 预处理、Aboy++ peak detection、PPI、HRV。
-- IMU-led motion/static detection。
-- 动态 PPG direct heartbeat / IBI / HRV extraction。
-- frailty3 三分类模型：`Pre-Frail / Robust-Non-Frail / Young`。
-- InceptionTime overfitting sweep、strict holdout 和最终模型导出。
-- 旧 dynamic denoising 路线已失败，应作为 deprecated/reference 处理。
+- 数据基线为 400 Hz，不在当前 frailty3 主流程中重采样；原始输入目录已设为只读。
+- frailty3 三分类为 `Pre-Frail / Robust-Non-Frail / Young`，当前主评估协议为
+  subject-level 5-fold `StratifiedGroupKFold`、固定 epoch、no early stopping。
+- 当前优先目标不是继续无边界扩展 grid，而是建立统一 benchmark、整合所有可比
+  sweep、完成消融，并在同一协议下选择可复现的 Top 5 配置。
+- 两条待验证建模路线为：flat InceptionTime 的两层二分类版本，以及
+  Base/Motion/Relax 分阶段生理特征模型。
+- 静态 PPG 的 Aboy++、PPI、HRV、morphology 和 IMU gravity removal 已进入
+  frailty3 实验代码；动态 heartbeat / IBI / HRV extraction 仍需独立验证。
+- 旧 dynamic clean-waveform denoising 路线已失败，只保留为
+  deprecated/reference；“半去噪”新路线只以可靠 peak/PPI/HR 为目标。
+- 2026-06-25 和 2026-06-30 sweep 仍显示明显 train-validation gap；当前可比结果
+  未达到 balanced accuracy 0.73，不能把单次或跨协议最高分作为最终模型能力。

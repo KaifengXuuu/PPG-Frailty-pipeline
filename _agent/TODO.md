@@ -1,114 +1,163 @@
 # TODO
 
-状态：draft  
-来源：用户当前要求、`_agent/PROJECT_HANDOFF.md`、代码结构检查。  
-最后手动更新时间：2026-06-22  
-用途：记录明确可执行任务，并把未完成事项与对应脚本/模块一一对应。
+状态：confirmed
+来源：用户当前要求、`_agent/arc/PROJECT_HANDOFF.md`、2026-06-10 后代码与结果复核
+最后手动更新时间：2026-07-26
+用途：记录明确可执行任务，并把未完成事项与对应脚本、验收条件和依赖关系对应起来。
 
-## 高优先级
+## 最高优先级 P0
 
-- [ ] 高：复查 frailty3 主训练与评估脚本的最终 CLI/defaults
-  - 日期：2026-06-22
-  - 用户需求：继续实验前避免旧默认值误用。
-  - 涉及文件/模块：`frailty_3class_classifier.py`, `frailty_3class_holdout_eval.py`, `frailty_3class_overfitting_sweep.py`
-  - 当前状态：脚本经历多轮更新；部分默认值可能反映旧实验阶段。
-  - 阻塞点：需逐项核对 model/input/window/role/split/early-stopping/output 参数。
-  - 下一步：列出当前 defaults，与最新实验设计对照，必要时再提交修改草稿。
+### P0-1 建立通用 Frailty3 Benchmark
 
-- [ ] 高：继续 overfitting sweep stage2，不只用自动 Top2
-  - 日期：2026-06-22
-  - 用户需求：降低 InceptionTime 过拟合，提高 frailty3 三分类泛化。
-  - 涉及文件/模块：`frailty_3class_overfitting_sweep.py`, `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2`
-  - 当前状态：stage1 已完成 930 runs；Top4 为 `s1_085`, `s1_091`, `s1_105`, `s1_163`。
-  - 阻塞点：自动 `--stage2-top-n 2` 会只选 `s1_085` 和 `s1_091`，覆盖面不足。
-  - 下一步：使用 `--stage2-top-n 4` 或手动指定 Top4，比较 mean BA、macro F1、worst-class F1、CI low、std 和 Pre-Frail vs Robust confusion。
+- [ ] 新建统一 benchmark 入口，建议文件名：`frailty_3class_benchmark.py`。
+- [ ] 固化 dataset manifest：subject、class、file、role、原始采样率、纳入/排除原因和数据版本。
+- [ ] 固化当前可比协议：400 Hz、subject-level 5-fold `StratifiedGroupKFold`、
+  fixed epoch、no early stopping、相同 folds/seeds/repeats。
+- [ ] 为 flat InceptionTime、hierarchical InceptionTime、1D-CNN、
+  Small InceptionTime 和 tabular baseline 提供统一 wrapper。
+- [ ] 统一输出 window/file/subject-level metrics、三类 class report、
+  confusion matrix、learning curves、fold subject IDs、完整 config、seed、
+  数据版本和 completeness check。
+- [ ] 将 holdout、early-stopping CV、no-early-stopping CV 和存在 data leakage
+  的历史结果标成不同 protocol，禁止直接合并排名。
+- [ ] 修正当前报告中把 OOF validation 命名为 `test_*` 的歧义；没有独立 test
+  时必须明确写 `oof_validation_*`。
+- [ ] 复核现有训练脚本 CLI/defaults，并由 benchmark 显式传参，避免旧默认值影响实验。
+- 涉及文件：`frailty_3class_classifier.py`,
+  `frailty_3class_overfitting_sweep.py`, `frailty_3class_holdout_eval.py`,
+  `analyze_sweep.py`。
+- 验收：同一 manifest/fold registry 可重复运行所有候选模型；报告可追溯到
+  subject split、seed、epoch 和数据版本；不同 protocol 不进入同一 leaderboard。
 
-- [ ] 高：为选定 frailty3 config 做 final training/export 方案
-  - 日期：2026-06-22
-  - 用户需求：CV/holdout 只用于估计；部署需要最终模型。
-  - 涉及文件/模块：`frailty_3class_classifier.py`, `frailty_3class_holdout_eval.py`
-  - 当前状态：rank2 InceptionTime raw 5s/50% overlap/patience20 当前较平衡，但仍未定版。
-  - 阻塞点：尚未固定 final config、训练策略、保存内容和部署格式。
-  - 下一步：设计 final training/export，保存 scaler、label map、window 参数、feature schema、模型权重和评估摘要。
+### P0-2 整合全部 Sweep/Grid Search 并选出严格可比 Top 5
 
-- [ ] 高：诊断 Pre-Frail vs Robust/Non-Frail 混淆
-  - 日期：2026-06-22
-  - 用户需求：当前主要错误不是 Young，而是两个老年组边界。
-  - 涉及文件/模块：`frailty_3class_classifier.py`, `analyze_sweep.py`, `frailty_3class_holdout_eval.py`
-  - 当前状态：rank2 aggregated confusion 显示 Pre-Frail 与 Robust/Non-Frail 互相误分明显。
-  - 阻塞点：subject 数少，fold/repeat 方差大。
-  - 下一步：按 subject、role、静/动态状态、HR/HRV、窗口质量分层分析错误来源。
+- [ ] 新建跨实验分析入口，建议文件名：`analyze_all_frailty_experiments.py`。
+- [ ] 建立 parameter ontology 和 protocol registry；统一旧字段名、缺失字段和 reference 来源。
+- [ ] 纳入至少以下结果：`20260527_1320_cnn_inceptionTime`、
+  `overfitting_20260608_0752`、
+  `20260608_1206_overfitting_sweep_stage1_rank2`、
+  `20260625_2320_overfitting_sweep_stage1_rank2`、
+  `20260630_0630_overfitting_sweep_generalization_rank2`。
+- [ ] 对 2026-05-27 结果标记 data leakage；只允许用当前协议重跑的 reference
+  进行绝对分数比较。
+- [ ] 在相同 folds/seeds 下计算 paired metric differences、bootstrap confidence
+  intervals、class-level effects 和 stability；不把不平衡 grid 的回归系数解释为因果效应。
+- [ ] 输出参数覆盖图、主效应/交互图、class recall/F1、confusion matrix、
+  repeat/fold stability 和 reference drift。
+- [ ] 在严格相同协议中按 config-level repeat mean 排名，选出 Top 5 完整参数组；
+  不按最佳单次 repeat 排名，不用 runtime/cost/Pareto 指标影响排名。
+- [ ] 扩展 `analyze_sweep.py` 的 config identity，使 SQI、aggregation、
+  manual features、loss、class weight、sampler、window quota 和 train overlap
+  成为显式 config columns；默认模型列表加入 `small_inceptiontime`。
+- 验收：Top 5 表包含完整参数、mean/std/CI、worst-class 指标、三类 confusion
+  matrix 和可比性标签；不完整 config 不与完整 config 公平排名。
 
-- [ ] 高：正式推进 dynamic heartbeat / peak / IBI / HRV 模块
-  - 日期：2026-06-22
-  - 用户需求：动态 PPG 降噪失败后，转向直接提取可靠 peak/IBI/HRV。
-  - 涉及文件/模块：`ppg_peak_hr_gating_train.py`
-  - 当前状态：代码结构已包含 ECG preflight、beat supervision、IBI loss、LODO、scorecard、motion detector benchmark、ONNX wrapper。
-  - 阻塞点：尚未完成正式全量训练和稳定评估。
-  - 下一步：跑非 smoke 配置，读取 scorecard，重点检查 per-dataset/per-subject/per-activity、extra-holdout、LODO、delay analysis。
+### P0-3 试验两层二分类 Hierarchical InceptionTime
 
-- [ ] 高：将新 detector + peak/IBI 模型接入主 notebook
-  - 日期：2026-06-22
-  - 用户需求：`ppg_analyse4_calib.ipynb` 应从旧 denoiser 路线切到 motion detector + dynamic heartbeat extractor。
-  - 涉及文件/模块：`ppg_analyse4_calib.ipynb`, `ppg_peak_hr_gating_train.py`, `funcs.py`
-  - 当前状态：notebook 是当前主分析入口；旧 denoiser 不应作为可靠动态修复模块。
-  - 阻塞点：最终 detector/peak-IBI 模型尚未定版。
-  - 下一步：先定义 notebook 输入输出接口，再接入已验证模型 bundle。
+- [ ] 上层分类器：`Young` vs `Old`。
+- [ ] 下层分类器：只在 old training subjects 中分类 `Pre-Frail` vs
+  `Robust/Non-Frail`。
+- [ ] 初版使用两个独立 InceptionTime，不共享参数，以便判断每一层的真实贡献。
+- [ ] 最终三类概率按以下方式组合：
+  `P(Young)`、`P(Old) * P(Pre-Frail | Old)`、
+  `P(Old) * P(Robust | Old)`。
+- [ ] 与 flat InceptionTime 使用完全相同的 outer subject folds、seeds、
+  epoch、window 和训练预算；至少 5 repeats。
+- [ ] 分别报告 top-level BA、old-only oracle bottom-level BA、
+  end-to-end subject-level 三分类 BA/F1 和错误传播。
+- [ ] 下层训练和预处理只能使用 outer-train 中的 old subjects，禁止读取
+  validation fold 标签或特征统计。
+- 涉及文件：建议新建 `frailty_3class_hierarchical.py`，并接入 P0-1 benchmark。
+- 验收：能够判断瓶颈来自 Young/Old、Pre/Robust，还是上层错误传播；与 flat
+  baseline 完成配对比较。
 
-## 中优先级
+### P0-4 建立 Base/Motion/Relax 分阶段生理特征路线
 
-- [ ] 中：决定 PPI/HRV/manual features 是否保留在最终 frailty3 候选
-  - 日期：2026-06-22
-  - 涉及文件/模块：`frailty_3class_classifier.py`, `analyze_sweep.py`
-  - 当前状态：支持 `extra_input=0/PPI/HRV`；PPI/HRV 作为表格特征 MLP fusion。
-  - 下一步：只按 config-level group summary 判断，不按单 run 判断。
+- [ ] 先确认文件 role `B/R/S/W` 与 Base/Motion/Relax 的真实实验阶段映射；
+  未确认前不得凭文件名推断。
+- [ ] 继续优化 IMU static/motion gating，并以 subject/dataset split 做独立评测。
+- [ ] 使用带同步 ECG 的开放数据训练 motion-robust peak/PPI/HR extractor。
+  ECG 只提供 peak/timing supervision；目标是可靠 beat/PPI/HR，不是重建 clean waveform。
+- [ ] 分阶段提取 HR、HRV、SQI、IMU activity、阶段间变化和
+  recovery slope/time/relative-to-baseline。
+- [ ] 先试弱且可解释的模型：regularized logistic regression、SVM、
+  ExtraTrees 或小型 gradient boosting。
+- [ ] 定义特征 schema、缺失值策略、SQI 规则和 fold-only scaler；
+  与 raw InceptionTime 在相同 subject CV 下比较。
+- [ ] 完成正式非-smoke 的 `ppg_peak_hr_gating_train.py` 训练与 scorecard，
+  包括 per-dataset/per-subject/per-activity、extra holdout、LODO 和 delay analysis。
+- [ ] 稳定后再接入 `ppg_analyse4_calib.ipynb`，随后考虑 ONNX/CPU-only bundle。
+- 验收：外部 heartbeat extractor 不依赖目标 frailty subject 的 validation/test
+  标签；输出阶段级可解释特征，并通过 P0-1 benchmark 评估。
 
-- [ ] 中：检查采样率、时间戳和重采样规范
-  - 日期：2026-06-22
-  - 涉及文件/模块：`frailty_3class_classifier.py`, `funcs.py`, `ppg_analyse4_calib.ipynb`
-  - 当前状态：handoff 明确该点需核查，避免 400 Hz 或有效时间轴处理错误。
-  - 下一步：形成数据规范，并同步到后续文档批次。
+### P0-5 完成统一消融试验
 
-- [ ] 中：为 `ppg_peak_hr_gating_train.py` 输出 ONNX/CPU-only 部署模块
-  - 日期：2026-06-22
-  - 涉及文件/模块：`ppg_peak_hr_gating_train.py`, `pttppg_denoiser_hybrid_export_onnx.py`, `pttppg_denoiser_onnx_runtime.py`
-  - 当前状态：旧 denoiser 已有 ONNX 经验；新 peak/IBI 模型尚需独立 runtime。
-  - 下一步：在模型稳定后导出 deploy bundle，并做 CPU-only smoke test。
+- [ ] 至少覆盖：RED/IR、PPG-only、IMU-only、gravity removal、SQI、
+  PPI/HRV、morphology、hierarchy、sampler、aggregation、
+  Base/Motion/Relax stage 和 recovery features。
+- [ ] 每次只改变一个因素；固定 folds、seeds、epoch、window、训练预算和基础 config。
+- [ ] 报告 subject-level paired BA/macro-F1 delta、bootstrap CI、
+  class recall/F1、confusion matrix、coverage 和失败样本。
+- [ ] 把 PPI/HRV/manual features 是否保留在最终模型的旧任务并入本消融，
+  不再依据单次 run 决定。
+- 验收：能够区分“平均分提高”“稳定性提高”“仅某一类提高”和
+  “因丢弃低质量窗口而改变评估覆盖”。
 
-- [ ] 中：增强 ECG detector 与 PPG delay 校准
-  - 日期：2026-06-22
-  - 涉及文件/模块：`ppg_peak_hr_gating_train.py`
-  - 当前状态：已有 `analyze_ppg_ecg_delay` 等逻辑。
-  - 下一步：明确 ECG R peak 与 PPG pulse peak 的 delay 建模方式，避免监督标签相位偏差。
+## 高优先级 P1
 
-- [ ] 中：评估 HRV 指标层准确性
-  - 日期：2026-06-22
-  - 涉及文件/模块：`ppg_peak_hr_gating_train.py`, `funcs.py`, `frailty_3class_classifier.py`
-  - 当前状态：peak/IBI 训练目标已有；HRV 层指标尚未系统评估。
-  - 下一步：重点评估 SDNN、RMSSD、LF/HF 等对 frailty 分类有意义的指标。
+### P1-1 审计数据清洗与 Scaler
 
-- [ ] 中：清理并归档旧 dynamic denoiser 路线
-  - 日期：2026-06-22
-  - 涉及文件/模块：`pttppg_denoiser_hybrid_*`, `pttppg_stage2_denoiser.py`, `pttppg_pipeline_v7_4_noleak_viz_ae.py`
-  - 当前状态：动态去噪路线已判定失败，但仍有历史脚本和输出。
-  - 下一步：文档中标注 deprecated/reference，避免后续 chat 误用为主线。
+- [ ] 检查 NaN、flatline、saturation、异常振幅、异常 PPI、过短文件、
+  channel missing、设备量纲和低 SQI windows。
+- [ ] 比较 current per-window median/IQR、fold-level per-channel scaling、
+  `StandardScaler`、`RobustScaler` 和保留绝对振幅的 hybrid scaling。
+- [ ] 所有 scaler/imputer 只能在 training fold 拟合。
+- [ ] 专门验证当前 per-window robust scaling 是否删除对 frailty 有用的
+  pulse amplitude、IR/RED ratio 或恢复幅度信息。
+- [ ] 记录 SQI gating 后每个 subject/class 的保留窗口数，防止 coverage
+  不均造成表面性能变化。
+- 验收：输出清洗审计表、各 scaler 的配对结果和 class/subject coverage。
 
-- [ ] 中：小范围评估 ShapeFormer，不进入大规模 sweep
-  - 日期：2026-06-22
-  - 涉及文件/模块：`shapeformer_port.py`, `frailty_3class_classifier.py`
-  - 当前状态：port 已实现，PISD 运行成本高，提升不明确。
-  - 下一步：仅做小 ablation，确认是否有保留价值。
+### P1-2 检查异步、多时间尺度人工特征融合
 
-## 低优先级
+- [ ] 明确每个特征的时间范围：window、file、stage 或 subject，以及真实推理时可用性。
+- [ ] 审计当前 file-level features 复制到每个 window 的做法；检查是否按窗口数
+  隐式放大某些文件，以及是否使用了窗口之后的整文件信息。
+- [ ] 比较四种融合：当前 window early fusion、raw embedding 聚合后 file fusion、
+  subject-level late fusion、out-of-fold stacking。
+- [ ] stacking 的 meta-model 只能使用 OOF predictions；imputer/scaler 必须 fold-only。
+- [ ] 输出 feature schema、subject/file/window alignment、缺失策略和消融结果。
+- 验收：不存在跨 fold 或未来时间信息泄漏；不同时间尺度的特征贡献可单独解释。
 
-- [ ] 低：决定是否接入 W&B
-  - 日期：2026-06-22
-  - 涉及文件/模块：frailty3 sweep scripts
-  - 当前状态：当前使用本地 CSV/JSON/PNG/Markdown，已够用。
-  - 下一步：只有在 sweep 规模继续扩大时再评估。
+## 保留与依赖任务
 
-- [ ] 低：整理项目级 README/实验日志
-  - 日期：2026-06-22
-  - 涉及文件/模块：`README.md`, `_agent/*`, result directories
-  - 当前状态：信息散在 handoff、scorecard、summary、notebook 和脚本中。
-  - 下一步：在 `_agent` 文档整理完成后，再决定是否写项目级 README。
+- [ ] 在 P0-1/P0-2 确定 final config 后，设计 final training/export。
+  保存模型权重、scaler、label map、manifest、fold registry、window 参数、
+  feature schema、训练配置和评估摘要。
+- [ ] 在 P0-4 的 heartbeat extractor 稳定后，完成 ONNX/CPU-only smoke test
+  并接入主 notebook。
+- [ ] 增强 ECG detector 与 PPG delay calibration，系统评估 SDNN、RMSSD
+  等 HRV 指标层误差。
+- [ ] 清理并归档旧 `pttppg_denoiser_hybrid_*`、
+  `pttppg_stage2_denoiser.py` 等 dynamic denoiser 路线，保留 reference。
+- [ ] ShapeFormer 仅保留小规模 ablation；PISD 成本高且现有提升不明确，
+  暂不进入大 sweep。
+- [ ] W&B 保持低优先级；当前 CSV/JSON/PNG/Markdown 可满足本地分析，
+  只有跨机器或实验规模继续扩大时再评估。
+
+## 已完成或被后续实验替代
+
+- [x] 已确认当前活动 frailty3 流程维持原始 400 Hz，不做 resampling；
+  `PPG_Testing_05_01_2026/` 和 `physionet.org/` 已设为只读。
+- [x] 已实现 PPG 基础预处理、IMU gravity removal、local Aboy++ morphology、
+  file-level PPI/HRV/manual fusion、SQI gating、weighted CE/balanced
+  softmax/focal loss、class weights 和 subject-aware samplers。
+- [x] 2026-06-08 stage1 Top4 后续任务已被 2026-06-25 和 2026-06-30
+  更完整 sweep 覆盖，不再直接作为当前 stage2 入口。
+- [x] 2026-06-25 sweep：129 configs、645 runs，完整。
+- [x] 2026-06-30 generalization sweep：232 configs、1160 runs，完整；
+  新 config 未达到 BA 0.60，当前结果仍未达到 0.73。
+- [x] 已完成 2026-06-16 和 2026-07-06 的独立 sweep reports；
+  后续由 P0-2 统一整合。
+- [x] 旧“检查采样率、时间戳和重采样规范”中的当前 frailty3 重采样问题已核准；
+  外部数据的时间轴/设备量纲仍属于 P1-1。

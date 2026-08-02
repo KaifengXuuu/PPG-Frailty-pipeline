@@ -1,8 +1,8 @@
 # MODULES
 
-状态：draft  
-来源：用户项目总纲、用户当前进度说明、`_agent/PROJECT_HANDOFF.md`、代码结构检查。  
-最后手动更新时间：2026-06-21  
+状态：confirmed
+来源：用户项目总纲、用户当前进度说明、`_agent/arc/PROJECT_HANDOFF.md`、代码与结果目录复核。
+最后手动更新时间：2026-07-26
 用途：记录本项目各核心模块的用途、输入输出、脚本/函数对应关系、历史版本、当前状态、已实现内容、待实现内容、算法思路和改进方向。
 
 ## 模块总览
@@ -16,7 +16,7 @@
 3. IMU-led motion/static detector。
 4. 动态 PPG heartbeat / IBI / HRV 提取。
 5. frailty3 三分类模型。
-6. overfitting sweep、sweep analysis、strict holdout evaluation。
+6. overfitting/generalization sweep、跨实验 analysis、benchmark 与消融。
 7. 已失败但保留历史价值的 dynamic PPG denoiser 路线。
 8. ShapeFormer、ASA 等旁支模型试验。
 
@@ -24,7 +24,7 @@
 
 ### 1. PPG 预处理与基础特征模块
 
-- 当前最新版本：暂定可用。
+- 当前最新版本：frailty3 活动流程已核准为 400 Hz、无 resampling；其他入口仍需分别审计。
 - 相关文件：
   - `funcs.py`
   - `ppg.py`
@@ -50,11 +50,18 @@
   - 可供 peak detection 或 classifier 使用的 cleaned/minimal-preprocessed signal。
 - 已实现内容：
   - 高通、带通、notch、wavelet denoise 等基础处理函数。
+  - frailty3 raw window 为 8 通道、400 Hz；5 秒窗口形状为 `[N,8,2000]`。
+  - frailty3 PPG 使用缺失值插值、线性 detrend、0.2--8 Hz Butterworth；
+    accelerometer 使用 20 Hz low-pass 后减去 0.3 Hz low-pass gravity；
+    gyroscope 使用 40 Hz low-pass。
+  - 每个 window 使用 median/IQR robust scaling，并 clip 到 `[-8,8]`。
   - frailty3 脚本中已有文件级特征提取与窗口构建逻辑。
 - 待实现内容：
-  - 明确每批原始数据的采样率、时间戳、重采样策略，并写入数据规范。
+  - 对 frailty3 之外的每批原始数据继续明确采样率、时间戳和设备量纲。
   - 整理哪些预处理步骤属于 thesis core pipeline，哪些只是 notebook/诊断辅助。
   - 对 `funcs.py` 与 `ppg.py` 中重复函数做归档或来源说明，避免后续 chat 误用旧入口。
+  - 比较 per-window scaling 与 fold-level/channel-level scaling，检查当前方法是否删除
+    绝对 pulse amplitude 和 IR/RED ratio 信息。
 - 历史版本与更新目的：
   - `ppg.py` 是较早的交互式/可视化入口，用户已明确指出其过时。
   - `ppg_analyse4_calib.ipynb` 是当前主分析 notebook，应逐步替代旧 `ppg.py` 的入口作用。
@@ -66,7 +73,8 @@
   - 为静态段和动态段区分不同处理策略。
   - 增加每一步处理前后可视化与质量指标。
 - 验证状态：
-  - 暂定可用，但采样率/时间戳处理仍需系统核查。
+  - 当前活动 frailty3 脚本不执行 resampling，`RunConfig.fs=400`。
+  - archive 中仍可存在旧 resample 代码，不能据此推断活动流程。
 - 后续建议：
   - 将最终采用的预处理流程单独整理成 thesis-ready 文档和代码注释。
 
@@ -74,14 +82,16 @@
 
 ### 2. Aboy++ Peak Detection、PPI、HRV 模块
 
-- 当前最新版本：可用。
+- 当前最新版本：静态/file-level 实验接口已实现，但 `ppg.py` parity 尚未验证。
 - 相关文件：
   - `funcs.py`
   - `ppg.py`
   - `frailty_3class_classifier.py`
+  - `frailty_3class_overfitting_sweep.py`
 - 关键函数：
   - `aboypp_peak_hr`
   - `aboypp_peak_hr_windowed`
+  - `aboypp_detect_peaks`
   - `calculate_hrv`
   - `ppi_from_peaks`
   - `hrv_compare_from_aboy_ir`
@@ -95,21 +105,33 @@
   - 计算 PPI、beat-to-beat intervals、HRV/manual features。
   - 为静态 PPG 分析和 frailty3 classifier 提供可解释手工特征。
 - 输入：
-  - 预处理后的 PPG，主要为 `IR` 或 `RED/IR`。
-  - 采样率或时间戳信息。
+  - 400 Hz 预处理 PPG，主要为 `IR` 或 `RED/IR`。
+  - file-level signal、采样率和可选 IMU motion magnitude。
 - 输出：
   - peak indices。
   - PPI sequence。
   - HR/HRV features，例如 SDNN、RMSSD 等候选指标。
   - 在 frailty3 pipeline 中作为 fold 内标准化后的 tabular extra features。
 - 已实现内容：
-  - Aboy++ peak/HR 计算。
-  - windowed peak/HR 计算。
-  - HRV/manual features 提取。
-  - frailty3 中支持 `extra_input=0/PPI/HRV`。
+  - `ppg.py`/`funcs.py` 中的 Aboy++ peak/HR 和 windowed peak/HR 计算。
+  - frailty3 内部 `aboypp_detect_peaks` 移植了 Aboy++ 的核心流程，用于
+    file-level PPI/HRV 和 morphology。
+  - file-level morphology 包括 pulse amplitude、rise/decay time、pulse width、
+    systolic slope、pulse area、PPI stability、IR/Red AC/DC ratio、
+    correlation/phase 和 motion-normalized PPG features。
+  - frailty3 中的 manual features 经 training-fold scaler 后通过 MLP fusion，
+    不是把 PPI/HRV 直接当作 raw 时序通道。
+  - 当前 feature cache：
+    `datasets/frailty3_features_v2_aboy_morph_gravity_B_R1_R2_R3_R4_fs400_w10_h5.csv`，
+    包含 145 files、29 subjects。
 - 待实现内容：
-  - 明确哪些 HRV 指标进入最终 thesis evaluation。
-  - 对静态段 HRV 与动态段 HRV 分开评估。
+  - 对 `aboypp_detect_peaks` 与 `ppg.py::aboypp_peak_hr` 做同输入 parity test；
+    当前不能称为逐行原样调用。
+  - 当前 SQI 仍使用简化 `find_peaks` 逻辑，应决定是否统一到 Aboy++，
+    并通过真实 peak/ECG reference 验证。
+  - 将 window/file/stage/subject-level 特征范围写入 schema，避免整文件特征复制到
+    window 后产生隐式加权或未来信息问题。
+  - 明确哪些 HRV 指标进入最终 thesis evaluation，并分开评估静态、动态和恢复阶段。
   - 对 peak detection 在不同 frailty 状态、不同 role、不同运动状态下的失败模式做记录。
 - 历史版本与更新目的：
   - 早期 peak detection 主要服务于 PPG 分析与可视化。
@@ -122,7 +144,8 @@
   - 增加 HRV 指标层评价，而不仅评价 peak timing。
   - 比较静态 HRV、动态 HRV、relax-stage heart-rate recovery speed 对 frailty 分类的贡献。
 - 验证状态：
-  - Aboy++ 峰值检测当前可用。
+  - 静态/file-level 特征提取可运行。
+  - 尚无证据证明 frailty3 本地 Aboy++ 与 `ppg.py` 输出完全一致。
   - 动态段 peak/HRV 尚未稳定成功。
 - 后续建议：
   - 将 Aboy++ 算法流程、阈值、artifact rejection 规则整理为 thesis algorithm design 部分。
@@ -340,10 +363,12 @@
 
 ### 6. Frailty3 三分类主模型模块
 
-- 当前最新版本：主线进行中，当前最好约 63%，目标/及格线为 73% 以上，尚未成功。
+- 当前最新版本：主线进行中；严格可比结果约 0.62 BA，目标 0.73，尚未达到。
 - 相关文件：
   - `frailty_3class_classifier.py`
   - `frailty_3class_cnn_fusion.py`
+  - `frailty_3class_overfitting_sweep.py`
+  - `frailty_3class_holdout_eval.py`
   - `shapeformer_port.py`
 - 关键函数/类：
   - `RunConfig`
@@ -358,63 +383,80 @@
   - `ShapeBlock`
   - `discover_shapelets`
   - `discover_shapelets_pisd`
-- 当前主线：
-  - `results_frailty3` 下的三分类 frailty-status pipeline。
-  - 使用 RED/IR 双通道 PPG + IMU 6 维信号区分 `Pre-Frail`、`Robust/Non-Frail`、`Young`。
+- 模块用途：
+  - Frailty三分类深度学习分类器，输出路径results_frailty3
+  - 使用 RED/IR 双通道 PPG 与 IMU 6 维信号区分
+    `Pre-Frail`、`Robust/Non-Frail`、`Young`。
+  - ###！！！比较 different raw deep models、manual-feature fusion、SQI、loss、sampler，强正则，windows size，数据增强 和
+    subject-level aggregation等等 对泛化的影响。由于算力和时间限制，同分类参数组（比如强正则，models）的比较在同分类中进行，而不进行全参数组的网格比较
 - 数据来源：
   - `PPG_Testing_05_01_2026/StudyData_frailtyScored/StudyData_V7_standard.csv`
   - `PPG_Testing_05_01_2026/StudyData`
   - `PPG_Testing_05_01_2026/TestDataYoungers`
+  - 上述原始数据目录和 `physionet.org/` 已设为只读；`datasets/` 是生成/读取的
+    cache 目录，不是 raw input source。
 - 标签定义：
   - `FRAILTY-STATUS=2` -> `Pre-Frail`
   - `FRAILTY-STATUS=3` -> `Robust/Non-Frail`
   - `TestDataYoungers` -> `Young`
+- 数据审计：
+  - raw 总计 29 subjects、261 files：StudyData 21 subjects/189 files，
+    Young 8 subjects/72 files。
+  - 静态纳入 `B,R1,R2,R3,R4` 后为 145 files：
+    Pre-Frail 9 subjects/45 files、Robust 12/60、Young 8/40。
+  - 每个静态 role 均有 29 files。
+  - 若纳入 `B,R1-R4,S1,S2,W1,W2`，三类文件数为 81/108/72。
+  - label CSV 中有 10 个 ID 不在 StudyData；其中 6 个属于 Young folder，
+    真正缺失的是 `BAE28,NRE29,PSR16,PSS22`。
+  - Young subjects `AB_01`、`EE_02` 不在 label CSV，但按文件夹正确标为 Young。
 - 文件纳入规则：
   - `STE072` 已纠正，可以纳入。
-  - 当前只采用 role/suffix 为 `B,R1,R2,R3,R4` 的文件。
+  - 默认静态实验只采用 role/suffix 为 `B,R1,R2,R3,R4` 的文件。
+  - `train_all_roles` 是可选动态扩展，不应与 static-only baseline 混为同一 config。
 - 输入：
-  - raw window 8 通道：
-    - `RED`
-    - `IR`
-    - `AX`
-    - `AY`
-    - `AZ`
-    - `GX`
-    - `GY`
-    - `GZ`
-  - 深度模型输入张量形状：`[N, 8, T]`
-  - 可选额外特征：`PPI`、`HRV`
+  - raw 8 channels：`RED, IR, AX, AY, AZ, GX, GY, GZ`。
+  - 全程保持 400 Hz；5 秒 window 的形状为 `[N,8,2000]`。
+  - PPG：interpolation、linear detrend、0.2--8 Hz Butterworth。
+  - accelerometer：20 Hz low-pass 后减去 0.3 Hz low-pass gravity；
+    gyroscope：40 Hz low-pass。
+  - 每 window median/IQR scaling，clip `[-8,8]`。
+  - 可选 file-level tabular features：PPI、HRV、morphology；
+    training fold 内缩放后由 MLP 与 raw embedding 融合。
 - 输出：
-  - subject-level、file-level、window-level metrics。
+  - window/file/subject-level metrics。
   - confusion matrix。
   - learning curves。
-  - per-run CSV/report。
+  - per-run CSV/JSON/report、fold predictions 和 config summary。
   - model artifacts。
 - 已实现内容：
   - 数据读取与 label mapping。
   - role filter：`B,R1,R2,R3,R4`。
   - `STE072` 纳入。
-  - PPG peak detection、PPI、HRV/manual features。
-  - 1D-CNN。
-  - InceptionTime。
+  - local Aboy++ peak detection、PPI、HRV 和 file-level morphology。
+  - SQI modes：`none/top70_quality/top50_quality`。
+  - subject aggregation：`mean_prob/quality_weighted_mean`。
+  - losses：weighted CE、balanced softmax、focal loss。
+  - class weights：inverse subject count、effective number。
+  - samplers：none、subject-balanced、class-subject-balanced；
+    per-subject window quota 支持 all、百分比和绝对数，并按 seed+epoch 随机采样。
+  - 1D-CNN、full InceptionTime、Small InceptionTime。
+  - Small InceptionTime 当前为 depth 3、filters 16、bottleneck 16；
+    full 版本为 depth 6、filters 32、bottleneck 32。
   - ShapeFormer core port。
   - ShapeFormer-PISD wrapper。
-  - PPI/HRV feature fusion。
-  - subject-level `StratifiedGroupKFold`。
+  - subject-level 5-fold `StratifiedGroupKFold`。
   - learning curve plot。
-  - auto sweep。
-  - incremental CSV/report。
+  - auto sweep、incremental CSV/report、总/子进度条。
 - 待实现内容：
-  - 继续 InceptionTime anti-overfitting grid search。
-  - 诊断 Pre-Frail vs Robust/Non-Frail 混淆。
-  - 尝试不同输入组合：
-    - dynamic raw signal。
-    - dynamic coarse-denoised signal，高风险，仅探索。
-    - dynamic HR/HRV。
-    - static HR/HRV。
-    - relax-stage HR recovery speed。
-  - 最终选定 config 后重新训练部署模型。
-  - 保存 scaler、label map、window 参数、feature schema。
+  - 建立统一 Frailty3 benchmark 和跨 sweep protocol registry。
+  - 尝试输入dynamic coarse-denoised signal （探索项）
+  - 选定最终config后重新训练并保存参数（scaler，label map，window参数，feature schema）部署模型
+  - 实现 hierarchical InceptionTime：Young/Old 后再分 Pre-Frail/Robust。
+  - 建立 Base/Motion/Relax 的relax-stage HR recovery speed生理特征路线和弱模型 baseline。
+  - 系统审计 scaler、异步 file-level feature fusion 和 SQI coverage。
+  - 在相同 folds/seeds 下完成消融并选出严格可比 Top 5。
+  - 最终选定 config 后重新训练部署模型，保存 scaler、label map、manifest、
+    fold registry、window 参数和 feature schema。
 - 历史版本与更新目的：
   - 从单一 CNN 分类脚本扩展为统一训练和 sweep 框架。
   - `frailty_3class_cnn_fusion.py` 是早期 raw window + handcrafted feature fusion 旁支，新主脚本已吸收其 `extra_input=PPI/HRV` 思路。
@@ -423,23 +465,26 @@
   - 使用 subject-level split，避免同一 subject windows 同时出现在 train/validation。
   - 用 config-level mean/std/CI 判断模型，不按单次最好 repeat 选择。
   - 当前不把 runtime/cost/Pareto efficiency 作为 leaderboard 排名依据。
+  - 当前主协议为 5-fold `StratifiedGroupKFold`、fixed epoch、no early stopping；
+    每个 fold 的 validation 仅用于 OOF evaluation 和 learning curve。
+  - 当前 CV 不含额外独立 test set；报告中的历史 `test_*` 字段可能实际是
+    OOF validation，需要在 benchmark 中改名。
 - 可能改进方向：
-  - cost-sensitive objective。
-  - per-class threshold。
-  - subject-level calibration。
-  - 更稳定的 final training/export pipeline。
-  - 增加动态 heartbeat features 后重新评估。
+  - hierarchy、stage-level feature engineering、amplitude-preserving scaler。
+  - file/subject late fusion 或严格 OOF stacking。
+  - paired ablation 和 subject-level calibration。
 - 验证状态：
-  - 当前 best holdout/sweep 仍低于目标。
-  - 主要瓶颈是 `Pre-Frail` 与 `Robust/Non-Frail` 混淆，而不是 Young。
+  - 当前所有严格可比候选仍低于 BA 0.73。
+  - 2026-06-30 最佳 reference 的 aggregate confusion 中 Young recall 最低；
+    因此不能继续沿用“Young 一定容易、只剩 Pre-vs-Robust”这一旧结论。
 - 后续建议：
-  - 当前最可信候选仍是 InceptionTime raw 5s / 50% overlap / patience20 附近配置，但需要继续 overfitting sweep 和 strict holdout 验证。
+  - 先统一 benchmark 和跨实验分析，再新增模型；否则协议差异会继续掩盖真实改进。
 
 ---
 
 ### 7. Sweep Analysis 与 Strict Holdout Evaluation 模块
 
-- 当前最新版本：可用，但需要继续维护默认参数和实验协议。
+- 当前最新版本：单目录分析可用；跨协议整合和 config identity 仍需升级。
 - 相关文件：
   - `analyze_sweep.py`
   - `frailty_3class_holdout_eval.py`
@@ -454,8 +499,8 @@
 - 模块用途：
   - 对 frailty3 sweep 结果进行 config-level 汇总。
   - 选择 top configs。
-  - 做 strict holdout 复核。
-  - 做 overfitting/regularization sweep。
+  - 区分 strict holdout、early-stopping CV、fixed-epoch CV 和泄漏历史结果。
+  - 做 overfitting、regularization 和 generalization sweep。
 - 输入：
   - `results_frailty3/` 下的 sweep run outputs。
   - `results_frailty3/_sweep_analyse/`
@@ -472,67 +517,92 @@
   - holdout summary/report/plots。
   - overfitting sweep summary。
 - 已实现内容：
-  - `analyze_sweep.py` 当前分析 360 runs、72 config groups 的 CNN/InceptionTime sweep。
+  - `analyze_sweep.py` 可读取历史 artifacts、递归恢复 report 路径、按 config
+    聚合 repeats，并按 reference-specific expected repeats 检查完整性。
   - strict holdout 支持 train/inner-val/test 三分法。
   - overfitting sweep 已支持 no-early-stopping fixed final epoch、5-fold StratifiedGroupKFold、stage1/stage2。
+- 协议边界：
+  - `20260527_1320_cnn_inceptionTime` 的原始绝对 BA 存在 data leakage，
+    只能用于参数探索历史；其 current-protocol reference reruns 才能比较。
+  - `overfitting_20260608_0752` 使用 holdout/early stopping，与当前 fixed-epoch
+    5-fold CV 不可直接排名。
+  - 当前主协议没有 CV 之外的独立 test set；5-fold 汇总是全数据的 OOF validation。
 - 关键实验结果：
-  - sweep analysis 目录：
-    - `results_frailty3/_sweep_analyse/20260601_0941_cnn_inceptiontime`
-  - 360 runs、72 config groups，complete。
-  - Top 10 主要为 InceptionTime/raw/5s。
-  - sweep rank 1：
-    - InceptionTime raw，5s window，30% overlap，patience 20。
-  - sweep rank 2：
-    - InceptionTime raw，5s window，50% overlap，patience 20。
-  - sweep rank 7：
-    - CNN raw，5s window，50% overlap，patience 20。
-  - strict holdout 目录：
-    - `results_frailty3/_holdout_eval/20260607_0935_rank1-2-7_holdout`
-  - rank 1：
-    - test balanced accuracy mean 约 0.600。
-    - macro F1 约 0.547。
-    - worst-class F1 约 0.133。
-  - rank 2：
-    - test balanced accuracy mean 约 0.600。
-    - macro F1 约 0.580。
-    - worst-class F1 约 0.380。
-    - 当前更推荐，因为更平衡。
-  - rank 7：
-    - test balanced accuracy mean 约 0.567。
-    - macro F1 约 0.513。
-    - worst-class F1 约 0.180。
-- overfitting sweep 最新状态：
-  - 脚本：`frailty_3class_overfitting_sweep.py`
-  - 输出根目录：`results_frailty3/_overfitting_sweep`
-  - 最新 stage1 目录：
-    - `results_frailty3/_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2`
-  - 完整性：
-    - 185 configs × 5 repeats + reference × 5 = 930 runs。
-  - reference：
-    - `ref_rank2_fixed_epoch`
-    - rank2 原始参数，关闭 early stopping。
-    - `cnn_patience=0`
-    - `cnn_select_best_epoch=False`
-  - stage1 epoch grid：
-    - `5,8,10,12,15`
-  - Top configs：
-    - `s1_085`：dropout=0, epoch=10, BA 约 0.623, macro F1 约 0.626, worst-class F1 约 0.526。
-    - `s1_091`：dropout=0.7, epoch=10, BA 约 0.621, macro F1 约 0.622, worst-class F1 约 0.530。
-    - `s1_105`：wd=0.005, dropout=0.5, label_smoothing=0.2, epoch=10, BA 约 0.616, macro F1 约 0.625, worst-class F1 约 0.541。
-    - `s1_163`：dropout=0.5, epoch=15, BA 约 0.612, std 约 0.031, worst-class F1 约 0.557。
+  - 2026-06-08 baseline：
+    `20260608_1206_overfitting_sweep_stage1_rank2`，930 runs、186 configs。
+    当时 top `s1_085` BA 0.623148、macro F1 0.625782、
+    BA std 0.069952、CI low 0.536305、worst-class F1 0.539840，
+    train-validation window BA gap 0.439868。
+  - 2026-06-25：
+    `20260625_2320_overfitting_sweep_stage1_rank2`，645 runs、129 configs，
+    全部完整。Top `s1_122` BA 0.610185、macro F1 0.603988、
+    std 0.061454、CI low 0.533892、worst-class F1 0.509158、
+    train-validation gap 0.463349。配置为 top50 SQI、quality-weighted aggregation、
+    epoch 15、lr 0.001、wd 0.005、dropout 0.5、label smoothing 0.2、
+    weighted CE、inverse-subject-count、5 秒/50% overlap。
+  - 同轮中 morphology-only 最大 BA 约 0.463，
+    morphology+PPI/HRV 最大约 0.439；balanced softmax 最大约 0.558，
+    focal 最大约 0.570，weighted CE 最好。以上是该 grid 内观察，
+    不能直接解释为因果主效应。
+  - 2026-06-30：
+    `20260630_0630_overfitting_sweep_generalization_rank2`，
+    1160 runs、232 configs，全部完整。最佳 overall 是固定 reference
+    `ref_20260625_top1_s1_122`：BA 0.623148、macro F1 0.614629、
+    std 0.013734、CI low 0.6061、worst-class F1 0.554286、
+    train-validation gap 0.460922。
+  - 同一 nominal `s1_122` 在 2026-06-25 为 0.610 +/- 0.061，在 2026-06-30
+    reference 为 0.623 +/- 0.014；稳定性本身没有复现，不能称为确定提升。
+  - 2026-06-30 最佳新配置 `gen_212` 为 Small InceptionTime：
+    epoch 15、wd 0.01、dropout 0.5、label smoothing 0.3、top50 SQI、
+    no sampler/all windows、train overlap 30%，BA 0.581481、macro F1 0.5702。
+    最佳 full InceptionTime 新配置 `gen_080` BA 0.580556。
+  - 该轮描述性均值：top50 SQI 0.5108 vs none 0.4979；
+    Small InceptionTime 0.5071 vs full 0.5016；
+    train overlap 30% 为 0.5067 vs 0% 为 0.5020；
+    no sampler/all windows 0.5349，但与 quota 设计混杂。
+    quota 50%/32/16 的均值约 0.528/0.496/0.474。
+  - 当前最佳 reference 的 5-repeat aggregate confusion counts，行是真实类、列是预测类：
+    `[[35,7,3],[14,34,12],[7,12,21]]`。
+    行归一化分别为 Pre-Frail `77.78/15.56/6.67%`、
+    Robust `23.33/56.67/20.00%`、Young `17.50/30.00/52.50%`。
+    本结果中 Young recall 最低。
+- 2026-06-30 current-protocol references：
+
+| Reference | BA mean | Macro F1 mean | BA std |
+|---|---:|---:|---:|
+| `ref_20260625_top1_s1_122` | 0.6231 | 0.6146 | 0.0137 |
+| `ref_20260625_top2_s1_102` | 0.6176 | 0.6081 | 0.0310 |
+| `ref_20260608_s1_091` | 0.5648 | 0.5467 | 0.0556 |
+| `ref_20260608_s1_105` | 0.5602 | 0.5511 | 0.0431 |
+| `ref_20260527_g0068` | 0.5528 | 0.5461 | 0.0546 |
+| `ref_20260527_g0056` | 0.5509 | 0.5535 | 0.0976 |
+| `ref_20260608_s1_163` | 0.5481 | 0.5449 | 0.0555 |
+| `ref_20260608_s1_085` | 0.5426 | 0.5376 | 0.0566 |
+
+- 规范分析输出：
+  - 2026-06-16：`results_frailty3/_sweep_analyse/20260616_1143_overfitting_inceptiontime`。
+  - 2026-07-06：
+    `20260706_0947_overfitting_inceptiontime_small_inceptiontime`、
+    `20260706_0947_overfitting_inceptiontime_small_inceptiontime_02`、
+    `20260706_0956_overfitting_inceptiontime`。
 - 待实现内容：
-  - stage2 不应只用自动 Top2，建议纳入 Top4：`s1_085`, `s1_091`, `s1_105`, `s1_163`。
-  - 增加 shorter-epoch baseline reference，以区分 epoch effect 与 regularization effect。
-  - 后续分析同时看 mean BA、macro F1、worst-class F1、CI low、std、Pre-Frail vs Robust confusion。
+  - 新建跨实验分析脚本和统一 benchmark。
+  - 扩展 `analyze_sweep.py` config columns；当前依赖
+    `overfit_config_id/name` 避免错误聚合，结构较脆弱。
+  - 默认模型过滤加入 `small_inceptiontime`；当前需要显式 CLI 才会分析。
+  - 同时报告 mean BA、macro F1、worst-class metrics、CI low、std、
+    class confusion、coverage 和 train-validation gap。
 - 算法思路：
   - config-level 聚合，避免单 run 偶然性。
   - strict holdout 中 test 不参与 early stopping。
-  - final deployment model 不从 5 个 CV fold 里挑最高分，而是在选定 config 后重新训练。
+  - final deployment model 不从 5 个 CV fold 里挑最高分，而是在锁定 config
+    和 epoch 后用明确的 final-training protocol 重训。
 - 验证状态：
-  - sweep / holdout / overfitting stage1 均已有 confirmed 输出。
-  - 仍需 stage2 和最终定版训练。
+  - 上述三个完整 sweep 的 run/config 数量和 canonical reports 已核对。
+  - 明显 train-validation gap 仍存在；尚无 BA >= 0.73 的严格可比结果。
 - 后续建议：
-  - 在进入最终模型之前，先锁定评估协议和默认 CLI 参数。
+  - 先完成 benchmark、跨 sweep metadata normalization 和 ablation，
+    再决定是否进行新的大规模 grid。
 
 ---
 
