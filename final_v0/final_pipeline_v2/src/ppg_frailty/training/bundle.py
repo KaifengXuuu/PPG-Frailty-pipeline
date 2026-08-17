@@ -30,7 +30,7 @@ from ..models import (
 from ..provenance import sha256_file, stable_payload_sha256
 
 
-BUNDLE_FORMAT_VERSION = "ppg_frailty_bundle_v2"
+BUNDLE_FORMAT_VERSION = "ppg_frailty_bundle_parity_v3"
 FINAL_BUNDLE_PARITY_ATOL = 1e-6
 GENERIC_BUNDLE_KIND = "generic_research"
 TRUSTED_FINAL_REFIT_BUNDLE_KIND = "trusted_final_refit_v2"

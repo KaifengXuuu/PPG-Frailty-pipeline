@@ -38,11 +38,20 @@ MOTION_IMU_CHANNEL_UNITS = (
     "rad/s",
     "m/s^3",
 )
-CALIBRATED_ROLL_PITCH_EKF_PROFILE_ID = "calibrated_roll_pitch_ekf_v2_reference"
-PROFILE_A_LPF_ID = "profile_a_lpf_gravity_0p3hz_ablation"
+CALIBRATED_ROLL_PITCH_EKF_PROFILE_ID = (
+    "calibrated_roll_pitch_ekf_sensor_lpf_order3_v3_reference"
+)
+PROFILE_A_LPF_ID = (
+    "profile_a_sensor_lpf_order3_gravity_0p3hz_v3_ablation"
+)
 PTT_STATIC_CALIBRATION_ROLE = "PTT_SIT_STATIC_CALIBRATION"
 FORMAL_STATIC_CALIBRATION_ROLES = ("B", PTT_STATIC_CALIBRATION_ROLE)
-MOTION_IMU_LINEAGE_SCHEMA = "ppg_frailty.motion_imu_lineage.v2"
+MOTION_IMU_CALIBRATION_SCHEMA = (
+    "ppg_frailty.motion_imu_calibration.sensor_lpf_order3.v3"
+)
+MOTION_IMU_LINEAGE_SCHEMA = (
+    "ppg_frailty.motion_imu_lineage.sensor_lpf_order3.v3"
+)
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -82,12 +91,15 @@ class RollPitchEkfConfig:
     dynamic_observation_scale: float = 3.0
     accelerometer_lowpass_hz: float = 20.0
     gyroscope_lowpass_hz: float = 40.0
-    sensor_filter_order: int = 4
+    sensor_filter_order: int = 3
     calibration_start_s: float = 5.0
     calibration_stop_s: float = 100.0
     gravity_lowpass_hz: float = 0.3
     gravity_filter_order: int = 4
-    source_algorithm: str = "historical_funcs_py_roll_pitch_bias_ekf_corrected_init_v2"
+    source_algorithm: str = (
+        "historical_funcs_py_roll_pitch_bias_ekf_corrected_init_"
+        "sensor_lpf_order3_v3"
+    )
 
     def validate(self, fs_hz: float = CANONICAL_FS_HZ) -> None:
         q = np.asarray(self.process_covariance_diagonal_per_second, dtype=np.float64)
@@ -102,8 +114,11 @@ class RollPitchEkfConfig:
         if self.dynamic_observation_scale < 0.0:
             raise ValueError("dynamic observation scale cannot be negative")
         if (
-            self.sensor_filter_order != 4
+            self.sensor_filter_order != 3
             or self.gravity_filter_order != 4
+            or self.accelerometer_lowpass_hz != 20.0
+            or self.gyroscope_lowpass_hz != 40.0
+            or self.gravity_lowpass_hz != 0.3
             or not 0.0 < self.accelerometer_lowpass_hz < fs_hz / 2.0
             or not 0.0 < self.gyroscope_lowpass_hz < fs_hz / 2.0
             or not 0.0 < self.gravity_lowpass_hz < fs_hz / 2.0
@@ -129,7 +144,7 @@ class MotionImuCalibration:
     calibration_quality: dict[str, Any]
     config: RollPitchEkfConfig
     artifact_sha256: str
-    schema_version: str = "ppg_frailty.motion_imu_calibration.v2"
+    schema_version: str = MOTION_IMU_CALIBRATION_SCHEMA
 
     def validate(self) -> None:
         acc_bias = np.asarray(self.acceleration_bias_mps2, dtype=np.float64)
@@ -147,6 +162,8 @@ class MotionImuCalibration:
             raise ValueError("motion IMU calibration biases must be finite")
         if self.calibration_stop_sample <= self.calibration_start_sample:
             raise ValueError("motion IMU calibration sample range is empty")
+        if self.schema_version != MOTION_IMU_CALIBRATION_SCHEMA:
+            raise ValueError("motion IMU calibration schema drift")
         self.config.validate()
         expected = _calibration_hash(
             self.participant_id,
@@ -205,6 +222,14 @@ class MotionImuResult:
             raise ValueError("formal motion IMU result must be fully finite")
         if self.diagnostics.get("silent_fallback") is not False:
             raise ValueError("motion IMU result may not hide a fallback")
+        known_profiles = {
+            CALIBRATED_ROLL_PITCH_EKF_PROFILE_ID,
+            PROFILE_A_LPF_ID,
+        }
+        if self.profile_id not in known_profiles:
+            raise ValueError("motion IMU result profile identity is stale or unknown")
+        if self.diagnostics.get("profile_id") != self.profile_id:
+            raise ValueError("motion IMU result/diagnostics profile identity drift")
         if self.profile_id == CALIBRATED_ROLL_PITCH_EKF_PROFILE_ID:
             required_hashes = {
                 "source_acceleration_sha256",
@@ -336,7 +361,7 @@ def _calibration_hash(
 ) -> str:
     return stable_payload_sha256(
         {
-            "schema_version": "ppg_frailty.motion_imu_calibration.v2",
+            "schema_version": MOTION_IMU_CALIBRATION_SCHEMA,
             "participant_id": participant_id,
             "file_id": file_id,
             "source_role": source_role,
@@ -816,6 +841,7 @@ def preprocess_motion_imu_lpf_ablation(
 
 __all__ = [
     "CALIBRATED_ROLL_PITCH_EKF_PROFILE_ID",
+    "MOTION_IMU_CALIBRATION_SCHEMA",
     "MOTION_IMU_CHANNEL_SCHEMA",
     "MOTION_IMU_CHANNEL_UNITS",
     "FORMAL_STATIC_CALIBRATION_ROLES",

@@ -237,6 +237,10 @@ class V2ConfigurationTests(unittest.TestCase):
             canonical.payload["aggregation"]["balance_line"],
             "line_b_equal_role_families",
         )
+        self.assertEqual(
+            canonical.payload["features"]["engineering_sequence_schema"],
+            "engineering_10s_hop5s_thesis_115_v2",
+        )
         mutated = canonical.to_dict()
         mutated["training"]["training_balance"] = "equal_files"
         with self.assertRaisesRegex(ValueError, "matched A-A or B-B"):
@@ -248,6 +252,45 @@ class V2ConfigurationTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "canonical axes6"):
             validate_config_payload(motion9)
+
+        stale_iqr = canonical.to_dict()
+        stale_iqr["signal"]["normalization"]["raw_imu"] = (
+            "outer_training_participant_only_robust_scaler_axes6"
+        )
+        with self.assertRaisesRegex(ValueError, "canonical axes6"):
+            validate_config_payload(stale_iqr)
+
+        stale_engineering = canonical.to_dict()
+        stale_engineering["features"][
+            "engineering_sequence_schema"
+        ] = "EngineeringFeatureSequenceV1"
+        with self.assertRaisesRegex(ValueError, "115-column engineering"):
+            validate_config_payload(stale_engineering)
+
+        for section, field, value in (
+            ("engineering", "length_s", 5.0),
+            ("engineering", "hop_s", 1.0),
+            ("raw_dl", "length_s", 10.0),
+            ("raw_dl", "hop_s", 1.0),
+        ):
+            with self.subTest(window_section=section, field=field):
+                stale_window = canonical.to_dict()
+                stale_window["windows"][section][field] = value
+                with self.assertRaisesRegex(ValueError, r"must remain exactly"):
+                    validate_config_payload(stale_window)
+
+        for field, value in (
+            ("sensor_lowpass_acc_hz", 30.0),
+            ("sensor_lowpass_gyro_hz", 50.0),
+            ("sensor_filter_order", 4),
+            ("gravity_lowpass_hz", 0.5),
+            ("gravity_filter_order", 3),
+        ):
+            with self.subTest(imu_field=field):
+                stale_imu = canonical.to_dict()
+                stale_imu["signal"]["imu"][field] = value
+                with self.assertRaisesRegex(ValueError, "third-order 20/40 Hz"):
+                    validate_config_payload(stale_imu)
 
     def test_formal_ablation_profiles_are_exact_and_never_auto_run(self) -> None:
         catalog = load_formal_ablation_profiles(
@@ -354,7 +397,7 @@ class V2ConfigurationTests(unittest.TestCase):
             )
             self.assertEqual(
                 gravity.payload["signal"]["imu"]["gravity_method"],
-                "low_pass_0p3hz",
+                "profile_a_lowpass_0p3hz",
             )
             with self.assertRaisesRegex(ValueError, "single-factor"):
                 materialize_formal_ablation_config(

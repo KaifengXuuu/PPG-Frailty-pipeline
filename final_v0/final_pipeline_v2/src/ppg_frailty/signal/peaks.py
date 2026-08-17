@@ -6,8 +6,9 @@ Rejected intervals remain on the original time axis and keep explicit endpoints.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
+import json
+from dataclasses import dataclass
 
 import numpy as np
 from scipy import signal
@@ -16,7 +17,8 @@ from ..contracts import PulseResult, SignalRoute
 from .views import CANONICAL_FS_HZ, CanonicalSignalViews
 
 
-DETECTOR_VERSION = "dual_polarity_prominence_v1"
+DETECTOR_ID = "dual_polarity_prominence_v1_ablation"
+DETECTOR_VERSION = "whole_record_dual_polarity_prominence_v1"
 MIN_BASIC_RATE_PEAKS = 5
 
 
@@ -71,7 +73,7 @@ def _candidate(
     return _Candidate(peaks.astype(np.int64), prominence, float(score), polarity, channel_index)
 
 
-def detect_pulses(
+def _detect_pulses_dual_polarity_ablation(
     values: np.ndarray | CanonicalSignalViews,
     *,
     fs_hz: float = CANONICAL_FS_HZ,
@@ -115,14 +117,14 @@ def detect_pulses(
     if run_id is None:
         if record_id:
             resolved_run_id = (
-                f"{record_id}::{resolved_route.value}::{DETECTOR_VERSION}"
+                f"{record_id}::{resolved_route.value}::{DETECTOR_ID}"
             )
         else:
             digest = hashlib.sha256(
                 np.ascontiguousarray(matrix, dtype="<f8").tobytes(order="C")
             ).hexdigest()[:20]
             resolved_run_id = (
-                f"array::{resolved_route.value}::{DETECTOR_VERSION}::{digest}"
+                f"array::{resolved_route.value}::{DETECTOR_ID}::{digest}"
             )
     else:
         resolved_run_id = str(run_id).strip()
@@ -175,6 +177,31 @@ def detect_pulses(
         accepted_peaks[1:] |= valid_intervals
     median_prominence = max(float(np.median(best.prominence)), 1e-12)
     confidence = np.clip(best.prominence / (2.0 * median_prominence), 0.0, 1.0)
+    valid_ppi = ppi[valid_intervals]
+    peak_span = float(timestamps[-1] - timestamps[0]) if peaks.size >= 2 else 0.0
+    detector_coverage = (
+        float(np.clip(np.sum(valid_ppi) / peak_span, 0.0, 1.0))
+        if peak_span > 0.0
+        else 0.0
+    )
+    provenance = (
+        {
+            "algorithm": "legacy_whole_record_fixed_distance_prominence",
+            "detector_id": DETECTOR_ID,
+            "channel_index": int(best.channel_index),
+            "polarity": int(best.polarity),
+            "score": float(best.score),
+            "valid_run_offset": int(sample_offset),
+        },
+    )
+    provenance_hash = hashlib.sha256(
+        json.dumps(
+            provenance,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
     result = PulseResult(
         peaks=peaks,
         peak_timestamps_s=timestamps,
@@ -185,10 +212,7 @@ def detect_pulses(
         valid_interval_mask=valid_intervals,
         adjacency_mask=adjacency,
         wavelength=labels[best.channel_index],
-        detector_version=(
-            f"{DETECTOR_VERSION}:polarity={best.polarity:+d}:score={best.score:.6f}:"
-            f"valid_run_offset={sample_offset}"
-        ),
+        detector_version=DETECTOR_VERSION,
         confidence=np.asarray(confidence, dtype=np.float64),
         source_route=resolved_route,
         detection_run_id=resolved_run_id,
@@ -197,6 +221,20 @@ def detect_pulses(
             resolved_run_id,
             dtype=f"<U{max(1, len(resolved_run_id))}",
         ),
+        detector_id=DETECTOR_ID,
+        selected_polarity=int(best.polarity),
+        block_hri_provenance_hash=provenance_hash,
+        block_provenance=provenance,
+        interval_rejection_reasons=tuple(
+            "" if valid else "outside_legacy_0p30_to_2p00_ppi"
+            for valid in valid_intervals.tolist()
+        ),
+        peak_ordinals=np.arange(peaks.size, dtype=np.int64),
+        detector_score=float(best.score),
+        detector_coverage=detector_coverage,
     )
     result.validate_identity()
     return result
+
+
+__all__: tuple[str, ...] = ()

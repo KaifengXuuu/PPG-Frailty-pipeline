@@ -72,9 +72,16 @@ HISTORICAL_LIGHT_CNN_CHANNELS = (
 )
 
 
-MOTION_CONTRACT_SCHEMA = "ppg_frailty.motion_detector_contract.v2"
-MOTION_INTERNAL_EVIDENCE_SCHEMA = "ppg_frailty.motion_internal_evidence.v2"
-MOTION_MIDPOINT_THRESHOLD_SCHEMA = "ppg_frailty.motion_midpoint_threshold.v2"
+MOTION_CONTRACT_SCHEMA = (
+    "ppg_frailty.motion_detector_contract.sensor_lpf_order3_"
+    "imu_iqr_over_1p349.v3"
+)
+MOTION_INTERNAL_EVIDENCE_SCHEMA = (
+    "ppg_frailty.motion_internal_evidence.imu_iqr_over_1p349.v3"
+)
+MOTION_MIDPOINT_THRESHOLD_SCHEMA = (
+    "ppg_frailty.motion_midpoint_threshold.imu_iqr_over_1p349.v3"
+)
 MOTION_SPLIT_REGISTRY_ID = "frailty29_single_sgkf5_seed42_v2"
 MOTION_SOURCE_SPLIT_REGISTRY_ID = "frailty3_future_corrected_sgkf5_v2"
 MOTION_SPLIT_CSV_SHA256 = (
@@ -689,7 +696,10 @@ def motion_contract_payload() -> dict[str, Any]:
             "hop_s": MOTION_HOP_SECONDS,
             "window_samples": MOTION_WINDOW_SAMPLES,
             "hop_samples": MOTION_HOP_SAMPLES,
-            "imu_scaling": "six_physical_axes_outer_training_participant_only",
+            "imu_scaling": (
+                "six_physical_axes_outer_training_participant_only_"
+                "median_iqr_over_1p349_population_sd_then_one"
+            ),
             "imu_per_window_scaling": False,
             "internal_source_units": {
                 "acceleration": "g",
@@ -720,7 +730,10 @@ def motion_contract_payload() -> dict[str, Any]:
             "network_channel_units": list(MOTION_AUGMENTED_CHANNEL_UNITS),
             "network_tensor_schema_sha256": MOTION_AUGMENTED_SCHEMA_SHA256,
             "added_channels": ["A_mag", "Omega_mag", "J_mag"],
-            "imu_scaling": "all_nine_motion_channels_outer_training_participant_only",
+            "imu_scaling": (
+                "all_nine_motion_channels_outer_training_participant_only_"
+                "median_iqr_over_1p349_population_sd_then_one"
+            ),
             "frailty_predictor_eligible": False,
             "silent_fallback_from_reference": False,
         },

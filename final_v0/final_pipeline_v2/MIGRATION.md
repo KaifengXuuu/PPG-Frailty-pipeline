@@ -29,7 +29,8 @@ active implementation. Active code lives exclusively in the V1 package.
 - Mixed quality scalar → endpoint-separated `QualityResult(q_rate, q_morph)`.
 - Compressed PPI arrays → linked `PulseResult` with interval and adjacency indices.
 - Ad-hoc feature dictionaries → ordered `FeatureVectorV1` and validity mask.
-- Window-feature arrays → `EngineeringFeatureSequenceV1`.
+- Window-feature arrays → `EngineeringFeatureSequence` with schema ID
+  `engineering_10s_hop5s_thesis_115_v2`.
 - Repeated rows → `OrderedFeatureMatrixV1`, `K=32`, explicit row mask.
 - Untraceable probabilities → window/file/role/participant OOF rows with full provenance.
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import unittest
 
 import numpy as np
@@ -21,6 +22,7 @@ from ppg_frailty.signal.motion_imu import (
     MOTION_IMU_CHANNEL_SCHEMA,
     MOTION_IMU_CHANNEL_UNITS,
     MotionImuResult,
+    PROFILE_A_LPF_ID,
 )
 
 
@@ -34,8 +36,11 @@ def _imu(values: np.ndarray) -> MotionImuResult:
         pitch_rad=np.zeros(samples),
         gravity_mps2=np.tile([0.0, 0.0, 9.80665], (samples, 1)),
         valid_mask=np.ones(samples, dtype=bool),
-        profile_id="unit_test_calibrated_ekf",
-        diagnostics={"silent_fallback": False},
+        profile_id=PROFILE_A_LPF_ID,
+        diagnostics={
+            "profile_id": PROFILE_A_LPF_ID,
+            "silent_fallback": False,
+        },
     )
     result.validate()
     return result
@@ -110,8 +115,19 @@ class MotionNetworkTests(unittest.TestCase):
         transformed = apply_motion_fold_imu_transform(values, transform)
         self.assertEqual(transform.center.shape, (6,))
         self.assertEqual(transform.valid_count.tolist(), [6400] * 6)
+        train_samples = np.asarray(values[:2, 2, :], dtype=np.float64).reshape(-1)
+        q25, q75 = np.percentile(train_samples, [25.0, 75.0])
+        self.assertAlmostEqual(float(transform.scale[0]), float(q75 - q25) / 1.349)
         self.assertTrue(np.array_equal(transformed[:, :2], values[:, :2]))
         self.assertGreater(float(np.min(transformed[2, 2:])), 1000.0)
+        with self.assertRaisesRegex(ValueError, "artifact identity drift"):
+            replace(
+                transform,
+                schema_version=(
+                    "ppg_frailty.motion_axes6_outer_train_"
+                    "median_iqr_population_sd.v2"
+                ),
+            ).validate()
         with self.assertRaisesRegex(ValueError, "non-training participant"):
             fit_motion_fold_imu_transform(
                 values,
@@ -138,6 +154,9 @@ class MotionNetworkTests(unittest.TestCase):
             transform.profile_id,
             MOTION_DERIVED_AUGMENTATION_PROFILE_ID,
         )
+        samples = np.asarray(values[:, 2, :], dtype=np.float64).reshape(-1)
+        q25, q75 = np.percentile(samples, [25.0, 75.0])
+        self.assertAlmostEqual(float(transform.scale[0]), float(q75 - q25) / 1.349)
         self.assertEqual(apply_motion_fold_imu_transform(values, transform).shape, values.shape)
 
     def test_scaler_iqr_fallback_is_population_sd_then_one(self) -> None:

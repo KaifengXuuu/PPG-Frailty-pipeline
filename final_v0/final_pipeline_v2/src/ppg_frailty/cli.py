@@ -162,7 +162,20 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     modules = subcommands.add_parser("list-modules", help="list canonical modules")
-    modules.add_argument("--family", choices=["all", "representation", "artifact", "prv_backend", "motion_option", "comparison_profile", "model"], default="all")
+    modules.add_argument(
+        "--family",
+        choices=[
+            "all",
+            "representation",
+            "artifact",
+            "prv_backend",
+            "peak_detector",
+            "motion_option",
+            "comparison_profile",
+            "model",
+        ],
+        default="all",
+    )
 
     subcommands.add_parser(
         "motion-validate",

@@ -35,7 +35,10 @@ class V2IdentityAcceptanceTests(unittest.TestCase):
             self.assertIn("schema_version: ppg_frailty.pipeline_config.v2", text)
         motion = ROOT / "configs/motion_detector_contract_v2.yaml"
         self.assertIn(
-            "schema_version: ppg_frailty.motion_detector_contract.v2",
+            (
+                "schema_version: ppg_frailty.motion_detector_contract."
+                "sensor_lpf_order3_imu_iqr_over_1p349.v3"
+            ),
             motion.read_text(encoding="utf-8"),
         )
 

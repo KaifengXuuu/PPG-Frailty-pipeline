@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 from ..contracts import PulseResult, SignalRoute
 from .imu import (
@@ -21,6 +21,7 @@ from .motion_imu import (
     CALIBRATED_ROLL_PITCH_EKF_PROFILE_ID,
     MOTION_IMU_CHANNEL_SCHEMA,
     MOTION_IMU_CHANNEL_UNITS,
+    MOTION_IMU_CALIBRATION_SCHEMA,
     FORMAL_STATIC_CALIBRATION_ROLES,
     PROFILE_A_LPF_ID,
     PTT_STATIC_CALIBRATION_ROLE,
@@ -31,8 +32,13 @@ from .motion_imu import (
     preprocess_motion_imu_calibrated_ekf,
     preprocess_motion_imu_lpf_ablation,
 )
-from .optical import OpticalFeatureResult, extract_dual_optical
-from .peaks import MIN_BASIC_RATE_PEAKS, detect_pulses
+from .optical import (
+    OPTICAL_SCHEMA_VERSION,
+    OpticalBeatAudit,
+    OpticalFeatureResult,
+    extract_dual_optical,
+)
+from .peaks import MIN_BASIC_RATE_PEAKS
 from .preprocess import (
     ABLATION_PPG_FILTER_PROFILE_ID,
     REFERENCE_PPG_FILTER_PROFILE_ID,
@@ -73,10 +79,35 @@ from .views import (
 )
 
 
+CANONICAL_DETECTOR_ID = "aboy_project_v1"
+
+
+def detect_pulses(*args: Any, detector_id: str, **kwargs: Any) -> PulseResult:
+    """Lazy compatibility facade that still requires one explicit detector ID."""
+
+    from ..peaks.resolver import detect_pulses as implementation
+
+    return implementation(*args, detector_id=detector_id, **kwargs)
+
+
+def detect_pulses_per_wavelength(
+    *args: Any,
+    detector_id: str,
+    **kwargs: Any,
+) -> dict[str, PulseResult]:
+    """Lazy per-wavelength facade without introducing a package import cycle."""
+
+    from ..peaks.resolver import detect_pulses_per_wavelength as implementation
+
+    return implementation(*args, detector_id=detector_id, **kwargs)
+
+
 def extract_direct_features(
     views: CanonicalSignalViews,
     *,
     pulse: PulseResult | None = None,
+    detector_id: str | None = None,
+    pulses_per_wavelength: Mapping[str, PulseResult] | None = None,
 ) -> dict[str, Any]:
     """统一 direct-only 形态与双波长入口 / Unified direct-only feature entry.
 
@@ -87,7 +118,35 @@ def extract_direct_features(
 
     require_direct_route(views.route)
     views.validate()
-    detected = pulse if pulse is not None else detect_pulses(views)
+    if pulses_per_wavelength is None and detector_id is None:
+        raise ValueError(
+            "extract_direct_features requires independent RED/IR pulses "
+            "or a persisted detector_id"
+        )
+    dual_pulses = (
+        dict(pulses_per_wavelength)
+        if pulses_per_wavelength is not None
+        else detect_pulses_per_wavelength(
+            views,
+            detector_id=str(detector_id),
+        )
+    )
+    if detector_id is not None and any(
+        result.detector_id != detector_id for result in dual_pulses.values()
+    ):
+        raise ValueError("provided RED/IR pulses disagree with detector_id")
+    from ..peaks.pairing import select_reference_wavelength
+
+    detected = (
+        pulse
+        if pulse is not None
+        else dual_pulses[select_reference_wavelength(dual_pulses)]
+    )
+    if any(
+        result.detector_id != detected.detector_id
+        for result in dual_pulses.values()
+    ):
+        raise ValueError("morphology pulse and RED/IR pulses use different detectors")
     return {
         "morphology": extract_morphology(
             views.x_filter, detected, route=views.route, fs_hz=CANONICAL_FS_HZ
@@ -95,7 +154,7 @@ def extract_direct_features(
         "optical": extract_dual_optical(
             views.x_native,
             views.x_filter,
-            detected,
+            dual_pulses,
             route=views.route,
             fs_hz=CANONICAL_FS_HZ,
         ),
@@ -127,6 +186,8 @@ __all__ = [
     "estimate_gravity_no_precalibration_ekf",
     "estimate_gravity_lpf",
     "detect_pulses",
+    "detect_pulses_per_wavelength",
+    "CANONICAL_DETECTOR_ID",
     "MIN_BASIC_RATE_PEAKS",
     "PrvResult",
     "compute_prv",
@@ -141,6 +202,7 @@ __all__ = [
     "CALIBRATED_ROLL_PITCH_EKF_PROFILE_ID",
     "MOTION_IMU_CHANNEL_SCHEMA",
     "MOTION_IMU_CHANNEL_UNITS",
+    "MOTION_IMU_CALIBRATION_SCHEMA",
     "FORMAL_STATIC_CALIBRATION_ROLES",
     "PROFILE_A_LPF_ID",
     "PTT_STATIC_CALIBRATION_ROLE",
@@ -151,6 +213,8 @@ __all__ = [
     "preprocess_motion_imu_calibrated_ekf",
     "preprocess_motion_imu_lpf_ablation",
     "extract_morphology",
+    "OPTICAL_SCHEMA_VERSION",
+    "OpticalBeatAudit",
     "OpticalFeatureResult",
     "extract_dual_optical",
     "SqiConfig",

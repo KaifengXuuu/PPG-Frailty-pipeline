@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import tempfile
 import unittest
 from dataclasses import replace
@@ -544,6 +545,19 @@ class FormalBundleProtocolTests(unittest.TestCase):
             np.testing.assert_allclose(probability, ((0.2, 0.3, 0.5),))
             with self.assertRaises(ValueError):
                 load_bundle(target, expected_metadata={"feature_hash": "stale"})
+
+    def test_pre_parity_bundle_format_is_rejected_unconditionally(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            target = self._save(Path(temporary) / "bundle")
+            manifest_path = target / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["bundle_format"] = "ppg_frailty_bundle_v2"
+            manifest_path.write_text(
+                json.dumps(manifest, sort_keys=True),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "unsupported bundle format"):
+                load_bundle(target)
 
     def test_failed_serialization_leaves_no_partial_target(self) -> None:
         """Only atomic rename can make the target visible / 仅原子 rename 可暴露目标。"""

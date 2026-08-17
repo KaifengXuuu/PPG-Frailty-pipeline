@@ -17,6 +17,7 @@ from ppg_frailty.experiment import (
     _quality_mode,
     _retain_without_quality_routing,
 )
+from ppg_frailty.module_registry import resolve_peak_detector_config
 from ppg_frailty.v2_contract import resolve_balance_line, validate_quality_mode
 from ppg_frailty.signal.sqi import SqiDiagnosticComponent, SqiDiagnostics
 from ppg_frailty.signal.views import CanonicalSignalViews
@@ -38,6 +39,13 @@ class _Config:
             return {"mode": self.mode, "supervised_route_ready": self.ready}
         if name == "artifact":
             return {"reducer": "identity"}
+        if name == "signal":
+            return {
+                "peak_detector": {
+                    "detector_id": "aboy_project_v1",
+                    "failure_action": "fail_closed_no_fallback",
+                }
+            }
         raise KeyError(name)
 
     def to_dict(self) -> dict[str, object]:
@@ -66,6 +74,7 @@ class V2QualityModeTest(unittest.TestCase):
                 "SignalRoute": SignalRoute,
                 "run_quality_mode": run_quality_mode,
                 "evaluate_quality_diagnostics": lambda *_a, **_k: None,
+                "resolve_peak_detector_config": resolve_peak_detector_config,
             },
         ):
             provenance = _retain_without_quality_routing(
@@ -90,6 +99,7 @@ class V2QualityModeTest(unittest.TestCase):
             "SqiDiagnosticConfig": _SqiDiagnosticConfig,
             "evaluate_quality_diagnostics": fail_diagnostic,
             "run_quality_mode": run_quality_mode,
+            "resolve_peak_detector_config": resolve_peak_detector_config,
         }
         with patch("ppg_frailty.experiment._runtime_imports", return_value=api):
             provenance = _retain_without_quality_routing(
@@ -118,6 +128,7 @@ class V2QualityModeTest(unittest.TestCase):
             "SqiDiagnosticConfig": _SqiDiagnosticConfig,
             "evaluate_quality_diagnostics": lambda *_args, **_kwargs: observed,
             "run_quality_mode": run_quality_mode,
+            "resolve_peak_detector_config": resolve_peak_detector_config,
         }
         with patch("ppg_frailty.experiment._runtime_imports", return_value=api):
             provenance = _retain_without_quality_routing(

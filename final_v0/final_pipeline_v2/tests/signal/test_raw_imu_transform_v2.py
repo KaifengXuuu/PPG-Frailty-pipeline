@@ -16,6 +16,7 @@ from ppg_frailty.representations import (
 )
 from ppg_frailty.representations.imu_transform import (
     IMU_TRANSFORM_SCHEMA_VERSION,
+    IQR_NORMAL_CONSISTENCY_DIVISOR,
 )
 from ppg_frailty.signal.views import CanonicalSignalViews, WindowPlan
 
@@ -133,8 +134,22 @@ class RawImuTransformTests(unittest.TestCase):
         self.assertTrue(np.isfinite(transformed.values).all())
         self.assertEqual(transformed.provenance["imu_transform_sha256"], artifact.artifact_sha256)
         self.assertEqual(artifact.valid_count.tolist(), [40] * 6)
+        train_samples = np.asarray(values[:2, 2, :], dtype=np.float64).reshape(-1)
+        q25, q75 = np.percentile(train_samples, [25.0, 75.0])
+        self.assertAlmostEqual(
+            float(artifact.scale[0]),
+            float(q75 - q25) / IQR_NORMAL_CONSISTENCY_DIVISOR,
+        )
         with self.assertRaisesRegex(ValueError, "artifact identity drift"):
             replace(artifact, valid_count=artifact.valid_count + 1).validate()
+        with self.assertRaisesRegex(ValueError, "artifact identity drift"):
+            replace(
+                artifact,
+                schema_version=(
+                    "raw_frailty_imu_axes6_outer_train_"
+                    "median_iqr_population_sd_v2"
+                ),
+            ).validate()
 
     def test_oof_participant_cannot_fit_imu_transform(self) -> None:
         values = np.ones((2, 8, 12), dtype=np.float32)
@@ -179,7 +194,7 @@ class RawImuTransformTests(unittest.TestCase):
         transformed = transform_raw_windows_imu(raw, artifact)
         self.assertEqual(
             transformed.provenance["imu_normalization"],
-            "outer_train_median_iqr_population_sd_then_one",
+            "outer_train_median_iqr_over_1p349_population_sd_then_one",
         )
 
 

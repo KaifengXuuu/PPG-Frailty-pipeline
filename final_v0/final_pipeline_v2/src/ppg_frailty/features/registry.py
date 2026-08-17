@@ -19,13 +19,24 @@ import numpy as np
 
 from ..contracts import FeatureVectorV1, OrderedFeatureMatrixV1, SignalRoute
 from ..signal.morphology import MORPHOLOGY_NAMES
+from ..signal.optical import OPTICAL_SCHEMA_VERSION
 from ..signal.prv import SPECTRAL_METRICS, TIME_METRICS
-from .engineering import EngineeringExtraction, engineering_feature_names
+from .engineering import (
+    ENGINEERING_SCHEMA_VERSION,
+    WELCH_MAX_SEGMENT_SAMPLES,
+    WELCH_MIN_SEGMENT_SAMPLES,
+    WELCH_SECONDS,
+    WELCH_WINDOW,
+    EngineeringExtraction,
+    engineering_feature_names,
+    validate_engineering_extraction,
+)
 
 
 DIRECT_ROUTES = (SignalRoute.DIRECT.value, SignalRoute.IDENTITY.value)
 RATE_ROUTES = DIRECT_ROUTES + (SignalRoute.ARTIFACT_RATE_ONLY.value,)
-FORMAL_REGISTRY_VERSION = "feature_vector_v1"
+FORMAL_REGISTRY_VERSION = "feature_vector_thesis_115_v2"
+ORDERED_MATRIX_SCHEMA_VERSION = "ordered_feature_matrix_thesis_115_d_by_32_v2"
 MISSING_POLICY = "NaN_internal/null_JSON_with_parallel_validity_false"
 
 
@@ -137,7 +148,7 @@ def _definition(
         aggregation_rule=aggregation,
         validity_rule=validity,
         missing_value_policy=MISSING_POLICY,
-        provenance_version="feature_registry_formula_v1",
+        provenance_version="feature_registry_formula_v2",
         eligible_routes=routes,
         group=group,
     )
@@ -194,16 +205,35 @@ def default_registry() -> FeatureRegistry:
         "red_pi_median", "ir_pi_median", "red_ir_ac_ratio_median",
         "red_ir_dc_ratio_median", "ratio_of_ratios_median",
         "red_ir_zero_lag_correlation", "red_ir_max_xcorr", "red_ir_xcorr_lag_s",
-        "red_ir_cardiac_coherence",
     )
+    optical_formulas = {
+        "red_ac_median": "median(common_paired_valid_red_ac)",
+        "ir_ac_median": "median(common_paired_valid_ir_ac)",
+        "red_dc_median": "median(common_paired_valid_red_dc)",
+        "ir_dc_median": "median(common_paired_valid_ir_dc)",
+        "red_pi_median": "AC_RED/(abs(DC_RED)+1e-12)",
+        "ir_pi_median": "AC_IR/(abs(DC_IR)+1e-12)",
+        "red_ir_ac_ratio_median": "AC_RED/(AC_IR+1e-12)",
+        "red_ir_dc_ratio_median": "abs(DC_RED)/(abs(DC_IR)+1e-12)",
+        "ratio_of_ratios_median": "PI_RED/PI_IR",
+        "red_ir_zero_lag_correlation": "pearson(population_z_RED,population_z_IR)",
+        "red_ir_max_xcorr": "max_normalized_xcorr[-0.5s,+0.5s]_inclusive",
+        "red_ir_xcorr_lag_s": "tau_star_of_max_normalized_xcorr_seconds",
+    }
     for name in optical_names:
         definitions.append(
             _definition(
-                f"optical.{name}", formula=f"dual_optical_local_baseline_v1:{name}",
-                units="signal_unit_or_ratio_or_seconds", source="x_native+x_filter",
+                f"optical.{name}",
+                formula=f"{OPTICAL_SCHEMA_VERSION}:{optical_formulas[name]}",
+                units="signal_unit_or_ratio_or_seconds",
+                source="x_native+x_filter+independent_red_ir_pulses",
                 eligibility="Q_morph; dual wavelength; direct or identity only",
-                level="file", aggregation="valid_beat_median_or_file_agreement",
-                validity="finite inputs, valid denominators, and minimum beat support",
+                level="file",
+                aggregation="common_paired_beat_ac_dc_medians_then_ratios_or_file_agreement",
+                validity=(
+                    "common paired-valid RED/IR beats, finite denominators, "
+                    "minimum three-beat support, or finite standardized waveform agreement"
+                ),
                 routes=DIRECT_ROUTES, group="dual_optical",
             )
         )
@@ -215,13 +245,31 @@ def default_registry() -> FeatureRegistry:
             if name.startswith("ppg_")
             else "all routes with valid processed IMU complete 10 s windows"
         )
+        uses_welch = any(
+            token in name
+            for token in (
+                ".total_power",
+                ".normalized_spectral_entropy",
+                ".dominant_frequency_hz",
+                ".spectral_centroid_hz",
+                ".bandpower_",
+            )
+        )
+        welch_contract = (
+            f":welch_window={WELCH_WINDOW}:"
+            f"nperseg=min(N,max({WELCH_MIN_SEGMENT_SAMPLES},"
+            f"min({WELCH_MAX_SEGMENT_SAMPLES},{WELCH_SECONDS:g}*fs))):"
+            "noverlap=nperseg//2:return_onesided=true"
+            if uses_welch
+            else ""
+        )
         for statistic in ("mean", "population_sd"):
             definitions.append(
                 _definition(
                     f"engineering.{name}.{statistic}",
                     formula=(
-                        f"engineering_10s_hop5s_workflow_v1:"
-                        f"{name}:across_window_{statistic}"
+                        f"{ENGINEERING_SCHEMA_VERSION}:{name}:"
+                        f"across_window_{statistic}{welch_contract}"
                     ),
                     units="engineering_feature_native_unit", source=source,
                     eligibility=eligibility, level="file",
@@ -241,6 +289,7 @@ def summarize_engineering(
 ) -> tuple[dict[str, float], dict[str, bool]]:
     """按 §7.4 汇总 mean/population SD / Aggregate by mean/population SD."""
 
+    validate_engineering_extraction(extraction, fold_transformed=False)
     values: dict[str, float] = {}
     validity: dict[str, bool] = {}
     matrix = np.asarray(extraction.sequence.values, dtype=np.float64)
@@ -343,8 +392,7 @@ def build_ordered_matrix(
     if k != 32:
         raise ValueError("formal OrderedFeatureMatrixV1 requires exactly K=32")
     base = sequence.sequence
-    if "+fold_robust_v1" not in base.schema_version:
-        raise ValueError("matrix construction requires fold-local transformed engineering rows")
+    validate_engineering_extraction(sequence, fold_transformed=True)
     registry = default_registry()
     if tuple(context.feature_names) != registry.names:
         raise ValueError("context must be the complete formal FeatureVectorV1 registry order")
@@ -426,6 +474,6 @@ def build_ordered_matrix(
         row_mask=row_mask,
         channel_schema=channel_schema,
         context_schema=context_schema,
-        schema_version="ordered_feature_matrix_d_by_32_with_validity_channels_v1",
+        schema_version=ORDERED_MATRIX_SCHEMA_VERSION,
         provenance=metadata,
     )

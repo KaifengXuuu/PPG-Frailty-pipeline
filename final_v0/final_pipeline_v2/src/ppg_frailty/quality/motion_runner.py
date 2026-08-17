@@ -59,8 +59,12 @@ from .motion import (
 )
 
 
-MOTION_WINDOW_OOF_SCHEMA = "ppg_frailty.motion_window_oof.v2"
-MOTION_EXTERNAL_REPORT_SCHEMA = "ppg_frailty.motion_ptt_external_report.v2"
+MOTION_WINDOW_OOF_SCHEMA = (
+    "ppg_frailty.motion_window_oof.imu_iqr_over_1p349.v3"
+)
+MOTION_EXTERNAL_REPORT_SCHEMA = (
+    "ppg_frailty.motion_ptt_external_report.imu_iqr_over_1p349.v3"
+)
 MOTION_INPUT_SCHEMA_STATUS = "frozen_before_training"
 _SHA256_LENGTH = 64
 _FORMAL_CANONICAL_ENTRY_TOKEN = object()

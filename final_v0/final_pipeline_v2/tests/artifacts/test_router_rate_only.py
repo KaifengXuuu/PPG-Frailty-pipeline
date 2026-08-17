@@ -8,13 +8,14 @@ import numpy as np
 
 from ppg_frailty.artifacts import run_artifact_route
 from ppg_frailty.contracts import QualityState, SignalRoute
+from ppg_frailty.peaks import CANONICAL_DETECTOR_ID
 from ppg_frailty.signal import SqiConfig, build_signal_views, evaluate_quality
 
 
 def views_fixture():
     """构建可路由的同步视图 / Build synchronized canonical views."""
 
-    samples = 4800
+    samples = 8000
     time = np.arange(samples) / 400.0
     cardiac = np.sin(2 * np.pi * 1.2 * time)
     motion = 0.4 * np.sin(2 * np.pi * 2.1 * time)
@@ -28,6 +29,10 @@ def views_fixture():
             "ppg_native_unit": "raw_counts",
             "accelerometer_input_unit": "m/s2",
             "gyroscope_input_unit": "rad/s",
+            "peak_detector": {
+                "detector_id": CANONICAL_DETECTOR_ID,
+                "failure_action": "fail_closed_no_fallback",
+            },
             "ppg_filter": {
                 "family": "butterworth_sos", "order": 3,
                 "low_hz": 0.2, "high_hz": 8.0,
@@ -59,7 +64,10 @@ def views_fixture():
             },
             "normalization": {
                 "raw_ppg": "per_window_median_iqr_over_1p349_sd_finite",
-                "raw_imu": "outer_training_participant_only_robust_scaler_axes6",
+                "raw_imu": (
+                    "outer_training_participant_only_median_iqr_over_1p349_"
+                    "population_sd_then_one_axes6"
+                ),
                 "iqr_fallback": "standard_deviation_then_finite_one",
                 "clip_after_scale": [-8.0, 8.0],
             },
@@ -80,7 +88,11 @@ class RouterTest(unittest.TestCase):
         outcome = run_artifact_route(views_fixture(), "identity")
         self.assertIs(outcome.route, SignalRoute.IDENTITY)
         self.assertIsNotNone(outcome.views)
-        quality = evaluate_quality(outcome.views, config=SqiConfig())
+        quality = evaluate_quality(
+            outcome.views,
+            config=SqiConfig(),
+            detector_id=CANONICAL_DETECTOR_ID,
+        )
         self.assertIsNot(quality.q_morph.state, QualityState.NOT_APPLICABLE)
 
     def test_nonidentity_forces_rate_only(self) -> None:
@@ -99,7 +111,9 @@ class RouterTest(unittest.TestCase):
         self.assertTrue(outcome.views.metadata["rate_only"])
         self.assertIs(
             evaluate_quality(
-                outcome.views, config=SqiConfig()
+                outcome.views,
+                config=SqiConfig(),
+                detector_id=CANONICAL_DETECTOR_ID,
             ).q_morph.state,
             QualityState.NOT_APPLICABLE,
         )

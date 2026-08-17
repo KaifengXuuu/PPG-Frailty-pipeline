@@ -1,4 +1,4 @@
-schema_version: ppg_frailty.motion_detector_contract.v2
+schema_version: ppg_frailty.motion_detector_contract.sensor_lpf_order3_imu_iqr_over_1p349.v3
 contract_id: v2_010_motion_detector_registered_not_run
 execution_status: implemented_contract_registered_not_run
 
@@ -66,7 +66,7 @@ formal_model:
       - rad/s
       - rad/s
       - rad/s
-    schema_sha256: f4c8a977fbf469588e39f21bc2c309f2450a58c58be1bedc9e9886a20f8155a9
+    schema_sha256: 1ada64c927c85450788b8e95d38df95a037d5e23a53fc4be608c100b75b14808
     tensor_layout: window_channel_sample
   sampling_and_windows:
     fs_hz: 400.0
@@ -85,7 +85,7 @@ formal_model:
     ptt_acceleration_multiply_9p80665: forbidden
     ptt_gyroscope_source_unit_v2_036: deg/s
     ptt_gyroscope_unit_conversion_v2_036: degrees_per_second_to_radians_per_second
-    reference_gravity_profile: calibrated_roll_pitch_ekf_v2_reference
+    reference_gravity_profile: calibrated_roll_pitch_ekf_sensor_lpf_order3_v3_reference
     calibration_source_role: B
     calibration_scope: same_participant_B_file_only
     ptt_calibration_source_role: PTT_SIT_STATIC_CALIBRATION
@@ -97,13 +97,13 @@ formal_model:
     dynamic_observation_scale: 3.0
     accelerometer_lowpass_hz: 20.0
     gyroscope_lowpass_hz: 40.0
-    sensor_filter_order: 4
+    sensor_filter_order: 3
     calibration_interval_s: [5.0, 100.0]
     failure_action: fail_closed_no_lpf_fallback
-    lpf_profile: profile_a_lpf_gravity_0p3hz_ablation_only
+    lpf_profile: profile_a_sensor_lpf_order3_gravity_0p3hz_v3_ablation_only
   normalization:
     ppg: per_window_median_iqr_mad_then_one
-    imu: six_physical_axes_outer_training_participant_only_median_iqr
+    imu: six_physical_axes_outer_training_participant_only_median_iqr_over_1p349_population_sd_then_one
     imu_per_window_amplitude_normalization: forbidden
   candidate_constructor: ppg_frailty.models.motion.build_formal_motion_cnn
   constructor_requires_explicit_channel_names: false
@@ -120,11 +120,11 @@ derived_signal_augmentation_ablation:
       [RED, IR, A_dyn_x, A_dyn_y, A_dyn_z, GX, GY, GZ, A_mag, Omega_mag, J_mag]
     ordered_units:
       [window_robust_z, window_robust_z, m/s^2, m/s^2, m/s^2, rad/s, rad/s, rad/s, m/s^2, rad/s, m/s^3]
-    schema_sha256: 3813570d96997d01649333b634fbb640e44edb15d834af15d855c6cb97ff5800
+    schema_sha256: 62cba5a2f47a7bf2765c7fb71ebbcf380ef0af922a2a892056f6a9491647f605
     tensor_layout: window_channel_sample
   normalization:
     ppg: per_window_median_iqr_mad_then_one
-    imu: all_nine_motion_channels_outer_training_participant_only_median_iqr
+    imu: all_nine_motion_channels_outer_training_participant_only_median_iqr_over_1p349_population_sd_then_one
     imu_per_window_amplitude_normalization: forbidden
   candidate_constructor: ppg_frailty.models.motion.build_motion_derived_augmentation_cnn
 

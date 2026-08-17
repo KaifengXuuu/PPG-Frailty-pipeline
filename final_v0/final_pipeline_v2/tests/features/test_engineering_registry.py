@@ -2,19 +2,26 @@
 
 from __future__ import annotations
 
-from dataclasses import fields
+from dataclasses import fields, replace
 import unittest
 
 import numpy as np
 
-from ppg_frailty.contracts import ArtifactReductionResult, EngineeringFeatureSequence, SignalRoute
+from ppg_frailty.contracts import (
+    ArtifactReductionResult,
+    EngineeringFeatureSequence,
+    OrderedFeatureMatrixV1,
+    SignalRoute,
+)
 from ppg_frailty.data.windows import WindowPlan
 from ppg_frailty.features import (
+    ENGINEERING_SCHEMA_VERSION,
     EngineeringExtraction,
     build_feature_vector,
     build_ordered_matrix,
     default_registry,
     engineering_feature_names,
+    engineering_welch_parameters,
     extract_engineering_features,
     fit_fold_feature_transform,
     fit_fold_feature_vector_transform,
@@ -23,6 +30,7 @@ from ppg_frailty.features import (
     transform_feature_vector,
 )
 from ppg_frailty.signal import build_signal_views
+from ppg_frailty.representations import validate_feature_matrix
 
 
 def resolved_config() -> dict[str, object]:
@@ -31,6 +39,10 @@ def resolved_config() -> dict[str, object]:
     return {
         "signal": {
             "internal_fs_hz": 400.0,
+            "peak_detector": {
+                "detector_id": "aboy_project_v1",
+                "failure_action": "fail_closed_no_fallback",
+            },
             "channel_order": ["RED", "IR", "AX", "AY", "AZ", "GX", "GY", "GZ"],
             "ppg_native_unit": "raw_counts",
             "accelerometer_input_unit": "m/s2",
@@ -69,7 +81,10 @@ def resolved_config() -> dict[str, object]:
             },
             "normalization": {
                 "raw_ppg": "per_window_median_iqr_over_1p349_sd_finite",
-                "raw_imu": "outer_training_participant_only_robust_scaler_axes6",
+                "raw_imu": (
+                    "outer_training_participant_only_median_iqr_over_1p349_"
+                    "population_sd_then_one_axes6"
+                ),
                 "iqr_fallback": "standard_deviation_then_finite_one",
                 "clip_after_scale": [-8.0, 8.0],
             },
@@ -141,21 +156,122 @@ class EngineeringRegistryTest(unittest.TestCase):
             "ppg_red.dominant_frequency_hz",
             "ppg_red.spectral_centroid_hz",
             "ppg_red.bandpower_0.5_3_hz",
+            "acc_magnitude.mean",
+            "acc_magnitude.total_power",
+            "angular_rate_magnitude.mean",
+            "jerk_magnitude.mean",
             "acc_dynamic_x.population_sd",
         ):
             self.assertTrue(extraction.value_validity[:, names.index(name)].all())
-        self.assertFalse(
-            any(
-                name.startswith(
-                    ("acc_dynamic_magnitude.", "gyro_magnitude.", "jerk_magnitude.")
-                )
-                for name in names
-            )
-        )
+        self.assertEqual(extraction.sequence.schema_version, ENGINEERING_SCHEMA_VERSION)
         self.assertFalse(
             extraction.value_validity[:, names.index("gyro_y.skew_bias_corrected")].any()
         )
         self.assertEqual(extraction.sequence.start_samples.tolist(), [0, 2000, 4000])
+
+    def test_extractor_rejects_noncanonical_window_plan(self) -> None:
+        stale_plan = replace(engineering_plan(), hop_seconds=2.5)
+        with self.assertRaisesRegex(ValueError, "10 s / 5 s-hop"):
+            extract_engineering_features(views_fixture(), plan=stale_plan)
+
+        capped_plan = replace(engineering_plan(), max_windows=2, cap_policy="uniform_progress")
+        with self.assertRaisesRegex(ValueError, "10 s / 5 s-hop"):
+            extract_engineering_features(views_fixture(), plan=capped_plan)
+
+    def test_exact_115_column_order_and_axis_time_only_contract(self) -> None:
+        names = engineering_feature_names()
+        self.assertEqual(len(names), 115)
+        self.assertEqual(len(set(names)), 115)
+        self.assertEqual(names[0], "ppg_red.mean")
+        self.assertEqual(names[14], "ppg_ir.mean")
+        self.assertEqual(names[28], "acc_magnitude.mean")
+        self.assertEqual(names[43], "angular_rate_magnitude.mean")
+        self.assertEqual(names[58], "jerk_magnitude.mean")
+        self.assertEqual(names[73], "acc_dynamic_x.mean")
+        self.assertEqual(names[-1], "gyro_z.pearson_kurtosis")
+        for channel in (
+            "acc_magnitude",
+            "angular_rate_magnitude",
+            "jerk_magnitude",
+        ):
+            for statistic in (
+                "total_power",
+                "normalized_spectral_entropy",
+                "dominant_frequency_hz",
+                "spectral_centroid_hz",
+                "bandpower_0.5_3_hz",
+                "bandpower_8_20_hz",
+            ):
+                self.assertIn(f"{channel}.{statistic}", names)
+        forbidden_axis_tokens = (
+            ".total_power",
+            ".normalized_spectral_entropy",
+            ".dominant_frequency_hz",
+            ".spectral_centroid_hz",
+            ".bandpower_",
+        )
+        for channel in (
+            "acc_dynamic_x",
+            "acc_dynamic_y",
+            "acc_dynamic_z",
+            "gyro_x",
+            "gyro_y",
+            "gyro_z",
+        ):
+            self.assertFalse(
+                any(
+                    name.startswith(f"{channel}.")
+                    and any(token in name for token in forbidden_axis_tokens)
+                    for name in names
+                )
+            )
+
+    def test_welch_contract_and_known_ppg_sinusoid(self) -> None:
+        self.assertEqual(engineering_welch_parameters(4000, 400.0), (1600, 800))
+        extraction = direct_extraction()
+        names = engineering_feature_names()
+        dominant = extraction.sequence.values[
+            :, names.index("ppg_red.dominant_frequency_hz")
+        ]
+        entropy = extraction.sequence.values[
+            :, names.index("ppg_red.normalized_spectral_entropy")
+        ]
+        cardiac_power = extraction.sequence.values[
+            :, names.index("ppg_red.bandpower_0.5_3_hz")
+        ]
+        self.assertTrue(np.allclose(dominant, 1.25, atol=0.26))
+        self.assertTrue(np.all((entropy >= 0.0) & (entropy <= 1.0)))
+        self.assertTrue(np.all(cardiac_power > 0.0))
+
+    def test_magnitudes_use_canonical_processed_outputs(self) -> None:
+        views = views_fixture()
+        extraction = extract_engineering_features(views, plan=engineering_plan())
+        names = engineering_feature_names()
+        first = slice(0, 4000)
+        self.assertAlmostEqual(
+            extraction.sequence.values[0, names.index("acc_magnitude.mean")],
+            float(np.nanmean(views.imu_processed["dynamic_magnitude"][first])),
+        )
+        self.assertAlmostEqual(
+            extraction.sequence.values[
+                0, names.index("angular_rate_magnitude.mean")
+            ],
+            float(np.nanmean(views.imu_processed["gyro_magnitude"][first])),
+        )
+        replaced_imu = {
+            **views.imu_processed,
+            "jerk_magnitude": np.full(views.x_filter.shape[0], 3.25),
+        }
+        replaced_views = replace(views, imu_processed=replaced_imu)
+        replaced_extraction = extract_engineering_features(
+            replaced_views, plan=engineering_plan()
+        )
+        self.assertAlmostEqual(
+            replaced_extraction.sequence.values[
+                0, names.index("jerk_magnitude.mean")
+            ],
+            3.25,
+        )
 
     def test_nonidentity_ppg_engineering_is_unavailable(self) -> None:
         views = views_fixture()
@@ -173,7 +289,7 @@ class EngineeringRegistryTest(unittest.TestCase):
         )
         routed = views.with_artifact_result(result)
         extraction = extract_engineering_features(routed, plan=engineering_plan())
-        ppg_slots = engineering_feature_names().index("acc_dynamic_x.mean")
+        ppg_slots = engineering_feature_names().index("acc_magnitude.mean")
         self.assertTrue(np.isnan(extraction.sequence.values[:, :ppg_slots]).all())
         self.assertFalse(extraction.value_validity[:, :ppg_slots].any())
         self.assertTrue(
@@ -186,23 +302,32 @@ class EngineeringRegistryTest(unittest.TestCase):
         )
 
     def test_default_file_aggregation_is_mean_population_sd(self) -> None:
+        names = engineering_feature_names()
+        matrix = np.zeros((2, len(names)), dtype=np.float64)
+        matrix[:, 0] = [1.0, 3.0]
+        matrix[:, 1] = [3.0, 7.0]
         sequence = EngineeringFeatureSequence(
-            values=np.array([[1.0, 3.0], [3.0, 7.0]]),
+            values=matrix,
             start_samples=np.array([0, 2000]),
             valid_row_mask=np.array([True, True]),
-            channel_schema=("a", "b"),
-            schema_version="test",
+            channel_schema=names,
+            schema_version=ENGINEERING_SCHEMA_VERSION,
         )
         extraction = EngineeringExtraction(
-            sequence, np.ones((2, 2), dtype=bool), SignalRoute.DIRECT, ()
+            sequence,
+            np.ones(matrix.shape, dtype=bool),
+            SignalRoute.DIRECT,
+            (),
         )
         values, validity = summarize_engineering(extraction)
-        self.assertEqual(values["engineering.a.mean"], 2.0)
-        self.assertEqual(values["engineering.a.population_sd"], 1.0)
-        self.assertEqual(values["engineering.b.mean"], 5.0)
-        self.assertEqual(values["engineering.b.population_sd"], 2.0)
+        self.assertEqual(values[f"engineering.{names[0]}.mean"], 2.0)
+        self.assertEqual(values[f"engineering.{names[0]}.population_sd"], 1.0)
+        self.assertEqual(values[f"engineering.{names[1]}.mean"], 5.0)
+        self.assertEqual(values[f"engineering.{names[1]}.population_sd"], 2.0)
         self.assertTrue(all(validity.values()))
         self.assertFalse(any(name.endswith(".median") for name in values))
+        self.assertEqual(len(values), 230)
+        self.assertEqual(len(validity), 230)
 
     def test_registry_has_all_ten_required_fields_and_stable_hash(self) -> None:
         registry = default_registry()
@@ -216,8 +341,11 @@ class EngineeringRegistryTest(unittest.TestCase):
             for field_name in required:
                 self.assertTrue(str(getattr(definition, field_name)).strip())
         self.assertEqual(registry.sha256, default_registry().sha256)
+        self.assertEqual(registry.schema_version, "feature_vector_thesis_115_v2")
+        self.assertNotEqual(registry.schema_version, "feature_vector_v1")
         self.assertIn("optical.red_ir_ac_ratio_median", registry.names)
         self.assertIn("optical.red_ir_dc_ratio_median", registry.names)
+        self.assertNotIn("optical.red_ir_cardiac_coherence", registry.names)
         self.assertFalse(any(name.startswith("sqi.") for name in registry.names))
         self.assertNotIn("prv.coverage", registry.names)
 
@@ -249,6 +377,7 @@ class EngineeringRegistryTest(unittest.TestCase):
             context=context,
             provenance={"route": SignalRoute.DIRECT.value},
         )
+        self.assertIs(validate_feature_matrix(matrix), matrix)
         engineering_count = len(engineering_feature_names())
         registry_count = len(registry.names)
         self.assertEqual(matrix.values.shape, (2 * (engineering_count + registry_count), 32))
@@ -271,6 +400,40 @@ class EngineeringRegistryTest(unittest.TestCase):
         self.assertEqual(
             matrix.provenance["validity_encoding"], "paired_explicit_0_1_channels_v1"
         )
+        self.assertEqual(
+            matrix.schema_version, "ordered_feature_matrix_thesis_115_d_by_32_v2"
+        )
+        stale_values = np.zeros((1, 94), dtype=np.float64)
+        stale = EngineeringExtraction(
+            EngineeringFeatureSequence(
+                values=stale_values,
+                start_samples=np.array([0]),
+                valid_row_mask=np.array([True]),
+                channel_schema=tuple(f"old_{index}" for index in range(94)),
+                schema_version=(
+                    "engineering_10s_hop5s_workflow_v1+fold_robust_v1"
+                ),
+            ),
+            np.ones_like(stale_values, dtype=bool),
+            SignalRoute.DIRECT,
+            (),
+        )
+        with self.assertRaisesRegex(ValueError, "stale or inconsistent"):
+            build_ordered_matrix(
+                stale,
+                context=context,
+                provenance={"route": SignalRoute.DIRECT.value},
+            )
+        old_matrix = OrderedFeatureMatrixV1(
+            values=np.zeros((1, 32), dtype=np.float64),
+            row_mask=np.ones(32, dtype=bool),
+            channel_schema=("old.feature",),
+            context_schema=("old.feature",),
+            schema_version="ordered_feature_matrix_v1",
+            provenance={},
+        )
+        with self.assertRaisesRegex(ValueError, "stale or inconsistent"):
+            validate_feature_matrix(old_matrix)
 
     def test_artifact_route_invalidates_morphology_slot_and_unknowns_fail(self) -> None:
         registry = default_registry()

@@ -7,7 +7,7 @@ import unittest
 
 import numpy as np
 
-from ppg_frailty.contracts import SignalRoute
+from ppg_frailty.contracts import FeatureVectorV1, SignalRoute
 from ppg_frailty.features import (
     build_feature_vector,
     default_registry,
@@ -15,6 +15,7 @@ from ppg_frailty.features import (
     transform_feature_vector,
     transform_feature_vector_batch,
 )
+from ppg_frailty.representations import validate_feature_vector
 
 
 _FIXTURE_PREDICTOR = "prv.ppi_mean_s"
@@ -92,6 +93,30 @@ class VectorTransformTests(unittest.TestCase):
                 outer_train_participant_ids=["train_a"],
                 outer_oof_participant_ids=["heldout"],
             )
+
+    def test_stale_vector_and_fusion_batch_schemas_are_rejected(self) -> None:
+        stale = FeatureVectorV1(
+            values=np.asarray([1.0]),
+            validity=np.asarray([True]),
+            feature_names=("old.feature",),
+            schema_version="feature_vector_v1",
+            provenance={"registry_sha256": "0" * 64},
+        )
+        with self.assertRaisesRegex(ValueError, "stale or non-formal"):
+            validate_feature_vector(stale)
+
+        batch = transform_feature_vector_batch([vector(2.0)], self.artifact)
+        with self.assertRaisesRegex(ValueError, "stale or inconsistent"):
+            replace(
+                batch,
+                schema_version="feature_vector_values_plus_validity_v2",
+            ).validate()
+        with self.assertRaisesRegex(ValueError, "stale or inconsistent"):
+            replace(
+                batch,
+                tensor_schema=("old.feature",),
+                fusion_tensor=np.zeros((1, 1), dtype=np.float64),
+            ).validate()
 
 
 if __name__ == "__main__":

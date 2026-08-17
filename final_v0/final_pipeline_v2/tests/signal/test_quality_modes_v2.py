@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from ppg_frailty.contracts import SignalRoute
+from ppg_frailty.peaks import CANONICAL_DETECTOR_ID
 from ppg_frailty.quality import (
     QualityMode,
     QualityRoutingDisabledError,
@@ -67,6 +68,7 @@ class QualityModeTests(unittest.TestCase):
         diagnostics = evaluate_quality_diagnostics(
             values,
             route=SignalRoute.DIRECT,
+            detector_id=CANONICAL_DETECTOR_ID,
             # Deliberately invalid endpoint thresholds prove they are not read.
             config=SqiConfig(q_rate_threshold=-10.0, q_morph_threshold=10.0),
         )

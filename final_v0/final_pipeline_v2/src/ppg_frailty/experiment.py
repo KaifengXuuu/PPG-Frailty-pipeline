@@ -199,10 +199,15 @@ def _runtime_imports() -> dict[str, Any]:
         validate_frozen_model_run_provenance,
     )
     from ppg_frailty.pipeline import PipelinePaths, _load_record, preflight_pipeline
+    from ppg_frailty.module_registry import resolve_peak_detector_config
+    from ppg_frailty.peaks import (
+        detect_pulses,
+        detect_pulses_per_wavelength,
+        select_reference_wavelength,
+    )
     from ppg_frailty.provenance import runtime_environment, stable_payload_sha256
     from ppg_frailty.signal.morphology import extract_morphology
     from ppg_frailty.signal.optical import extract_dual_optical
-    from ppg_frailty.signal.peaks import detect_pulses
     from ppg_frailty.signal.preprocess import build_signal_views
     from ppg_frailty.signal.motion_imu import fit_motion_imu_calibration
     from ppg_frailty.signal.preprocess import roll_pitch_ekf_config_from_resolved
@@ -395,6 +400,9 @@ def _fit_quality_calibrator(states: list[_RuntimeRecord], config: Any, train_ids
 
     api = _runtime_imports()
     formal = api['SqiConfig'].from_resolved(config.to_dict())
+    detector_id = api['resolve_peak_detector_config'](
+        config.section('signal')
+    )['detector_id']
     base = api['replace'](formal, calibrator='fixed_formula_thresholds_v1')
     component_rows: list[dict[str, float]] = []
     participant_rows: list[str] = []
@@ -402,7 +410,11 @@ def _fit_quality_calibrator(states: list[_RuntimeRecord], config: Any, train_ids
         if state.views is None:
             continue
         try:
-            quality = api['evaluate_quality'](state.views, config=base)
+            quality = api['evaluate_quality'](
+                state.views,
+                config=base,
+                detector_id=detector_id,
+            )
             component_rows.append(api['quality_component_scores'](quality))
             participant_rows.append(str(state.row.participant_id))
         except Exception as exc:
@@ -458,6 +470,9 @@ def _retain_without_quality_routing(
         if diagnostics_only else None
     )
     artifact = config.section('artifact')
+    detector_id = api['resolve_peak_detector_config'](
+        config.section('signal')
+    )['detector_id']
     for state in states:
         if state.views is None:
             continue
@@ -467,7 +482,10 @@ def _retain_without_quality_routing(
                 mode='diagnostics_only' if diagnostics_only else 'off',
                 evaluator=api['evaluate_quality_diagnostics'],
                 **(
-                    {'config': diagnostic_config}
+                    {
+                        'config': diagnostic_config,
+                        'detector_id': detector_id,
+                    }
                     if diagnostic_config is not None else {}
                 ),
             )
@@ -543,6 +561,9 @@ def _route_records(states: list[_RuntimeRecord], config: Any, report: Any, sqi_c
     RouteState = api['RouteState']
     SignalRoute = api['SignalRoute']
     artifact = config.section('artifact')
+    detector_id = api['resolve_peak_detector_config'](
+        config.section('signal')
+    )['detector_id']
     policy = str(artifact['degraded_policy'])
     if policy not in {'drop', 'denoise_then_extract_rate_features'}:
         raise _ExperimentProtocolError(f'unsupported_degraded_policy:{policy}')
@@ -557,7 +578,12 @@ def _route_records(states: list[_RuntimeRecord], config: Any, report: Any, sqi_c
         if state.views is None:
             continue
         try:
-            direct = api['evaluate_quality'](state.views, config=sqi_config, calibrator=calibrator)
+            direct = api['evaluate_quality'](
+                state.views,
+                config=sqi_config,
+                calibrator=calibrator,
+                detector_id=detector_id,
+            )
             state.direct_quality = direct
             integrity = api['SegmentIntegrity'](
                 pass_=True,
@@ -622,7 +648,12 @@ def _route_records(states: list[_RuntimeRecord], config: Any, report: Any, sqi_c
                 state.reason = ';'.join(final_route.reasons)
                 state.route_status = str(final_route.state.value)
                 continue
-            post = api['evaluate_quality'](outcome.views, config=sqi_config, calibrator=calibrator)
+            post = api['evaluate_quality'](
+                outcome.views,
+                config=sqi_config,
+                calibrator=calibrator,
+                detector_id=detector_id,
+            )
             if post.q_morph.state is not QualityState.NOT_APPLICABLE or post.q_morph.score is not None:
                 raise _ExperimentProtocolError('nonidentity_post_q_morph_contract_failed')
             final_route = api['finalize_rate_recovery'](
@@ -655,7 +686,13 @@ def _extract_vector(state: _RuntimeRecord, report: Any) -> None:
     SignalRoute = api['SignalRoute']
     QualityState = api['QualityState']
     try:
-        pulse = api['detect_pulses'](state.views)
+        pulses_per_wavelength = api['detect_pulses_per_wavelength'](
+            state.views,
+            detector_id=report.peak_detector['detector_id'],
+        )
+        pulse = pulses_per_wavelength[
+            api['select_reference_wavelength'](pulses_per_wavelength)
+        ]
         prv = api['compute_prv'](
             pulse,
             observation_duration_s=state.views.x_filter.shape[0] / 400.0,
@@ -693,12 +730,25 @@ def _extract_vector(state: _RuntimeRecord, report: Any) -> None:
             optical = api['extract_dual_optical'](
                 state.views.x_native,
                 state.views.x_filter,
-                pulse,
+                pulses_per_wavelength,
                 route=state.route,
             )
             for name, value in optical.aggregate_values.items():
                 values[f'optical.{name}'] = value
                 validity[f'optical.{name}'] = bool(optical.aggregate_validity[name])
+            state.diagnostic_components['dual_optical_pairing'] = (
+                to_strict_json_value(
+                    {
+                        'schema_version': optical.schema_version,
+                        'pairing': asdict(optical.pairing),
+                        'beat_audit': [
+                            asdict(row) for row in optical.beat_audit
+                        ],
+                        'aggregate_validity': optical.aggregate_validity,
+                        'diagnostics': optical.diagnostics,
+                    }
+                )
+            )
         registry = api['default_registry']()
         predictor_names = set(registry.names)
         excluded_names = sorted(set(values) - predictor_names)

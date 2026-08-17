@@ -187,6 +187,14 @@ class PulseResult:
     source_route: SignalRoute
     detection_run_id: str
     interval_run_ids: np.ndarray
+    detector_id: str = ""
+    selected_polarity: int = 0
+    block_hri_provenance_hash: str = ""
+    block_provenance: tuple[dict[str, Any], ...] = ()
+    interval_rejection_reasons: tuple[str, ...] = ()
+    peak_ordinals: np.ndarray | None = None
+    detector_score: float = 0.0
+    detector_coverage: float = float("nan")
 
     def validate_identity(self) -> None:
         """Prevent PPI intervals from crossing detector runs or signal routes."""
@@ -208,6 +216,33 @@ class PulseResult:
             raise ValueError("interval_run_ids must align one-to-one with PPI intervals")
         if interval_ids.size and np.any(interval_ids != run_id):
             raise ValueError("PPI intervals cannot cross pulse-detection runs")
+        if self.detector_id:
+            if self.selected_polarity not in {-1, 1}:
+                raise ValueError("detector PulseResult requires polarity -1 or +1")
+            digest = str(self.block_hri_provenance_hash)
+            if (
+                len(digest) != 64
+                or any(char not in "0123456789abcdef" for char in digest)
+            ):
+                raise ValueError(
+                    "detector PulseResult requires a SHA-256 block provenance hash"
+                )
+            if len(self.interval_rejection_reasons) != intervals.size:
+                raise ValueError(
+                    "interval rejection reasons must align with PPI intervals"
+                )
+            ordinals = np.asarray(self.peak_ordinals)
+            peaks = np.asarray(self.peaks)
+            if (
+                ordinals.shape != peaks.shape
+                or not np.array_equal(
+                    ordinals,
+                    np.arange(peaks.size, dtype=ordinals.dtype),
+                )
+            ):
+                raise ValueError(
+                    "peak_ordinals must preserve the original detected-peak order"
+                )
 
 
 @dataclass(frozen=True)

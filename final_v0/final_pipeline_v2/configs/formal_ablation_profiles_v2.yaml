@@ -38,7 +38,13 @@ families:
     silent_fallback_forbidden: true
     entries:
     - {profile_id: calibrated_roll_pitch_ekf, method: calibrated_roll_pitch_ekf, catalog_role: reference, auto_run: false}
-    - {profile_id: imu_lpf_0p3hz_ablation, method: low_pass_0p3hz, catalog_role: ablation, auto_run: false}
+    - {profile_id: imu_lpf_0p3hz_ablation, method: profile_a_lowpass_0p3hz, catalog_role: ablation, auto_run: false}
+  peak_detector:
+    reference_profile_id: aboy_project_v1
+    silent_fallback_forbidden: true
+    entries:
+    - {profile_id: aboy_project_v1, detector_id: aboy_project_v1, catalog_role: reference, auto_run: false}
+    - {profile_id: dual_polarity_prominence_v1_ablation, detector_id: dual_polarity_prominence_v1_ablation, catalog_role: ablation, auto_run: false}
   fixed_kernel_samples:
     family_id: fixed_kernel_samples_resampling_ablation
     eligible_models: [CompactCNN1D, InceptionTimeFull]

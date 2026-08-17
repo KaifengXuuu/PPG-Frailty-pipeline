@@ -273,9 +273,9 @@ python frailty_3class_sweep_v2.py run --plan configs/studies/single_config_v2.ya
 
 - **科学问题：** calibrated roll–pitch EKF 相对 mandatory LPF ablation 是否改善 evidence？
 - **Reference/config：** `imu_gravity` family。
-- **唯一变量与取值：** `calibrated_roll_pitch_ekf` 对 `low_pass_0p3hz`。
+- **唯一变量与取值：** `calibrated_roll_pitch_ekf` 对 `profile_a_lowpass_0p3hz`。
 - **并行模块开关：** 只换 gravity profile；两路均要求显式 same-participant calibration/bias，LPF 永远不是 EKF failure path。
-- **固定控制：** U1–U7；unit conversion、20/40 Hz sensor low-pass(order4)、outer-train scaling、channels/windows/model/training/folds 不变。
+- **固定控制：** U1–U7；unit conversion、20/40 Hz sensor low-pass（zero-phase SOS order 3）、outer-train scaling、channels/windows/model/training/folds 不变；0.3 Hz gravity low-pass 仍为 order 4。
 - **适用性：** 所有由 processed IMU 派生的 frailty representations 和 motion profiles；先 sentinel，不能与 motion 8/11ch 同时改变。
 - **执行并行：** deep `jobs=1`。
 - **输出要求：** R0、calibration identity、unit conversions、covariances、profile ID、failure/drop counts、role-wise IMU coverage。
@@ -665,8 +665,8 @@ frailty labels 绝不能训练 motion detector。内部 binary targets 是 proto
 #### Group 8C — motion EKF 对 Profile-A LPF
 
 - **科学问题：** motion endpoint 对 gravity profile 多敏感？
-- **Reference/config：** calibrated EKF 对 `profile_a_lpf_gravity_0p3hz_ablation_only`。
-- **唯一变量与取值：** 固定 channel profile 内 `[calibrated_roll_pitch_ekf,low_pass_0p3hz]`。
+- **Reference/config：** calibrated EKF 对 `profile_a_sensor_lpf_order3_gravity_0p3hz_v3_ablation_only`。
+- **唯一变量与取值：** 固定 channel profile 内 `[calibrated_roll_pitch_ekf,profile_a_lowpass_0p3hz]`。
 - **并行模块开关：** 一次固定 8ch 或 11ch，不能与 derived augmentation 交叉变化。
 - **固定控制：** 8A/B；两路都有显式 same-participant calibration、同 unit/scaling；LPF 不是 error recovery。
 - **适用性：** motion endpoint；先 8ch，只有其晋级后才可选 11ch confirmation。

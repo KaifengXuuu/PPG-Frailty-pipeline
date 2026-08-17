@@ -20,8 +20,10 @@ from .raw import RawWindows
 
 
 IMU_TRANSFORM_SCHEMA_VERSION = (
-    "raw_frailty_imu_axes6_outer_train_median_iqr_population_sd_v2"
+    "raw_frailty_imu_axes6_outer_train_median_"
+    "iqr_over_1p349_population_sd_then_one_v3"
 )
+IQR_NORMAL_CONSISTENCY_DIVISOR = 1.349
 RAW_CHANNEL_SCHEMA = (
     "RED",
     "IR",
@@ -48,6 +50,8 @@ def _artifact_hash(
         "scale": np.asarray(scale, dtype=np.float64).tolist(),
         "valid_count": np.asarray(valid_count, dtype=np.int64).tolist(),
         "fitted_on_participant_ids": list(fitted_ids),
+        "center_estimator": "median",
+        "scale_estimator": "iqr_over_1p349_then_population_sd_then_one",
         "per_window_imu_scaling": False,
     })
 
@@ -148,7 +152,7 @@ def fit_fold_imu_channel_transform(
             raise ValueError(f"no valid train samples for IMU channel {IMU_CHANNEL_SCHEMA[channel]}")
         center[channel] = float(np.median(samples))
         q25, q75 = np.percentile(samples, [25.0, 75.0])
-        robust_scale = float(q75 - q25)
+        robust_scale = float(q75 - q25) / IQR_NORMAL_CONSISTENCY_DIVISOR
         if not np.isfinite(robust_scale) or robust_scale <= 1e-12:
             robust_scale = float(np.std(samples, ddof=0))
         scale[channel] = (
@@ -206,7 +210,7 @@ def transform_raw_windows_imu(
         "imu_transform_sha256": transform.artifact_sha256,
         "imu_transform_fitted_on_participant_ids": list(transform.fitted_on_participant_ids),
         "imu_normalization": (
-            "outer_train_median_iqr_population_sd_then_one"
+            "outer_train_median_iqr_over_1p349_population_sd_then_one"
         ),
     })
     return replace(windows, values=values, provenance=provenance)
@@ -216,6 +220,7 @@ __all__ = [
     "FoldImuChannelTransform",
     "IMU_CHANNEL_SCHEMA",
     "IMU_TRANSFORM_SCHEMA_VERSION",
+    "IQR_NORMAL_CONSISTENCY_DIVISOR",
     "apply_fold_imu_channel_transform",
     "fit_fold_imu_channel_transform",
     "transform_raw_windows_imu",

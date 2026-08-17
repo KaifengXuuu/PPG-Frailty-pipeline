@@ -38,7 +38,8 @@ M3_QUALITY_SOURCE_SHA256 = (
 REFERENCE_PPG_FILTER_PROFILE_ID = "butterworth_0p2_8hz_reference"
 ABLATION_PPG_FILTER_PROFILE_ID = "butterworth_0p5_5hz_ablation"
 CANONICAL_AXES6_NORMALIZATION_ID = (
-    "outer_training_participant_only_robust_scaler_axes6"
+    "outer_training_participant_only_median_iqr_over_1p349_"
+    "population_sd_then_one_axes6"
 )
 
 
@@ -365,7 +366,8 @@ def build_signal_views(
     expected_signal_keys = {
         "internal_fs_hz", "channel_order", "ppg_native_unit",
         "accelerometer_input_unit", "gyroscope_input_unit", "ppg_filter",
-        "analysis_view", "gap_repair", "imu", "dl_resampling", "normalization",
+        "peak_detector", "analysis_view", "gap_repair", "imu",
+        "dl_resampling", "normalization",
     }
     if set(signal_config) != expected_signal_keys:
         raise ValueError(
@@ -373,6 +375,9 @@ def build_signal_views(
             f"missing={sorted(expected_signal_keys-set(signal_config))}, "
             f"unknown={sorted(set(signal_config)-expected_signal_keys)}"
         )
+    from ..module_registry import resolve_peak_detector_config
+
+    resolve_peak_detector_config(signal_config)
     fs_hz = float(required_field("fs_hz"))
     configured_fs = float(signal_config.get("internal_fs_hz", float("nan")))
     if fs_hz != CANONICAL_FS_HZ or configured_fs != CANONICAL_FS_HZ:
@@ -498,8 +503,12 @@ def build_signal_views(
             imu_config.get("initialization")
             != "same_participant_static_calibration"
             or imu_config.get("comparison_method") != "profile_a_lowpass_0p3hz"
+            or imu_config.get("sensor_filter_order") != 3
+            or imu_config.get("gravity_filter_order") != 4
         ):
-            raise ValueError("calibrated EKF initialization/comparator identity drift")
+            raise ValueError(
+                "calibrated EKF initialization/filter/comparator identity drift"
+            )
     else:
         if set(imu_config) != common_imu_keys:
             raise ValueError("legacy signal.imu contains missing or unknown keys")

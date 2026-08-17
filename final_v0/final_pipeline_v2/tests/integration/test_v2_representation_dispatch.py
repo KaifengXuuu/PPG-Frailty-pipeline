@@ -16,10 +16,13 @@ import ppg_frailty.experiment as experiment
 import ppg_frailty.pipeline as pipeline
 from ppg_frailty.contracts import EngineeringFeatureSequence, SignalRoute
 from ppg_frailty.features import (
+    ENGINEERING_SCHEMA_VERSION,
     EngineeringExtraction,
     build_feature_vector,
     default_registry,
+    engineering_feature_names,
 )
+from ppg_frailty.peaks import BeatPairingResult
 from ppg_frailty.representations import RawWindows
 from ppg_frailty.training import RawWindowDataset, SampleIdentity
 
@@ -49,16 +52,21 @@ def _state(participant: str, value: float, *, role: str = "R3") -> experiment._R
         feature_validity={"prv.hr_mean_bpm": True},
         provenance={"route": SignalRoute.DIRECT.value, "record_id": row.record_id},
     )
+    engineering_names = engineering_feature_names()
+    engineering_values = np.tile(
+        np.linspace(value, value + 1.0, len(engineering_names), dtype=np.float64),
+        (2, 1),
+    )
     sequence = EngineeringFeatureSequence(
-        values=np.asarray(((value, value + 1.0), (value + 0.5, value + 1.5))),
+        values=engineering_values,
         start_samples=np.asarray((0, 2000), dtype=np.int64),
         valid_row_mask=np.ones(2, dtype=bool),
-        channel_schema=("fixture_a", "fixture_b"),
-        schema_version="engineering_fixture_v1",
+        channel_schema=engineering_names,
+        schema_version=ENGINEERING_SCHEMA_VERSION,
     )
     state.engineering = EngineeringExtraction(
         sequence=sequence,
-        value_validity=np.ones((2, 2), dtype=bool),
+        value_validity=np.ones(engineering_values.shape, dtype=bool),
         route=SignalRoute.DIRECT,
         reasons=(),
     )
@@ -145,7 +153,9 @@ class RepresentationDispatchTest(unittest.TestCase):
             }
 
         calibration = SimpleNamespace(
-            schema_version="ppg_frailty.motion_imu_calibration.v2",
+            schema_version=(
+                "ppg_frailty.motion_imu_calibration.sensor_lpf_order3.v3"
+            ),
             participant_id="P01",
             file_id="P01_B",
             source_role="B",
@@ -326,10 +336,33 @@ class RepresentationDispatchTest(unittest.TestCase):
             route=SignalRoute.DIRECT,
         )
         registry = default_registry()
+        pulse = object()
+        pairing = BeatPairingResult(
+            detector_id="aboy_project_v1",
+            reference_wavelength="RED",
+            secondary_wavelength="IR",
+            reference_score=1.0,
+            reference_coverage=1.0,
+            secondary_score=1.0,
+            secondary_coverage=1.0,
+            red_detection_run_id="red-run",
+            ir_detection_run_id="ir-run",
+            red_detector_version="aboy_project_v1:red",
+            ir_detector_version="aboy_project_v1:ir",
+            red_selected_polarity=1,
+            ir_selected_polarity=-1,
+            red_block_hri_provenance_hash="0" * 64,
+            ir_block_hri_provenance_hash="1" * 64,
+            rows=(),
+        )
         api = {
             "SignalRoute": SignalRoute,
             "QualityState": SimpleNamespace(PASS="pass"),
-            "detect_pulses": lambda *_a, **_k: object(),
+            "detect_pulses_per_wavelength": lambda *_a, **_k: {
+                "RED": pulse,
+                "IR": pulse,
+            },
+            "select_reference_wavelength": lambda _pulses: "RED",
             "compute_prv": lambda *_a, **_k: SimpleNamespace(
                 values={"coverage": 0.75, "hr_mean_bpm": 60.0},
                 validity={"coverage": True, "hr_mean_bpm": True},
@@ -345,12 +378,17 @@ class RepresentationDispatchTest(unittest.TestCase):
             "extract_dual_optical": lambda *_a, **_k: SimpleNamespace(
                 aggregate_values={},
                 aggregate_validity={},
+                schema_version="dual_optical_fixture_v2",
+                pairing=pairing,
+                beat_audit=(),
+                diagnostics={"affects_prediction": False},
             ),
             "default_registry": lambda: registry,
             "build_feature_vector": build_feature_vector,
         }
         report = SimpleNamespace(
             window_profiles={"engineering": {}},
+            peak_detector={"detector_id": "aboy_project_v1"},
         )
         with patch(
             "ppg_frailty.experiment._runtime_imports",

@@ -25,7 +25,6 @@ from ..contracts import (
     SignalRoute,
 )
 from ..provenance import assert_training_only
-from .peaks import detect_pulses
 from .views import CANONICAL_FS_HZ, CanonicalSignalViews
 
 
@@ -526,6 +525,7 @@ def evaluate_quality_diagnostics(
     qc_evidence: Mapping[str, object] | None = None,
     fs_hz: float = CANONICAL_FS_HZ,
     config: SqiDiagnosticConfig | SqiConfig | None = None,
+    detector_id: str | None = None,
 ) -> SqiDiagnostics:
     """Compute raw SQI observations without weights, thresholds, or routing.
 
@@ -610,10 +610,19 @@ def evaluate_quality_diagnostics(
         else float("nan")
     )
     if pulse is None:
-        try:
-            pulse = detect_pulses(matrix, fs_hz=fs_hz)
-        except ValueError:
-            pulse = None
+        if detector_id is None:
+            raise ValueError(
+                "SQI diagnostics require a persisted detector_id "
+                "when pulse is not supplied"
+            )
+        from ..peaks import detect_pulses
+
+        pulse = detect_pulses(
+            matrix,
+            detector_id=detector_id,
+            fs_hz=fs_hz,
+            source_route=route,
+        )
     peak_density = ppi_fraction = ppi_cv = float("nan")
     if pulse is not None:
         peak_density = float(np.asarray(pulse.peaks).size / (matrix.shape[0] / fs_hz) * 60.0)
@@ -733,6 +742,7 @@ def evaluate_quality(
     fs_hz: float = CANONICAL_FS_HZ,
     config: SqiConfig,
     calibrator: SqiCalibrator | None = None,
+    detector_id: str | None = None,
 ) -> QualityResult:
     """公共 Q_rate/Q_morph 入口 / Public endpoint-SQI entry point."""
 
@@ -810,13 +820,18 @@ def evaluate_quality(
         else float("nan")
     )
     if pulse is None:
-        try:
-            pulse = detect_pulses(
-                canonical_views if canonical_views is not None else matrix,
-                fs_hz=fs_hz,
+        if detector_id is None:
+            raise ValueError(
+                "SQI requires a persisted detector_id when pulse is not supplied"
             )
-        except ValueError:
-            pulse = None
+        from ..peaks import detect_pulses
+
+        pulse = detect_pulses(
+            canonical_views if canonical_views is not None else matrix,
+            detector_id=detector_id,
+            fs_hz=fs_hz,
+            source_route=route,
+        )
     if pulse is None:
         peak_density, ppi_plausibility, ppi_stability = (float("nan"),) * 3
     else:

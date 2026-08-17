@@ -67,6 +67,10 @@ def signal_config() -> dict[str, object]:
                 "direct_source": "x_filter_0p2_to_8hz", "non_identity_source": "aligned_x_ar",
                 "non_identity_semantics": "rate_only", "additional_filter": "none",
             },
+            "peak_detector": {
+                "detector_id": "aboy_project_v1",
+                "failure_action": "fail_closed_no_fallback",
+            },
             "gap_repair": {
                 "method": "linear_inside_only", "max_gap_samples": 100,
                 "edge_extrapolation": False, "all_missing_channel_action": "reject_record",
@@ -88,7 +92,10 @@ def signal_config() -> dict[str, object]:
             },
             "normalization": {
                 "raw_ppg": "per_window_median_iqr_over_1p349_sd_finite",
-                "raw_imu": "outer_training_participant_only_robust_scaler_axes6",
+                "raw_imu": (
+                    "outer_training_participant_only_median_iqr_over_1p349_"
+                    "population_sd_then_one_axes6"
+                ),
                 "iqr_fallback": "standard_deviation_then_finite_one",
                 "clip_after_scale": [-8.0, 8.0],
             },

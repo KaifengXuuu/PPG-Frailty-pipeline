@@ -47,7 +47,9 @@ from .motion_runner import (
 )
 
 
-FORMAL_MOTION_ARTIFACT_SCHEMA = "ppg_frailty.formal_motion_model_artifact.v2"
+FORMAL_MOTION_ARTIFACT_SCHEMA = (
+    "ppg_frailty.formal_motion_model_artifact.imu_iqr_over_1p349.v3"
+)
 FORMAL_MOTION_TRAINER_SCHEMA = "ppg_frailty.formal_motion_trainer.v2"
 
 

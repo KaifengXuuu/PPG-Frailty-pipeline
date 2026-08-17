@@ -8,6 +8,8 @@ from ..contracts import FeatureVectorV1
 def validate_feature_vector(vector: FeatureVectorV1) -> FeatureVectorV1:
     """拒绝宽度漂移与伪造有效零 / Reject width drift and invalid encodings."""
 
+    from ..features.registry import default_registry
+
     values = np.asarray(vector.values, dtype=np.float64)
     validity = np.asarray(vector.validity, dtype=bool)
     if values.ndim != 1 or validity.shape != values.shape or len(vector.feature_names) != values.size:
@@ -18,6 +20,19 @@ def validate_feature_vector(vector: FeatureVectorV1) -> FeatureVectorV1:
         raise ValueError("valid physiological features must be finite")
     if np.any((~validity) & np.isfinite(values)):
         raise ValueError("unavailable physiological features must be NaN")
+    registry = default_registry()
+    allowed_schemas = {
+        registry.schema_version,
+        registry.schema_version + "+fold_vector_robust_v2",
+    }
+    if (
+        vector.schema_version not in allowed_schemas
+        or tuple(vector.feature_names) != registry.names
+        or vector.provenance.get("registry_sha256") != registry.sha256
+    ):
+        raise ValueError(
+            "FeatureVectorV1 uses a stale or non-formal registry/schema identity"
+        )
     return vector
 
 

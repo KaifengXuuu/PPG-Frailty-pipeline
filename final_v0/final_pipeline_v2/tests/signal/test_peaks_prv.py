@@ -7,6 +7,7 @@ import unittest
 import numpy as np
 
 from ppg_frailty.contracts import PulseResult, SignalRoute
+from ppg_frailty.peaks import CANONICAL_DETECTOR_ID
 from ppg_frailty.signal import (
     MIN_BASIC_RATE_PEAKS,
     MIN_TIME_DOMAIN_PRV_INTERVALS,
@@ -54,7 +55,10 @@ class PeakPrvTest(unittest.TestCase):
         time = np.arange(0, 20.0, 1.0 / 400.0)
         inverted = -np.sin(2.0 * np.pi * 1.25 * time)
         matrix = np.column_stack((inverted, 0.8 * inverted))
-        result = detect_pulses(matrix)
+        result = detect_pulses(
+            matrix,
+            detector_id=CANONICAL_DETECTOR_ID,
+        )
         self.assertGreaterEqual(result.peaks.size, 20)
         self.assertTrue(np.all(result.adjacency_mask))
         self.assertGreater(float(np.mean(result.valid_interval_mask)), 0.95)

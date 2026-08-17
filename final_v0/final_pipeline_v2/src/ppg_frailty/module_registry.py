@@ -56,6 +56,27 @@ PRV_BACKEND_MODULES = (
     ModuleDescriptor("rhenan_hrv", "prv_backend", "ppg_frailty.features.prv_backend_compare.evaluate_prv_backend", (), "legacy_function_comparison_only", "prv_backend_output", "separate legacy requirements; never enters classifier training"),
 )
 
+PEAK_DETECTOR_MODULES = (
+    ModuleDescriptor(
+        "aboy_project_v1",
+        "peak_detector",
+        "ppg_frailty.peaks.aboy_project",
+        ("raw", "feature_vector", "feature_matrix", "fusion"),
+        "canonical_project_aboy_inspired",
+        "signal",
+        "400 Hz, complete non-overlapping 10 s blocks, HRI-adaptive second-order band-pass, dual polarity; not an exact upstream Aboy++ reproduction",
+    ),
+    ModuleDescriptor(
+        "dual_polarity_prominence_v1_ablation",
+        "peak_detector",
+        "ppg_frailty.signal.peaks._detect_pulses_dual_polarity_ablation",
+        ("raw", "feature_vector", "feature_matrix", "fusion"),
+        "explicit_legacy_ablation_only",
+        "signal",
+        "numerically preserved whole-record fixed distance/prominence detector; never a fallback",
+    ),
+)
+
 MOTION_OPTION_MODULES = (
     ModuleDescriptor("sqi_only", "motion_option", "ppg_frailty.quality.motion.resolve_motion_option", (), "formal_default_motion_not_computed", "motion_contract", "V2-010 default; SQI remains independently off unless explicitly requested"),
     ModuleDescriptor("sqi_plus_motion_override", "motion_option", "ppg_frailty.quality.motion.resolve_motion_option", (), "registered_gate_closed_not_run", "motion_contract", "requires complete Frailty29 5x5 OOF evidence before PTT evaluation"),
@@ -168,6 +189,7 @@ ALL_MODULES = (
     REPRESENTATION_MODULES
     + ARTIFACT_MODULES
     + PRV_BACKEND_MODULES
+    + PEAK_DETECTOR_MODULES
     + MOTION_OPTION_MODULES
     + COMPARISON_PROFILE_MODULES
     + MODEL_MODULES
@@ -177,7 +199,10 @@ ALL_MODULES = (
 def list_modules(family: str = "all") -> list[dict[str, Any]]:
     """稳定排序导出模块 / Export modules in stable order."""
 
-    allowed = {"all", "representation", "artifact", "prv_backend", "motion_option", "comparison_profile", "model"}
+    allowed = {
+        "all", "representation", "artifact", "prv_backend", "peak_detector",
+        "motion_option", "comparison_profile", "model",
+    }
     if family not in allowed:
         raise ValueError(f"unknown module family: {family}")
     selected = ALL_MODULES if family == "all" else tuple(
@@ -191,6 +216,36 @@ def registry_sha256() -> str:
 
     encoded = json.dumps(list_modules(), sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def resolve_peak_detector_config(signal_section: Mapping[str, Any]) -> dict[str, Any]:
+    """Resolve exactly one persisted detector ID and fail closed on drift."""
+
+    signal_data = dict(signal_section)
+    raw = signal_data.get("peak_detector")
+    if not isinstance(raw, Mapping):
+        raise ValueError(
+            "signal.peak_detector must persist detector_id and failure_action"
+        )
+    data = dict(raw)
+    required = {"detector_id", "failure_action"}
+    if set(data) != required:
+        raise ValueError(
+            "signal.peak_detector key mismatch: "
+            f"missing={sorted(required-set(data))}, "
+            f"unknown={sorted(set(data)-required)}"
+        )
+    from .peaks.resolver import resolve_detector_id
+
+    detector_id = resolve_detector_id(str(data["detector_id"]))
+    if data["failure_action"] != "fail_closed_no_fallback":
+        raise ValueError(
+            "signal.peak_detector.failure_action must be fail_closed_no_fallback"
+        )
+    return {
+        "detector_id": detector_id,
+        "failure_action": "fail_closed_no_fallback",
+    }
 
 
 _ARTIFACT_CONFIG_TO_RUNTIME = {
@@ -592,6 +647,14 @@ def resolve_window_config(section: Mapping[str, Any]) -> dict[str, dict[str, Any
             raise ValueError(f"unsupported windows.{name}.padding")
         if raw and float(item["min_valid_fraction"]) != 1.0:
             raise ValueError("raw reference requires complete unpadded windows")
+        expected_seconds = (5.0, 2.5) if raw else (10.0, 5.0)
+        observed_seconds = (float(item["length_s"]), float(item["hop_s"]))
+        if observed_seconds != expected_seconds:
+            label = "raw_dl" if raw else "engineering"
+            raise ValueError(
+                f"windows.{label} must remain exactly "
+                f"{expected_seconds[0]:g} s / {expected_seconds[1]:g} s hop"
+            )
         cap = item["cap_per_file"]
         if cap is not None and (not isinstance(cap, int) or cap <= 0):
             raise ValueError(f"windows.{name}.cap_per_file must be null or positive int")

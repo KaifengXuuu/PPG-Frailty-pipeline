@@ -40,10 +40,14 @@ TOP_LEVEL_KEYS = {
 
 V2_SCHEMA_VERSION = "ppg_frailty.pipeline_config.v2"
 LEGACY_SCHEMA_VERSION = "ppg_frailty.pipeline_config.v1"
-V2_DECISION_PROFILE_SCHEMA = "ppg_frailty.v2_decision_profile.v1"
+V2_DECISION_PROFILE_SCHEMA = "ppg_frailty.v2_decision_profile.v2"
 V2_FORMAL_CATALOG_SCHEMA = "ppg_frailty.formal_experiment_catalog.v2"
 V2_FORMAL_ABLATION_PROFILES_SCHEMA = "ppg_frailty.formal_ablation_profiles.v2"
 V2_SPLIT_SEEDS = (42, 10042, 20042, 30042, 40042)
+FEATURE_REGISTRY_CONFIG_SCHEMA = "feature_vector_thesis_115_v2"
+FEATURE_VECTOR_CONFIG_SCHEMA = "feature_vector_thesis_115_v2"
+ENGINEERING_SEQUENCE_CONFIG_SCHEMA = "engineering_10s_hop5s_thesis_115_v2"
+ORDERED_MATRIX_CONFIG_SCHEMA = "ordered_feature_matrix_thesis_115_d_by_32_v2"
 def _strict_mapping(value: Any, name: str) -> dict[str, Any]:
     """验证对象类型 / Require a string-keyed mapping."""
 
@@ -196,7 +200,10 @@ def _validate_v2_signal_normalization(data: Mapping[str, Any]) -> None:
     )
     expected = {
         "raw_ppg": "per_window_median_iqr_over_1p349_sd_finite",
-        "raw_imu": "outer_training_participant_only_robust_scaler_axes6",
+        "raw_imu": (
+            "outer_training_participant_only_median_iqr_over_1p349_"
+            "population_sd_then_one_axes6"
+        ),
         "iqr_fallback": "standard_deviation_then_finite_one",
         "clip_after_scale": [-8.0, 8.0],
     }
@@ -204,6 +211,41 @@ def _validate_v2_signal_normalization(data: Mapping[str, Any]) -> None:
         raise ValueError(
             "formal frailty signal.normalization must use the canonical axes6 "
             "profile; motion9 is a separate motion-model augmentation"
+        )
+    imu = _strict_mapping(signal.get("imu"), "signal.imu")
+    exact_filter_contract = {
+        "sensor_lowpass_acc_hz": 20.0,
+        "sensor_lowpass_gyro_hz": 40.0,
+        "sensor_filter_order": 3,
+        "gravity_lowpass_hz": 0.3,
+        "gravity_filter_order": 4,
+    }
+    observed_filter_contract = {
+        name: imu.get(name) for name in exact_filter_contract
+    }
+    if observed_filter_contract != exact_filter_contract:
+        raise ValueError(
+            "formal signal.imu must keep third-order 20/40 Hz sensor LPFs "
+            "and the unchanged fourth-order 0.3 Hz gravity LPF"
+        )
+
+
+def _validate_v2_feature_schemas(data: Mapping[str, Any]) -> None:
+    """Reject stale engineering/registry matrix declarations in active configs."""
+
+    features = _strict_mapping(data["features"], "features")
+    expected = {
+        "registry_id": FEATURE_REGISTRY_CONFIG_SCHEMA,
+        "file_vector_schema": FEATURE_VECTOR_CONFIG_SCHEMA,
+        "engineering_sequence_schema": ENGINEERING_SEQUENCE_CONFIG_SCHEMA,
+        "matrix_schema": ORDERED_MATRIX_CONFIG_SCHEMA,
+        "matrix_k": 32,
+    }
+    observed = {name: features.get(name) for name in expected}
+    if observed != expected:
+        raise ValueError(
+            "formal feature schemas must declare the thesis 115-column engineering "
+            "sequence and frozen vector/matrix contracts"
         )
 
 
@@ -267,8 +309,15 @@ def _validate_v2_protocol(data: Mapping[str, Any]) -> None:
     if evaluation.get("independent_test_available") is not False:
         raise ValueError("the 29-participant cohort is OOF validation, not an independent test")
     _validate_v2_signal_normalization(data)
-    from .module_registry import validate_model_config
+    _validate_v2_feature_schemas(data)
+    from .module_registry import (
+        resolve_peak_detector_config,
+        resolve_window_config,
+        validate_model_config,
+    )
 
+    resolve_peak_detector_config(_strict_mapping(data["signal"], "signal"))
+    resolve_window_config(_strict_mapping(data["windows"], "windows"))
     validate_model_config(
         _strict_mapping(data["model"], "model"),
         str(data["representation_mode"]),
@@ -294,6 +343,7 @@ def _validate_formal_ablation_materialization(data: Mapping[str, Any]) -> None:
         float(signal["ppg_filter"]["high_hz"]),
     )
     gravity = str(signal["imu"]["gravity_method"])
+    detector_id = str(signal["peak_detector"]["detector_id"])
     balance_pair = (
         str(training["training_balance"]),
         str(data["aggregation"]["balance_line"]),
@@ -304,6 +354,7 @@ def _validate_formal_ablation_materialization(data: Mapping[str, Any]) -> None:
         ) != ("default_10", 10),
         "filter": filter_pair != (0.2, 8.0),
         "gravity": gravity != "calibrated_roll_pitch_ekf",
+        "peak_detector": detector_id != "aboy_project_v1",
         "aggregation": balance_pair
         != ("equal_role_families", "line_b_equal_role_families"),
         "fixed_kernel": (
@@ -331,7 +382,7 @@ def _validate_formal_ablation_materialization(data: Mapping[str, Any]) -> None:
         != "ppg_frailty.formal_ablation_materialization.v2"
         or identity["family"] not in {
             "deep_fixed_epoch", "direct_filter", "imu_gravity",
-            "fixed_kernel_samples", "aggregation_balance",
+            "fixed_kernel_samples", "aggregation_balance", "peak_detector",
         }
         or identity["single_factor_only"] is not True
         or identity["automatic_execution"] is not False
@@ -348,6 +399,7 @@ def _validate_formal_ablation_materialization(data: Mapping[str, Any]) -> None:
         "deep_fixed_epoch": {"epoch"},
         "direct_filter": {"filter"},
         "imu_gravity": {"gravity"},
+        "peak_detector": {"peak_detector"},
         "fixed_kernel_samples": {"fixed_kernel"},
         "aggregation_balance": {"aggregation"},
     }[family]
@@ -378,10 +430,18 @@ def _validate_formal_ablation_materialization(data: Mapping[str, Any]) -> None:
     elif family == "imu_gravity":
         expected = {
             "calibrated_roll_pitch_ekf": "calibrated_roll_pitch_ekf",
-            "imu_lpf_0p3hz_ablation": "low_pass_0p3hz",
+            "imu_lpf_0p3hz_ablation": "profile_a_lowpass_0p3hz",
         }.get(profile_id)
         if expected is None or gravity != expected:
             raise ValueError("IMU gravity materialization identity drift")
+    elif family == "peak_detector":
+        expected = {
+            "aboy_project_v1": "aboy_project_v1",
+            "dual_polarity_prominence_v1_ablation":
+                "dual_polarity_prominence_v1_ablation",
+        }.get(profile_id)
+        if expected is None or detector_id != expected:
+            raise ValueError("peak-detector materialization identity drift")
     elif family == "aggregation_balance":
         expected = {
             "role_aware_equal_roles": (
@@ -635,7 +695,7 @@ def load_formal_ablation_profiles(path: str | Path) -> dict[str, Any]:
         families,
         {
             "aggregation_balance", "deep_fixed_epoch", "direct_filter",
-            "imu_gravity", "fixed_kernel_samples",
+            "imu_gravity", "fixed_kernel_samples", "peak_detector",
         },
         context="ablation_profile_families",
     )
@@ -680,7 +740,25 @@ def load_formal_ablation_profiles(path: str | Path) -> dict[str, Any]:
         "silent_fallback_forbidden": True,
         "entries": [
             {"profile_id": "calibrated_roll_pitch_ekf", "method": "calibrated_roll_pitch_ekf", "catalog_role": "reference", "auto_run": False},
-            {"profile_id": "imu_lpf_0p3hz_ablation", "method": "low_pass_0p3hz", "catalog_role": "ablation", "auto_run": False},
+            {"profile_id": "imu_lpf_0p3hz_ablation", "method": "profile_a_lowpass_0p3hz", "catalog_role": "ablation", "auto_run": False},
+        ],
+    }
+    expected_peak_detector = {
+        "reference_profile_id": "aboy_project_v1",
+        "silent_fallback_forbidden": True,
+        "entries": [
+            {
+                "profile_id": "aboy_project_v1",
+                "detector_id": "aboy_project_v1",
+                "catalog_role": "reference",
+                "auto_run": False,
+            },
+            {
+                "profile_id": "dual_polarity_prominence_v1_ablation",
+                "detector_id": "dual_polarity_prominence_v1_ablation",
+                "catalog_role": "ablation",
+                "auto_run": False,
+            },
         ],
     }
     if families["aggregation_balance"] != expected_aggregation:
@@ -691,6 +769,8 @@ def load_formal_ablation_profiles(path: str | Path) -> dict[str, Any]:
         raise ValueError("direct filter profiles drifted")
     if families["imu_gravity"] != expected_imu:
         raise ValueError("IMU gravity profiles drifted")
+    if families["peak_detector"] != expected_peak_detector:
+        raise ValueError("peak detector profiles drifted")
     from .models.time_scale import build_fixed_kernel_resampling_cases
 
     expected_cases = [
@@ -746,7 +826,7 @@ def materialize_formal_ablation_config(
     catalog = load_formal_ablation_profiles(profiles_path)
     if family not in {
         "deep_fixed_epoch", "direct_filter", "imu_gravity",
-        "fixed_kernel_samples", "aggregation_balance",
+        "fixed_kernel_samples", "aggregation_balance", "peak_detector",
     }:
         raise ValueError("unknown formal ablation family")
     payload = base.to_dict()
@@ -814,9 +894,13 @@ def materialize_formal_ablation_config(
             )
         elif family == "imu_gravity":
             payload["signal"]["imu"]["gravity_method"] = (
-                "low_pass_0p3hz"
+                "profile_a_lowpass_0p3hz"
                 if selected["profile_id"] == "imu_lpf_0p3hz_ablation"
                 else "calibrated_roll_pitch_ekf"
+            )
+        elif family == "peak_detector":
+            payload["signal"]["peak_detector"]["detector_id"] = str(
+                selected["detector_id"]
             )
         else:
             is_line_b = selected["profile_id"] == "role_aware_equal_roles"

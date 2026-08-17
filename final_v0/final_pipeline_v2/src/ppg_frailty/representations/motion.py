@@ -14,6 +14,7 @@ from ..signal.motion_imu import (
     MotionImuResult,
 )
 from ..signal.views import CANONICAL_FS_HZ
+from .imu_transform import IQR_NORMAL_CONSISTENCY_DIVISOR
 
 
 MOTION_REFERENCE_PROFILE_ID = "motion_8ch_axes_reference_v2"
@@ -37,10 +38,12 @@ MOTION_HOP_SECONDS = 2.0
 MOTION_WINDOW_SAMPLES = 3200
 MOTION_HOP_SAMPLES = 800
 MOTION_REFERENCE_SCALER_SCHEMA = (
-    "ppg_frailty.motion_axes6_outer_train_median_iqr_population_sd.v2"
+    "ppg_frailty.motion_axes6_outer_train_median_"
+    "iqr_over_1p349_population_sd_then_one.v3"
 )
 MOTION_AUGMENTED_SCALER_SCHEMA = (
-    "ppg_frailty.motion_derived9_outer_train_median_iqr_population_sd.v2"
+    "ppg_frailty.motion_derived9_outer_train_median_"
+    "iqr_over_1p349_population_sd_then_one.v3"
 )
 MOTION_SCALER_SCHEMA = MOTION_REFERENCE_SCALER_SCHEMA
 
@@ -71,7 +74,7 @@ def motion_network_schema_payload(
     channel_schema, channel_units, imu_schema, _ = _profile_components(profile_id)
     is_augmentation = profile_id == MOTION_DERIVED_AUGMENTATION_PROFILE_ID
     return {
-        "schema_version": "ppg_frailty.motion_network_tensor.v2",
+        "schema_version": "ppg_frailty.motion_network_tensor.imu_iqr_over_1p349.v3",
         "profile_id": profile_id,
         "profile_role": (
             "named_derived_signal_augmentation_ablation"
@@ -87,8 +90,8 @@ def motion_network_schema_payload(
         "hop_samples": MOTION_HOP_SAMPLES,
         "ppg_normalization": "per_window_median_iqr_mad_then_one",
         "imu_normalization": (
-            "outer_training_participant_only_median_iqr_"
-            "population_sd_then_one"
+            "outer_training_participant_only_median_"
+            "iqr_over_1p349_population_sd_then_one"
         ),
         "imu_per_window_amplitude_normalization": False,
         "imu_channel_count": len(imu_schema),
@@ -233,6 +236,8 @@ def _scaler_hash(
             "scale": scale.tolist(),
             "valid_count": count.tolist(),
             "fitted_on_participant_ids": list(participant_ids),
+            "center_estimator": "median",
+            "scale_estimator": "iqr_over_1p349_then_population_sd_then_one",
             "per_window_imu_scaling": False,
         }
     )
@@ -327,7 +332,7 @@ def fit_motion_fold_imu_transform(
         count[channel] = samples.size
         center[channel] = float(np.median(samples))
         q25, q75 = np.percentile(samples, [25.0, 75.0])
-        candidate = float(q75 - q25)
+        candidate = float(q75 - q25) / IQR_NORMAL_CONSISTENCY_DIVISOR
         if not np.isfinite(candidate) or candidate <= 1e-12:
             candidate = float(np.std(samples, ddof=0))
         scale[channel] = (

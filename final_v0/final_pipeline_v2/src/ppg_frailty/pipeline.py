@@ -42,6 +42,7 @@ from .module_registry import (
     list_modules,
     registry_sha256,
     resolve_artifact_config,
+    resolve_peak_detector_config,
     resolve_window_config,
     validate_model_config,
 )
@@ -113,6 +114,7 @@ class PreflightReport:
     representation_mode: str
     model: dict[str, str]
     artifact: dict[str, Any]
+    peak_detector: dict[str, Any]
     manifest_path: str
     manifest_hash: str
     fold_path: str
@@ -196,6 +198,7 @@ def preflight_pipeline(
     config = load_config(_config_path(config_path, resolved_paths))
     payload = config.to_dict()
     artifact = resolve_artifact_config(config.section("artifact"))
+    peak_detector = resolve_peak_detector_config(config.section("signal"))
     windows = resolve_window_config(config.section("windows"))
     model = validate_model_config(config.section("model"), config.representation_mode)
     validate_epoch_selection(config.section("training"))
@@ -285,6 +288,7 @@ def preflight_pipeline(
         representation_mode=config.representation_mode,
         model=model,
         artifact=artifact,
+        peak_detector=peak_detector,
         manifest_path=manifest_path.relative_to(resolved_paths.pipeline_root).as_posix(),
         manifest_hash=sha256_file(manifest_path),
         fold_path=fold_path.relative_to(resolved_paths.pipeline_root).as_posix(),
@@ -463,9 +467,19 @@ def _run_real_smoke(
     # the entire five-minute file. / 12 秒同时覆盖工程窗与 heartbeat 最短门槛。
     record = _load_record(row, paths, max_samples=min(row.n_samples, 4_800))
     from .artifact import run_artifact_route
-    from .features.engineering import extract_engineering_features
-    from .peaks.aboy_project import detect_pulses
+    from .features.engineering import (
+        engineering_feature_names,
+        extract_engineering_features,
+    )
+    from .features.registry import default_registry, summarize_engineering
+    from .peaks import (
+        ABLATION_DETECTOR_ID,
+        detect_pulses_per_wavelength,
+        select_reference_wavelength,
+    )
+    from .peaks.aboy_project import DETECTOR_VERSION as CANONICAL_DETECTOR_VERSION
     from .representations.raw import build_raw_windows
+    from .signal.optical import extract_dual_optical
     from .signal.ppg_preprocess import build_signal_views
     from .signal.window_plan import WindowPlan
 
@@ -525,11 +539,37 @@ def _run_real_smoke(
     if route.result.status != "success" or route.views is None:
         raise RuntimeError(f"configured artifact route failed without fallback: {route.result.reasons}")
     resolved_views = route.views
-    profile_name = "raw_dl" if config.representation_mode in {"raw", "fusion"} else "engineering"
+    profile_name = (
+        "raw_dl"
+        if config.representation_mode in {"raw", "fusion"}
+        else "engineering"
+    )
     profile = report.window_profiles[profile_name]
     plan = WindowPlan(source_record_id=row.record_id, **profile)
     planned_windows = plan.plan(resolved_views.x_filter.shape[0], 400.0)
-    pulse = detect_pulses(resolved_views)
+    raw_plan = WindowPlan(
+        source_record_id=row.record_id,
+        **report.window_profiles["raw_dl"],
+    )
+    engineering_plan = WindowPlan(
+        source_record_id=row.record_id,
+        **report.window_profiles["engineering"],
+    )
+    raw_smoke = build_raw_windows(resolved_views, raw_plan)
+    engineering_smoke = extract_engineering_features(
+        resolved_views,
+        plan=engineering_plan,
+    )
+    engineering_values, engineering_validity = summarize_engineering(
+        engineering_smoke
+    )
+    pulses_per_wavelength = detect_pulses_per_wavelength(
+        resolved_views,
+        detector_id=report.peak_detector["detector_id"],
+    )
+    pulse = pulses_per_wavelength[
+        select_reference_wavelength(pulses_per_wavelength)
+    ]
     details: dict[str, Any] = {
         "record_id": row.record_id,
         "participant_id": row.participant_id,
@@ -557,9 +597,88 @@ def _run_real_smoke(
         "window_count": len(planned_windows),
         "detected_peak_count": int(pulse.peaks.size),
         "median_ppi_s": float(np.median(pulse.ppi_s[pulse.valid_interval_mask])),
+        "pulse_detector": {
+            "detector_id": report.peak_detector["detector_id"],
+            "reference_wavelength": pulse.wavelength,
+            "per_wavelength": {
+                wavelength: {
+                    "detector_version": str(result.detector_version),
+                    "detection_run_id": str(result.detection_run_id),
+                    "selected_polarity": int(result.selected_polarity),
+                    "block_hri_provenance_hash": str(
+                        result.block_hri_provenance_hash
+                    ),
+                    "detector_score": float(result.detector_score),
+                    "detector_coverage": float(result.detector_coverage),
+                    "detected_peak_count": int(result.peaks.size),
+                }
+                for wavelength, result in pulses_per_wavelength.items()
+            },
+        },
+        "canonical_parity_smoke": {
+            "detector_id": report.peak_detector["detector_id"],
+            "old_detector_invoked": any(
+                str(result.detector_id) == ABLATION_DETECTOR_ID
+                or str(result.detector_version) != CANONICAL_DETECTOR_VERSION
+                for result in pulses_per_wavelength.values()
+            ),
+            "imu_sensor_filters": dict(
+                resolved_views.metadata["imu_diagnostics"]["sensor_filters"]
+            ),
+            "imu_outer_train_scaler_identity": str(
+                signal_config["normalization"]["raw_imu"]
+            ),
+            "engineering_window_column_count": len(engineering_feature_names()),
+            "engineering_observed_shape": list(
+                engineering_smoke.sequence.values.shape
+            ),
+            "engineering_file_summary_field_count": len(engineering_values),
+            "engineering_file_summary_validity_field_count": len(
+                engineering_validity
+            ),
+            "raw_frailty_channel_count": int(raw_smoke.values.shape[1]),
+            "raw_frailty_shape": list(raw_smoke.values.shape),
+            "dual_optical_lag_limit_s": None,
+            "coherence_in_formal_registry": (
+                "optical.red_ir_cardiac_coherence"
+                in default_registry().names
+            ),
+            "manifest_sha256": report.manifest_hash,
+            "fold_registry_sha256": report.fold_hash,
+            "manifest_authority_sha256": report.manifest_authority_hash,
+            "fold_authority_payload_sha256": (
+                report.fold_authority_payload_hash
+            ),
+        },
     }
+    if resolved_views.route in {SignalRoute.DIRECT, SignalRoute.IDENTITY}:
+        optical = extract_dual_optical(
+            resolved_views.x_native,
+            resolved_views.x_filter,
+            pulses_per_wavelength,
+            route=resolved_views.route,
+        )
+        details["dual_optical"] = to_strict_json_value(
+            {
+                "schema_version": optical.schema_version,
+                "pairing": asdict(optical.pairing),
+                "beat_audit": [asdict(row) for row in optical.beat_audit],
+                "aggregate_values": optical.aggregate_values,
+                "aggregate_validity": optical.aggregate_validity,
+                "diagnostics": optical.diagnostics,
+            }
+        )
+        waveform_diagnostics = optical.diagnostics["waveform_agreement"]
+        details["canonical_parity_smoke"]["dual_optical_lag_limit_s"] = float(
+            waveform_diagnostics["max_lag_seconds"]
+        )
+    else:
+        details["dual_optical"] = {
+            "status": "not_applicable",
+            "reason": "non_identity_rate_only_route",
+        }
     if config.representation_mode in {"raw", "fusion"}:
-        raw = build_raw_windows(resolved_views, plan)
+        raw = raw_smoke
         details.update(
             {
                 "representation_shape": list(raw.values.shape),
@@ -570,7 +689,7 @@ def _run_real_smoke(
             }
         )
     else:
-        extraction = extract_engineering_features(resolved_views, plan=plan)
+        extraction = engineering_smoke
         details.update(
             {
                 "representation_shape": list(extraction.sequence.values.shape),
@@ -699,7 +818,7 @@ def run_artifact_comparison(
 
     from .artifact import get_reducer
     from .module_registry import resolve_artifact_module_id
-    from .peaks.aboy_project import detect_pulses
+    from .peaks import CANONICAL_DETECTOR_ID, detect_pulses
     from .peaks.pairing import match_events
 
     observed, imu, reference_times, reference_period = _synthetic_motion_fixture(duration_s, seed)
@@ -707,7 +826,10 @@ def run_artifact_comparison(
         """共享事件/HR 量化 / Shared event and HR quantitation."""
 
         try:
-            pulse = detect_pulses(values)
+            pulse = detect_pulses(
+                values,
+                detector_id=CANONICAL_DETECTOR_ID,
+            )
             match = match_events(reference_times, pulse.peak_timestamps_s, tolerance_s=0.15)
             valid_ppi = pulse.ppi_s[pulse.valid_interval_mask]
             if valid_ppi.size == 0:
@@ -751,6 +873,7 @@ def run_artifact_comparison(
         imu_processed=imu,
         fs_hz=400.0,
         config=SqiConfig(),
+        detector_id=CANONICAL_DETECTOR_ID,
     )
     quality_pass = quality.q_rate.state.value == "pass"
     quality_row: dict[str, Any] = {

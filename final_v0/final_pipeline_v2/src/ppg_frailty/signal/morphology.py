@@ -37,8 +37,12 @@ def require_direct_route(route: SignalRoute) -> None:
 
 
 def _polarity(pulse: PulseResult) -> float:
-    """从版本 provenance 读取检测极性 / Read detector polarity from provenance."""
+    """Read explicit detector polarity, retaining only a legacy fixture fallback."""
 
+    if pulse.detector_id:
+        if pulse.selected_polarity not in {-1, 1}:
+            raise ValueError("detector morphology requires explicit polarity -1 or +1")
+        return float(pulse.selected_polarity)
     marker = "polarity=-1"
     return -1.0 if marker in str(pulse.detector_version) else 1.0
 

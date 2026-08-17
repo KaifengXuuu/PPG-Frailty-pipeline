@@ -6,8 +6,10 @@ and function-only fixed-PPI backend comparisons.
 """
 
 from .engineering import (
+    ENGINEERING_SCHEMA_VERSION,
     EngineeringExtraction,
     FoldFeatureTransform,
+    engineering_welch_parameters,
     engineering_feature_names,
     extract_engineering_features,
     fit_fold_feature_transform,
@@ -29,6 +31,8 @@ from .prv_backend_compare import (
     run_prv_backend_comparison,
 )
 from .registry import (
+    FORMAL_REGISTRY_VERSION,
+    ORDERED_MATRIX_SCHEMA_VERSION,
     FeatureDefinition,
     FeatureRegistry,
     build_feature_vector,
@@ -39,6 +43,7 @@ from .registry import (
 
 __all__ = [
     "EngineeringExtraction",
+    "ENGINEERING_SCHEMA_VERSION",
     "PRV_BACKEND_COMPARISON_SCHEMA",
     "PrvBackendResult",
     "SUPPORTED_PRV_BACKENDS",
@@ -49,6 +54,7 @@ __all__ = [
     "FoldFeatureVectorTransform",
     "FoldTransformedFeatureBatch",
     "engineering_feature_names",
+    "engineering_welch_parameters",
     "extract_engineering_features",
     "fit_fold_feature_transform",
     "fit_fold_feature_vector_transform",
@@ -57,6 +63,8 @@ __all__ = [
     "transform_feature_vector_batch",
     "FeatureDefinition",
     "FeatureRegistry",
+    "FORMAL_REGISTRY_VERSION",
+    "ORDERED_MATRIX_SCHEMA_VERSION",
     "default_registry",
     "summarize_engineering",
     "build_feature_vector",

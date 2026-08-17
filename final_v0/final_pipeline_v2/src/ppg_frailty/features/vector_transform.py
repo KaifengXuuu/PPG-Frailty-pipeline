@@ -21,7 +21,9 @@ from .registry import default_registry
 
 
 TRANSFORM_SCHEMA_VERSION = "feature_vector_outer_train_median_iqr_v2"
-FUSION_TENSOR_SCHEMA_VERSION = "feature_vector_values_plus_validity_v2"
+FUSION_TENSOR_SCHEMA_VERSION = (
+    "feature_vector_thesis_115_values_plus_validity_v3"
+)
 
 
 def _artifact_hash(
@@ -113,8 +115,19 @@ class FoldTransformedFeatureBatch:
             validate_feature_vector(context)
             if context.provenance.get("fold_standardized") is not True:
                 raise ValueError("batch context is not fold standardized")
-        if self.schema_version != FUSION_TENSOR_SCHEMA_VERSION:
-            raise ValueError("unknown fusion feature tensor schema")
+        registry = default_registry()
+        expected_schema = registry.names + tuple(
+            f"{name}.validity" for name in registry.names
+        )
+        if (
+            self.schema_version != FUSION_TENSOR_SCHEMA_VERSION
+            or tuple(self.tensor_schema) != expected_schema
+            or self.provenance.get("registry_sha256") != registry.sha256
+            or self.provenance.get("fold_standardized") is not True
+            or self.provenance.get("feature_vector_transform_schema")
+            != TRANSFORM_SCHEMA_VERSION
+        ):
+            raise ValueError("stale or inconsistent fusion feature tensor schema")
 
 
 def fit_fold_feature_vector_transform(

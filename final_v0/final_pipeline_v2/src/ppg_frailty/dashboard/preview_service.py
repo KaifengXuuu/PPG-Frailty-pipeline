@@ -404,9 +404,12 @@ class PipelinePreviewService:
 
         from ppg_frailty.data.windows import WindowPlan
         from ppg_frailty.features.engineering import extract_engineering_features
+        from ppg_frailty.module_registry import resolve_peak_detector_config
+        from ppg_frailty.peaks import select_reference_wavelength
         from ppg_frailty.signal import (
             compute_prv,
-            detect_pulses,
+            detect_pulses_per_wavelength,
+            extract_dual_optical,
             extract_morphology,
         )
 
@@ -461,7 +464,17 @@ class PipelinePreviewService:
 
         pulse = None
         try:
-            pulse = detect_pulses(views)
+            detector = resolve_peak_detector_config(
+                resolved_config.get("signal", {})
+            )
+            pulses_per_wavelength = detect_pulses_per_wavelength(
+                views,
+                detector_id=detector["detector_id"],
+            )
+            pulse = pulses_per_wavelength[
+                select_reference_wavelength(pulses_per_wavelength)
+            ]
+            add("pulse_ppi", "detector_id", detector["detector_id"])
             add("pulse_ppi", "wavelength", pulse.wavelength)
             add("pulse_ppi", "detected_peak_count", int(pulse.peaks.size))
             add(
@@ -475,6 +488,34 @@ class PipelinePreviewService:
                 int(np.count_nonzero(pulse.valid_interval_mask)),
             )
             add("pulse_ppi", "detection_run_id", pulse.detection_run_id)
+            for wavelength in ("RED", "IR"):
+                channel_pulse = pulses_per_wavelength[wavelength]
+                prefix = f"{wavelength.lower()}."
+                add(
+                    "pulse_ppi",
+                    prefix + "detected_peak_count",
+                    int(channel_pulse.peaks.size),
+                )
+                add(
+                    "pulse_ppi",
+                    prefix + "accepted_peak_count",
+                    int(np.count_nonzero(channel_pulse.accepted_peak_mask)),
+                )
+                add(
+                    "pulse_ppi",
+                    prefix + "selected_polarity",
+                    int(channel_pulse.selected_polarity),
+                )
+                add(
+                    "pulse_ppi",
+                    prefix + "detector_score",
+                    float(channel_pulse.detector_score),
+                )
+                add(
+                    "pulse_ppi",
+                    prefix + "detector_coverage",
+                    float(channel_pulse.detector_coverage),
+                )
             prv = compute_prv(
                 pulse,
                 observation_duration_s=duration_s,
@@ -490,6 +531,46 @@ class PipelinePreviewService:
                     "available" if prv.validity.get(name, False) else "unavailable",
                 )
             add("pulse_ppi", "prv_reasons", list(prv.reasons))
+            if views.route.value in {"direct_x_filter", "identity_direct"}:
+                optical = extract_dual_optical(
+                    views.x_native,
+                    views.x_filter,
+                    pulses_per_wavelength,
+                    route=views.route,
+                )
+                add(
+                    "dual_optical",
+                    "schema_version",
+                    optical.schema_version,
+                )
+                add(
+                    "dual_optical",
+                    "reference_wavelength",
+                    optical.pairing.reference_wavelength,
+                )
+                add(
+                    "dual_optical",
+                    "paired_cycle_count",
+                    len(optical.pairing.paired_rows),
+                )
+                add(
+                    "dual_optical",
+                    "paired_valid_optical_count",
+                    int(
+                        sum(
+                            row.optical_valid
+                            for row in optical.beat_audit
+                        )
+                    ),
+                )
+                for name, value in sorted(optical.aggregate_values.items()):
+                    valid = bool(optical.aggregate_validity[name])
+                    add(
+                        "dual_optical",
+                        name,
+                        value if valid else None,
+                        "available" if valid else "unavailable",
+                    )
         except Exception as exc:  # Preview keeps the module-local failure visible.
             add(
                 "pulse_ppi",

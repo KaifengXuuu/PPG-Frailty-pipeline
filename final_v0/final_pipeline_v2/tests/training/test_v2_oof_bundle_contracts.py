@@ -742,7 +742,7 @@ class FinalRefitContracts(unittest.TestCase):
             },
             "quality": {"mode": "off", "supervised_route_ready": False},
             "artifact": {"reducer": "identity", "reducer_version": "identity_v1"},
-            "features": {"registry_id": "feature_registry_v2"},
+            "features": {"registry_id": "feature_vector_thesis_115_v2"},
             "model": {"variant": "final_refit_contract"},
             "training": {"training_balance": "equal_files"},
             "aggregation": {

@@ -9,6 +9,7 @@ import numpy as np
 
 from ppg_frailty.signal.motion_imu import (
     CALIBRATED_ROLL_PITCH_EKF_PROFILE_ID,
+    MOTION_IMU_CALIBRATION_SCHEMA,
     MOTION_IMU_CHANNEL_SCHEMA,
     PROFILE_A_LPF_ID,
     PTT_STATIC_CALIBRATION_ROLE,
@@ -68,6 +69,7 @@ class MotionImuTests(unittest.TestCase):
             list(self.config.observation_covariance_diagonal_rad2),
         )
         self.assertFalse(result.diagnostics["silent_fallback"])
+        self.assertEqual(result.diagnostics["sensor_filters"]["order"], 3)
         for name in (
             "source_acceleration_sha256",
             "source_gyroscope_sha256",
@@ -97,6 +99,26 @@ class MotionImuTests(unittest.TestCase):
         nonfinite_gravity[0, 0] = np.nan
         with self.assertRaisesRegex(ValueError, "fully finite"):
             replace(result, gravity_mps2=nonfinite_gravity).validate()
+
+    def test_sensor_lpf_order3_is_required_and_stale_calibration_is_rejected(self) -> None:
+        self.assertEqual(self.config.sensor_filter_order, 3)
+        with self.assertRaisesRegex(ValueError, "filter configuration"):
+            replace(self.config, sensor_filter_order=4).validate()
+        for field, value in (
+            ("accelerometer_lowpass_hz", 30.0),
+            ("gyroscope_lowpass_hz", 50.0),
+            ("gravity_lowpass_hz", 0.5),
+            ("gravity_filter_order", 3),
+        ):
+            with self.subTest(config_field=field):
+                with self.assertRaisesRegex(ValueError, "filter configuration"):
+                    replace(self.config, **{field: value}).validate()
+        self.assertEqual(self.calibration.schema_version, MOTION_IMU_CALIBRATION_SCHEMA)
+        with self.assertRaisesRegex(ValueError, "calibration schema drift"):
+            replace(
+                self.calibration,
+                schema_version="ppg_frailty.motion_imu_calibration.v2",
+            ).validate()
 
     def test_public_signal_facade_uses_explicit_calibration_without_fallback(self) -> None:
         time = np.arange(self.samples, dtype=np.float64) / self.fs
@@ -128,6 +150,10 @@ class MotionImuTests(unittest.TestCase):
                     "non_identity_semantics": "rate_only",
                     "additional_filter": "none",
                 },
+                "peak_detector": {
+                    "detector_id": "aboy_project_v1",
+                    "failure_action": "fail_closed_no_fallback",
+                },
                 "gap_repair": {
                     "method": "linear_inside_only",
                     "max_gap_samples": 100,
@@ -140,7 +166,7 @@ class MotionImuTests(unittest.TestCase):
                     "comparison_method": "profile_a_lowpass_0p3hz",
                     "sensor_lowpass_acc_hz": 20.0,
                     "sensor_lowpass_gyro_hz": 40.0,
-                    "sensor_filter_order": 4,
+                    "sensor_filter_order": 3,
                     "gravity_lowpass_hz": 0.3,
                     "gravity_filter_order": 4,
                     "calibration_start_s": 0.2,
@@ -165,7 +191,10 @@ class MotionImuTests(unittest.TestCase):
                 },
                 "normalization": {
                     "raw_ppg": "per_window_median_iqr_over_1p349_sd_finite",
-                    "raw_imu": "outer_training_participant_only_robust_scaler_axes6",
+                    "raw_imu": (
+                        "outer_training_participant_only_median_iqr_over_1p349_"
+                        "population_sd_then_one_axes6"
+                    ),
                     "iqr_fallback": "standard_deviation_then_finite_one",
                     "clip_after_scale": [-8.0, 8.0],
                 },
@@ -238,6 +267,13 @@ class MotionImuTests(unittest.TestCase):
         )
         self.assertEqual(lpf.profile_id, PROFILE_A_LPF_ID)
         self.assertEqual(lpf.diagnostics["executed_as"], "named_ablation_only")
+        lpf.validate()
+        with self.assertRaisesRegex(ValueError, "stale or unknown"):
+            replace(lpf, profile_id="profile_a_sensor_lpf_order4_stale").validate()
+        mismatched_diagnostics = dict(lpf.diagnostics)
+        mismatched_diagnostics["profile_id"] = CALIBRATED_ROLL_PITCH_EKF_PROFILE_ID
+        with self.assertRaisesRegex(ValueError, "profile identity drift"):
+            replace(lpf, diagnostics=mismatched_diagnostics).validate()
         broken = self.acc_g.copy()
         broken[10, 0] = np.nan
         with self.assertRaisesRegex(ValueError, "finite"):

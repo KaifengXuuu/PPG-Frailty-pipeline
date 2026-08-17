@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 import numpy as np
-from scipy import signal, stats
+from scipy import integrate, signal, stats
 
 from ..contracts import EngineeringFeatureSequence, SignalRoute
 from ..data.windows import WindowPlan
@@ -29,6 +29,11 @@ PPG_SPECTRAL_STATISTICS = (
 )
 PPG_BANDS = ((0.2, 0.5), (0.5, 3.0), (3.0, 8.0))
 IMU_BANDS = ((0.1, 0.5), (0.5, 3.0), (3.0, 8.0), (8.0, 20.0))
+ENGINEERING_SCHEMA_VERSION = "engineering_10s_hop5s_thesis_115_v2"
+WELCH_WINDOW = "hann"
+WELCH_MAX_SEGMENT_SAMPLES = 2048
+WELCH_MIN_SEGMENT_SAMPLES = 64
+WELCH_SECONDS = 4.0
 
 
 @dataclass(frozen=True)
@@ -51,6 +56,56 @@ class FoldFeatureTransform:
     fitted_on_participant_ids: tuple[str, ...]
 
 
+def validate_engineering_extraction(
+    extraction: EngineeringExtraction,
+    *,
+    fold_transformed: bool,
+) -> None:
+    """Reject stale or structurally inconsistent engineering sequences."""
+
+    if not isinstance(extraction, EngineeringExtraction):
+        raise TypeError("engineering input must be an EngineeringExtraction")
+    sequence = extraction.sequence
+    values = np.asarray(sequence.values)
+    validity = np.asarray(extraction.value_validity)
+    starts = np.asarray(sequence.start_samples)
+    row_mask = np.asarray(sequence.valid_row_mask)
+    names = engineering_feature_names()
+    expected_version = ENGINEERING_SCHEMA_VERSION + (
+        "+fold_robust_v1" if fold_transformed else ""
+    )
+    if (
+        tuple(sequence.channel_schema) != names
+        or sequence.schema_version != expected_version
+        or values.ndim != 2
+        or values.shape[1] != len(names)
+        or validity.shape != values.shape
+        or starts.shape != (values.shape[0],)
+        or row_mask.shape != (values.shape[0],)
+    ):
+        raise ValueError("engineering extraction schema/shape is stale or inconsistent")
+
+
+def engineering_welch_parameters(sample_count: int, fs_hz: float) -> tuple[int, int]:
+    """Return the frozen Welch segment and overlap sizes."""
+
+    count = int(sample_count)
+    sampling_rate = float(fs_hz)
+    if count <= 0 or not np.isfinite(sampling_rate) or sampling_rate <= 0.0:
+        raise ValueError("Welch sample count and sampling rate must be positive")
+    nperseg = min(
+        count,
+        max(
+            WELCH_MIN_SEGMENT_SAMPLES,
+            min(
+                WELCH_MAX_SEGMENT_SAMPLES,
+                int(round(WELCH_SECONDS * sampling_rate)),
+            ),
+        ),
+    )
+    return nperseg, nperseg // 2
+
+
 def _entropy(power: np.ndarray) -> float:
     """Shannon entropy / log(bin count) / Normalized Shannon spectral entropy."""
 
@@ -58,14 +113,22 @@ def _entropy(power: np.ndarray) -> float:
     if total <= 0.0 or power.size < 2:
         return float("nan")
     distribution = power / total
-    return float(-np.sum(distribution * np.log(distribution + 1e-15)) / np.log(distribution.size))
+    positive = distribution > 0.0
+    return float(
+        -np.sum(distribution[positive] * np.log(distribution[positive]))
+        / np.log(distribution.size)
+    )
 
 
 def _band_power(frequencies: np.ndarray, power: np.ndarray, low: float, high: float) -> float:
     """Welch band integral / Welch 频带积分。"""
 
     mask = (frequencies >= low) & (frequencies <= high)
-    return float(np.trapz(power[mask], frequencies[mask])) if np.count_nonzero(mask) >= 2 else float("nan")
+    return (
+        float(integrate.trapezoid(power[mask], frequencies[mask]))
+        if np.count_nonzero(mask) >= 2
+        else float("nan")
+    )
 
 
 def _one_channel_features(
@@ -101,12 +164,17 @@ def _one_channel_features(
     )
     start, stop = max(runs, key=lambda bounds: bounds[1] - bounds[0])
     spectral_x = source[start:stop]
+    nperseg, noverlap = engineering_welch_parameters(spectral_x.size, fs_hz)
     frequencies, power = signal.welch(
         spectral_x,
         fs=fs_hz,
-        nperseg=min(1024, spectral_x.size),
+        window=WELCH_WINDOW,
+        nperseg=nperseg,
+        noverlap=noverlap,
+        return_onesided=True,
     )
-    usable = (frequencies >= bands[0][0]) & (frequencies <= bands[-1][1])
+    if np.any(power < 0.0):
+        raise RuntimeError("Welch returned a negative one-sided PSD")
     features = [
         float(np.mean(x)),
         float(np.std(x, ddof=0)),
@@ -117,38 +185,33 @@ def _one_channel_features(
         float(stats.kurtosis(x, fisher=False, bias=False)),
     ]
     if include_spectral_summary:
-        usable_frequency = frequencies[usable]
-        usable_power = power[usable]
         total_power = (
-            float(np.trapz(usable_power, usable_frequency))
-            if usable_frequency.size >= 2
+            float(integrate.trapezoid(power, frequencies))
+            if frequencies.size >= 2
             else float("nan")
         )
         positive_power = (
-            usable_power.size > 0
-            and np.isfinite(usable_power).all()
-            and float(np.sum(usable_power)) > 0.0
+            power.size > 1
+            and np.isfinite(power).all()
+            and float(np.sum(power)) > 0.0
         )
         dominant_frequency = (
-            float(usable_frequency[int(np.argmax(usable_power))])
+            float(frequencies[int(np.argmax(power))])
             if positive_power
             else float("nan")
         )
         spectral_centroid = (
             float(
-                np.trapz(
-                    usable_frequency * usable_power,
-                    usable_frequency,
-                )
-                / total_power
+                np.sum(frequencies * power)
+                / (float(np.sum(power)) + np.finfo(np.float64).eps)
             )
-            if positive_power and np.isfinite(total_power) and total_power > 0.0
+            if positive_power
             else float("nan")
         )
         features.extend(
             (
                 total_power,
-                _entropy(usable_power),
+                _entropy(power),
                 dominant_frequency,
                 spectral_centroid,
             )
@@ -167,31 +230,81 @@ def engineering_feature_names() -> tuple[str, ...]:
             f"{channel}.{statistic}" for statistic in PPG_SPECTRAL_STATISTICS
         )
         names.extend(f"{channel}.bandpower_{low:g}_{high:g}_hz" for low, high in PPG_BANDS)
+    for channel in ("acc_magnitude", "angular_rate_magnitude", "jerk_magnitude"):
+        names.extend(f"{channel}.{statistic}" for statistic in TIME_STATISTICS)
+        names.extend(
+            f"{channel}.{statistic}" for statistic in PPG_SPECTRAL_STATISTICS
+        )
+        names.extend(f"{channel}.bandpower_{low:g}_{high:g}_hz" for low, high in IMU_BANDS)
     for channel in (
         "acc_dynamic_x", "acc_dynamic_y", "acc_dynamic_z",
         "gyro_x", "gyro_y", "gyro_z",
     ):
         names.extend(f"{channel}.{statistic}" for statistic in TIME_STATISTICS)
-        names.extend(f"{channel}.bandpower_{low:g}_{high:g}_hz" for low, high in IMU_BANDS)
-    return tuple(names)
+    frozen = tuple(names)
+    if len(frozen) != 115 or len(set(frozen)) != 115:
+        raise RuntimeError("canonical engineering schema must contain 115 unique columns")
+    return frozen
 
 
-def _imu_columns(views: CanonicalSignalViews) -> list[np.ndarray]:
-    """按 frailty 顺序取六个 IMU 轴 / Read the six ordered frailty IMU axes."""
+def _imu_columns(views: CanonicalSignalViews) -> list[tuple[np.ndarray, bool]]:
+    """取 A/Omega/J 及六轴 / Read A/Omega/J followed by six measured axes."""
 
     required = (
         "dynamic_acc_mps2",
         "gyro_rads",
+        "dynamic_magnitude",
+        "gyro_magnitude",
+        "jerk_magnitude",
     )
     missing = [key for key in required if key not in views.imu_processed]
     if missing:
         raise ValueError("missing processed IMU fields: " + ",".join(missing))
     dynamic = np.asarray(views.imu_processed["dynamic_acc_mps2"], dtype=np.float64)
     gyro = np.asarray(views.imu_processed["gyro_rads"], dtype=np.float64)
+    acc_magnitude = np.asarray(
+        views.imu_processed["dynamic_magnitude"], dtype=np.float64
+    )
+    gyro_magnitude = np.asarray(
+        views.imu_processed["gyro_magnitude"], dtype=np.float64
+    )
+    jerk_magnitude = np.asarray(
+        views.imu_processed["jerk_magnitude"], dtype=np.float64
+    )
     if dynamic.shape != gyro.shape or dynamic.shape != (views.x_filter.shape[0], 3):
         raise ValueError("processed IMU axes lost PPG alignment")
+    expected_scalar_shape = (views.x_filter.shape[0],)
+    if any(
+        item.shape != expected_scalar_shape
+        for item in (acc_magnitude, gyro_magnitude, jerk_magnitude)
+    ):
+        raise ValueError("processed IMU magnitude signals lost PPG alignment")
+    if not np.allclose(
+        acc_magnitude,
+        np.linalg.norm(dynamic, axis=1),
+        rtol=1e-10,
+        atol=1e-12,
+        equal_nan=True,
+    ):
+        raise ValueError("canonical acceleration magnitude differs from dynamic axes")
+    if not np.allclose(
+        gyro_magnitude,
+        np.linalg.norm(gyro, axis=1),
+        rtol=1e-10,
+        atol=1e-12,
+        equal_nan=True,
+    ):
+        raise ValueError("canonical angular-rate magnitude differs from gyro axes")
     return [
-        dynamic[:, 0], dynamic[:, 1], dynamic[:, 2], gyro[:, 0], gyro[:, 1], gyro[:, 2],
+        (acc_magnitude, True),
+        (gyro_magnitude, True),
+        (jerk_magnitude, True),
+        (dynamic[:, 0], False),
+        (dynamic[:, 1], False),
+        (dynamic[:, 2], False),
+        (gyro[:, 0], False),
+        (gyro[:, 1], False),
+        (gyro[:, 2], False),
     ]
 
 
@@ -208,6 +321,29 @@ def extract_engineering_features(
 
     views.validate()
     selected_plan = plan
+    expected_plan = (
+        10.0,
+        5.0,
+        "start",
+        "reject",
+        False,
+        None,
+        "not_applicable",
+    )
+    observed_plan = (
+        float(selected_plan.window_seconds),
+        float(selected_plan.hop_seconds),
+        selected_plan.end_alignment,
+        selected_plan.short_record_action,
+        selected_plan.include_padded_tail,
+        selected_plan.max_windows,
+        selected_plan.cap_policy,
+    )
+    if observed_plan != expected_plan:
+        raise ValueError(
+            "engineering extraction requires the frozen complete-window "
+            "10 s / 5 s-hop WindowPlan"
+        )
     record_id = str(views.metadata.get("record_id", ""))
     if not record_id or selected_plan.source_record_id != record_id:
         raise ValueError("WindowPlan source_record_id must exactly match signal metadata")
@@ -245,12 +381,12 @@ def extract_engineering_features(
             row.extend([float("nan")] * (2 * unavailable))
             row_validity.extend([False] * (2 * unavailable))
             reasons.append("non_identity_ppg_engineering_unavailable")
-        for channel in imu_columns:
+        for channel, include_spectral_summary in imu_columns:
             values, validity = _one_channel_features(
                 channel[start:stop],
                 fs_hz=CANONICAL_FS_HZ,
-                bands=IMU_BANDS,
-                include_spectral_summary=False,
+                bands=IMU_BANDS if include_spectral_summary else (),
+                include_spectral_summary=include_spectral_summary,
             )
             row.extend(values)
             row_validity.extend(validity)
@@ -266,7 +402,7 @@ def extract_engineering_features(
         start_samples=np.asarray(starts, dtype=np.int64),
         valid_row_mask=np.ones(len(rows), dtype=bool),
         channel_schema=names,
-        schema_version="engineering_10s_hop5s_workflow_v1",
+        schema_version=ENGINEERING_SCHEMA_VERSION,
     )
     return EngineeringExtraction(
         sequence=sequence,
@@ -291,6 +427,8 @@ def fit_fold_feature_transform(
     items = tuple(extractions)
     if not items:
         raise ValueError("at least one train extraction is required")
+    for item in items:
+        validate_engineering_extraction(item, fold_transformed=False)
     names = items[0].sequence.channel_schema
     if any(item.sequence.channel_schema != names for item in items):
         raise ValueError("engineering schemas differ across train records")
@@ -313,7 +451,17 @@ def transform_engineering(
 ) -> EngineeringExtraction:
     """应用 train-only 变换，保持 unavailable=NaN / Apply without imputing unavailable slots."""
 
-    if extraction.sequence.channel_schema != transform.feature_names:
+    validate_engineering_extraction(extraction, fold_transformed=False)
+    expected_names = engineering_feature_names()
+    if (
+        extraction.sequence.channel_schema != transform.feature_names
+        or transform.feature_names != expected_names
+        or np.asarray(transform.center).shape != (len(expected_names),)
+        or np.asarray(transform.scale).shape != (len(expected_names),)
+        or not np.isfinite(transform.center).all()
+        or not np.isfinite(transform.scale).all()
+        or np.any(np.asarray(transform.scale) <= 0.0)
+    ):
         raise ValueError("transform schema differs from engineering sequence")
     values = np.asarray(extraction.sequence.values, dtype=np.float64).copy()
     valid = np.asarray(extraction.value_validity, dtype=bool)
