@@ -178,6 +178,25 @@ class ExperimentRunnerTest(unittest.TestCase):
         )
         labels = np.asarray([0, 0, 1, 1, 2, 2])
         participants = tuple(f'train_{index}' for index in range(values.shape[0]))
+        options = {
+            'logistic_regression': {
+                'logistic_c': 1.0,
+                'logistic_max_iter': 5000,
+                'logistic_solver': 'lbfgs',
+            },
+            'rbf_svm': {
+                'svm_kernel': 'rbf',
+                'svm_probability': True,
+                'svm_c': 1.0,
+                'svm_gamma': 'scale',
+            },
+            'extra_trees': {
+                'extra_trees_n_estimators': 500,
+                'extra_trees_n_jobs': 1,
+                'extra_trees_max_features': 'sqrt',
+                'extra_trees_min_samples_leaf': 1,
+            },
+        }
         for model_id in ('logistic_regression', 'rbf_svm', 'extra_trees'):
             with self.subTest(model_id=model_id), warnings.catch_warnings():
                 warnings.simplefilter('error')
@@ -185,6 +204,7 @@ class ExperimentRunnerTest(unittest.TestCase):
                     model_id,
                     ('observed_a', 'route_specific_empty', 'observed_b'),
                     seed=42,
+                    **options[model_id],
                 )
                 model.fit(values, labels, participant_ids=participants)
                 transformed = model.pipeline.named_steps['imputer'].transform(values)

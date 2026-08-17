@@ -81,6 +81,7 @@ class RocketAndFusionTests(unittest.TestCase):
         model = FeatureVectorBaseline(
             "logistic_regression",
             ("a", "b", "c"),
+            logistic_c=1.0,
             logistic_max_iter=5000,
             logistic_solver="lbfgs",
         )
@@ -88,6 +89,39 @@ class RocketAndFusionTests(unittest.TestCase):
         self.assertEqual(model.predict_proba(x).shape, (9, 3))
         with self.assertRaises(ValueError):
             model.predict_proba(x[:, :2])
+
+    def test_sparse_screening_parameters_reach_sklearn_estimators(self) -> None:
+        """The bounded search fields must alter the actual estimator."""
+
+        logistic = FeatureVectorBaseline(
+            "logistic_regression",
+            ("a", "b"),
+            logistic_c=10.0,
+            logistic_max_iter=5000,
+            logistic_solver="lbfgs",
+        )
+        self.assertEqual(logistic.pipeline.named_steps["model"].C, 10.0)
+
+        trees = FeatureVectorBaseline(
+            "extra_trees",
+            ("a", "b"),
+            extra_trees_n_estimators=200,
+            extra_trees_n_jobs=1,
+            extra_trees_max_features=0.5,
+            extra_trees_min_samples_leaf=5,
+        )
+        estimator = trees.pipeline.named_steps["model"]
+        self.assertEqual(estimator.max_features, 0.5)
+        self.assertEqual(estimator.min_samples_leaf, 5)
+        with self.assertRaisesRegex(ValueError, "max_features"):
+            FeatureVectorBaseline(
+                "extra_trees",
+                ("a", "b"),
+                extra_trees_n_estimators=200,
+                extra_trees_n_jobs=1,
+                extra_trees_max_features="auto",
+                extra_trees_min_samples_leaf=1,
+            )
 
     def test_file_features_are_encoded_once_per_file(self) -> None:
         """English: File features never acquire a window dimension.

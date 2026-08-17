@@ -11,7 +11,6 @@ folds, or overwrites.
 from __future__ import annotations
 
 import argparse
-import copy
 import hashlib
 import json
 import os
@@ -19,7 +18,6 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Mapping
 
 import yaml
 
@@ -27,107 +25,14 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from ppg_frailty.catalog import resolved_catalog_payloads  # noqa: E402
 from ppg_frailty.config import (  # noqa: E402
     canonical_json_bytes,
-    load_formal_ablation_profiles,
     load_formal_experiment_catalog,
     validate_config_payload,
 )
 
 
-BASE_CONFIGS = {
-    "raw": "reference_static_role_aware_v2.yaml",
-    "feature_vector": "reference_static_feature_vector_v2.yaml",
-    "feature_matrix": "reference_static_feature_matrix_v2.yaml",
-    "fusion": "reference_static_fusion_v2.yaml",
-}
-
-
-def _mapping(value: Any, context: str) -> dict[str, Any]:
-    if not isinstance(value, Mapping):
-        raise ValueError(f"{context} must be a mapping")
-    return dict(value)
-
-
-def _load_yaml(path: Path) -> dict[str, Any]:
-    return _mapping(yaml.safe_load(path.read_text(encoding="utf-8")), str(path))
-
-
-def _line_sections(line: str) -> tuple[dict[str, Any], dict[str, Any]]:
-    if line not in {"line_a", "line_b"}:
-        raise ValueError("line must be line_a or line_b")
-    source = _load_yaml(ROOT / "configs/reference_static_feature_vector_v2.yaml")
-    training = copy.deepcopy(source["training"])
-    aggregation = copy.deepcopy(source["aggregation"])
-    if line == "line_a":
-        training["training_balance"] = "equal_files"
-        aggregation.update(
-            {
-                "balance_line": "line_a_equal_files",
-                "hierarchy": ["window", "file", "participant"],
-                "window_to_file": "ordinary_mean",
-                "file_to_role": "not_applicable",
-                "role_to_participant": "not_applicable",
-                "missing_role_policy": "not_applicable",
-                "quality_weighting": False,
-                "direct_all_window_participant_mean": False,
-            }
-        )
-    return training, aggregation
-
-
-def resolved_catalog_payloads(
-    *,
-    line: str,
-    catalog_path: Path | None = None,
-) -> tuple[dict[str, Any], ...]:
-    """Return all 17 fully resolved configs without writing or executing them."""
-
-    catalog = load_formal_experiment_catalog(
-        catalog_path or ROOT / "configs/formal_experiment_catalog_v2.yaml"
-    )
-    ablation_catalog = (
-        load_formal_ablation_profiles(
-            ROOT / "configs/formal_ablation_profiles_v2.yaml"
-        )
-        if line == "line_a"
-        else None
-    )
-    line_training, line_aggregation = _line_sections(line)
-    output: list[dict[str, Any]] = []
-    for entry in catalog["entries"]:
-        mode = str(entry["representation_mode"])
-        base_path = ROOT / "configs" / BASE_CONFIGS[mode]
-        base = _load_yaml(base_path)
-        payload = copy.deepcopy(base)
-        payload["config_id"] = f"{entry['config_stem']}_{line}_v2"
-        payload["representation_mode"] = mode
-        payload["model"] = copy.deepcopy(entry["model"])
-        payload["training"] = copy.deepcopy(line_training)
-        payload["aggregation"] = copy.deepcopy(line_aggregation)
-        is_ensemble = entry["catalog_role"] == "ensemble_comparison"
-        payload["output"]["write_member_oof"] = is_ensemble
-        if line == "line_a":
-            assert ablation_catalog is not None
-            payload["output"]["formal_ablation_materialization"] = {
-                "schema_version": "ppg_frailty.formal_ablation_materialization.v2",
-                "family": "aggregation_balance",
-                "profile_id": "equal_files_line_a_ablation",
-                "catalog_role": "ablation",
-                "base_config_path": base_path.relative_to(ROOT).as_posix(),
-                "base_config_sha256": hashlib.sha256(
-                    canonical_json_bytes(base)
-                ).hexdigest(),
-                "profile_catalog_sha256": ablation_catalog["catalog_sha256"],
-                "single_factor_only": True,
-                "automatic_execution": False,
-                "scientific_execution_completed": False,
-            }
-        checked = validate_config_payload(payload)
-        output.append(checked)
-    if len(output) != 17 or len({row["config_id"] for row in output}) != 17:
-        raise RuntimeError("formal catalogue did not resolve to 17 unique configs")
-    return tuple(output)
 
 
 def _atomic_text(path: Path, content: str) -> None:
@@ -153,7 +58,11 @@ def materialize_catalog(
     catalog_source = (
         catalog_path or ROOT / "configs/formal_experiment_catalog_v2.yaml"
     ).resolve()
-    configs = resolved_catalog_payloads(line=line, catalog_path=catalog_source)
+    configs = resolved_catalog_payloads(
+        pipeline_root=ROOT,
+        line=line,
+        catalog_path=catalog_source,
+    )
     catalog = load_formal_experiment_catalog(catalog_source)
     role_by_config_id = {
         f"{entry['config_stem']}_{line}_v2": str(entry["catalog_role"])
@@ -237,7 +146,10 @@ def materialize_catalog(
                 materialized.stat().st_size != int(row["bytes"])
                 or hashlib.sha256(materialized.read_bytes()).hexdigest()
                 != row["sha256"]
-                or validate_config_payload(_load_yaml(materialized)) != payload
+                or validate_config_payload(
+                    yaml.safe_load(materialized.read_text(encoding="utf-8"))
+                )
+                != payload
             ):
                 raise RuntimeError("staged formal catalog verification failed")
         if target.exists():

@@ -360,7 +360,8 @@ _MODEL_SPECIFIC_FIELDS = {
     "ROCKET": {"seed_policy", "n_kernels", "alpha"},
     "MiniROCKET": {"seed_policy", "n_kernels", "alpha"},
     "LogisticRegressionL2": {
-        "seed_policy", "class_weight", "logistic_max_iter", "logistic_solver",
+        "seed_policy", "class_weight", "logistic_c", "logistic_max_iter",
+        "logistic_solver",
     },
     "RBFSVM": {
         "seed_policy", "class_weight", "svm_kernel", "svm_probability",
@@ -368,7 +369,8 @@ _MODEL_SPECIFIC_FIELDS = {
     },
     "ExtraTrees": {
         "seed_policy", "class_weight", "extra_trees_n_estimators",
-        "extra_trees_n_jobs",
+        "extra_trees_n_jobs", "extra_trees_max_features",
+        "extra_trees_min_samples_leaf",
     },
     "ShapeFormerChannelSpecificOSD": {
         "seed_policy", "input_channel_order", "discovery_method", "input_fs_hz", "num_pip_ratio",
@@ -474,6 +476,35 @@ def validate_model_config(section: Mapping[str, Any], representation_mode: str) 
         ):
             raise ValueError(
                 "frailty raw/fusion models require the exact canonical 8-channel schema"
+            )
+    if canonical == "LogisticRegressionL2":
+        logistic_c = data["logistic_c"]
+        if (
+            isinstance(logistic_c, bool)
+            or not isinstance(logistic_c, (int, float))
+            or float(logistic_c) not in {0.1, 1.0, 10.0}
+        ):
+            raise ValueError("LogisticRegressionL2 logistic_c must be 0.1, 1.0, or 10.0")
+    if canonical == "ExtraTrees":
+        max_features = data["extra_trees_max_features"]
+        max_features_valid = (
+            max_features == "sqrt"
+            or (
+                not isinstance(max_features, (str, bool))
+                and isinstance(max_features, (int, float))
+                and float(max_features) in {0.5, 1.0}
+            )
+        )
+        min_samples_leaf = data["extra_trees_min_samples_leaf"]
+        if (
+            not max_features_valid
+            or isinstance(min_samples_leaf, bool)
+            or not isinstance(min_samples_leaf, int)
+            or min_samples_leaf not in {1, 2, 5}
+        ):
+            raise ValueError(
+                "ExtraTrees requires max_features in {sqrt,0.5,1.0} and "
+                "min_samples_leaf in {1,2,5}"
             )
     if canonical == "ShapeFormerChannelSpecificOSD":
         if data["discovery_method"] != "channel_specific_osd":

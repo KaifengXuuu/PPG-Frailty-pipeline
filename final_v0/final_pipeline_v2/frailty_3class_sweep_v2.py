@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Configuration-driven V2 ablation/grid runner with reports and resume."""
+"""Configuration-driven V2 study runner with reports and resume."""
 
 from __future__ import annotations
 
@@ -95,8 +95,9 @@ def _add_execution_arguments(parser: argparse.ArgumentParser) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Run canonical V2 single-factor ablations or Cartesian grids. Each case "
-            "uses one resolved pipeline YAML; parallelism is only across cases."
+            "Run canonical V2 single-config, ablation, Cartesian-grid, or explicit "
+            "catalog-screening plans. Each case uses one resolved pipeline YAML; "
+            "parallelism is only across cases."
         )
     )
     subparsers = parser.add_subparsers(dest="command", required=True)

@@ -126,6 +126,27 @@ class V2ConfigurationTests(unittest.TestCase):
             "outer_cv_repeat_seed_equals_split_seed",
         )
 
+    def test_feature_vector_screening_ranges_are_bounded(self) -> None:
+        catalog = load_formal_experiment_catalog(
+            ROOT / "configs/formal_experiment_catalog_v2.yaml"
+        )
+        models = {
+            entry["entry_id"]: entry["model"] for entry in catalog["entries"]
+        }
+        self.assertEqual(models["logistic_regression"]["logistic_c"], 1.0)
+        self.assertEqual(models["extra_trees"]["extra_trees_max_features"], "sqrt")
+        self.assertEqual(models["extra_trees"]["extra_trees_min_samples_leaf"], 1)
+
+        invalid_logistic = dict(models["logistic_regression"])
+        invalid_logistic["logistic_c"] = 0.2
+        with self.assertRaisesRegex(ValueError, "logistic_c"):
+            validate_model_config(invalid_logistic, "feature_vector")
+
+        invalid_trees = dict(models["extra_trees"])
+        invalid_trees["extra_trees_min_samples_leaf"] = 3
+        with self.assertRaisesRegex(ValueError, "min_samples_leaf"):
+            validate_model_config(invalid_trees, "feature_vector")
+
     def test_shapeformer_reference_is_variable_length_and_formally_materialized(self) -> None:
         """Reference OSD has no fixed-length or stride controls."""
 

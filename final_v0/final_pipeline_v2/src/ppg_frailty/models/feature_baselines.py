@@ -27,6 +27,7 @@ class FeatureVectorBaseline:
         *,
         seed: int = 42,
         class_weight: str | dict[int, float] | None = None,
+        logistic_c: float | None = None,
         logistic_max_iter: int | None = None,
         logistic_solver: str | None = None,
         svm_kernel: str | None = None,
@@ -35,6 +36,8 @@ class FeatureVectorBaseline:
         svm_gamma: str | float | None = None,
         extra_trees_n_estimators: int | None = None,
         extra_trees_n_jobs: int | None = None,
+        extra_trees_max_features: str | float | None = None,
+        extra_trees_min_samples_leaf: int | None = None,
     ) -> None:
         if model_id not in self._MODEL_IDS:
             raise ValueError(f"unsupported feature baseline: {model_id}")
@@ -44,6 +47,7 @@ class FeatureVectorBaseline:
         self.feature_names = tuple(feature_names)
         self.seed = int(seed)
         self.class_weight = class_weight
+        self.logistic_c = logistic_c
         self.logistic_max_iter = logistic_max_iter
         self.logistic_solver = logistic_solver
         self.svm_kernel = svm_kernel
@@ -52,23 +56,59 @@ class FeatureVectorBaseline:
         self.svm_gamma = svm_gamma
         self.extra_trees_n_estimators = extra_trees_n_estimators
         self.extra_trees_n_jobs = extra_trees_n_jobs
+        self.extra_trees_max_features = extra_trees_max_features
+        self.extra_trees_min_samples_leaf = extra_trees_min_samples_leaf
         required = {
-            "logistic_regression": (logistic_max_iter, logistic_solver),
+            "logistic_regression": (logistic_c, logistic_max_iter, logistic_solver),
             "rbf_svm": (svm_kernel, svm_probability, svm_c, svm_gamma),
-            "extra_trees": (extra_trees_n_estimators, extra_trees_n_jobs),
+            "extra_trees": (
+                extra_trees_n_estimators,
+                extra_trees_n_jobs,
+                extra_trees_max_features,
+                extra_trees_min_samples_leaf,
+            ),
         }[model_id]
         if any(value is None for value in required):
             raise ValueError(f"{model_id} requires every estimator architecture option explicitly")
-        if model_id == "logistic_regression" and int(logistic_max_iter) <= 0:
-            raise ValueError("logistic_max_iter must be positive")
+        if model_id == "logistic_regression" and (
+            isinstance(logistic_c, bool)
+            or not np.isfinite(float(logistic_c))
+            or float(logistic_c) not in {0.1, 1.0, 10.0}
+            or int(logistic_max_iter) <= 0
+        ):
+            raise ValueError(
+                "logistic_c must be 0.1, 1.0, or 10.0 and logistic_max_iter "
+                "must be positive"
+            )
         if model_id == "rbf_svm" and (
             svm_kernel != "rbf" or svm_probability is not True or float(svm_c) <= 0.0
         ):
             raise ValueError("rbf_svm requires kernel=rbf, probability=true and positive C")
-        if model_id == "extra_trees" and (
-            int(extra_trees_n_estimators) <= 0 or int(extra_trees_n_jobs) == 0
-        ):
-            raise ValueError("ExtraTrees estimators must be positive and n_jobs non-zero")
+        if model_id == "extra_trees":
+            max_features_valid = (
+                extra_trees_max_features == "sqrt"
+                or (
+                    not isinstance(extra_trees_max_features, (str, bool))
+                    and float(extra_trees_max_features) in {0.5, 1.0}
+                )
+            )
+            if (
+                int(extra_trees_n_estimators) <= 0
+                or int(extra_trees_n_jobs) == 0
+                or not max_features_valid
+                or isinstance(extra_trees_min_samples_leaf, bool)
+                or int(extra_trees_min_samples_leaf) not in {1, 2, 5}
+            ):
+                raise ValueError(
+                    "ExtraTrees requires positive estimators, non-zero n_jobs, "
+                    "max_features in {sqrt,0.5,1.0}, and min_samples_leaf in {1,2,5}"
+                )
+            self.extra_trees_max_features = (
+                "sqrt"
+                if extra_trees_max_features == "sqrt"
+                else float(extra_trees_max_features)
+            )
+            self.extra_trees_min_samples_leaf = int(extra_trees_min_samples_leaf)
         self.pipeline = self._make_pipeline()
         self.fitted_participant_ids_: tuple[str, ...] = ()
         self.fitted_object_provenance_: dict[str, dict[str, object]] = {}
@@ -78,6 +118,7 @@ class FeatureVectorBaseline:
 
         if self.model_id == "logistic_regression":
             estimator = LogisticRegression(
+                C=float(self.logistic_c),
                 max_iter=int(self.logistic_max_iter),
                 solver=str(self.logistic_solver),
                 class_weight=self.class_weight,
@@ -111,6 +152,8 @@ class FeatureVectorBaseline:
             )
         estimator = ExtraTreesClassifier(
             n_estimators=int(self.extra_trees_n_estimators),
+            max_features=self.extra_trees_max_features,
+            min_samples_leaf=int(self.extra_trees_min_samples_leaf),
             class_weight=self.class_weight,
             random_state=self.seed,
             n_jobs=int(self.extra_trees_n_jobs),

@@ -42,6 +42,10 @@ _DEEP_MODEL_TOKENS = (
     "fusion_inception",
 )
 
+_OUTPUT_GROUPS = frozenset(
+    {"raw", "fusion", "feature_vector", "feature_matrix"}
+)
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -111,14 +115,16 @@ def _write_csv(path: Path, rows: tuple[Mapping[str, Any], ...]) -> None:
 def _resume_contract(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     execution = payload.get("execution")
     execution = execution if isinstance(execution, Mapping) else {}
-    return {
-        "schema_version": payload.get("schema_version"),
-        "study": payload.get("study"),
-        "base_config": payload.get("base_config"),
-        "axes": payload.get("axes"),
+    contract = {
+        str(key): value
+        for key, value in payload.items()
+        if key not in {"execution", "output", "report"}
+    }
+    contract["execution"] = {
         "repeats": execution.get("repeats"),
         "folds": execution.get("folds"),
     }
+    return contract
 
 
 def _study_object(plan: StudyPlan) -> str:
@@ -266,6 +272,24 @@ def _process_default_case(request: Mapping[str, Any]) -> Mapping[str, Any]:
         changed_values=dict(request["changed_values"]),
         config_sha256=str(request["config_sha256"]),
         is_reference=bool(request["is_reference"]),
+        output_group=(
+            None
+            if request.get("output_group") is None
+            else str(request["output_group"])
+        ),
+        catalog_entry=(
+            None
+            if request.get("catalog_entry") is None
+            else str(request["catalog_entry"])
+        ),
+        screen_profile_id=(
+            None
+            if request.get("screen_profile_id") is None
+            else str(request["screen_profile_id"])
+        ),
+        rationale=(
+            None if request.get("rationale") is None else str(request["rationale"])
+        ),
     )
     from .expand import parse_study_plan
 
@@ -352,15 +376,50 @@ class StudyRunner:
                 continue
         raise RuntimeError(f"cannot create unique study directory below {root}")
 
+    @staticmethod
+    def _output_group(case: ResolvedCase) -> str | None:
+        raw = getattr(case, "output_group", None)
+        if raw is None:
+            return None
+        group = str(raw).strip()
+        if group not in _OUTPUT_GROUPS:
+            raise ValueError(
+                f"case {case.case_id} output_group must be one of "
+                f"{sorted(_OUTPUT_GROUPS)}"
+            )
+        return group
+
+    def _case_paths(self, output: Path, case: ResolvedCase) -> tuple[Path, Path]:
+        group = self._output_group(case)
+        if group is None:
+            case_directory = output / "cases" / case.case_id
+            config_path = output / "resolved_configs" / f"{case.case_id}.yaml"
+        else:
+            case_directory = output / group / case.case_id
+            config_path = case_directory / "resolved_config.yaml"
+        output_resolved = output.resolve()
+        case_directory.resolve().relative_to(output_resolved)
+        config_path.resolve().relative_to(output_resolved)
+        return config_path, case_directory
+
+    def _case_manifest_row(
+        self,
+        output: Path,
+        case: ResolvedCase,
+    ) -> dict[str, Any]:
+        config_path, case_directory = self._case_paths(output, case)
+        return {
+            **case.to_dict(),
+            "output_group": self._output_group(case),
+            "case_directory": case_directory.relative_to(output).as_posix(),
+            "resolved_config_path": config_path.relative_to(output).as_posix(),
+        }
+
     def _materialize(
         self, expansion: StudyExpansion, output: Path, *, resumed: bool
-    ) -> dict[str, Path]:
+    ) -> None:
         output.mkdir(parents=True, exist_ok=True)
-        configs = output / "resolved_configs"
-        cases_root = output / "cases"
         tables = output / "tables"
-        configs.mkdir(exist_ok=True)
-        cases_root.mkdir(exist_ok=True)
         tables.mkdir(exist_ok=True)
         plan_path = output / "study_plan.yaml"
         if resumed:
@@ -371,8 +430,9 @@ class StudyRunner:
                 existing_plan
             ) != _resume_contract(expansion.plan.to_dict()):
                 raise ValueError(
-                    "resume study-plan drift: study/base/axes/repeats/folds must "
-                    "match; jobs and report presentation may be changed"
+                    "resume study-plan drift: scientific case definitions and "
+                    "repeats/folds must match; jobs, output root, and report "
+                    "presentation may be changed"
                 )
         else:
             plan_path.write_text(
@@ -383,21 +443,23 @@ class StudyRunner:
             )
         case_rows: list[Mapping[str, Any]] = []
         for case in expansion.cases:
-            target = configs / f"{case.case_id}.yaml"
+            target, case_directory = self._case_paths(output, case)
+            target.parent.mkdir(parents=True, exist_ok=True)
             encoded = yaml.safe_dump(
                 dict(case.config), sort_keys=False, allow_unicode=True
             )
-            if target.exists() and target.read_text(encoding="utf-8") != encoded:
-                raise ValueError(f"resume config drift for case {case.case_id}")
-            target.write_text(encoded, encoding="utf-8")
-            case_rows.append(case.to_dict())
-            (cases_root / case.case_id).mkdir(exist_ok=True)
+            if target.exists():
+                if target.read_text(encoding="utf-8") != encoded:
+                    raise ValueError(f"resume config drift for case {case.case_id}")
+            else:
+                target.write_text(encoded, encoding="utf-8")
+            case_rows.append(self._case_manifest_row(output, case))
+            case_directory.mkdir(parents=True, exist_ok=True)
         _write_csv(tables / "resolved_cases.csv", tuple(case_rows))
         _write_csv(tables / "varied_parameters.csv", expansion.varied_parameters)
         _write_csv(
             tables / "controlled_parameters.csv", expansion.controlled_parameters
         )
-        return {"configs": configs, "cases": cases_root, "tables": tables}
 
     def _attempt_number(self, case_directory: Path) -> int:
         attempts = case_directory / "attempts"
@@ -533,7 +595,7 @@ class StudyRunner:
         )
         if resumed_run and not output.is_dir():
             raise FileNotFoundError(output)
-        paths = self._materialize(expansion, output, resumed=resumed_run)
+        self._materialize(expansion, output, resumed=resumed_run)
         jsonl = JsonlProgressSink(output / "progress_events.jsonl")
         original_sink = self.progress_sink
         self.progress_sink = CompositeProgressSink((original_sink, jsonl))
@@ -563,7 +625,7 @@ class StudyRunner:
             )
         )
         for case in expansion.cases:
-            case_directory = paths["cases"] / case.case_id
+            config_path, case_directory = self._case_paths(output, case)
             existing = self._existing_pass(case, case_directory) if resumed_run else None
             if existing is not None:
                 resumed_count += 1
@@ -577,9 +639,7 @@ class StudyRunner:
                     )
                 )
             else:
-                pending.append(
-                    (case, paths["configs"] / f"{case.case_id}.yaml", case_directory)
-                )
+                pending.append((case, config_path, case_directory))
         completed = len(records)
         chosen_executor = self.executor or default_experiment_executor
         if effective_jobs == 1:
@@ -773,7 +833,9 @@ class StudyRunner:
             "failed_cell_count": failed_cells,
             "not_run_cell_count": not_run_cells,
             "resumed_case_count": resumed_count,
-            "cases": [case.to_dict() for case in expansion.cases],
+            "cases": [
+                self._case_manifest_row(output, case) for case in expansion.cases
+            ],
         }
         _atomic_json(output / "study_manifest.json", manifest)
         _atomic_json(output / "study_run_result.json", result.to_dict())

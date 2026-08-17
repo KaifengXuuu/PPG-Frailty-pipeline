@@ -585,6 +585,7 @@ class FinalRefitContracts(unittest.TestCase):
             ("a", "b"),
             seed=42,
             class_weight=None,
+            logistic_c=1.0,
             logistic_max_iter=5000,
             logistic_solver="lbfgs",
         )
@@ -598,6 +599,7 @@ class FinalRefitContracts(unittest.TestCase):
             "model_id": "logistic_regression",
             "seed": 42,
             "class_weight": None,
+            "logistic_c": 1.0,
             "logistic_max_iter": 5000,
             "logistic_solver": "lbfgs",
         }
@@ -794,6 +796,7 @@ class FinalRefitContracts(unittest.TestCase):
             ("a", "b"),
             seed=42,
             class_weight=None,
+            logistic_c=1.0,
             logistic_max_iter=1000,
             logistic_solver="lbfgs",
         )

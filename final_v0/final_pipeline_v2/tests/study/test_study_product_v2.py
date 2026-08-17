@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import yaml
 
@@ -20,6 +22,7 @@ from ppg_frailty.study import (
     parse_study_plan,
     validate_canonical_expansion,
 )
+from ppg_frailty.study.runner import _process_default_case
 
 
 def fake_executor(case, config_path, case_directory, plan, progress_sink):
@@ -388,6 +391,156 @@ class StudyProductTests(unittest.TestCase):
         resumed = runner.run(plan, resume_directory=result.output_directory)
         self.assertEqual(resumed.resumed_case_count, 2)
         self.assertEqual(resumed.passed_case_count, 2)
+
+    def test_grouped_cases_are_self_contained_reportable_and_resumable(self) -> None:
+        plan = self.plan()
+        runner = StudyRunner(
+            pipeline_root=self.root,
+            executor=fake_executor,
+            progress_sink=NullProgressSink(),
+        )
+        expansion = runner.expand(plan)
+        grouped_cases = tuple(
+            replace(
+                case,
+                output_group=group,
+                catalog_entry=f"{group}_model",
+                screen_profile_id="screen_01",
+                rationale="Synthetic grouped-output path test.",
+            )
+            for case, group in zip(expansion.cases, ("raw", "fusion"))
+        )
+        grouped_expansion = replace(expansion, cases=grouped_cases)
+        runner.expand = lambda _: grouped_expansion  # type: ignore[method-assign]
+
+        result = runner.run(plan)
+        manifest = json.loads(
+            (result.output_directory / "study_manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        by_case = {row["case_id"]: row for row in manifest["cases"]}
+        for case, group in zip(grouped_cases, ("raw", "fusion")):
+            expected_root = result.output_directory / group / case.case_id
+            self.assertTrue((expected_root / "resolved_config.yaml").is_file())
+            self.assertTrue((expected_root / "case_result.json").is_file())
+            self.assertTrue(
+                (
+                    expected_root
+                    / "attempts"
+                    / "attempt_001"
+                    / "attempt_result.json"
+                ).is_file()
+            )
+            self.assertEqual(by_case[case.case_id]["output_group"], group)
+            self.assertEqual(
+                by_case[case.case_id]["case_directory"],
+                f"{group}/{case.case_id}",
+            )
+            self.assertEqual(
+                by_case[case.case_id]["resolved_config_path"],
+                f"{group}/{case.case_id}/resolved_config.yaml",
+            )
+        self.assertFalse((result.output_directory / "cases").exists())
+        self.assertFalse((result.output_directory / "resolved_configs").exists())
+
+        report = generate_study_report(result.output_directory)
+        index = json.loads(report.output_index.read_text(encoding="utf-8"))
+        indexed = {row["path"]: row for row in index["artifacts"]}
+        indexed_paths = set(indexed)
+        self.assertTrue(
+            any(path.startswith("raw/") for path in indexed_paths)
+        )
+        self.assertTrue(
+            any(path.startswith("fusion/") for path in indexed_paths)
+        )
+        self.assertTrue(
+            all(
+                indexed[path]["type"] == "case_artifact"
+                for path in indexed_paths
+                if path.startswith(("raw/", "fusion/"))
+            )
+        )
+
+        config_mtimes = {
+            case.case_id: (
+                result.output_directory
+                / group
+                / case.case_id
+                / "resolved_config.yaml"
+            ).stat().st_mtime_ns
+            for case, group in zip(grouped_cases, ("raw", "fusion"))
+        }
+        resumed = runner.run(plan, resume_directory=result.output_directory)
+        self.assertEqual(resumed.resumed_case_count, 2)
+        self.assertEqual(resumed.passed_case_count, 2)
+        for case, group in zip(grouped_cases, ("raw", "fusion")):
+            self.assertEqual(
+                (
+                    result.output_directory
+                    / group
+                    / case.case_id
+                    / "resolved_config.yaml"
+                ).stat().st_mtime_ns,
+                config_mtimes[case.case_id],
+            )
+            attempts = (
+                result.output_directory / group / case.case_id / "attempts"
+            )
+            self.assertEqual(
+                [path.name for path in sorted(attempts.glob("attempt_*"))],
+                ["attempt_001"],
+            )
+
+    def test_parallel_child_reconstruction_preserves_catalog_group_metadata(
+        self,
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        def capture_executor(
+            case,
+            config_path,
+            attempt_directory,
+            plan,
+            progress_sink,
+        ):
+            del config_path, attempt_directory, plan, progress_sink
+            captured.update(case.to_dict())
+            return {"status": "passed", "cell_results": []}
+
+        attempt = self.root / "parallel_attempt"
+        attempt.mkdir()
+        request = {
+            "case_id": "raw_compact_screen_01",
+            "config": {
+                "config_id": "raw_compact_screen_01",
+                "model": {"model_id": "CompactCNN1D"},
+            },
+            "changed_values": {"training.fixed_epochs": 10},
+            "config_sha256": "a" * 64,
+            "is_reference": False,
+            "output_group": "raw",
+            "catalog_entry": "compact_cnn",
+            "screen_profile_id": "screen_01",
+            "rationale": "Synthetic parallel reconstruction test.",
+            "plan": self.plan().to_dict(),
+            "config_path": str(self.base),
+            "attempt_directory": str(attempt),
+        }
+        with patch(
+            "ppg_frailty.study.runner.default_experiment_executor",
+            side_effect=capture_executor,
+        ):
+            result = _process_default_case(request)
+
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(captured["output_group"], "raw")
+        self.assertEqual(captured["catalog_entry"], "compact_cnn")
+        self.assertEqual(captured["screen_profile_id"], "screen_01")
+        self.assertEqual(
+            captured["rationale"],
+            "Synthetic parallel reconstruction test.",
+        )
 
     def test_outer_cv_ensemble_reaches_executor_after_seed_contract_is_frozen(self) -> None:
         runner = StudyRunner(

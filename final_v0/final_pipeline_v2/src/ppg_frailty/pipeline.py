@@ -989,6 +989,7 @@ def run_model_comparison(
             baseline_options: dict[str, Any] = {
                 "logistic_regression": {
                     "class_weight": None,
+                    "logistic_c": 1.0,
                     "logistic_max_iter": 5000,
                     "logistic_solver": "lbfgs",
                 },
@@ -1003,6 +1004,8 @@ def run_model_comparison(
                     "class_weight": None,
                     "extra_trees_n_estimators": 500,
                     "extra_trees_n_jobs": 1,
+                    "extra_trees_max_features": "sqrt",
+                    "extra_trees_min_samples_leaf": 1,
                 },
             }[machine_model_id]
             model = create_model(

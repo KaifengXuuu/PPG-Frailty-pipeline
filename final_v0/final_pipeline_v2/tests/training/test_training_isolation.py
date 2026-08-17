@@ -208,6 +208,7 @@ class TrainingIsolationTests(unittest.TestCase):
         estimator = FeatureVectorBaseline(
             "logistic_regression",
             ("a", "b", "c"),
+            logistic_c=1.0,
             logistic_max_iter=5000,
             logistic_solver="lbfgs",
         )
@@ -260,6 +261,7 @@ result = UnifiedTrainer(TrainingConfig()).fit_estimator(
     FeatureVectorBaseline(
         "logistic_regression",
         ("a", "b", "c"),
+        logistic_c=1.0,
         logistic_max_iter=5000,
         logistic_solver="lbfgs",
     ),

@@ -170,6 +170,22 @@ def _case_artifact_root(
     return target
 
 
+def _manifest_case_directory(
+    study_root: Path,
+    case: Mapping[str, Any],
+) -> Path:
+    raw = case.get("case_directory")
+    if isinstance(raw, str) and raw.strip():
+        relative = Path(raw)
+        if relative.is_absolute():
+            raise ValueError("manifest case_directory must be relative")
+        target = (study_root / relative).resolve()
+        target.relative_to(study_root.resolve())
+        return target
+    case_id = str(case["case_id"])
+    return study_root / "cases" / case_id
+
+
 def _quality_rows(case_id: str, case_directory: Path) -> list[dict[str, Any]]:
     target = _first_shallow(case_directory.rglob("quality_diagnostics.json"))
     if target is None:
@@ -257,16 +273,37 @@ def collect_study(root: str | Path) -> CollectedStudy:
         if not isinstance(case, Mapping):
             continue
         case_id = str(case["case_id"])
-        case_directory = study_root / "cases" / case_id
+        case_directory = _manifest_case_directory(study_root, case)
         result_path = case_directory / "case_result.json"
         if not result_path.is_file():
-            case_records.append({"case_id": case_id, "status": "not_run"})
+            case_records.append(
+                {
+                    "case_id": case_id,
+                    "status": "not_run",
+                    "output_group": case.get("output_group"),
+                    "case_directory": case.get(
+                        "case_directory",
+                        (Path("cases") / case_id).as_posix(),
+                    ),
+                    "resolved_config_path": case.get("resolved_config_path"),
+                }
+            )
             limitations.append(f"{case_id}: case_result.json not found")
             continue
         record = _read_json(result_path)
         if not isinstance(record, Mapping):
             raise TypeError(f"case result root must be a mapping: {result_path}")
-        case_records.append(dict(record))
+        case_records.append(
+            {
+                **dict(record),
+                "output_group": case.get("output_group"),
+                "case_directory": case.get(
+                    "case_directory",
+                    (Path("cases") / case_id).as_posix(),
+                ),
+                "resolved_config_path": case.get("resolved_config_path"),
+            }
+        )
         artifact_root = _case_artifact_root(case_directory, record)
         result = record.get("result") if isinstance(record.get("result"), Mapping) else {}
         cell_rows.extend(_cell_rows(case_id, result, artifact_root))

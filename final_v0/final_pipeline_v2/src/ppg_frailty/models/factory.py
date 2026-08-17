@@ -400,6 +400,7 @@ def resolved_architecture_parameters(
                         "standard_scaler",
                     ),
                     "estimator": "sklearn.linear_model.LogisticRegression",
+                    "C": float(model.logistic_c),
                     "max_iter": int(model.logistic_max_iter),
                     "solver": str(model.logistic_solver),
                 }
@@ -425,6 +426,8 @@ def resolved_architecture_parameters(
                     "estimator": "sklearn.ensemble.ExtraTreesClassifier",
                     "n_estimators": int(model.extra_trees_n_estimators),
                     "n_jobs": int(model.extra_trees_n_jobs),
+                    "max_features": model.extra_trees_max_features,
+                    "min_samples_leaf": int(model.extra_trees_min_samples_leaf),
                 }
             )
     elif model_id in {"rocket_numpy", "minirocket_ablation"}:
@@ -740,6 +743,7 @@ def materialize_architecture_parameters(
                         "standard_scaler",
                     ),
                     "estimator": "sklearn.linear_model.LogisticRegression",
+                    "C": float(config["logistic_c"]),
                     "max_iter": int(config["logistic_max_iter"]),
                     "solver": str(config["logistic_solver"]),
                 }
@@ -765,6 +769,10 @@ def materialize_architecture_parameters(
                     "estimator": "sklearn.ensemble.ExtraTreesClassifier",
                     "n_estimators": int(config["extra_trees_n_estimators"]),
                     "n_jobs": int(config["extra_trees_n_jobs"]),
+                    "max_features": config["extra_trees_max_features"],
+                    "min_samples_leaf": int(
+                        config["extra_trees_min_samples_leaf"]
+                    ),
                 }
             )
     elif model_id in {"rocket_numpy", "minirocket_ablation"}:
@@ -1485,9 +1493,14 @@ def create_model(
             raise ValueError(f"{model_id} requires explicit class_weight (null is allowed)")
         options: dict[str, Any] = {"class_weight": config.pop("class_weight")}
         required_by_model = {
-            "logistic_regression": ("logistic_max_iter", "logistic_solver"),
+            "logistic_regression": (
+                "logistic_c", "logistic_max_iter", "logistic_solver"
+            ),
             "rbf_svm": ("svm_kernel", "svm_probability", "svm_c", "svm_gamma"),
-            "extra_trees": ("extra_trees_n_estimators", "extra_trees_n_jobs"),
+            "extra_trees": (
+                "extra_trees_n_estimators", "extra_trees_n_jobs",
+                "extra_trees_max_features", "extra_trees_min_samples_leaf",
+            ),
         }
         missing_options = sorted(set(required_by_model[model_id]) - set(config))
         if missing_options:

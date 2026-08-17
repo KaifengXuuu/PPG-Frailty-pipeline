@@ -1132,7 +1132,8 @@ def _resolved_model_config(
         'rocket_numpy': {'n_kernels', 'alpha', 'seed'},
         'minirocket_ablation': {'n_kernels', 'alpha', 'seed'},
         'logistic_regression': {
-            'class_weight', 'logistic_max_iter', 'logistic_solver', 'seed',
+            'class_weight', 'logistic_c', 'logistic_max_iter',
+            'logistic_solver', 'seed',
         },
         'rbf_svm': {
             'class_weight', 'svm_kernel', 'svm_probability', 'svm_c',
@@ -1140,7 +1141,8 @@ def _resolved_model_config(
         },
         'extra_trees': {
             'class_weight', 'extra_trees_n_estimators',
-            'extra_trees_n_jobs', 'seed',
+            'extra_trees_n_jobs', 'extra_trees_max_features',
+            'extra_trees_min_samples_leaf', 'seed',
         },
         'fusion_compact': {
             'signal_dropout', 'signal_kernel_sizes', 'signal_dilations',

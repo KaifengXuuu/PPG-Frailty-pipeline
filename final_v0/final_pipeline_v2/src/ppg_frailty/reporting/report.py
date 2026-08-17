@@ -114,6 +114,16 @@ def _report_markdown(
     manifest = collected.manifest
     execution = collected.plan.get("execution", {})
     axes = collected.plan.get("axes", ())
+    catalog = collected.plan.get("catalog", {})
+    search = collected.plan.get("search", {})
+    is_catalog_sweep = study.get("kind") == "catalog_sweep"
+    config_source_label = (
+        f"Catalog: {catalog.get('path', 'N/A')} "
+        f"(scope={catalog.get('scope', 'N/A')}, "
+        f"balance={catalog.get('balance_line', 'N/A')})"
+        if is_catalog_sweep and isinstance(catalog, Mapping)
+        else f"Base pipeline config: {collected.plan.get('base_config', 'N/A')}"
+    )
     lines = [
         f"# V2 study summary — {study.get('study_id', collected.root.name)}",
         "",
@@ -127,7 +137,7 @@ def _report_markdown(
         f"- Position in use-case selection flow: {study.get('flow_position', 'N/A')}",
         f"- Decision role: {study.get('decision_role', 'N/A')}",
         f"- Thesis sections: {_fmt(study.get('thesis_sections', []))}",
-        f"- Base pipeline config: {collected.plan.get('base_config', 'N/A')}",
+        f"- {config_source_label}",
         f"- Reference case: {manifest.get('reference_case_id') or 'N/A'}",
         "",
         "## Run controls and completeness",
@@ -159,6 +169,17 @@ def _report_markdown(
                 f"reference={_fmt(axis.get('reference'))}"
                 for axis in axes
                 if isinstance(axis, Mapping)
+            ]
+        )
+    elif is_catalog_sweep and isinstance(search, Mapping):
+        lines.extend(
+            [
+                "- Explicit deterministic sparse catalog profiles; this is a "
+                "screening comparison, not a single-factor causal ablation.",
+                f"- Search method: {search.get('method', 'N/A')}",
+                f"- Runtime parameter sampling: {search.get('runtime_sampling', 'N/A')}",
+                f"- Profile-design seed: {search.get('selection_seed', 'N/A')}",
+                f"- Interpretation: {search.get('interpretation', 'N/A')}",
             ]
         )
     else:
@@ -621,7 +642,13 @@ def _artifact_type(path: Path, root: Path) -> str:
         return "progress_log"
     if relative.parts and relative.parts[0] == "resolved_configs":
         return "resolved_config"
-    if relative.parts and relative.parts[0] == "cases":
+    if relative.parts and relative.parts[0] in {
+        "cases",
+        "raw",
+        "fusion",
+        "feature_vector",
+        "feature_matrix",
+    }:
         return "case_artifact"
     if relative.parts and relative.parts[0] == "tables":
         return "report_table"

@@ -41,6 +41,31 @@ Quotes around list assignments prevent the shell from interpreting brackets.
       --purpose "Descriptive optimizer grid screening." \
       --flow-position "Screening before single-factor confirmation."
 
+## Static Line B all-model screening
+
+The predeclared catalog screen compares all 13 ordinary candidates using three
+deterministic, model-relevant profiles per candidate. Shared signal,
+preprocessing, role aggregation, quality, artifact, window, CV, and training
+controls remain fixed. This is sparse random-search-style screening, not
+runtime random sampling and not a single-factor causal ablation.
+
+Validate and inspect all 39 resolved cases without training:
+
+    python frailty_3class_sweep_v2.py run \
+      --plan configs/studies/static_line_b_all_models_v2.yaml \
+      --dry-run
+
+Run the complete screen:
+
+    python frailty_3class_sweep_v2.py run \
+      --plan configs/studies/static_line_b_all_models_v2.yaml
+
+The full plan requests 39 cases x 5 repeats x 5 folds = 975 outer-fold fits.
+Deep models use 10 fixed epochs. The dated non-overwriting study folder has
+four top-level case groups: raw, fusion, feature_vector, and feature_matrix.
+Aggregate tables, figures, summaries, and the complete output index remain at
+the study root so all 13 model families can be ranked together.
+
 ## Parallelism, resume, and output root
 
 The --jobs option means parallel cases only. It does not start nested fold/model
