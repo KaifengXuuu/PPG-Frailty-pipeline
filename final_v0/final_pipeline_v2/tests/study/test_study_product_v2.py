@@ -389,14 +389,15 @@ class StudyProductTests(unittest.TestCase):
         self.assertEqual(resumed.resumed_case_count, 2)
         self.assertEqual(resumed.passed_case_count, 2)
 
-    def test_outer_cv_ensemble_is_fail_closed(self) -> None:
+    def test_outer_cv_ensemble_reaches_executor_after_seed_contract_is_frozen(self) -> None:
         runner = StudyRunner(
             pipeline_root=self.root,
             executor=fake_executor,
             progress_sink=NullProgressSink(),
         )
-        with self.assertRaisesRegex(RuntimeError, "repeat-by-member seed matrix"):
-            runner.run(self.plan(ensemble=True))
+        result = runner.run(self.plan(ensemble=True))
+        self.assertEqual(result.passed_case_count, 2)
+        self.assertEqual(result.failed_case_count, 0)
 
     def test_two_axis_grid_writes_descriptive_interaction_view(self) -> None:
         runner = StudyRunner(

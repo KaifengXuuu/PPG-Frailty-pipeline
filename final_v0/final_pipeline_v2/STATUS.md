@@ -22,9 +22,12 @@ route artifacts、role OOF、8ch frailty raw/fusion/ShapeFormer、motion 8ch ref
 - 没有在本实现过程中运行正式训练、完整 5×5、ablation、A3、PTT benchmark 或
   final refit。
 - Outer CV single model 使用每个 repeat 自己的 seed：
-  `[42,10042,20042,30042,40042]`；同 repeat 的五个 folds 共用该 seed。
+  `[42,10042,20042,30042,40042]`；同 repeat 的五个 folds 共用该 seed。与 ensemble
+  匹配的 Inception single comparator 是例外，固定使用 member 0 seed `50042`。
 - `seed=42` 只属于人工选择后的 single-model all-29 final refit。
-- Ensemble outer CV 等待人工冻结 repeat × member seed matrix，当前明确拒绝运行。
+- Ensemble outer CV 在每个 repeat/fold 固定复用 member seeds
+  `[50042,60042,70042,80042,90042]`；fold 内平均 probabilities，随后按 repeat
+  拼完整 participant OOF 并评分。final ensemble refit 使用同一 roster 训练五个新模型。
 - canonical aggregation 是 role-aware Line B；equal-files Line A 是具名 ablation。
 - Internal accelerometer source 保持 `g→m/s²`；V2-036 仅对 PTT external sit data
   采用源 `m/s²` identity conversion。
@@ -32,11 +35,11 @@ route artifacts、role OOF、8ch frailty raw/fusion/ShapeFormer、motion 8ch ref
 
 ## 已知 pending
 
-1. Ensemble outer-CV 的 repeat × member seed matrix 尚待人工确认；当前不会运行。
-2. SQI supervised thresholds/weights、最终 artifact reducer、device rail QC 与 deployment
+1. SQI supervised thresholds/weights、最终 artifact reducer、device rail QC 与 deployment
    hardware targets 尚未人工冻结；reference 保持 SQI off、identity reducer、描述性成本。
-3. 本轮没有执行正式 final refit；其软件路径继续保留 selection/OOF/config/dataset/model/
-   file hashes、all-29 roster、nonoverwrite atomic write 与 golden parity。
+2. 本轮没有执行正式 ensemble CV 或 final refit；其软件路径继续保留
+   selection/OOF/config/dataset/model/file hashes、all-29 roster、nonoverwrite atomic
+   write 与 golden parity。
 
 旧 tracked-clean/source、exact-lock、attestation/prepublish、ONNX winner 和 acceptance
 门禁已从 V2 删除；原版本保存在 V3 历史快照。
@@ -44,6 +47,9 @@ route artifacts、role OOF、8ch frailty raw/fusion/ShapeFormer、motion 8ch ref
 ## 最近非科学验证
 
 - 8ch frailty/motion focused：61/61。
+- Ensemble seed/probability/OOF/final-refit focused：87/87。
+- Conda-ml safe suite：258/258。
+- V2 validator：7/7，220 个 Python 文件 syntax passed。
 - model registry：6/6。
 - reporting + dashboard fake/service tests：19/19。
 - canonical calibrated real-input smoke：1/1（只构建/预处理，不训练）。

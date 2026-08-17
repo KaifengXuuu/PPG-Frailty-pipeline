@@ -80,7 +80,7 @@ class ReviewedArchitectureTests(unittest.TestCase):
 
         members = [SmallInceptionTimeSingleNetwork(2, 3) for _ in range(5)]
         ensemble = InceptionTimeFiveMemberProbabilityEnsemble(
-            members, [42, 10042, 20042, 30042, 40042]
+            members, [50042, 60042, 70042, 80042, 90042]
         ).eval()
         x = torch.randn(3, 2, 48)
         with torch.no_grad():

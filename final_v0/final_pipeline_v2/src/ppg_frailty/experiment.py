@@ -1097,6 +1097,7 @@ def _resolved_model_config(
     config: Any,
     *,
     training_seed: int,
+    seed_scope: str = 'outer_cv',
 ) -> tuple[dict[str, Any], str]:
     '''Map archive metadata to strict factory options / 将归档字段映射为严格工厂参数。'''
 
@@ -1188,33 +1189,38 @@ def _resolved_model_config(
         raise _ExperimentProtocolError(
             'model_config_missing_explicit_factory_fields:' + ','.join(missing)
         )
-    if (
-        machine_id not in ensemble_ids
-        and section.get('seed_policy')
-        != 'outer_cv_repeat_seed_equals_split_seed'
-    ):
-        raise _ExperimentProtocolError(
-            'single_model_seed_policy_must_equal_repeat_split_seed'
-        )
-    if machine_id not in ensemble_ids and int(training_seed) not in {
-        42, 10042, 20042, 30042, 40042
-    }:
-        raise _ExperimentProtocolError(
-            'single_model_training_seed_not_in_frozen_repeat_seed_registry'
-        )
+    seed_policy = str(section.get('seed_policy', ''))
+    if seed_scope not in {'outer_cv', 'final_refit'}:
+        raise _ExperimentProtocolError('unsupported_model_seed_scope')
     if machine_id in ensemble_ids:
         if (
-            section.get('seed_policy')
-            != 'pending_cv_repeat_member_seed_matrix_decision'
+            seed_policy != 'cv_fixed_five_member_seed_roster'
             or section.get('member_seed_roster_id')
             != 'cv_fixed_five_member_seed_roster'
+            or tuple(int(value) for value in section.get('member_seeds', ()))
+            != (50042, 60042, 70042, 80042, 90042)
         ):
             raise _ExperimentProtocolError(
                 'ensemble_cv_seed_policy_or_roster_identity_invalid'
             )
-        raise _ExperimentProtocolError(
-            'ensemble_cv_repeat_member_seed_matrix_decision_pending'
-        )
+    elif seed_scope == 'final_refit':
+        if int(training_seed) != 42:
+            raise _ExperimentProtocolError('single_model_final_refit_seed_must_be_42')
+    elif seed_policy == 'cv_fixed_member0_seed_50042_comparator':
+        if (
+            machine_id not in {'inception_full', 'inception_matrix'}
+            or int(training_seed) != 50042
+        ):
+            raise _ExperimentProtocolError(
+                'ensemble_member0_comparator_seed_identity_invalid'
+            )
+    elif seed_policy == 'outer_cv_repeat_seed_equals_split_seed':
+        if int(training_seed) not in {42, 10042, 20042, 30042, 40042}:
+            raise _ExperimentProtocolError(
+                'single_model_training_seed_not_in_frozen_repeat_seed_registry'
+            )
+    else:
+        raise _ExperimentProtocolError('unsupported_outer_cv_seed_policy')
     resolved: dict[str, Any] = {'model_id': machine_id}
     for field in sorted(factory_fields[machine_id]):
         value = (
@@ -1234,6 +1240,21 @@ def _resolved_model_config(
         )
     resolved['architecture_parameters'] = dict(architecture)
     return resolved, machine_id
+
+
+def _outer_cv_model_training_seed(config: Any, split: Mapping[str, Any]) -> int:
+    """Resolve model RNG without allowing the split seed to leak across seed axes."""
+
+    model = config.section('model')
+    policy = str(model.get('seed_policy', ''))
+    if policy in {
+        'cv_fixed_member0_seed_50042_comparator',
+        'cv_fixed_five_member_seed_roster',
+    }:
+        return 50042
+    if policy == 'outer_cv_repeat_seed_equals_split_seed':
+        return int(split['training_seed'])
+    raise _ExperimentProtocolError('unsupported_outer_cv_seed_policy')
 
 
 _CANONICAL_RAW_CHANNEL_SCHEMA = (
@@ -2058,12 +2079,13 @@ def _execute_cell_unchecked(
         ),
         fold_hash=report.fold_hash,
     )
+    effective_training_seed = _outer_cv_model_training_seed(config, split)
     training_config = api['TrainingConfig'].from_mapping(
         config.section('training')
     )
     training_config = api['replace'](
         training_config,
-        seed=int(split['training_seed']),
+        seed=effective_training_seed,
     )
     if epoch_override is not None:
         if training_config.epoch_rule != 'fixed_epoch' or epoch_override <= 0:
@@ -2082,7 +2104,7 @@ def _execute_cell_unchecked(
 
     model_config, model_id = _resolved_model_config(
         config,
-        training_seed=int(split['training_seed']),
+        training_seed=effective_training_seed,
     )
     model_section = config.section('model')
     if mode == 'raw':
@@ -2328,12 +2350,12 @@ def _execute_cell_unchecked(
             'random_seeds': (
                 tuple(int(value) for value in model_section['member_seeds'])
                 if is_ensemble
-                else (int(split['training_seed']),)
+                else (effective_training_seed,)
             ),
             'seed_policy': (
                 'cv_fixed_five_member_seed_roster'
                 if is_ensemble
-                else 'outer_cv_repeat_seed_equals_split_seed'
+                else str(model_section['seed_policy'])
             ),
             'fold_hash': report.fold_hash,
             'aggregation': dict(aggregation_section),
@@ -2352,7 +2374,7 @@ def _execute_cell_unchecked(
         'repeat': int(split['repeat_index']),
         'fold': int(split['fold_index']),
         'split_seed': int(split['split_seed']),
-        'training_seed': int(split['training_seed']),
+        'training_seed': effective_training_seed,
         'config_hash': config.sha256,
         'manifest_hash': report.manifest_hash,
         'fold_hash': report.fold_hash,
@@ -2463,7 +2485,7 @@ def _execute_cell_unchecked(
         'fold_index': int(split['fold_index']),
         'split_seed': int(split['split_seed']),
         'training_seed': (
-            None if is_ensemble else int(split['training_seed'])
+            None if is_ensemble else effective_training_seed
         ),
         'member_training_seeds': (
             list(int(value) for value in model_section['member_seeds'])
@@ -2473,7 +2495,7 @@ def _execute_cell_unchecked(
         'seed_policy': (
             'cv_fixed_five_member_seed_roster'
             if is_ensemble
-            else 'outer_cv_repeat_seed_equals_split_seed'
+            else str(model_section['seed_policy'])
         ),
         'representation_mode': mode,
         'model_id': str(model_section['model_id']),
@@ -3191,6 +3213,27 @@ _FORMAL_COMPARISON_MACHINE_IDS = frozenset(
         'inception_matrix_five_member_ensemble',
     }
 )
+_FORMAL_MEMBER0_COMPARATOR_MACHINE_IDS = frozenset(
+    {'inception_full', 'inception_matrix'}
+)
+_FORMAL_ENSEMBLE_FACTOR_COMPARATOR_CONFIG_IDS = {
+    'comparison_inception_full_five_member_ensemble_line_a_v2': (
+        'comparison_inception_full_member0_comparator_line_a_v2',
+        'inception_full',
+    ),
+    'comparison_inception_full_five_member_ensemble_line_b_v2': (
+        'comparison_inception_full_member0_comparator_line_b_v2',
+        'inception_full',
+    ),
+    'comparison_inception_matrix_five_member_ensemble_line_a_v2': (
+        'comparison_inception_matrix_member0_comparator_line_a_v2',
+        'inception_matrix',
+    ),
+    'comparison_inception_matrix_five_member_ensemble_line_b_v2': (
+        'comparison_inception_matrix_member0_comparator_line_b_v2',
+        'inception_matrix',
+    ),
+}
 _FORMAL_REFERENCE_MACHINE_IDS = frozenset(
     {
         'compact_cnn',
@@ -3209,7 +3252,7 @@ _FORMAL_REFERENCE_MACHINE_IDS = frozenset(
 
 
 def _registry_role_for_machine_id(machine_id: str) -> str:
-    """Map all 15 formal catalog identities to immutable provenance roles."""
+    """Map formal machine identities to immutable provenance roles."""
 
     value = str(machine_id)
     if value in _FORMAL_REFERENCE_MACHINE_IDS:
@@ -3410,6 +3453,18 @@ def _trusted_config_metrics_payload(
     if len(machine_ids) != 1:
         raise _ExperimentProtocolError('root_cells_mix_model_machine_ids')
     machine_id = next(iter(machine_ids))
+    seed_policies = {str(summary.get('seed_policy', '')) for summary in summaries}
+    if len(seed_policies) != 1:
+        raise _ExperimentProtocolError('root_cells_mix_model_seed_policies')
+    seed_policy = next(iter(seed_policies))
+    if machine_id in _FORMAL_COMPARISON_MACHINE_IDS:
+        if seed_policy != 'cv_fixed_five_member_seed_roster':
+            raise _ExperimentProtocolError('root_ensemble_seed_policy_drift')
+    elif seed_policy == 'cv_fixed_member0_seed_50042_comparator':
+        if machine_id not in _FORMAL_MEMBER0_COMPARATOR_MACHINE_IDS:
+            raise _ExperimentProtocolError('root_member0_comparator_identity_drift')
+    elif seed_policy != 'outer_cv_repeat_seed_equals_split_seed':
+        raise _ExperimentProtocolError('root_single_seed_policy_drift')
     split_seed_by_repeat: dict[int, int] = {}
     for summary in summaries:
         repeat = int(summary['repeat_index'])
@@ -3470,9 +3525,13 @@ def _trusted_config_metrics_payload(
         'registry_role': metrics.registry_role,
         'seeds': list(_FORMAL_SPLIT_SEEDS),
         'training_seeds': (
-            [42, 10042, 20042, 30042, 40042]
-            if machine_id in _FORMAL_COMPARISON_MACHINE_IDS
-            else list(_FORMAL_SPLIT_SEEDS)
+            [50042, 60042, 70042, 80042, 90042]
+            if seed_policy == 'cv_fixed_five_member_seed_roster'
+            else (
+                [50042]
+                if seed_policy == 'cv_fixed_member0_seed_50042_comparator'
+                else list(_FORMAL_SPLIT_SEEDS)
+            )
         ),
         'participant_oof_coverage': {
             'participant_count': len(participants),
@@ -3741,8 +3800,20 @@ def _fold_summaries_from_run(directory: Path) -> tuple[dict[str, Any], ...]:
     machine_ids = {str(row.get('model_machine_id', '')) for row in summaries}
     if len(machine_ids) != 1:
         raise ValueError('comparison_input_cell_model_identity_drift')
-    ensemble = next(iter(machine_ids)) in _FORMAL_COMPARISON_MACHINE_IDS
-    expected_members = [42, 10042, 20042, 30042, 40042]
+    machine_id = next(iter(machine_ids))
+    seed_policies = {str(row.get('seed_policy', '')) for row in summaries}
+    if len(seed_policies) != 1:
+        raise ValueError('comparison_input_cell_seed_policy_drift')
+    seed_policy = next(iter(seed_policies))
+    ensemble = machine_id in _FORMAL_COMPARISON_MACHINE_IDS
+    if ensemble != (seed_policy == 'cv_fixed_five_member_seed_roster'):
+        raise ValueError('comparison_input_ensemble_seed_policy_identity_drift')
+    if (
+        seed_policy == 'cv_fixed_member0_seed_50042_comparator'
+        and machine_id not in _FORMAL_MEMBER0_COMPARATOR_MACHINE_IDS
+    ):
+        raise ValueError('comparison_input_member0_comparator_model_identity_drift')
+    expected_members = [50042, 60042, 70042, 80042, 90042]
     for row in summaries:
         if ensemble:
             if (
@@ -3751,6 +3822,16 @@ def _fold_summaries_from_run(directory: Path) -> tuple[dict[str, Any], ...]:
                 or row.get('seed_policy') != 'cv_fixed_five_member_seed_roster'
             ):
                 raise ValueError('comparison_input_ensemble_seed_provenance_drift')
+        elif seed_policy == 'cv_fixed_member0_seed_50042_comparator':
+            if (
+                int(row.get('training_seed', -1)) != 50042
+                or row.get('member_training_seeds') != []
+                or row.get('seed_policy')
+                != 'cv_fixed_member0_seed_50042_comparator'
+            ):
+                raise ValueError(
+                    'comparison_input_member0_comparator_seed_provenance_drift'
+                )
         elif (
             int(row.get('training_seed', -1)) != int(row['split_seed'])
             or row.get('member_training_seeds') != []
@@ -3986,13 +4067,7 @@ def _read_trusted_comparison_run(
     if len(machine_ids) != 1:
         raise ValueError(f'comparison_run_mixed_model_ids:{config_id}')
     machine_id = next(iter(machine_ids))
-    if machine_id in {
-        'inception_full_five_member_ensemble',
-        'inception_matrix_five_member_ensemble',
-    }:
-        raise ValueError(
-            'comparison_ensemble_cv_seed_matrix_pending_human_decision'
-        )
+    seed_policy = str(summaries[0]['seed_policy'])
     registry_role = _registry_role_for_machine_id(machine_id)
     if any(str(row.get('model_machine_id')) != machine_id for row in summaries):
         raise ValueError(f'comparison_run_model_identity_drift:{config_id}')
@@ -4016,7 +4091,7 @@ def _read_trusted_comparison_run(
                 f'comparison_run_requires_725_ensemble_member_rows:{config_id}'
             )
         base_model_id = ensemble_base_by_id[machine_id]
-        expected_member_seeds = (42, 10042, 20042, 30042, 40042)
+        expected_member_seeds = (50042, 60042, 70042, 80042, 90042)
         for row in member_rows:
             if (
                 row.prediction_kind != 'ensemble_member'
@@ -4053,15 +4128,21 @@ def _read_trusted_comparison_run(
     else:
         member_rows = ()
         for row in oof_rows:
+            if seed_policy == 'cv_fixed_member0_seed_50042_comparator':
+                invalid_seed = row.training_seed != 50042
+                reason = 'comparison_run_member0_comparator_seed_identity_drift'
+            else:
+                invalid_seed = (
+                    row.training_seed != _FORMAL_SPLIT_SEEDS[int(row.repeat)]
+                    or row.training_seed != row.split_seed
+                )
+                reason = 'comparison_run_single_repeat_seed_identity_drift'
             if (
                 row.prediction_kind != 'single_model'
-                or row.training_seed != _FORMAL_SPLIT_SEEDS[int(row.repeat)]
-                or row.training_seed != row.split_seed
+                or invalid_seed
                 or row.member_training_seeds
             ):
-                raise ValueError(
-                    f'comparison_run_single_repeat_seed_identity_drift:{config_id}'
-                )
+                raise ValueError(f'{reason}:{config_id}')
         member_path = root / 'oof_member_predictions.parquet'
         if read_oof_parquet(member_path):
             raise ValueError(f'comparison_run_single_model_has_member_rows:{config_id}')
@@ -4158,6 +4239,15 @@ def _read_trusted_comparison_run(
 
     stored_payload = _load_strict_json_object(root / 'config_metrics_v2.json')
     stored = stored_payload.get('config_metrics')
+    expected_training_seeds = (
+        [50042, 60042, 70042, 80042, 90042]
+        if seed_policy == 'cv_fixed_five_member_seed_roster'
+        else (
+            [50042]
+            if seed_policy == 'cv_fixed_member0_seed_50042_comparator'
+            else list(_FORMAL_SPLIT_SEEDS)
+        )
+    )
     if (
         stored_payload.get('status') != 'passed_trusted_metrics_rebuilt_from_typed_oof'
         or stored_payload.get('config_id') != config_id
@@ -4165,6 +4255,7 @@ def _read_trusted_comparison_run(
         or stored_payload.get('independent_test') is not False
         or stored_payload.get('fold_protocol') != 'frozen_repeated_grouped_5x5'
         or stored_payload.get('seeds') != list(_FORMAL_SPLIT_SEEDS)
+        or stored_payload.get('training_seeds') != expected_training_seeds
         or not isinstance(stored, Mapping)
     ):
         raise ValueError(f'comparison_run_trusted_metrics_contract_invalid:{config_id}')
@@ -4236,6 +4327,7 @@ def _read_trusted_comparison_run(
         'config_id': config_id,
         'config_hash': config_hash,
         'machine_id': machine_id,
+        'seed_policy': seed_policy,
         'metrics': metrics,
         'bootstrap': bootstrap,
         'predictions': predictions,
@@ -4307,6 +4399,28 @@ def build_comparison_archive_from_run_directories(
         for config_id, directory in sorted(directories.items())
     }
     reference = loaded[reference_config_id]
+    for current in loaded.values():
+        if current['machine_id'] not in _FORMAL_COMPARISON_MACHINE_IDS:
+            continue
+        expected = _FORMAL_ENSEMBLE_FACTOR_COMPARATOR_CONFIG_IDS.get(
+            current['config_id']
+        )
+        if expected is None:
+            raise ValueError(
+                'ensemble_factor_comparison_ensemble_config_identity_unregistered:'
+                f"{current['config_id']}"
+            )
+        expected_config_id, expected_machine_id = expected
+        if (
+            reference['config_id'] != expected_config_id
+            or reference['machine_id'] != expected_machine_id
+            or reference['seed_policy']
+            != 'cv_fixed_member0_seed_50042_comparator'
+        ):
+            raise ValueError(
+                'ensemble_factor_comparison_requires_matching_member0_reference:'
+                f"{current['config_id']}:{expected_config_id}"
+            )
     reference_membership = reference['membership']
     reference_participants = reference['participants']
     reference_authority = reference['authority_identity']
@@ -4388,6 +4502,7 @@ def build_comparison_archive_from_run_directories(
                 config_id: {
                     'config_hash': current['config_hash'],
                     'model_machine_id': current['machine_id'],
+                    'seed_policy': current['seed_policy'],
                     'run_directory': current['run_directory'],
                     'artifact_count': current['artifact_count'],
                     'authority_identity_sha256':
@@ -5118,13 +5233,17 @@ def execute_final_refit_from_verified_artifacts(
     )
     full_dataset = materialized.dataset
 
+    model_section = config.section('model')
+    final_ensemble_declared = int(model_section.get('ensemble_size', 1)) == 5
+    refit_orchestration_seed = 50042 if final_ensemble_declared else 42
     factory_model_config, machine_id = _resolved_model_config(
         config,
-        training_seed=42,
+        training_seed=refit_orchestration_seed,
+        seed_scope='final_refit',
     )
     expected_training = api['replace'](
         api['TrainingConfig'].from_mapping(config.section('training')),
-        seed=42,
+        seed=refit_orchestration_seed,
     )
     expected_spec = _model_input_spec(full_dataset, config.representation_mode)
     if canonical_input_spec_payload(expected_spec) != canonical_input_spec_payload(
@@ -5146,7 +5265,6 @@ def execute_final_refit_from_verified_artifacts(
         scope,
     )
     model_config_for_binding: Mapping[str, Any] = prepared.resolved_model_config
-    model_section = config.section('model')
     training_section = config.section('training')
     windows = config.section('windows')
     signal = config.section('signal')
@@ -5163,6 +5281,8 @@ def execute_final_refit_from_verified_artifacts(
         'inception_full_five_member_ensemble',
         'inception_matrix_five_member_ensemble',
     }
+    if ensemble != final_ensemble_declared:
+        raise ValueError('final_refit_declared_and_resolved_ensemble_identity_drift')
     seeds = FINAL_ENSEMBLE_MEMBER_SEEDS if ensemble else (42,)
     model_input_fs_hz = _model_input_sampling_rate_hz(config)
     input_channels_order = (
@@ -5282,7 +5402,7 @@ def execute_final_refit_from_verified_artifacts(
     )
 
 
-FINAL_ENSEMBLE_MEMBER_SEEDS = (42, 10042, 20042, 30042, 40042)
+FINAL_ENSEMBLE_MEMBER_SEEDS = (50042, 60042, 70042, 80042, 90042)
 
 
 def final_refit_policy(config: Any) -> dict[str, Any]:

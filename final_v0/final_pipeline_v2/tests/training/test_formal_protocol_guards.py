@@ -161,7 +161,7 @@ def _formal_participant_row(
     kind = prediction_kind or (
         "ensemble_member" if member_index is not None else "single_model"
     )
-    member_seeds = (42, 10042, 20042, 30042, 40042)
+    member_seeds = (50042, 60042, 70042, 80042, 90042)
     training_seed = (
         member_seeds[member_index]
         if kind == "ensemble_member" and member_index is not None

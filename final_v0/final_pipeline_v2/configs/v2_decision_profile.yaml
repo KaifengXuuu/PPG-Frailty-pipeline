@@ -249,7 +249,18 @@ confirmed_defaults:
     comparison_lines:
     - raw_inception_time_full_five_member
     - feature_matrix_inception_time_matrix_five_member
-    member_seeds: [42, 10042, 20042, 30042, 40042]
+    repeat_split_seeds: [42, 10042, 20042, 30042, 40042]
+    member_seeds: [50042, 60042, 70042, 80042, 90042]
+    member_seed_scope: fixed_reused_in_every_repeat_and_outer_fold
+    member0_single_network_comparator_seed: 50042
+    split_seed_scope: participant_fold_generation_only
+    fold_probability_rule: arithmetic_mean_of_five_member_probabilities
+    oof_rule: stitch_heldout_fold_means_then_compute_metrics_once_per_repeat
+    forbidden_aggregation:
+    - best_member_selection
+    - member_metric_mean_as_ensemble_performance
+    - twenty_five_member_pool_across_repeats
+    - outer_fold_models_as_final_deployment_ensemble
     five_member_ensemble: explicit_comparison_ablation
   sklearn_serialization:
     decision_id: V2-021
@@ -314,7 +325,7 @@ confirmed_defaults:
     authority: manual_purpose_specific_final_selection
     fit_scope: all_29_participants_from_scratch
     single_model_seed: 42
-    ensemble_member_seeds: [42, 10042, 20042, 30042, 40042]
+    ensemble_member_seeds: [50042, 60042, 70042, 80042, 90042]
     ensemble_is_not_one_seed42_model: true
     performance_evidence: oof_only_no_internal_metric_from_full_refit
     python_bundle_retains_preprocessing: true
@@ -324,7 +335,7 @@ confirmed_defaults:
     independent_test: false
 
 comparison_profiles:
-  line_b_role_family_balance:
+  line_a_equal_files_balance:
     status: implemented_comparison_config
     formal_default: false
   quality_diagnostics_only:

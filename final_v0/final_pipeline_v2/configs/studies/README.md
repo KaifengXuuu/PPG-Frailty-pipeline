@@ -70,11 +70,21 @@ figures, N/A markers for unavailable views, and outputs_index.json.
 
 ## Seed and ensemble boundary
 
-These plans use a one-member model. During outer CV, the canonical repeat seed
-schedule is [42, 10042, 20042, 30042, 40042], with one repeat seed shared by its
-five folds. A fixed seed of 42 belongs only to final-use-case refit. Five-member
-outer-CV ensembles remain fail-closed until the repeat-by-member seed matrix is
-manually frozen.
+These plans use a one-member model. During outer CV, the canonical split-seed
+schedule is [42, 10042, 20042, 30042, 40042], with one split seed shared by its
+five folds. Ordinary single models, including the ordinary raw and matrix
+Inception entries, use that repeat seed for training.
+
+The catalog materializes two separate matched comparator config patterns:
+`comparison_inception_full_member0_comparator_{line_a|line_b}_v2` and
+`comparison_inception_matrix_member0_comparator_{line_a|line_b}_v2`. Only
+those configs use fixed member-0 seed 50042 during outer CV. Pair the raw
+comparator only with the raw five-member ensemble and the matrix comparator
+only with the matrix five-member ensemble, using the same Line A or Line B
+suffix. Every five-member ensemble reuses
+[50042, 60042, 70042, 80042, 90042] in every repeat and fold. Final full-data
+refit uses seed 42 for a selected single model or that same five-member roster
+for a selected ensemble.
 
 When jobs is greater than one, the terminal shows case-level refreshed progress;
 fine-grained child events remain in each case's executor_events.jsonl.

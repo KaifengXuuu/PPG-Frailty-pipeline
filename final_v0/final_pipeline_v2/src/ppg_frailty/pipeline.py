@@ -1082,11 +1082,11 @@ def run_model_comparison(
                         {
                             "model_id": machine_model_id,
                             "member_seeds": [
-                                42,
-                                10042,
-                                20042,
-                                30042,
-                                40042,
+                                50042,
+                                60042,
+                                70042,
+                                80042,
+                                90042,
                             ],
                             "comparison_only": True,
                             "dropout": 0.2,

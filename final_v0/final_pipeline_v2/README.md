@@ -12,8 +12,10 @@ source/lock/attestation gate。
 - 验证：participant-grouped 5-fold × 5-repeat。每个 repeat 的五个 folds 共用该
   repeat seed：`[42, 10042, 20042, 30042, 40042]`。固定 `seed=42` 只属于人工
   选出 final use case 后的 all-29 refit。
-- 单模型 outer CV 已可运行；ensemble outer-CV 的 repeat × member seed matrix 尚未
-  人工冻结，因此保持明确不可运行。final ensemble seed roster 不受此影响。
+- 普通单模型 outer CV 使用各 repeat seed；matched Inception single comparator 固定
+  member 0 seed `50042`。five-member ensemble 在所有 repeats/folds 固定复用
+  `[50042, 60042, 70042, 80042, 90042]`，每 fold 先平均五成员概率，再拼接每个
+  repeat 的完整 participant OOF。final ensemble refit 也使用同一五成员 roster。
 - canonical aggregation 为
   `window → file → role → participant`（role-aware Line B）；equal-files Line A
   仅是具名 ablation。
@@ -105,6 +107,14 @@ JSONL。
 ```bash
 python frailty_3class_sweep_v2.py report --study-dir <study-directory>
 ```
+
+## 计划与差距文档
+
+- [V2 搁置与未完成事项](docs/V2_DEFERRED_POINTS.md)
+- [V2 算法结构差距分析](docs/V2_ALGORITHM_GAP_ANALYSIS.md)
+- [V2 消融与测试详细计划](docs/V2_ABLATION_TEST_PLAN.md)
+
+三份文档区分软件实现、科学运行、人工决定与明确搁置；计划条目不代表已经执行。
 
 ## Dash 人工检查
 

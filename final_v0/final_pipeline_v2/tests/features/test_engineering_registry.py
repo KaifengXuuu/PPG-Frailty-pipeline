@@ -68,8 +68,10 @@ def resolved_config() -> dict[str, object]:
                 "preserve_feature_grid_hz": 400.0,
             },
             "normalization": {
-                "raw_ppg": "per_window_median_iqr", "raw_imu": "outer_train_fold_robust_scaler",
-                "iqr_fallback": "median_absolute_deviation_then_one", "clip_after_scale": None,
+                "raw_ppg": "per_window_median_iqr_over_1p349_sd_finite",
+                "raw_imu": "outer_training_participant_only_robust_scaler_axes6",
+                "iqr_fallback": "standard_deviation_then_finite_one",
+                "clip_after_scale": [-8.0, 8.0],
             },
         },
         "quality": {"long_gap_max_samples": 100, "flatline_duration_s": 1.0},

@@ -292,6 +292,7 @@ class AuthorityContractTests(unittest.TestCase):
             rejection_reason="quality_reject",
         )
         result = aggregate_hierarchy_strict((dropped,))
+        self.assertEqual(result.balance_line, "line_b_equal_role_families")
         self.assertEqual(len(result.source_rows), 1)
         self.assertEqual(len(result.dropped_rows), 1)
         self.assertEqual(len(result.participant_rows), 0)

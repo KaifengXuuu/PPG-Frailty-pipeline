@@ -186,6 +186,27 @@ def _validate_v2_balance(data: Mapping[str, Any]) -> None:
         raise ValueError("aggregation hierarchy does not match the selected balance line")
 
 
+def _validate_v2_signal_normalization(data: Mapping[str, Any]) -> None:
+    """Keep the frailty path on six measured IMU axes only."""
+
+    signal = _strict_mapping(data["signal"], "signal")
+    normalization = _strict_mapping(
+        signal.get("normalization"),
+        "signal.normalization",
+    )
+    expected = {
+        "raw_ppg": "per_window_median_iqr_over_1p349_sd_finite",
+        "raw_imu": "outer_training_participant_only_robust_scaler_axes6",
+        "iqr_fallback": "standard_deviation_then_finite_one",
+        "clip_after_scale": [-8.0, 8.0],
+    }
+    if normalization != expected:
+        raise ValueError(
+            "formal frailty signal.normalization must use the canonical axes6 "
+            "profile; motion9 is a separate motion-model augmentation"
+        )
+
+
 def _validate_v2_protocol(data: Mapping[str, Any]) -> None:
     """验证 5x5、epoch 与统计合同 / Validate the frozen V2 protocol."""
 
@@ -245,6 +266,7 @@ def _validate_v2_protocol(data: Mapping[str, Any]) -> None:
         raise ValueError("evaluation.ranking must match the confirmed V2 contract")
     if evaluation.get("independent_test_available") is not False:
         raise ValueError("the 29-participant cohort is OOF validation, not an independent test")
+    _validate_v2_signal_normalization(data)
     from .module_registry import validate_model_config
 
     validate_model_config(
@@ -432,7 +454,7 @@ def load_config(path: str | Path, *, allow_legacy: bool = False) -> PipelineConf
 
 
 def load_formal_experiment_catalog(path: str | Path) -> dict[str, Any]:
-    """Load the declarative 13-candidate plus two-ensemble V2 catalogue."""
+    """Load 13 ordinary candidates, two matched comparators and two ensembles."""
 
     source = Path(path)
     payload = _strict_mapping(
@@ -458,6 +480,7 @@ def load_formal_experiment_catalog(path: str | Path) -> dict[str, Any]:
     expected_policy = {
         "auto_run": False,
         "candidate_count": 13,
+        "matched_comparator_count": 2,
         "ensemble_comparison_count": 2,
         "default_balance_line": "line_b",
         "selectable_balance_lines": ["line_b", "line_a"],
@@ -466,8 +489,11 @@ def load_formal_experiment_catalog(path: str | Path) -> dict[str, Any]:
     if policy != expected_policy:
         raise ValueError("formal catalog execution policy drifted")
     raw_entries = payload["entries"]
-    if not isinstance(raw_entries, list) or len(raw_entries) != 15:
-        raise ValueError("formal catalog requires 13 candidates plus two ensembles")
+    if not isinstance(raw_entries, list) or len(raw_entries) != 17:
+        raise ValueError(
+            "formal catalog requires 13 candidates, two matched comparators "
+            "and two ensembles"
+        )
     from .module_registry import validate_model_config
 
     entries: list[dict[str, Any]] = []
@@ -500,6 +526,7 @@ def load_formal_experiment_catalog(path: str | Path) -> dict[str, Any]:
         if entry["catalog_role"] not in {
             "reference_candidate",
             "ablation_candidate",
+            "matched_comparator",
             "ensemble_comparison",
         }:
             raise ValueError("invalid formal catalog role")
@@ -508,11 +535,62 @@ def load_formal_experiment_catalog(path: str | Path) -> dict[str, Any]:
             str(entry["representation_mode"]),
         )
         entries.append(entry)
+    ordinary_count = sum(
+        entry["catalog_role"] in {"reference_candidate", "ablation_candidate"}
+        for entry in entries
+    )
+    comparator_count = sum(
+        entry["catalog_role"] == "matched_comparator" for entry in entries
+    )
     ensemble_count = sum(
         entry["catalog_role"] == "ensemble_comparison" for entry in entries
     )
-    if len(entries) - ensemble_count != 13 or ensemble_count != 2:
+    if (ordinary_count, comparator_count, ensemble_count) != (13, 2, 2):
         raise ValueError("formal catalogue count contract drifted")
+
+    by_id = {str(entry["entry_id"]): entry for entry in entries}
+    comparator_pairs = {
+        "inception_full_member0_comparator": (
+            "inception_full",
+            "comparison_inception_full_member0_comparator",
+            "raw",
+        ),
+        "inception_matrix_member0_comparator": (
+            "inception_matrix",
+            "comparison_inception_matrix_member0_comparator",
+            "feature_matrix",
+        ),
+    }
+    for comparator_id, (
+        ordinary_id,
+        expected_stem,
+        expected_mode,
+    ) in comparator_pairs.items():
+        comparator = by_id.get(comparator_id)
+        ordinary = by_id.get(ordinary_id)
+        if comparator is None or ordinary is None:
+            raise ValueError("formal matched-comparator identity is missing")
+        if (
+            comparator["catalog_role"] != "matched_comparator"
+            or comparator["config_stem"] != expected_stem
+            or comparator["representation_mode"] != expected_mode
+            or ordinary["representation_mode"] != expected_mode
+        ):
+            raise ValueError("formal matched-comparator identity drifted")
+        ordinary_model = dict(ordinary["model"])
+        comparator_model = dict(comparator["model"])
+        if (
+            ordinary_model.get("seed_policy")
+            != "outer_cv_repeat_seed_equals_split_seed"
+            or comparator_model.get("seed_policy")
+            != "cv_fixed_member0_seed_50042_comparator"
+        ):
+            raise ValueError("formal matched-comparator seed policy drifted")
+        comparator_model["seed_policy"] = ordinary_model["seed_policy"]
+        if comparator_model != ordinary_model:
+            raise ValueError(
+                "formal matched comparator must share the ordinary architecture"
+            )
     payload["entries"] = entries
     payload["catalog_sha256"] = hashlib.sha256(
         canonical_json_bytes(

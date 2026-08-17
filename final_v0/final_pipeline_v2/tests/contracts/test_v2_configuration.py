@@ -76,6 +76,56 @@ class V2ConfigurationTests(unittest.TestCase):
             )
             validate_model_config(config.payload["model"], mode)
 
+    def test_formal_catalog_freezes_matched_member0_and_ensemble_seed_axes(self) -> None:
+        catalog = load_formal_experiment_catalog(
+            ROOT / "configs/formal_experiment_catalog_v2.yaml"
+        )
+        entries = {entry["entry_id"]: entry for entry in catalog["entries"]}
+        models = {entry_id: entry["model"] for entry_id, entry in entries.items()}
+        for entry_id in ("inception_full", "inception_matrix"):
+            self.assertEqual(
+                models[entry_id]["seed_policy"],
+                "outer_cv_repeat_seed_equals_split_seed",
+            )
+        comparator_pairs = {
+            "inception_full_member0_comparator": "inception_full",
+            "inception_matrix_member0_comparator": "inception_matrix",
+        }
+        for comparator_id, ordinary_id in comparator_pairs.items():
+            self.assertEqual(
+                entries[comparator_id]["catalog_role"],
+                "matched_comparator",
+            )
+            self.assertEqual(
+                models[comparator_id]["seed_policy"],
+                "cv_fixed_member0_seed_50042_comparator",
+            )
+            comparator_model = dict(models[comparator_id])
+            comparator_model["seed_policy"] = (
+                "outer_cv_repeat_seed_equals_split_seed"
+            )
+            self.assertEqual(comparator_model, models[ordinary_id])
+        for entry_id in (
+            "inception_full_five_member_ensemble",
+            "inception_matrix_five_member_ensemble",
+        ):
+            self.assertEqual(
+                models[entry_id]["seed_policy"],
+                "cv_fixed_five_member_seed_roster",
+            )
+            self.assertEqual(
+                models[entry_id]["member_seeds"],
+                [50042, 60042, 70042, 80042, 90042],
+            )
+            self.assertEqual(
+                models[entry_id]["architecture_parameters"]["member_seeds"],
+                [50042, 60042, 70042, 80042, 90042],
+            )
+        self.assertEqual(
+            models["compact_cnn"]["seed_policy"],
+            "outer_cv_repeat_seed_equals_split_seed",
+        )
+
     def test_shapeformer_reference_is_variable_length_and_formally_materialized(self) -> None:
         """Reference OSD has no fixed-length or stride controls."""
 
@@ -170,6 +220,13 @@ class V2ConfigurationTests(unittest.TestCase):
         mutated["training"]["training_balance"] = "equal_files"
         with self.assertRaisesRegex(ValueError, "matched A-A or B-B"):
             validate_config_payload(mutated)
+
+        motion9 = canonical.to_dict()
+        motion9["signal"]["normalization"]["raw_imu"] = (
+            "outer_training_participant_only_robust_scaler_motion9_augmentation"
+        )
+        with self.assertRaisesRegex(ValueError, "canonical axes6"):
+            validate_config_payload(motion9)
 
     def test_formal_ablation_profiles_are_exact_and_never_auto_run(self) -> None:
         catalog = load_formal_ablation_profiles(

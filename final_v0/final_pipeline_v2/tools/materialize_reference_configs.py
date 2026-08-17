@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Materialize, but never execute, the formal V2 model catalogue.
 
-The source catalogue contains 13 single-model candidates and two explicit
-five-member ensemble comparisons.  A caller selects Line A or Line B and an
-empty output directory.  This tool writes fully resolved, validated YAML plus
-a SHA/byte index; it never trains, evaluates, recomputes folds, or overwrites.
+The source catalogue contains 13 ordinary candidates, two explicit member-0
+comparators and two five-member ensemble comparisons. A caller selects Line A
+or Line B and an empty output directory. This tool writes fully resolved,
+validated YAML plus a SHA/byte index; it never trains, evaluates, recomputes
+folds, or overwrites.
 """
 
 from __future__ import annotations
@@ -80,7 +81,7 @@ def resolved_catalog_payloads(
     line: str,
     catalog_path: Path | None = None,
 ) -> tuple[dict[str, Any], ...]:
-    """Return all 15 fully resolved configs without writing or executing them."""
+    """Return all 17 fully resolved configs without writing or executing them."""
 
     catalog = load_formal_experiment_catalog(
         catalog_path or ROOT / "configs/formal_experiment_catalog_v2.yaml"
@@ -124,8 +125,8 @@ def resolved_catalog_payloads(
             }
         checked = validate_config_payload(payload)
         output.append(checked)
-    if len(output) != 15 or len({row["config_id"] for row in output}) != 15:
-        raise RuntimeError("formal catalogue did not resolve to 15 unique configs")
+    if len(output) != 17 or len({row["config_id"] for row in output}) != 17:
+        raise RuntimeError("formal catalogue did not resolve to 17 unique configs")
     return tuple(output)
 
 
@@ -153,6 +154,13 @@ def materialize_catalog(
         catalog_path or ROOT / "configs/formal_experiment_catalog_v2.yaml"
     ).resolve()
     configs = resolved_catalog_payloads(line=line, catalog_path=catalog_source)
+    catalog = load_formal_experiment_catalog(catalog_source)
+    role_by_config_id = {
+        f"{entry['config_stem']}_{line}_v2": str(entry["catalog_role"])
+        for entry in catalog["entries"]
+    }
+    if set(role_by_config_id) != {str(row["config_id"]) for row in configs}:
+        raise RuntimeError("resolved catalog config identities drifted from entries")
     target.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(
         tempfile.mkdtemp(prefix=f".{target.name}.stage-", dir=target.parent)
@@ -178,6 +186,8 @@ def materialize_catalog(
                     "model_id": payload["model"]["model_id"],
                     "representation_mode": payload["representation_mode"],
                     "ensemble_size": payload["model"]["ensemble_size"],
+                    "seed_policy": payload["model"]["seed_policy"],
+                    "catalog_role": role_by_config_id[str(payload["config_id"])],
                 }
             )
         manifest = {
@@ -190,9 +200,15 @@ def materialize_catalog(
                 catalog_source.read_bytes()
             ).hexdigest(),
             "config_count": len(rows),
-            "candidate_count": sum(row["ensemble_size"] == 1 for row in rows),
+            "candidate_count": sum(
+                row["catalog_role"] in {"reference_candidate", "ablation_candidate"}
+                for row in rows
+            ),
+            "matched_comparator_count": sum(
+                row["catalog_role"] == "matched_comparator" for row in rows
+            ),
             "ensemble_comparison_count": sum(
-                row["ensemble_size"] == 5 for row in rows
+                row["catalog_role"] == "ensemble_comparison" for row in rows
             ),
             "auto_run": False,
             "training_executed": False,

@@ -675,8 +675,8 @@ class RepresentationDispatchTest(unittest.TestCase):
             section=lambda name: {
                 "model_id": "InceptionTimeFullFiveMemberEnsemble",
                 "comparison_only": True,
-                "member_seeds": [42, 10042, 20042, 30042, 40042],
-                "seed_policy": "pending_cv_repeat_member_seed_matrix_decision",
+                "member_seeds": [50042, 60042, 70042, 80042, 90042],
+                "seed_policy": "cv_fixed_five_member_seed_roster",
                 "member_seed_roster_id": "cv_fixed_five_member_seed_roster",
                 "dropout": 0.2,
                 "kernel_sizes": [39, 19, 9],
@@ -686,11 +686,50 @@ class RepresentationDispatchTest(unittest.TestCase):
                 },
             }
         )
+        resolved, machine_id = experiment._resolved_model_config(
+            config,
+            training_seed=50042,
+        )
+        self.assertEqual(machine_id, "inception_full_five_member_ensemble")
+        self.assertEqual(
+            resolved["member_seeds"],
+            (50042, 60042, 70042, 80042, 90042),
+        )
+
+    def test_member0_comparator_seed_is_outer_cv_only(self) -> None:
+        config = SimpleNamespace(
+            section=lambda name: {
+                "model_id": "InceptionTimeFull",
+                "seed_policy": "cv_fixed_member0_seed_50042_comparator",
+                "dropout": 0.2,
+                "kernel_sizes": [39, 19, 9],
+                "dilation": 1,
+                "architecture_parameters": {"model_id": "inception_full"},
+            }
+        )
+        outer, machine_id = experiment._resolved_model_config(
+            config,
+            training_seed=50042,
+            seed_scope="outer_cv",
+        )
+        final, final_machine_id = experiment._resolved_model_config(
+            config,
+            training_seed=42,
+            seed_scope="final_refit",
+        )
+        self.assertEqual(machine_id, "inception_full")
+        self.assertEqual(final_machine_id, "inception_full")
+        self.assertEqual(outer["seed"], 50042)
+        self.assertEqual(final["seed"], 42)
         with self.assertRaisesRegex(
             experiment._ExperimentProtocolError,
-            "ensemble_cv_repeat_member_seed_matrix_decision_pending",
+            "single_model_final_refit_seed_must_be_42",
         ):
-            experiment._resolved_model_config(config, training_seed=42)
+            experiment._resolved_model_config(
+                config,
+                training_seed=50042,
+                seed_scope="final_refit",
+            )
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Iterable
 
 from ..training.aggregation import (
+    CANONICAL_BALANCE_LINE,
     CoverageSummary,
     ExperimentIdentity,
     HierarchyAggregation,
@@ -28,7 +29,7 @@ StrictAggregationResult = HierarchyAggregation
 def aggregate_hierarchy_strict(
     rows: Iterable[OofPredictionRow],
     *,
-    balance_line: str = "line_a_equal_files",
+    balance_line: str = CANONICAL_BALANCE_LINE,
     quality_weighted: bool = False,
 ) -> HierarchyAggregation:
     """直接调用唯一聚合器 / Delegate directly to the sole aggregator."""

@@ -1197,6 +1197,14 @@ class UnifiedTrainer:
                 f"cache_policy={self.config.cache_policy}",
             )
             + (
+                (
+                    "training_seed_field_is_ensemble_orchestration_seed_only",
+                    "member_training_seeds_are_authoritative_for_member_stochasticity",
+                )
+                if member_training_seeds
+                else ()
+            )
+            + (
                 (f"legacy_epoch_rule_alias={self.config.legacy_epoch_rule_alias}",)
                 if self.config.legacy_epoch_rule_alias
                 else ()

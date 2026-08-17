@@ -75,6 +75,7 @@ def validate_frozen_model_run_provenance(value: Mapping[str, Any]) -> dict[str, 
         raise ValueError("random_seeds must be non-empty and unique")
     allowed_seed_policies = {
         "outer_cv_repeat_seed_equals_split_seed",
+        "cv_fixed_member0_seed_50042_comparator",
         "cv_fixed_five_member_seed_roster",
         "final_refit_single_seed_42",
         "final_refit_five_member_seeds",

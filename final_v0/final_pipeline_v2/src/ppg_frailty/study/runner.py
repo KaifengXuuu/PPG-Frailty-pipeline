@@ -145,20 +145,6 @@ def _contains_deep_case(expansion: StudyExpansion) -> bool:
     return False
 
 
-def _reject_unfrozen_outer_cv_ensembles(expansion: StudyExpansion) -> None:
-    unresolved = []
-    for case in expansion.cases:
-        model = case.config.get("model", {})
-        if isinstance(model, Mapping) and int(model.get("ensemble_size", 1)) > 1:
-            unresolved.append(case.case_id)
-    if unresolved:
-        raise RuntimeError(
-            "outer-CV ensemble execution is fail-closed until the repeat-by-member "
-            "seed matrix is manually frozen; affected cases: "
-            + ", ".join(unresolved)
-        )
-
-
 def _executor_progress_adapter(
     sink: ProgressSink, case_id: str
 ) -> Callable[[Any], None]:
@@ -539,7 +525,6 @@ class StudyRunner:
         resume_directory: str | Path | None = None,
     ) -> StudyRunResult:
         expansion = self.expand(plan)
-        _reject_unfrozen_outer_cv_ensembles(expansion)
         resumed_run = resume_directory is not None
         output = (
             Path(resume_directory).resolve()

@@ -34,6 +34,7 @@ from ppg_frailty.training import (
 
 
 _SPLIT_SEEDS = (42, 10042, 20042, 30042, 40042)
+_MEMBER_SEEDS = (50042, 60042, 70042, 80042, 90042)
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -52,6 +53,7 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
         machine_id: str,
         probability_shift: float,
         source_snapshot_hash: str = "6" * 64,
+        seed_policy: str | None = None,
     ) -> Path:
         run_root = root / config_id
         run_root.mkdir()
@@ -62,7 +64,10 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
             "inception_full_five_member_ensemble": "inception_full",
             "inception_matrix_five_member_ensemble": "inception_matrix",
         }.get(machine_id)
-        member_seeds = (42, 10042, 20042, 30042, 40042)
+        member_seeds = _MEMBER_SEEDS
+        single_seed_policy = seed_policy or "outer_cv_repeat_seed_equals_split_seed"
+        if ensemble_base and seed_policy is not None:
+            raise ValueError("ensemble fixture seed policy is fixed by the contract")
         predictions: list[ParticipantPrediction] = []
         summaries: list[dict[str, object]] = []
         fold_ba: dict[str, float] = {}
@@ -97,14 +102,28 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
             "seed_policy": (
                 "cv_fixed_five_member_seed_roster"
                 if ensemble_base
-                else "outer_cv_repeat_seed_equals_split_seed"
+                else single_seed_policy
             ),
-            "random_seeds": list(member_seeds if ensemble_base else (42,)),
+            "random_seeds": list(
+                member_seeds
+                if ensemble_base
+                else (
+                    (50042,)
+                    if single_seed_policy
+                    == "cv_fixed_member0_seed_50042_comparator"
+                    else (42,)
+                )
+            ),
             "fold_hash": "2" * 64,
             "aggregation": {"line": "line_a_equal_files"},
             "calibration": {"fit_scope": "outer_training_only"},
         }
         for repeat, split_seed in enumerate(_SPLIT_SEEDS):
+            single_training_seed = (
+                50042
+                if single_seed_policy == "cv_fixed_member0_seed_50042_comparator"
+                else split_seed
+            )
             for fold in range(5):
                 key = f"r{repeat}f{fold}"
                 matrix = [[0, 0, 0] for _ in range(3)]
@@ -121,20 +140,22 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
                 fold_rosters[key] = roster
                 cell_frozen_provenance = dict(frozen_provenance)
                 if not ensemble_base:
-                    cell_frozen_provenance["random_seeds"] = [split_seed]
+                    cell_frozen_provenance["random_seeds"] = [
+                        single_training_seed
+                    ]
                 summary = {
                     "status": "passed",
                     "repeat_index": repeat,
                     "fold_index": fold,
                     "split_seed": split_seed,
-                    "training_seed": None if ensemble_base else split_seed,
+                    "training_seed": None if ensemble_base else single_training_seed,
                     "member_training_seeds": (
                         list(member_seeds) if ensemble_base else []
                     ),
                     "seed_policy": (
                         "cv_fixed_five_member_seed_roster"
                         if ensemble_base
-                        else "outer_cv_repeat_seed_equals_split_seed"
+                        else single_seed_policy
                     ),
                     "model_machine_id": machine_id,
                     "class_order": [0, 1, 2],
@@ -196,7 +217,9 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
                         repeat=repeat,
                         fold=fold,
                         split_seed=split_seed,
-                        training_seed=None if ensemble_base else split_seed,
+                        training_seed=(
+                            None if ensemble_base else single_training_seed
+                        ),
                         config_hash=config_hash,
                         manifest_hash="1" * 64,
                         fold_hash="2" * 64,
@@ -329,6 +352,16 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
                 "independent_test": False,
                 "fold_protocol": "frozen_repeated_grouped_5x5",
                 "seeds": list(_SPLIT_SEEDS),
+                "training_seeds": (
+                    list(_MEMBER_SEEDS)
+                    if ensemble_base
+                    else (
+                        [50042]
+                        if single_seed_policy
+                        == "cv_fixed_member0_seed_50042_comparator"
+                        else list(_SPLIT_SEEDS)
+                    )
+                ),
                 "operational_measurement_status": (
                     "measured_all_25_cells_explicit_request"
                 ),
@@ -478,7 +511,7 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
             ["frozen.architecture_parameters"],
         )
 
-    def test_trusted_reader_keeps_ensemble_outer_cv_explicitly_pending(self) -> None:
+    def test_trusted_reader_accepts_fixed_ensemble_outer_cv_seed_matrix(self) -> None:
         with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent) as raw:
             run = self._run_fixture(
                 Path(raw),
@@ -486,23 +519,246 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
                 machine_id="inception_full_five_member_ensemble",
                 probability_shift=0.0,
             )
-            with self.assertRaisesRegex(
-                ValueError,
-                "comparison_ensemble_cv_seed_matrix_pending_human_decision",
-            ):
-                _read_trusted_comparison_run(
-                    "ensemble_fixture",
-                    run,
-                    n_bootstrap_resamples=12,
-                    bootstrap_seed=42,
-                )
+            _read_trusted_comparison_run(
+                "ensemble_fixture",
+                run,
+                n_bootstrap_resamples=12,
+                bootstrap_seed=42,
+            )
             averages = read_oof_parquet(run / "oof_subject_predictions.parquet")
             members = read_oof_parquet(run / "oof_member_predictions.parquet")
             self.assertEqual({row.training_seed for row in averages}, {None})
             self.assertEqual(
                 {row.training_seed for row in members},
+                set(_MEMBER_SEEDS),
+            )
+
+    def test_trusted_reader_scopes_member0_policy_without_changing_other_singles(self) -> None:
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent) as raw:
+            root = Path(raw)
+            ordinary = self._run_fixture(
+                root,
+                config_id="ordinary_inception_fixture",
+                machine_id="inception_full",
+                probability_shift=0.0,
+            )
+            comparator = self._run_fixture(
+                root,
+                config_id="member0_inception_fixture",
+                machine_id="inception_full",
+                probability_shift=0.0,
+                seed_policy="cv_fixed_member0_seed_50042_comparator",
+            )
+            ordinary_loaded = _read_trusted_comparison_run(
+                "ordinary_inception_fixture",
+                ordinary,
+                n_bootstrap_resamples=12,
+                bootstrap_seed=42,
+            )
+            comparator_loaded = _read_trusted_comparison_run(
+                "member0_inception_fixture",
+                comparator,
+                n_bootstrap_resamples=12,
+                bootstrap_seed=42,
+            )
+            self.assertEqual(
+                ordinary_loaded["seed_policy"],
+                "outer_cv_repeat_seed_equals_split_seed",
+            )
+            self.assertEqual(
+                comparator_loaded["seed_policy"],
+                "cv_fixed_member0_seed_50042_comparator",
+            )
+            ordinary_rows = read_oof_parquet(
+                ordinary / "oof_subject_predictions.parquet"
+            )
+            comparator_rows = read_oof_parquet(
+                comparator / "oof_subject_predictions.parquet"
+            )
+            self.assertEqual(
+                {row.training_seed for row in ordinary_rows},
                 set(_SPLIT_SEEDS),
             )
+            self.assertEqual(
+                {row.training_seed for row in comparator_rows},
+                {50042},
+            )
+
+    def test_ensemble_factor_archive_requires_matching_member0_reference(self) -> None:
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent) as raw:
+            root = Path(raw)
+            ensemble_config_id = (
+                "comparison_inception_full_five_member_ensemble_line_b_v2"
+            )
+            comparator_config_id = (
+                "comparison_inception_full_member0_comparator_line_b_v2"
+            )
+            unrelated = self._run_fixture(
+                root,
+                config_id="unrelated_reference",
+                machine_id="logistic_regression",
+                probability_shift=0.0,
+            )
+            ensemble = self._run_fixture(
+                root,
+                config_id=ensemble_config_id,
+                machine_id="inception_full_five_member_ensemble",
+                probability_shift=0.0,
+            )
+            with self.assertRaisesRegex(
+                ValueError,
+                "ensemble_factor_comparison_requires_matching_member0_reference",
+            ):
+                build_comparison_archive_from_run_directories(
+                    {
+                        "unrelated_reference": unrelated,
+                        ensemble_config_id: ensemble,
+                    },
+                    reference_config_id="unrelated_reference",
+                    comparison_family="ensemble_factor",
+                    comparison_id="requires_matched_reference",
+                    run_id="run_001",
+                    output_root=root / "archives",
+                    n_bootstrap_resamples=12,
+                    n_permutation_resamples=16,
+                    statistics_seed=42,
+                )
+            ordinary_inception_config_id = "formal_inception_full_line_b_v2"
+            ordinary_inception = self._run_fixture(
+                root,
+                config_id=ordinary_inception_config_id,
+                machine_id="inception_full",
+                probability_shift=0.0,
+            )
+            with self.assertRaisesRegex(
+                ValueError,
+                "ensemble_factor_comparison_requires_matching_member0_reference",
+            ):
+                build_comparison_archive_from_run_directories(
+                    {
+                        ordinary_inception_config_id: ordinary_inception,
+                        ensemble_config_id: ensemble,
+                    },
+                    reference_config_id=ordinary_inception_config_id,
+                    comparison_family="ensemble_factor",
+                    comparison_id="reject_ordinary_inception_as_member0",
+                    run_id="run_001",
+                    output_root=root / "ordinary_archives",
+                    n_bootstrap_resamples=12,
+                    n_permutation_resamples=16,
+                    statistics_seed=42,
+                )
+            comparator = self._run_fixture(
+                root,
+                config_id=comparator_config_id,
+                machine_id="inception_full",
+                probability_shift=0.0,
+                seed_policy="cv_fixed_member0_seed_50042_comparator",
+            )
+            matrix_comparator_config_id = (
+                "comparison_inception_matrix_member0_comparator_line_b_v2"
+            )
+            matrix_comparator = self._run_fixture(
+                root,
+                config_id=matrix_comparator_config_id,
+                machine_id="inception_matrix",
+                probability_shift=0.0,
+                seed_policy="cv_fixed_member0_seed_50042_comparator",
+            )
+            with self.assertRaisesRegex(
+                ValueError,
+                "ensemble_factor_comparison_requires_matching_member0_reference",
+            ):
+                build_comparison_archive_from_run_directories(
+                    {
+                        matrix_comparator_config_id: matrix_comparator,
+                        ensemble_config_id: ensemble,
+                    },
+                    reference_config_id=matrix_comparator_config_id,
+                    comparison_family="ensemble_factor",
+                    comparison_id="reject_matrix_reference_for_raw_ensemble",
+                    run_id="run_001",
+                    output_root=root / "mismatched_archives",
+                    n_bootstrap_resamples=12,
+                    n_permutation_resamples=16,
+                    statistics_seed=42,
+                )
+            matched = build_comparison_archive_from_run_directories(
+                {
+                    comparator_config_id: comparator,
+                    ensemble_config_id: ensemble,
+                },
+                reference_config_id=comparator_config_id,
+                comparison_family="ensemble_factor",
+                comparison_id="matched_member0_reference",
+                run_id="run_001",
+                output_root=root / "matched_archives",
+                n_bootstrap_resamples=12,
+                n_permutation_resamples=16,
+                statistics_seed=42,
+                allowed_authority_differences=(
+                    "oof.training_seed",
+                    "oof.prediction_kind",
+                    "oof.member_training_seeds",
+                    "oof.ensemble_base_model_id",
+                    "frozen.seed_policy",
+                    "frozen.random_seeds",
+                ),
+            )
+            self.assertEqual(matched["status"], "passed")
+            self.assertEqual(
+                matched["reference_config_id"],
+                comparator_config_id,
+            )
+
+    def test_matrix_ensemble_factor_accepts_only_explicit_matrix_member0(self) -> None:
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent) as raw:
+            root = Path(raw)
+            comparator_config_id = (
+                "comparison_inception_matrix_member0_comparator_line_b_v2"
+            )
+            ensemble_config_id = (
+                "comparison_inception_matrix_five_member_ensemble_line_b_v2"
+            )
+            comparator = self._run_fixture(
+                root,
+                config_id=comparator_config_id,
+                machine_id="inception_matrix",
+                probability_shift=0.0,
+                seed_policy="cv_fixed_member0_seed_50042_comparator",
+            )
+            ensemble = self._run_fixture(
+                root,
+                config_id=ensemble_config_id,
+                machine_id="inception_matrix_five_member_ensemble",
+                probability_shift=0.0,
+            )
+            result = build_comparison_archive_from_run_directories(
+                {
+                    comparator_config_id: comparator,
+                    ensemble_config_id: ensemble,
+                },
+                reference_config_id=comparator_config_id,
+                comparison_family="ensemble_factor",
+                comparison_id="matched_matrix_member0_reference",
+                run_id="run_001",
+                output_root=root / "archives",
+                n_bootstrap_resamples=12,
+                n_permutation_resamples=16,
+                statistics_seed=42,
+                allowed_authority_differences=(
+                    "oof.training_seed",
+                    "oof.prediction_kind",
+                    "oof.member_training_seeds",
+                    "oof.ensemble_base_model_id",
+                    "frozen.seed_policy",
+                    "frozen.random_seeds",
+                ),
+            )
+            self.assertEqual(result["status"], "passed")
+            self.assertEqual(result["reference_config_id"], comparator_config_id)
+
+    def test_selection_refit_and_materialization_cli_contracts(self) -> None:
         selection = build_parser().parse_args(
             [
                 "record-selection",

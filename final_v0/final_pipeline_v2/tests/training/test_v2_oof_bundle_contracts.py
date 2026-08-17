@@ -22,11 +22,14 @@ from ppg_frailty.models import (
 from ppg_frailty.training import (
     FeatureVectorDataset,
     FinalRefitPlan,
+    FittedObjectProvenance,
     FullCohortRefitScope,
     OofPredictionRow,
     OofWriter,
+    RawWindowDataset,
     SampleIdentity,
     TrainingConfig,
+    TrainingResult,
     UnifiedTrainer,
     assert_golden_parity,
     current_runtime_environment,
@@ -51,7 +54,7 @@ def _trace_row(
     member_index: int | None = None,
     prediction_kind: str = "single_model",
 ) -> OofPredictionRow:
-    member_seeds = (42, 10042, 20042, 30042, 40042)
+    member_seeds = (50042, 60042, 70042, 80042, 90042)
     training_seed = (
         member_seeds[member_index]
         if prediction_kind == "ensemble_member" and member_index is not None
@@ -329,12 +332,176 @@ class FinalRefitContracts(unittest.TestCase):
             "representation_mode": "raw",
         }
         plan = FinalRefitPlan(
-            training_seeds=(42, 10042, 20042, 30042, 40042),
+            training_seeds=(50042, 60042, 70042, 80042, 90042),
             **common,
         )
-        self.assertEqual(plan.training_seeds, (42, 10042, 20042, 30042, 40042))
+        self.assertEqual(plan.training_seeds, (50042, 60042, 70042, 80042, 90042))
         with self.assertRaisesRegex(ValueError, "exact five member seeds"):
             FinalRefitPlan(training_seeds=(42,), **common)
+
+    def test_ensemble_executor_accepts_seed50042_without_running_training(self) -> None:
+        participants = tuple(f"P{index:02d}" for index in range(29))
+        identities = tuple(
+            SampleIdentity(
+                participant_id=participant,
+                file_id=f"{participant}_B",
+                role="B",
+                label=index % 3,
+                signal_route="direct",
+            )
+            for index, participant in enumerate(participants)
+        )
+        dataset = RawWindowDataset(
+            np.zeros((29, 8, 16), dtype=np.float32),
+            identities,
+        )
+        channels = (
+            "RED", "IR", "A_dyn_x", "A_dyn_y", "A_dyn_z", "GX", "GY", "GZ",
+        )
+        input_spec = ModelInputSpec(
+            "raw",
+            n_channels=8,
+            n_classes=3,
+            channel_schema=channels,
+        )
+        member_seeds = (50042, 60042, 70042, 80042, 90042)
+        model_config = {
+            "model_id": "InceptionTimeFullFiveMemberEnsemble",
+            "comparison_only": True,
+            "member_seeds": member_seeds,
+            "dropout": 0.2,
+            "kernel_sizes": (39, 19, 9),
+            "dilation": 1,
+        }
+        model_config["architecture_parameters"] = materialize_architecture_parameters(
+            model_config,
+            input_spec,
+        )
+        training_config = TrainingConfig(seed=50042)
+        scope = FullCohortRefitScope(
+            participants,
+            registry_hash="c" * 64,
+            config_hash="a" * 64,
+            oof_evidence_hash="b" * 64,
+        ).bind_training_dataset(dataset)
+        run_provenance = {
+            "architecture_parameters": model_config["architecture_parameters"],
+            "input_channels_order": channels,
+            "sampling_rate_hz": 100.0,
+            "window_plan": {"representation_mode": "raw"},
+            "hop_plan": {"hop_s": 2.5},
+            "normalization": {"scope": "all29_final_refit"},
+            "padding_mask": {"padding": "none"},
+            "feature_schema_hash": "f" * 64,
+            "sqi_routing": {"mode": "off"},
+            "loss": training_config.loss,
+            "class_weighting": training_config.class_weighting,
+            "sampler": training_config.sampler,
+            "epoch_rule": {"rule": "fixed_epoch", "fixed_epochs": 10},
+            "optimizer": training_config.optimizer,
+            "learning_rate": training_config.learning_rate,
+            "weight_decay": training_config.weight_decay,
+            "dropout": 0.2,
+            "label_smoothing": training_config.label_smoothing,
+            "gradient_clipping": {"enabled": False, "max_norm": None},
+            "seed_policy": "final_refit_five_member_seeds",
+            "random_seeds": member_seeds,
+            "fold_hash": scope.fold_hash,
+            "aggregation": {
+                "balance_line": training_config.expected_aggregation_rule,
+            },
+            "calibration": {"fit_scope": "all29_final_refit"},
+        }
+        binding = materialize_final_refit_binding(
+            resolved_model_config=model_config,
+            input_spec=input_spec,
+            training_config=training_config,
+            frozen_run_provenance=run_provenance,
+            config_hash="a" * 64,
+            registry_hash="c" * 64,
+            source_snapshot_hash="d" * 64,
+            manual_selection_hash="e" * 64,
+            oof_evidence_hash="b" * 64,
+        )
+        plan = FinalRefitPlan(
+            purpose="ensemble_contract",
+            config_hash="a" * 64,
+            model_id="InceptionTimeFullFiveMemberEnsemble",
+            participant_ids=participants,
+            training_seeds=member_seeds,
+            fixed_epochs=10,
+            epoch_rule="fixed_epoch",
+            model_family="deep",
+            oof_evidence_hash="b" * 64,
+            model_kind="five_member_ensemble",
+            registry_hash="c" * 64,
+            source_snapshot_hash="d" * 64,
+            manual_selection_hash="e" * 64,
+            resolved_model_config_hash=binding.resolved_model_config_hash,
+            architecture_parameters_hash=binding.architecture_parameters_hash,
+            input_schema_hash=binding.input_schema_hash,
+            training_config_hash=binding.training_config_hash,
+            frozen_run_provenance_hash=binding.frozen_run_provenance_hash,
+            representation_mode="raw",
+        )
+        fake_model = SimpleNamespace(
+            model_id="inception_full_five_member_ensemble"
+        )
+        result = TrainingResult(
+            model=fake_model,
+            selected_epoch=10,
+            provenance=FittedObjectProvenance(
+                object_type="InceptionTimeFullFiveMemberEnsemble",
+                fitted_participant_ids=participants,
+                outer_membership_hash=scope.membership_hash,
+                registry_hash="c" * 64,
+                fold_hash=scope.fold_hash,
+                epoch_rule="fixed_epoch",
+                selected_epoch=10,
+                state_hash="9" * 64,
+                dataset_binding_hash=scope.train_dataset_hash or "",
+                training_balance=training_config.training_balance,
+                expected_aggregation_rule=training_config.expected_aggregation_rule,
+                epoch_profile=training_config.epoch_profile,
+                execution_mode="formal",
+                training_seed=50042,
+                member_training_seeds=member_seeds,
+                member_state_hashes=tuple(str(index) * 64 for index in range(1, 6)),
+            ),
+        )
+        with self.assertRaisesRegex(
+            ValueError,
+            "ensemble final refit orchestration seed must be 50042",
+        ):
+            _execute_prepared_full_cohort_refit(
+                plan,
+                UnifiedTrainer(TrainingConfig(seed=42)),
+                dataset,
+                registry_hash="c" * 64,
+                binding=binding,
+                model_factory=lambda: fake_model,
+            )
+        with (
+            patch(
+                "ppg_frailty.training.bundle.validate_resolved_architecture"
+            ),
+            patch.object(UnifiedTrainer, "fit", return_value=result) as fit,
+        ):
+            execution = _execute_prepared_full_cohort_refit(
+                plan,
+                UnifiedTrainer(training_config),
+                dataset,
+                registry_hash="c" * 64,
+                binding=binding,
+                model_factory=lambda: fake_model,
+            )
+        fit.assert_called_once()
+        self.assertEqual(execution.plan.training_seeds, member_seeds)
+        self.assertEqual(execution.result.provenance.training_seed, 50042)
+        self.assertEqual(
+            execution.result.provenance.member_training_seeds,
+            member_seeds,
+        )
 
     def test_verified_executor_exposes_no_caller_injection_boundary(self) -> None:
         from ppg_frailty.experiment import (

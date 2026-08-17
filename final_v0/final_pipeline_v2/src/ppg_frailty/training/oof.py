@@ -117,7 +117,7 @@ class OofPredictionRow:
         else:
             if self.training_seed is not None or self.member_index is not None:
                 raise ValueError("ensemble_average cannot be represented as one training seed/member")
-            if member_seeds != (42, 10042, 20042, 30042, 40042):
+            if member_seeds != (50042, 60042, 70042, 80042, 90042):
                 raise ValueError("ensemble_average requires the exact five V2 member seeds")
             if not str(self.ensemble_base_model_id).strip():
                 raise ValueError("ensemble_average requires ensemble_base_model_id")
@@ -469,8 +469,9 @@ def _arrow_schema(pa: object, *, empty_reason: str | None = None) -> object:
     metadata = {
         b"schema_version": OOF_SCHEMA_VERSION.encode("ascii"),
         b"seed_semantics": (
-            b"single_outer_cv_training_seed_equals_repeat_split_seed;"
-            b"ensemble_member_seeds_are_explicit"
+            b"ordinary_single_outer_cv_training_seed_equals_repeat_split_seed;"
+            b"ensemble_member_seeds_are_fixed_and_split_seed_independent;"
+            b"matched_single_comparator_uses_member0_seed_50042"
         ),
         b"ensemble_semantics": b"five_member_rows_plus_exact_probability_average",
         b"artifact_state": b"empty" if empty_reason is not None else b"populated",

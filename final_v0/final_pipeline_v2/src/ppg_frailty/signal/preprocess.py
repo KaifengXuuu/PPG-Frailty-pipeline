@@ -37,6 +37,9 @@ M3_QUALITY_SOURCE_SHA256 = (
 )
 REFERENCE_PPG_FILTER_PROFILE_ID = "butterworth_0p2_8hz_reference"
 ABLATION_PPG_FILTER_PROFILE_ID = "butterworth_0p5_5hz_ablation"
+CANONICAL_AXES6_NORMALIZATION_ID = (
+    "outer_training_participant_only_robust_scaler_axes6"
+)
 
 
 @dataclass(frozen=True)
@@ -506,15 +509,9 @@ def build_signal_views(
         ):
             raise ValueError("legacy IMU profile declaration drift")
     dl_resampling = validate_dl_resampling_config(signal_config.get("dl_resampling"))
-    legacy_normalization = {
-        "raw_ppg": "per_window_median_iqr",
-        "raw_imu": "outer_train_fold_robust_scaler",
-        "iqr_fallback": "median_absolute_deviation_then_one",
-        "clip_after_scale": None,
-    }
     workflow_normalization = {
         "raw_ppg": "per_window_median_iqr_over_1p349_sd_finite",
-        "raw_imu": "outer_training_participant_only_robust_scaler_all_9",
+        "raw_imu": CANONICAL_AXES6_NORMALIZATION_ID,
         "iqr_fallback": "standard_deviation_then_finite_one",
         "clip_after_scale": [-8.0, 8.0],
     }
@@ -532,20 +529,20 @@ def build_signal_views(
         if isinstance(observed_normalization, Mapping)
         else ()
     )
-    allowed_normalizations = {
-        tuple(sorted(legacy_normalization.items())),
-        tuple(
-            sorted(
-                (
-                    key,
-                    tuple(value) if isinstance(value, list) else value,
-                )
-                for key, value in workflow_normalization.items()
+    expected_normalization = tuple(
+        sorted(
+            (
+                key,
+                tuple(value) if isinstance(value, list) else value,
             )
-        ),
-    }
-    if normalized_observed not in allowed_normalizations:
-        raise ValueError("resolved signal.normalization differs from frozen V2")
+            for key, value in workflow_normalization.items()
+        )
+    )
+    if normalized_observed != expected_normalization:
+        raise ValueError(
+            "frailty signal.normalization requires the canonical axes6 profile; "
+            "motion9 belongs to the separate motion augmentation profile"
+        )
     for name, expected in (("acc_unit", acc_unit), ("gyro_unit", gyro_unit)):
         observed = (
             record.get(name)

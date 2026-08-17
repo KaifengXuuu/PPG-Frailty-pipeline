@@ -87,8 +87,10 @@ def signal_config() -> dict[str, object]:
                 "preserve_feature_grid_hz": 400.0,
             },
             "normalization": {
-                "raw_ppg": "per_window_median_iqr", "raw_imu": "outer_train_fold_robust_scaler",
-                "iqr_fallback": "median_absolute_deviation_then_one", "clip_after_scale": None,
+                "raw_ppg": "per_window_median_iqr_over_1p349_sd_finite",
+                "raw_imu": "outer_training_participant_only_robust_scaler_axes6",
+                "iqr_fallback": "standard_deviation_then_finite_one",
+                "clip_after_scale": [-8.0, 8.0],
             },
         },
         "quality": {"long_gap_max_samples": 100, "flatline_duration_s": 1.0},
@@ -168,6 +170,24 @@ class SignalViewsTest(unittest.TestCase):
         config["signal"]["silent_new_knob"] = 1
         with self.assertRaisesRegex(ValueError, "signal key mismatch"):
             build_signal_views(synthetic_record(), config)
+
+    def test_normalization_identity_rejects_legacy_and_shared_motion9(self) -> None:
+        legacy = copy.deepcopy(signal_config())
+        legacy["signal"]["normalization"] = {
+            "raw_ppg": "per_window_median_iqr",
+            "raw_imu": "outer_train_fold_robust_scaler",
+            "iqr_fallback": "median_absolute_deviation_then_one",
+            "clip_after_scale": None,
+        }
+        with self.assertRaisesRegex(ValueError, "canonical axes6.*motion9"):
+            build_signal_views(synthetic_record(), legacy)
+
+        motion9 = copy.deepcopy(signal_config())
+        motion9["signal"]["normalization"]["raw_imu"] = (
+            "outer_training_participant_only_robust_scaler_motion9_augmentation"
+        )
+        with self.assertRaisesRegex(ValueError, "separate motion augmentation"):
+            build_signal_views(synthetic_record(), motion9)
 
     def test_window_plan_masks_padding_and_complete_windows(self) -> None:
         complete_plan = WindowPlan(

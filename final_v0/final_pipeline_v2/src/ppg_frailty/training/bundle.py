@@ -192,7 +192,7 @@ class FinalRefitPlan:
             if seeds != (42,):
                 raise ValueError("single-model final refit seed is exactly 42")
         elif self.model_kind == "five_member_ensemble":
-            if seeds != (42, 10042, 20042, 30042, 40042):
+            if seeds != (50042, 60042, 70042, 80042, 90042):
                 raise ValueError("ensemble final refit requires the exact five member seeds")
         else:
             raise ValueError("model_kind must be single_model or five_member_ensemble")
@@ -738,8 +738,24 @@ def _execute_prepared_full_cohort_refit(
         raise TypeError("trainer must be UnifiedTrainer")
     if trainer.config.execution_mode != "formal":
         raise ValueError("final refit requires the formal training execution mode")
-    if int(trainer.config.seed) != 42:
-        raise ValueError("V2 final refit trainer seed must be 42")
+    _canonical_plan_name, plan_machine_id = normalize_model_id(plan.model_id)
+    ensemble_machine_ids = {
+        "inception_full_five_member_ensemble",
+        "inception_matrix_five_member_ensemble",
+    }
+    ensemble_seeds = (50042, 60042, 70042, 80042, 90042)
+    if plan.model_kind == "five_member_ensemble":
+        if plan_machine_id not in ensemble_machine_ids:
+            raise ValueError("final ensemble model_kind requires an ensemble model identity")
+        if plan.training_seeds != ensemble_seeds:
+            raise ValueError("final ensemble refit requires the exact five member seeds")
+        if int(trainer.config.seed) != ensemble_seeds[0]:
+            raise ValueError("V2 ensemble final refit orchestration seed must be 50042")
+    else:
+        if plan_machine_id in ensemble_machine_ids:
+            raise ValueError("final ensemble model identity requires five_member_ensemble kind")
+        if int(trainer.config.seed) != 42:
+            raise ValueError("V2 single-model final refit trainer seed must be 42")
     binding_pairs = {
         "resolved_model_config_hash": binding.resolved_model_config_hash,
         "architecture_parameters_hash": binding.architecture_parameters_hash,
@@ -1085,7 +1101,7 @@ def _validate_trusted_final_refit_manifest(
     ):
         raise ValueError("trusted final-refit scope/model identity invalid")
     expected_seeds = (
-        (42, 10042, 20042, 30042, 40042)
+        (50042, 60042, 70042, 80042, 90042)
         if normalized["model_kind"] == "five_member_ensemble"
         else (42,)
     )

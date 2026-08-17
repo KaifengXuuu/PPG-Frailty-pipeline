@@ -324,4 +324,4 @@ class InceptionTimeFiveMemberProbabilityEnsemble(nn.Module):
         """Return log-probabilities suitable for NLL loss / 返回可用于 NLL 的对数概率。"""
 
         return torch.log(self.predict_probabilities(x, mask).clamp_min(1e-12))
-CANONICAL_ENSEMBLE_MEMBER_SEEDS = (42, 10042, 20042, 30042, 40042)
+CANONICAL_ENSEMBLE_MEMBER_SEEDS = (50042, 60042, 70042, 80042, 90042)

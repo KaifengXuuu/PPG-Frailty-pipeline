@@ -220,7 +220,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     catalog = subcommands.add_parser(
         "catalog",
-        help="inspect the 13 candidates and two ensemble comparisons without running them",
+        help=(
+            "inspect 13 candidates, two matched member-0 comparators and "
+            "two ensembles without running them"
+        ),
     )
     catalog.add_argument("--line", choices=["line_a", "line_b"], required=True)
 
@@ -456,6 +459,7 @@ def _catalog_summary(line: str) -> dict[str, Any]:
             "catalog_role": entry["catalog_role"],
             "model_id": entry["model"]["model_id"],
             "ensemble_size": entry["model"]["ensemble_size"],
+            "seed_policy": entry["model"]["seed_policy"],
         }
         for entry in catalog["entries"]
     ]
@@ -472,9 +476,15 @@ def _catalog_summary(line: str) -> dict[str, Any]:
             ablations["families"]["fixed_kernel_samples"]["cases"]
         ),
         "ablation_profile_auto_run": False,
-        "candidate_count": sum(row["ensemble_size"] == 1 for row in entries),
+        "candidate_count": sum(
+            row["catalog_role"] in {"reference_candidate", "ablation_candidate"}
+            for row in entries
+        ),
+        "matched_comparator_count": sum(
+            row["catalog_role"] == "matched_comparator" for row in entries
+        ),
         "ensemble_comparison_count": sum(
-            row["ensemble_size"] == 5 for row in entries
+            row["catalog_role"] == "ensemble_comparison" for row in entries
         ),
         "auto_run": False,
         "training_executed": False,

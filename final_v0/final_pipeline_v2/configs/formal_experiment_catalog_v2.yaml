@@ -4,6 +4,7 @@ pipeline_generation: final_pipeline_v2
 execution_policy:
   auto_run: false
   candidate_count: 13
+  matched_comparator_count: 2
   ensemble_comparison_count: 2
   default_balance_line: line_b
   selectable_balance_lines: [line_b, line_a]
@@ -479,6 +480,67 @@ entries:
         residual_interval: 3
         variant: small
       signal_feature_dim: 64
+- entry_id: inception_full_member0_comparator
+  config_stem: comparison_inception_full_member0_comparator
+  representation_mode: raw
+  catalog_role: matched_comparator
+  model:
+    model_id: InceptionTimeFull
+    variant: full_single_network
+    input_channels: 8
+    input_channels_resolution: canonical_frailty_raw_8
+    input_channel_order: [RED, IR, A_dyn_x, A_dyn_y, A_dyn_z, GX, GY, GZ]
+    n_classes: 3
+    ensemble_size: 1
+    seed_policy: cv_fixed_member0_seed_50042_comparator
+    mask_aware_pooling: true
+    dropout: 0.2
+    kernel_sizes: [39, 19, 9]
+    dilation: 1
+    architecture_parameters:
+      bottleneck_channels: 32
+      branch_count: 4
+      classifier_dropout: 0.2
+      depth: 6
+      dilation: 1
+      global_pooling: mask_aware_global_average
+      kernel_sizes: [39, 19, 9]
+      model_id: inception_full
+      n_classes: 3
+      out_channels: 32
+      representation_mode: raw
+      residual_interval: 3
+      variant: full
+- entry_id: inception_matrix_member0_comparator
+  config_stem: comparison_inception_matrix_member0_comparator
+  representation_mode: feature_matrix
+  catalog_role: matched_comparator
+  model:
+    model_id: InceptionTimeMatrix
+    variant: full
+    input_channels: 0
+    input_channels_resolution: derive_exactly_from_frozen_matrix_channel_schema
+    n_classes: 3
+    ensemble_size: 1
+    seed_policy: cv_fixed_member0_seed_50042_comparator
+    mask_aware_pooling: true
+    dropout: 0.2
+    kernel_sizes: [39, 19, 9]
+    dilation: 1
+    architecture_parameters:
+      bottleneck_channels: 32
+      branch_count: 4
+      classifier_dropout: 0.2
+      depth: 6
+      dilation: 1
+      global_pooling: mask_aware_global_average
+      kernel_sizes: [39, 19, 9]
+      model_id: inception_matrix
+      n_classes: 3
+      out_channels: 32
+      representation_mode: feature_matrix
+      residual_interval: 3
+      variant: full
 - entry_id: inception_full_five_member_ensemble
   config_stem: comparison_inception_full_five_member_ensemble
   representation_mode: raw
@@ -491,8 +553,8 @@ entries:
     input_channel_order: [RED, IR, A_dyn_x, A_dyn_y, A_dyn_z, GX, GY, GZ]
     n_classes: 3
     ensemble_size: 5
-    member_seeds: [42, 10042, 20042, 30042, 40042]
-    seed_policy: pending_cv_repeat_member_seed_matrix_decision
+    member_seeds: [50042, 60042, 70042, 80042, 90042]
+    seed_policy: cv_fixed_five_member_seed_roster
     member_seed_roster_id: cv_fixed_five_member_seed_roster
     mask_aware_pooling: true
     comparison_only: true
@@ -510,7 +572,7 @@ entries:
       member_kernel_sizes: [39, 19, 9]
       member_out_channels: 32
       member_residual_interval: 3
-      member_seeds: [42, 10042, 20042, 30042, 40042]
+      member_seeds: [50042, 60042, 70042, 80042, 90042]
       member_variant: full
       model_id: inception_full_five_member_ensemble
       n_classes: 3
@@ -527,8 +589,8 @@ entries:
     input_channels_resolution: derive_exactly_from_frozen_matrix_channel_schema
     n_classes: 3
     ensemble_size: 5
-    member_seeds: [42, 10042, 20042, 30042, 40042]
-    seed_policy: pending_cv_repeat_member_seed_matrix_decision
+    member_seeds: [50042, 60042, 70042, 80042, 90042]
+    seed_policy: cv_fixed_five_member_seed_roster
     member_seed_roster_id: cv_fixed_five_member_seed_roster
     mask_aware_pooling: true
     comparison_only: true
@@ -546,7 +608,7 @@ entries:
       member_kernel_sizes: [39, 19, 9]
       member_out_channels: 32
       member_residual_interval: 3
-      member_seeds: [42, 10042, 20042, 30042, 40042]
+      member_seeds: [50042, 60042, 70042, 80042, 90042]
       member_variant: full
       model_id: inception_matrix_five_member_ensemble
       n_classes: 3

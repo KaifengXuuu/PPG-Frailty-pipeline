@@ -165,7 +165,7 @@ class MotionImuTests(unittest.TestCase):
                 },
                 "normalization": {
                     "raw_ppg": "per_window_median_iqr_over_1p349_sd_finite",
-                    "raw_imu": "outer_training_participant_only_robust_scaler_all_9",
+                    "raw_imu": "outer_training_participant_only_robust_scaler_axes6",
                     "iqr_fallback": "standard_deviation_then_finite_one",
                     "clip_after_scale": [-8.0, 8.0],
                 },

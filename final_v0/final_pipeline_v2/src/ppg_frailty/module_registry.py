@@ -444,16 +444,19 @@ def validate_model_config(section: Mapping[str, Any], representation_mode: str) 
             or len(seeds) != len(set(seeds))
         ):
             raise ValueError("member_seeds must be a non-empty distinct list")
-        if seeds != [42, 10042, 20042, 30042, 40042]:
+        if seeds != [50042, 60042, 70042, 80042, 90042]:
             raise ValueError("V2 ensemble member seeds must match the confirmed sequence")
         if data["comparison_only"] is not True:
             raise ValueError("five-member ensembles are explicit comparison-only routes")
         if data["member_seed_roster_id"] != "cv_fixed_five_member_seed_roster":
             raise ValueError("V2 ensemble comparison requires the named CV member roster")
-        if data["seed_policy"] != "pending_cv_repeat_member_seed_matrix_decision":
-            raise ValueError(
-                "V2 ensemble CV is fail-closed pending the repeat/member seed decision"
-            )
+        if data["seed_policy"] != "cv_fixed_five_member_seed_roster":
+            raise ValueError("V2 ensemble CV requires the fixed five-member seed roster")
+    elif (
+        canonical in {"InceptionTimeFull", "InceptionTimeMatrix"}
+        and data["seed_policy"] == "cv_fixed_member0_seed_50042_comparator"
+    ):
+        pass
     elif data["seed_policy"] != "outer_cv_repeat_seed_equals_split_seed":
         raise ValueError(
             "V2 outer-CV single models require "
