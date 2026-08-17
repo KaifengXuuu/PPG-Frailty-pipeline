@@ -1,5 +1,18 @@
 # Decision Log
 
+## 2026-08-17：`final_pipeline_v3` 冻结为旧门禁版历史快照
+
+- 状态：confirmed
+- 背景：用户已将重构前的 V2 完整备份为
+  `final_v0/final_pipeline_v3`，随后要求把当前开发方向收敛为清晰、可由人工
+  一条命令运行的算法 pipeline。
+- 决策：`final_pipeline_v3` 作为原 V2 复杂门禁版本的只读历史拷贝；
+  后续简化、算法核对、sweep/ablation、报告与 Dash 工作只写入
+  `final_pipeline_v2`。
+- 决策原因：保留旧门禁实现供追溯，同时避免其复杂度继续进入当前人工实验流程。
+- 影响范围：不得在 V3 中继续开发、生成实验输出或同步 V2 新改动；比较 V2/V3 时
+  必须明确 V3 是历史基线而非当前执行版本。
+
 ## 2026-07-26：`_agent` 任务更新采用增补、合并和状态迁移
 
 - 状态：confirmed
@@ -32,6 +45,34 @@
   inner-validation selection noise。
 - 影响范围：当前 CV 没有额外独立 test；fold 汇总必须称为 OOF validation。
   holdout/early-stopping 历史结果保留，但不得与本协议直接排名。
+
+## 2026-08-17：V2 收敛为人工一键运行的论文算法 Pipeline，V3 保存门禁版历史
+
+- 状态：confirmed
+- 来源：用户明确确认录入；目录只读核验确认 `final_pipeline_v2` 与
+  `final_pipeline_v3` 均存在且当前文件数均为 433；排除 `__pycache__`、
+  `*.pyc` 和 `.pytest_cache` 后，两树内容聚合 SHA-256 均为
+  `81747c7c22d71244d24671820302f13233ecb7e473bce82e40c6a86a34e96d3a`。
+- 背景：当前 V2 在终审过程中扩展了复杂的源码、依赖、运行中漂移、
+  attestation 和发布门禁，但用户当前首要目标是得到类似历史
+  `frailty_3class_overfitting_sweep.py` 的清晰、可维护、无需 agent 监督的
+  完整 Frailty3 实验 Pipeline。
+- 决策：
+  1. `final_pipeline_v3` 作为当前复杂门禁版 V2 的历史拷贝保留，不作为活动开发主线。
+  2. `final_pipeline_v2` 重新作为活动主线，优先交付符合 thesis、两份 canonical
+     规范和后续人工确认的纯算法模块。
+  3. V2 的主要人工入口是一条配置驱动的命令行 Pipeline，可直接运行 grid search、
+     单因素 ablation、完整 OOF 评估、图表和总结报告；运行过程不依赖 agent 监督。
+  4. 复杂源码漂移、恶意模块遮蔽、artifact attestation、Git clean/branch 等形式化门禁
+     暂不作为 V2 的阻塞目标，并从活动 V2 中收敛或移除；基础配置、seed、输入和环境记录
+     可保留为普通可重复性信息。
+  5. 不得因工程简化而删除 thesis 必需的科学边界：participant-grouped split、
+     outer-heldout 隔离、fold-local fitting、统一 folds/seeds、正确聚合、完整 OOF 和
+     模块算法合同仍为强制要求。
+- 影响范围：`final_v0/final_pipeline_v2/` 的入口脚本、配置、训练编排、报告、可视化
+  和 Dash 人工检查应用；`final_v0/final_pipeline_v3/` 仅作历史追溯。
+- 后续追踪：先核验 V3 备份完整性和暂停时 V2 半成品，再对照最新版 canonical workflow
+  清理门禁代码并实现一键 sweep/ablation/report Pipeline。
 
 ## 2026-07-26：Frailty3 活动流程保持 400 Hz 且 Raw Data 只读
 

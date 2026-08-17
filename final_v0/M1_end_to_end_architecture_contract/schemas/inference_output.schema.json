@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m1.inference_output.v1",
+  "title": "M1 PipelineResult / M1 推理结果",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "probabilities",
+    "predicted_label",
+    "confidence",
+    "coverage",
+    "quality_summary",
+    "reason_codes",
+    "versions",
+    "timing_ms"
+  ],
+  "properties": {
+    "schema_version": {"const": "m1.inference_output.v1"},
+    "status": {"enum": ["ok", "partial", "invalid_input", "insufficient_quality"]},
+    "probabilities": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pre_frail", "robust_non_frail", "young"],
+          "properties": {
+            "pre_frail": {"type": "number", "minimum": 0, "maximum": 1},
+            "robust_non_frail": {"type": "number", "minimum": 0, "maximum": 1},
+            "young": {"type": "number", "minimum": 0, "maximum": 1}
+          }
+        }
+      ]
+    },
+    "predicted_label": {"enum": ["pre_frail", "robust_non_frail", "young", null]},
+    "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "coverage": {"type": "number", "minimum": 0, "maximum": 1},
+    "quality_summary": {"type": "object"},
+    "feature_summary": {"type": "object"},
+    "reason_codes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "versions": {"type": "object", "additionalProperties": {"type": "string"}},
+    "timing_ms": {"type": "object", "additionalProperties": {"type": "number", "minimum": 0}}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"enum": ["invalid_input", "insufficient_quality"]}}},
+      "then": {
+        "properties": {
+          "probabilities": {"type": "null"},
+          "predicted_label": {"type": "null"},
+          "confidence": {"type": "null"}
+        }
+      }
+    }
+  ]
+}
+

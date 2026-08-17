@@ -1,0 +1,49 @@
+{
+  "registry_version": "m1.feature_extractors.v2",
+  "entry_contract": {
+    "required_fields": [
+      "id",
+      "feature_schema_id",
+      "output_adapter",
+      "output_dtype",
+      "availability_level",
+      "implementation_status"
+    ],
+    "train_fitted_state_must_be_bundled": true
+  },
+  "extractors": [
+    {
+      "id": "raw_8ch_embedding",
+      "feature_schema_id": "raw_8ch_sequence.v1",
+      "output_adapter": "sequence_8ch_v1",
+      "output_dtype": "float32",
+      "availability_level": "window",
+      "implementation_status": "historical_implementations_require_unification"
+    },
+    {
+      "id": "heartbeat_tabular",
+      "feature_schema_id": "heartbeat_hr_ppi_hrv.v1",
+      "output_adapter": "tabular_physio_v1",
+      "output_dtype": "float32",
+      "availability_level": "window_file_stage",
+      "implementation_status": "partial_requires_M4_3"
+    },
+    {
+      "id": "stage_physiology",
+      "feature_schema_id": "base_motion_relax.v1",
+      "output_adapter": "tabular_physio_v1",
+      "output_dtype": "float32",
+      "availability_level": "stage_subject",
+      "implementation_status": "specified_not_implemented"
+    },
+    {
+      "id": "rocket_transform",
+      "feature_schema_id": "rocket_vector.v1",
+      "output_adapter": "rocket_vector_v1",
+      "output_dtype": "float32",
+      "availability_level": "window_file",
+      "implementation_status": "specified_not_implemented"
+    }
+  ]
+}
+

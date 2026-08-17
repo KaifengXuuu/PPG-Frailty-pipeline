@@ -1,0 +1,38 @@
+{
+  "schema_version": "m1.pipeline_config.v2",
+  "deployment_state": "contract_example",
+  "config_id": "m1_v2_example_accelerated_arm64",
+  "platform_profile_id": "accelerated_arm64_edge",
+  "input_contract_ref": "m1.signal_input.v2",
+  "output_contract_ref": "m1.inference_output.v2",
+  "runtime": {
+    "engine": "hybrid_python_onnxruntime",
+    "device": "accelerator_with_cpu_fallback",
+    "threads": 6,
+    "allowed_dependencies": ["numpy", "scipy", "onnxruntime", "scikit-learn"],
+    "execution_providers": ["TARGET_VENDOR_EP_PENDING_M9", "CPUExecutionProvider"],
+    "buffer_duration_sec": 40,
+    "backlog_policy": "explicit_no_result"
+  },
+  "modules": {
+    "validation": {"id": "signal_validation_v1", "version": "specified"},
+    "preprocessing": {"id": "mobile_8ch_profile", "version": "pending_M3", "execution_mode": "buffered_zero_phase", "algorithmic_latency_sec": 0},
+    "motion_detector": {"id": "motion29_oof_selected", "version": "pending_M4_1"},
+    "data_classifier": {"id": "four_state_quality", "version": "pending_M4_1"},
+    "quality_strategy": {"action_mode": "coarse_denoise", "policy_id": "coarse_denoise_shared_sqi_v1", "sqi_monitor_enabled": true, "signal_frontend_id": "dual_ppg_bss"},
+    "feature_extractor": {"id": "raw_8ch_embedding", "feature_schema_id": "raw_8ch_sequence.v1"},
+    "classifier": {"id": "small_inceptiontime_onnx", "label_map_id": "frailty3.v1"},
+    "aggregation": {"id": "subject_mean_probability", "version": "pending_M4"},
+    "calibration": {"id": "frozen_multiclass_calibrator", "version": "pending_M8"}
+  },
+  "versions": {
+    "preprocessing_version": "pending_M3",
+    "motion_version": "pending_M4_1",
+    "sqi_version": "pending_M4_1",
+    "feature_schema_version": "raw_8ch_sequence.v1",
+    "classifier_version": "pending_M8"
+  },
+  "thresholds": {"motion_probability": null, "sqi_accept": null},
+  "artifacts": {"status": "pending_export", "files": []}
+}
+

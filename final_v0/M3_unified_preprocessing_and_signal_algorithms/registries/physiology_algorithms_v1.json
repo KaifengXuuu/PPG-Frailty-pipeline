@@ -1,0 +1,89 @@
+{
+  "schema_version": "m3.physiology_algorithms.v1",
+  "registry_id": "m3_physiology_corrected_v1",
+  "status": "future_active",
+  "description_zh": "M3 双波长峰、PPI、HR、PPG 派生 PRV 与外部 ECG 参考评价的唯一机器算法权威。RED/IR 始终独立检测后择优，禁止生成共识峰。",
+  "description_en": "Sole machine algorithm authority for M3 dual-wavelength peaks, PPI, HR, PPG-derived PRV and external ECG-reference evaluation. RED/IR are always detected independently before selection; consensus peaks are forbidden.",
+  "input_profile": "frailty3_peak_ppg_400_offline_v1",
+  "allowed_input_profiles": [
+    "frailty3_peak_ppg_400_offline_v1",
+    "mobile_peak_ppg_400_causal_v1"
+  ],
+  "sampling_rate_hz": 400,
+  "algorithm_ids": {
+    "peak_detector": "m3_peak_corrected_v1",
+    "ppi_prv": "m3_hr_ppi_prv_corrected_v1",
+    "dual_channel_selector": "m3_dual_channel_selection_v1",
+    "transit_delay": "m3_ptt_median_transit_delay_v1",
+    "reference_evaluation": "m3_ptt_ecg_reference_evaluation_v1"
+  },
+  "peak": {
+    "local_window_sec": 10.0,
+    "hop_sec": 5.0,
+    "minimum_observation_sec": 8.0,
+    "polarity_candidates": [1, -1],
+    "minimum_distance_sec": 0.30,
+    "prominence_scale": 0.25,
+    "overlap_merge_radius_sec": 0.15,
+    "overlap_merge_action": "keep_highest_confidence_existing_peak"
+  },
+  "ppi": {
+    "minimum_sec": 0.30,
+    "maximum_sec": 2.00,
+    "delete_source_peak_on_invalid_ppi": false,
+    "corrected_nni_v1": "hard_valid_ppi_without_ectopic_imputation"
+  },
+  "hr": {
+    "minimum_peaks": 5,
+    "minimum_valid_ppi": 4,
+    "primary": "60_divided_by_median_valid_ppi",
+    "secondary": "mean_of_60_divided_by_each_valid_ppi"
+  },
+  "prv": {
+    "time_domain_minimum_sec": 60,
+    "time_domain_minimum_valid_ppi_coverage": 0.8,
+    "frequency_exploratory_minimum_contiguous_sec": 120,
+    "frequency_confirmatory_minimum_contiguous_sec": 300,
+    "sdnn_ddof": 1,
+    "pnn50_unit": "fraction_0_to_1",
+    "tachogram_hz": 4,
+    "tachogram_interpolation": "linear",
+    "detrend": "linear",
+    "lf_hz": [0.04, 0.15],
+    "hf_hz": [0.15, 0.40]
+  },
+  "dual_channel": {
+    "detect_independently": true,
+    "selection": "valid_status_first_then_higher_sqi",
+    "tie_break": "RED",
+    "agreement_tolerances_ms": [20, 50, 100],
+    "primary_agreement_tolerance_ms": 50,
+    "generate_consensus_peaks": false
+  },
+  "reference_evaluation": {
+    "artifact_schema_version": "m3.transit_delay_artifact.v1",
+    "evaluation_schema_version": "m3.ptt_reference_evaluation.v1",
+    "dataset_id": "ptt_ppg_1_1_0_local",
+    "preprocessing_profile_id": "external_ppg_to_400_polyphase_v1",
+    "training_split_id_required": true,
+    "fit_role": "training",
+    "delay_fit_statistic": "median_first_following_ppg_pulse_within_0p05_to_0p60_sec",
+    "branches": ["raw", "delay_corrected"],
+    "symmetric_scorecard_fields": [
+      "matched",
+      "precision",
+      "recall",
+      "f1",
+      "timing_error_samples_median",
+      "timing_error_samples_mae",
+      "timing_error_ms_median",
+      "timing_error_ms_mae",
+      "ppi_error_ms_mae",
+      "hr_error_bpm",
+      "coverage_fraction",
+      "failure_reason"
+    ],
+    "description_zh": "延迟只在明确训练划分上拟合；评价受试者必须与训练名单互斥。raw 与 delay_corrected 使用完全相同 scorecard，禁止只报告改善后的分支。",
+    "description_en": "Delay is fitted only on an explicit training split and evaluation subjects must be disjoint. raw and delay_corrected use an identical scorecard; reporting only the corrected branch is forbidden."
+  }
+}

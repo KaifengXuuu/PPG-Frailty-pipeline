@@ -1,0 +1,38 @@
+{
+  "schema_version": "m1.pipeline_config.v2",
+  "deployment_state": "contract_example",
+  "config_id": "m1_v2_example_value_arm64",
+  "platform_profile_id": "value_arm64_sbc",
+  "input_contract_ref": "m1.signal_input.v2",
+  "output_contract_ref": "m1.inference_output.v2",
+  "runtime": {
+    "engine": "python_numpy_scipy",
+    "device": "cpu",
+    "threads": 4,
+    "allowed_dependencies": ["numpy", "scipy", "scikit-learn"],
+    "execution_providers": [],
+    "buffer_duration_sec": 40,
+    "backlog_policy": "explicit_no_result"
+  },
+  "modules": {
+    "validation": {"id": "signal_validation_v1", "version": "specified"},
+    "preprocessing": {"id": "mobile_8ch_profile", "version": "pending_M3", "execution_mode": "buffered_zero_phase", "algorithmic_latency_sec": 0},
+    "motion_detector": {"id": "motion29_lightweight", "version": "pending_M4_1"},
+    "data_classifier": {"id": "four_state_quality", "version": "pending_M4_1"},
+    "quality_strategy": {"action_mode": "sqi_gate", "policy_id": "sqi_gate_v2", "sqi_monitor_enabled": true, "signal_frontend_id": "identity"},
+    "feature_extractor": {"id": "stage_physiology", "feature_schema_id": "base_motion_relax.v1"},
+    "classifier": {"id": "tabular_physiology_sklearn", "label_map_id": "frailty3.v1"},
+    "aggregation": {"id": "subject_mean_probability", "version": "pending_M4"},
+    "calibration": {"id": "frozen_multiclass_calibrator", "version": "pending_M8"}
+  },
+  "versions": {
+    "preprocessing_version": "pending_M3",
+    "motion_version": "pending_M4_1",
+    "sqi_version": "pending_M4_1",
+    "feature_schema_version": "base_motion_relax.v1",
+    "classifier_version": "pending_M8"
+  },
+  "thresholds": {"motion_probability": null, "sqi_accept": null},
+  "artifacts": {"status": "pending_export", "files": []}
+}
+

@@ -1,0 +1,340 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m3.fold_fitted_artifact.v1",
+  "title": "M3 fold-fitted preprocessing artifact / M3 折内拟合预处理制品",
+  "description": "Contract for scalers, imputers or other data-derived preprocessing state fitted exclusively on the training subjects of one corrected M2 SGKF split. / 仅在一个校正后 M2 SGKF 划分的训练受试者上拟合的缩放器、插补器或其他数据派生预处理状态合同。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_id",
+    "status",
+    "dataset_version_id",
+    "dataset_manifest_sha256",
+    "fold_registry_id",
+    "fold_registry_sha256",
+    "fold_registry_payload_sha256",
+    "protocol_id",
+    "repeat_index",
+    "split_seed",
+    "fold_index",
+    "training_seed",
+    "preprocessing_registry_id",
+    "preprocessing_registry_sha256",
+    "preprocessing_profile_ids",
+    "preprocessing_profile_payload_sha256",
+    "feature_schema_version",
+    "fit_scope",
+    "subject_partition",
+    "transformers",
+    "parameters_sha256",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "m3.fold_fitted_artifact.v1",
+      "description": "Exact artifact schema identifier. / 精确制品 Schema 标识。"
+    },
+    "artifact_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique artifact identifier including repeat and fold identity. / 包含 repeat 与 fold 身份的唯一制品标识。"
+    },
+    "status": {
+      "enum": [
+        "locked",
+        "template_not_fitted",
+        "invalid"
+      ],
+      "description": "locked means parameters were fitted and frozen; templates are not valid benchmark inputs. / locked 表示参数已拟合并冻结；模板不得作为 benchmark 输入。"
+    },
+    "dataset_version_id": {
+      "const": "frailty3_m2_20260815_a054800abda272f6",
+      "description": "Frozen M2 dataset identity for the 29-subject corpus. / 29 名受试者语料的冻结 M2 数据集标识。"
+    },
+    "dataset_manifest_sha256": {
+      "const": "bd429ae9c56974ba9ffcb924dfbad0ed930f7d2d47418365754a1929ada06e90",
+      "description": "SHA-256 of frailty3_file_manifest.csv. / frailty3_file_manifest.csv 的 SHA-256。"
+    },
+    "fold_registry_id": {
+      "const": "frailty3_future_corrected_sgkf5_v2",
+      "description": "Only the corrected subject-level StratifiedGroupKFold registry is valid for future M3/M4 benchmarks. / 未来 M3/M4 benchmark 仅允许校正后的受试者级 StratifiedGroupKFold 注册表。"
+    },
+    "fold_registry_sha256": {
+      "const": "c80e780d60162ff1132101ee368ee3a55d95f3c7a6d51a5c9a8feec8605d388c",
+      "description": "Exact byte hash of the materialized M2 fold-registry JSON file. / 已物化 M2 折叠注册表 JSON 文件的精确逐字节哈希。"
+    },
+    "fold_registry_payload_sha256": {
+      "const": "0bca827fa8e4f9679b6ee9435b5497a60d91e74ddb366e058fc69614fb007f46",
+      "description": "Canonical fold payload hash used by m2.result_provenance.v1; kept separately from the file hash. / m2.result_provenance.v1 使用的规范 fold 载荷哈希；与文件哈希分开保存。"
+    },
+    "protocol_id": {
+      "const": "frailty3_fixed_epoch_oof_v2_corrected_sgkf",
+      "description": "Frozen corrected OOF evaluation protocol. / 冻结的校正后 OOF 评估协议。"
+    },
+    "repeat_index": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4,
+      "description": "Zero-based repeat index. / 从零开始的重复编号。"
+    },
+    "split_seed": {
+      "enum": [
+        42,
+        10042,
+        20042,
+        30042,
+        40042
+      ],
+      "description": "Frozen split seed; repeat_index-to-seed consistency is checked by the validator. / 冻结划分种子；validator 检查 repeat_index 与 seed 的对应关系。"
+    },
+    "fold_index": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4,
+      "description": "Zero-based fold index within the repeat. / 重复内从零开始的折编号。"
+    },
+    "training_seed": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Training random seed, recorded separately from the split seed. / 训练随机种子，与划分种子分开记录。"
+    },
+    "preprocessing_registry_id": {
+      "const": "m3_preprocessing_profiles_corrected_v1",
+      "description": "M3 preprocessing registry used before fitting. / 拟合前使用的 M3 预处理注册表。"
+    },
+    "preprocessing_registry_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "preprocessing_profile_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Exact registered M3 profiles used to construct the fitted feature view. / 构造拟合特征视图所使用的精确 M3 注册配置。"
+    },
+    "preprocessing_profile_payload_sha256": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/sha256"
+      },
+      "description": "Canonical payload hash keyed by every preprocessing_profile_id, preventing a stable ID from hiding changed parameters. / 以每个 preprocessing_profile_id 为键的规范载荷哈希，防止稳定 ID 隐藏参数变化。"
+    },
+    "feature_schema_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Feature schema whose ordered fields the transformer parameters address. / 变换器参数所对应的有序特征 Schema。"
+    },
+    "fit_scope": {
+      "const": "training_subjects_only",
+      "description": "Normative leakage barrier: no OOF subject, test subject or full-dataset statistic may be used. / 规范防泄漏边界：不得使用 OOF 受试者、测试受试者或全数据集统计量。"
+    },
+    "subject_partition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "train_subject_ids",
+        "oof_validation_subject_ids"
+      ],
+      "properties": {
+        "train_subject_ids": {
+          "$ref": "#/$defs/subject_ids"
+        },
+        "oof_validation_subject_ids": {
+          "$ref": "#/$defs/subject_ids"
+        }
+      },
+      "description": "Exact subject sets; the validator enforces non-empty, disjoint sets and equality to the M2 fold registry. / 精确受试者集合；validator 强制非空、互斥并与 M2 折叠注册表一致。"
+    },
+    "transformers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/transformer"
+      },
+      "description": "Ordered fitted transforms applied after deterministic signal preprocessing. / 在确定性信号预处理之后依次应用的折内拟合变换。"
+    },
+    "parameters_sha256": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 over canonical fitted parameter payload; null is allowed only for template_not_fitted. / 规范拟合参数载荷的 SHA-256；仅 template_not_fitted 可为 null。"
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "producer_callable",
+        "producer_source_path",
+        "producer_source_sha256",
+        "created_utc"
+      ],
+      "properties": {
+        "producer_callable": {
+          "type": "string",
+          "pattern": "^m3_signal_core\\.",
+          "description": "Future-active M3 callable that produced the artifact. / 生成制品的未来活动 M3 callable。"
+        },
+        "producer_source_path": {
+          "type": "string",
+          "pattern": "^final_v0/M3_unified_preprocessing_and_signal_algorithms/src/m3_signal_core/.+\\.py$",
+          "description": "Exact M3 source path; root scripts are forbidden. / 精确 M3 源码路径；禁止根目录脚本。"
+        },
+        "producer_source_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "created_utc": {
+          "type": "string",
+          "format": "date-time",
+          "description": "UTC creation timestamp. / UTC 创建时间。"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "locked"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "parameters_sha256": {
+            "$ref": "#/$defs/sha256"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "template_not_fitted"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "parameters_sha256": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lower-case SHA-256 digest. / 小写 SHA-256 摘要。"
+    },
+    "subject_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Sorted unique subject identifiers. / 排序后的唯一受试者标识。"
+    },
+    "numeric_vector": {
+      "type": "array",
+      "items": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "description": "Finite numeric values; unavailable entries use null, never NaN or infinity. / 有限数值；不可用项使用 null，禁止 NaN 或无穷值。"
+    },
+    "transformer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transformer_id",
+        "method",
+        "stage",
+        "feature_names",
+        "fit_dtype",
+        "parameters"
+      ],
+      "properties": {
+        "transformer_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unique transform ID within the artifact. / 制品内唯一变换标识。"
+        },
+        "method": {
+          "enum": [
+            "standard_mean_std",
+            "robust_median_iqr",
+            "robust_unit_variance",
+            "constant_fill_then_scale",
+            "no_fitted_parameters"
+          ],
+          "description": "Declared fit algorithm; hidden library defaults are forbidden. / 已声明拟合算法；禁止隐藏的库默认值。"
+        },
+        "stage": {
+          "enum": [
+            "channel_sequence",
+            "window_features",
+            "physiology_features"
+          ],
+          "description": "Feature stage transformed by these parameters. / 参数作用的特征阶段。"
+        },
+        "feature_names": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Ordered feature names. / 有序特征名称。"
+        },
+        "fit_dtype": {
+          "const": "float64",
+          "description": "Fitting statistics are accumulated in float64. / 拟合统计量以 float64 累积。"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "center",
+            "scale",
+            "impute_value",
+            "zero_scale_mask"
+          ],
+          "properties": {
+            "center": {
+              "$ref": "#/$defs/numeric_vector"
+            },
+            "scale": {
+              "$ref": "#/$defs/numeric_vector"
+            },
+            "impute_value": {
+              "$ref": "#/$defs/numeric_vector"
+            },
+            "zero_scale_mask": {
+              "type": "array",
+              "items": {
+                "type": "boolean"
+              },
+              "description": "True where a zero training-fold scale required a deterministic safe divisor. / 训练折尺度为零且需确定性安全除数的位置为 true。"
+            }
+          },
+          "description": "All vectors must have the same length as feature_names; enforced by the M3 validator. / 所有向量长度必须与 feature_names 相同；由 M3 validator 强制检查。"
+        }
+      }
+    }
+  }
+}

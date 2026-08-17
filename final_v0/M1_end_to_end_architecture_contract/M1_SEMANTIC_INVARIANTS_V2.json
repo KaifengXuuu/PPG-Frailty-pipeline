@@ -1,0 +1,124 @@
+{
+  "contract_version": "m1.architecture.v2",
+  "failure_count": 0,
+  "failures": [],
+  "model_execution": "not_run",
+  "passed_test_count": 12,
+  "scope": [
+    "output_state_machine",
+    "probability_sum",
+    "quality_action_owner",
+    "provider_cpu_fallback",
+    "locked_bundle_artifacts",
+    "threshold_finiteness",
+    "artifact_path_containment"
+  ],
+  "status": "pass",
+  "test_count": 12,
+  "tests": [
+    {
+      "errors": [],
+      "expected_valid": true,
+      "name": "valid_ok_output",
+      "observed_valid": true,
+      "status": "pass"
+    },
+    {
+      "errors": [
+        "ok_requires_three_probabilities"
+      ],
+      "expected_valid": false,
+      "name": "reject_ok_without_probabilities",
+      "observed_valid": false,
+      "status": "pass"
+    },
+    {
+      "errors": [
+        "probability_sum"
+      ],
+      "expected_valid": false,
+      "name": "reject_probability_sum",
+      "observed_valid": false,
+      "status": "pass"
+    },
+    {
+      "errors": [],
+      "expected_valid": true,
+      "name": "valid_explicit_no_result",
+      "observed_valid": true,
+      "status": "pass"
+    },
+    {
+      "errors": [
+        "no_result_must_clear_prediction"
+      ],
+      "expected_valid": false,
+      "name": "reject_stale_prediction_on_lag",
+      "observed_valid": false,
+      "status": "pass"
+    },
+    {
+      "errors": [
+        "sqi_owner_cannot_replace"
+      ],
+      "expected_valid": false,
+      "name": "reject_dual_quality_action",
+      "observed_valid": false,
+      "status": "pass"
+    },
+    {
+      "errors": [],
+      "expected_valid": true,
+      "name": "valid_locked_bundle",
+      "observed_valid": true,
+      "status": "pass"
+    },
+    {
+      "errors": [
+        "path_not_posix_relative"
+      ],
+      "expected_valid": false,
+      "name": "reject_absolute_artifact_path",
+      "observed_valid": false,
+      "status": "pass"
+    },
+    {
+      "errors": [
+        "path_traversal"
+      ],
+      "expected_valid": false,
+      "name": "reject_artifact_traversal",
+      "observed_valid": false,
+      "status": "pass"
+    },
+    {
+      "errors": [
+        "locked_bundle_requires_files"
+      ],
+      "expected_valid": false,
+      "name": "reject_locked_bundle_without_files",
+      "observed_valid": false,
+      "status": "pass"
+    },
+    {
+      "errors": [
+        "locked_threshold_invalid:sqi_accept"
+      ],
+      "expected_valid": false,
+      "name": "reject_locked_null_threshold",
+      "observed_valid": false,
+      "status": "pass"
+    },
+    {
+      "errors": [
+        "onnx_provider_chain_requires_cpu_last",
+        "accelerator_requires_primary_and_cpu"
+      ],
+      "expected_valid": false,
+      "name": "reject_accelerator_without_cpu_fallback",
+      "observed_valid": false,
+      "status": "pass"
+    }
+  ],
+  "validator": "semantic_invariants_v1"
+}

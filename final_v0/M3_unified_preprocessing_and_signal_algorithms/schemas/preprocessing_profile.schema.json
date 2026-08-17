@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m3.preprocessing_profile.schema.v1",
+  "title": "M3 preprocessing profile registry / M3 预处理配置注册表",
+  "description": "Strict authority for corrected offline, mobile, external-resampling, IMU and historical-reproduction profiles. / 校正离线、移动端、外部重采样、IMU 与历史复现配置的严格权威。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "registry_id",
+    "status",
+    "description_zh",
+    "description_en",
+    "future_primary_sampling_rate_hz",
+    "legacy_policy",
+    "training_only_statistics",
+    "profiles"
+  ],
+  "properties": {
+    "schema_version": {"const": "m3.preprocessing_profile.schema.v1", "description": "Exact registry schema version. / 精确注册表 Schema 版本。"},
+    "registry_id": {"const": "m3_preprocessing_profiles_corrected_v1"},
+    "status": {"const": "future_active"},
+    "description_zh": {"type": "string", "minLength": 1},
+    "description_en": {"type": "string", "minLength": 1},
+    "future_primary_sampling_rate_hz": {"const": 400},
+    "legacy_policy": {"type": "string"},
+    "training_only_statistics": {"const": true},
+    "profiles": {
+      "type": "array",
+      "minItems": 14,
+      "items": {
+        "type": "object",
+        "required": ["profile_id", "status", "purpose", "sampling_rate_hz"],
+        "properties": {
+          "profile_id": {"type": "string", "minLength": 1},
+          "status": {"type": "string", "minLength": 1},
+          "purpose": {
+            "enum": [
+              "static_preprocessing",
+              "motion_preprocessing",
+              "peak_detection_input",
+              "denoiser_input",
+              "external_resampling",
+              "classifier_feature_view",
+              "imu_gravity_primary",
+              "imu_gravity_comparator",
+              "historical_reproduction"
+            ],
+            "description": "Normative purpose used by facade/validator routing. / facade 与 validator 路由使用的规范用途。"
+          },
+          "sampling_rate_hz": {"type": "number", "exclusiveMinimum": 0},
+          "silent_fallback": {"type": "boolean"},
+          "resampling": {"enum": ["no_resample", "scipy_resample_poly"]},
+          "alias_target_profile_id": {"type": "string", "minLength": 1},
+          "future_benchmark_allowed": {"type": "boolean"},
+          "source_sampling_rate_hz_allowed": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"enum": [256, 500]}
+          },
+          "target_sampling_rate_hz": {"const": 400},
+          "shared_index_mapping_required": {"type": "boolean"},
+          "mapped_payloads": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"enum": ["signal", "time", "valid_mask", "peak_annotations"]}
+          },
+          "description_zh": {"type": "string", "minLength": 1},
+          "description_en": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": false
+}

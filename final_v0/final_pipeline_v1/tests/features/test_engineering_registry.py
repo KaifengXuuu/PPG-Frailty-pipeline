@@ -1,0 +1,272 @@
+"""Engineering, ten-field registry, vector, and matrix tests / 特征合同测试。"""
+
+from __future__ import annotations
+
+from dataclasses import fields
+import unittest
+
+import numpy as np
+
+from ppg_frailty.contracts import ArtifactReductionResult, EngineeringFeatureSequence, SignalRoute
+from ppg_frailty.data.windows import WindowPlan
+from ppg_frailty.features import (
+    EngineeringExtraction,
+    build_feature_vector,
+    build_ordered_matrix,
+    default_registry,
+    engineering_feature_names,
+    extract_engineering_features,
+    fit_fold_feature_transform,
+    summarize_engineering,
+    transform_engineering,
+)
+from ppg_frailty.signal import build_signal_views
+
+
+def resolved_config() -> dict[str, object]:
+    """最小显式 resolved signal profile / Minimal explicit resolved profile."""
+
+    return {
+        "signal": {
+            "internal_fs_hz": 400.0,
+            "channel_order": ["RED", "IR", "AX", "AY", "AZ", "GX", "GY", "GZ"],
+            "ppg_native_unit": "raw_counts",
+            "accelerometer_input_unit": "m/s2",
+            "gyroscope_input_unit": "rad/s",
+            "ppg_filter": {
+                "family": "butterworth_sos",
+                "order": 3,
+                "low_hz": 0.2,
+                "high_hz": 8.0,
+                "phase": "zero_phase",
+                "short_signal_policy": "reject",
+                "notch_enabled": False,
+            },
+            "analysis_view": {
+                "direct_source": "x_filter_0p2_to_8hz", "non_identity_source": "aligned_x_ar",
+                "non_identity_semantics": "rate_only", "additional_filter": "none",
+            },
+            "gap_repair": {
+                "method": "linear_inside_only", "max_gap_samples": 100,
+                "edge_extrapolation": False, "all_missing_channel_action": "reject_record",
+            },
+            "imu": {
+                "gravity_method": "quaternion_error_state_ekf",
+                "initialization": "online_no_precalibration",
+                "comparison_method": "lowpass_0p3hz",
+                "sensor_lowpass_acc_hz": 20.0,
+                "sensor_lowpass_gyro_hz": 40.0,
+                "gravity_lowpass_hz": 0.3,
+                "output_units": {"acceleration": "m/s^2", "gyroscope": "rad/s", "jerk": "m/s^3"},
+                "required_axes": 6,
+                "failure_action": "fail_closed",
+            },
+            "dl_resampling": {
+                "enabled": False, "target_fs_hz": 400.0, "method": "polyphase_anti_alias",
+                "preserve_feature_grid_hz": 400.0,
+            },
+            "normalization": {
+                "raw_ppg": "per_window_median_iqr", "raw_imu": "outer_train_fold_robust_scaler",
+                "iqr_fallback": "median_absolute_deviation_then_one", "clip_after_scale": None,
+            },
+        },
+        "quality": {"long_gap_max_samples": 100, "flatline_duration_s": 1.0},
+    }
+
+
+def views_fixture(seconds: float = 20.0):
+    """构建三窗同步记录 / Build a synchronized three-window record."""
+
+    samples = int(seconds * 400)
+    time = np.arange(samples) / 400.0
+    pulse = np.sin(2 * np.pi * 1.2 * time)
+    motion = 0.1 * np.sin(2 * np.pi * 0.8 * time)
+    return build_signal_views(
+        {
+            "record_id": "feature_fixture",
+            "fs_hz": 400.0,
+            "ppg": np.column_stack(
+                (1000 + 20 * pulse, 1200 + 15 * np.sin(2 * np.pi * 1.2 * time + 0.1))
+            ),
+            "acc": np.column_stack((motion, np.zeros(samples), np.full(samples, 9.80665))),
+            "gyro": np.zeros((samples, 3)),
+            "acc_unit": "m/s2",
+            "gyro_unit": "rad/s",
+        },
+        resolved_config(),
+    )
+
+
+def engineering_plan() -> WindowPlan:
+    """唯一显式 10 s/5 s WindowPlan / Sole explicit engineering plan."""
+
+    return WindowPlan(
+        source_record_id="feature_fixture",
+        window_seconds=10.0,
+        hop_seconds=5.0,
+        end_alignment="start",
+        short_record_action="reject",
+        include_padded_tail=False,
+        max_windows=None,
+        cap_policy="not_applicable",
+    )
+
+
+def direct_extraction() -> EngineeringExtraction:
+    """构建 direct 工程序列 / Build the direct engineering sequence."""
+
+    return extract_engineering_features(views_fixture(), plan=engineering_plan())
+
+
+class EngineeringRegistryTest(unittest.TestCase):
+    """验证工程序列、注册表和 validity / Verify engineering and validity contracts."""
+
+    def test_direct_engineering_schema_and_missingness_are_truthful(self) -> None:
+        extraction = direct_extraction()
+        names = engineering_feature_names()
+        self.assertEqual(extraction.sequence.values.shape, (3, len(names)))
+        # 中文：合成 fixture 的若干 IMU 轴恒定；skew/entropy 不可定义，不能强标 valid。
+        # English: Constant synthetic IMU axes make skew/entropy undefined.
+        self.assertTrue(
+            np.array_equal(np.isfinite(extraction.sequence.values), extraction.value_validity)
+        )
+        for name in (
+            "ppg_red.mean",
+            "ppg_red.population_sd",
+            "ppg_red.bandpower_0.5_3_hz",
+            "acc_dynamic_x.population_sd",
+        ):
+            self.assertTrue(extraction.value_validity[:, names.index(name)].all())
+        self.assertFalse(
+            extraction.value_validity[:, names.index("gyro_y.skew_bias_corrected")].any()
+        )
+        self.assertEqual(extraction.sequence.start_samples.tolist(), [0, 2000, 4000])
+
+    def test_nonidentity_ppg_engineering_is_unavailable(self) -> None:
+        views = views_fixture()
+        result = ArtifactReductionResult(
+            x_ar=0.8 * views.x_filter,
+            reducer_id="test_nonidentity",
+            reducer_version="test_v1",
+            is_identity=False,
+            status="success",
+            confidence=1.0,
+            diagnostics={},
+            parameters={},
+            channel_available=(True, True),
+            alignment={"same_time_grid": True, "fs_hz": 400.0},
+        )
+        routed = views.with_artifact_result(result)
+        extraction = extract_engineering_features(routed, plan=engineering_plan())
+        ppg_slots = 2 * (8 + 3)
+        self.assertTrue(np.isnan(extraction.sequence.values[:, :ppg_slots]).all())
+        self.assertFalse(extraction.value_validity[:, :ppg_slots].any())
+        self.assertTrue(
+            np.array_equal(np.isfinite(extraction.sequence.values), extraction.value_validity)
+        )
+        self.assertTrue(
+            extraction.value_validity[
+                :, engineering_feature_names().index("acc_dynamic_x.population_sd")
+            ].all()
+        )
+
+    def test_default_file_aggregation_is_mean_population_sd(self) -> None:
+        sequence = EngineeringFeatureSequence(
+            values=np.array([[1.0, 3.0], [3.0, 7.0]]),
+            start_samples=np.array([0, 2000]),
+            valid_row_mask=np.array([True, True]),
+            channel_schema=("a", "b"),
+            schema_version="test",
+        )
+        extraction = EngineeringExtraction(
+            sequence, np.ones((2, 2), dtype=bool), SignalRoute.DIRECT, ()
+        )
+        values, validity = summarize_engineering(extraction)
+        self.assertEqual(values["engineering.a.mean"], 2.0)
+        self.assertEqual(values["engineering.a.population_sd"], 1.0)
+        self.assertEqual(values["engineering.b.mean"], 5.0)
+        self.assertEqual(values["engineering.b.population_sd"], 2.0)
+        self.assertTrue(all(validity.values()))
+        self.assertFalse(any(name.endswith(".median") for name in values))
+
+    def test_registry_has_all_ten_required_fields_and_stable_hash(self) -> None:
+        registry = default_registry()
+        required = {
+            "canonical_name", "formula_algorithm", "units", "source_signal_view",
+            "endpoint_role_eligibility", "level", "aggregation_rule", "validity_rule",
+            "missing_value_policy", "provenance_version",
+        }
+        self.assertTrue(required.issubset({item.name for item in fields(registry.definitions[0])}))
+        for definition in registry.definitions:
+            for field_name in required:
+                self.assertTrue(str(getattr(definition, field_name)).strip())
+        self.assertEqual(registry.sha256, default_registry().sha256)
+        self.assertIn("optical.red_ir_ac_ratio_median", registry.names)
+        self.assertIn("optical.red_ir_dc_ratio_median", registry.names)
+
+    def test_matrix_places_value_validity_channels_in_model_tensor(self) -> None:
+        extraction = direct_extraction()
+        transform = fit_fold_feature_transform(
+            [extraction],
+            fitted_on_participant_ids=["train"],
+            outer_train_participant_ids=["train"],
+            outer_oof_participant_ids=["heldout"],
+        )
+        transformed = transform_engineering(extraction, transform)
+        registry = default_registry()
+        context = build_feature_vector(
+            {"sqi.q_rate": 0.9},
+            feature_validity={"sqi.q_rate": True},
+            provenance={
+                "route": SignalRoute.DIRECT.value,
+                "fold_standardized": True,
+                "fold_transform_version": "test_outer_train_v1",
+            },
+        )
+        matrix = build_ordered_matrix(
+            transformed,
+            context=context,
+            provenance={"route": SignalRoute.DIRECT.value},
+        )
+        engineering_count = len(engineering_feature_names())
+        registry_count = len(registry.names)
+        self.assertEqual(matrix.values.shape, (2 * (engineering_count + registry_count), 32))
+        self.assertEqual(int(np.sum(matrix.row_mask)), 3)
+        self.assertEqual(matrix.context_schema[:registry_count], registry.names)
+        self.assertEqual(
+            matrix.context_schema[registry_count:],
+            tuple(f"{name}.validity" for name in registry.names),
+        )
+        q_index = registry.names.index("sqi.q_rate")
+        context_value_row = 2 * engineering_count + q_index
+        context_validity_row = 2 * engineering_count + registry_count + q_index
+        self.assertTrue(np.all(matrix.values[context_value_row, :3] == 0.9))
+        self.assertTrue(np.all(matrix.values[context_validity_row, :3] == 1.0))
+        self.assertTrue(np.all(matrix.values[:, 3:] == 0.0))
+        gyro_index = engineering_feature_names().index("gyro_y.skew_bias_corrected")
+        self.assertTrue(np.all(matrix.values[engineering_count + gyro_index, :3] == 0.0))
+        self.assertEqual(
+            matrix.provenance["validity_encoding"], "paired_explicit_0_1_channels_v1"
+        )
+
+    def test_artifact_route_invalidates_morphology_slot_and_unknowns_fail(self) -> None:
+        registry = default_registry()
+        target = "morphology.amplitude_median"
+        vector = build_feature_vector(
+            {target: 5.0},
+            feature_validity={target: True},
+            provenance={"route": SignalRoute.ARTIFACT_RATE_ONLY.value},
+        )
+        index = registry.names.index(target)
+        self.assertFalse(vector.validity[index])
+        self.assertTrue(np.isnan(vector.values[index]))
+        with self.assertRaises(ValueError):
+            build_feature_vector(
+                {"participant_id": 99.0},
+                feature_validity={"participant_id": True},
+                provenance={"route": SignalRoute.DIRECT.value},
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m3.transit_delay_artifact.v1",
+  "title": "M3 training-only PPG transit-delay artifact / M3 仅训练折 PPG 传导延迟制品",
+  "description": "Strict contract for a median ECG-to-PPG transit delay fitted on an explicit training roster. It is an evaluation alignment artifact, not a denoising operation and not a deployable subject-specific calibration. / 在明确训练名单上拟合 ECG 到 PPG 中位传导延迟的严格合同。它是评价对齐制品，不是去噪操作，也不是可部署的受试者个体校准。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_id",
+    "sampling_rate_hz",
+    "delay_samples",
+    "delay_sec",
+    "fit_subject_ids",
+    "fit_subject_ids_sha256",
+    "matched_delay_count",
+    "minimum_delay_sec",
+    "maximum_delay_sec",
+    "fit_role",
+    "source_reference",
+    "dataset_id",
+    "training_split_id",
+    "preprocessing_profile_id",
+    "algorithm_id"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "m3.transit_delay_artifact.v1",
+      "description": "Exact runtime artifact schema ID. / 精确运行时制品 Schema ID。"
+    },
+    "artifact_id": {
+      "type": "string",
+      "pattern": "^ptt_delay_[0-9a-f]{12}_[0-9]+samples$",
+      "description": "Stable ID derived from the training-subject hash and fitted sample delay. / 由训练受试者哈希与拟合样本延迟派生的稳定 ID。"
+    },
+    "sampling_rate_hz": {
+      "const": 400,
+      "description": "Evaluation-grid sampling rate. / 评价网格采样率。"
+    },
+    "delay_samples": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Median following-pulse delay in samples. / 后继脉搏中位延迟，单位样本。"
+    },
+    "delay_sec": {
+      "type": "number",
+      "minimum": 0,
+      "description": "The same delay in seconds; validator checks delay_samples/sampling_rate_hz. / 同一延迟的秒值；validator 检查 delay_samples/sampling_rate_hz。"
+    },
+    "fit_subject_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Exact sorted training-subject roster. / 精确排序训练受试者名单。"
+    },
+    "fit_subject_ids_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "matched_delay_count": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of physiologically bounded training delays supporting the median. / 支撑中位数的生理界内训练延迟数量。"
+    },
+    "minimum_delay_sec": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Lower physiological delay gate. / 生理延迟下界。"
+    },
+    "maximum_delay_sec": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Upper physiological delay gate. / 生理延迟上界。"
+    },
+    "fit_role": {
+      "const": "training",
+      "description": "Leakage barrier: only a training role may produce this artifact. / 防泄漏边界：仅 training 角色可生成此制品。"
+    },
+    "source_reference": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable reference annotation source. / 人类可读参考标注来源。"
+    },
+    "dataset_id": {
+      "const": "ptt_ppg_1_1_0_local",
+      "description": "M2 external synchronized dataset identity. / M2 外部同步数据集标识。"
+    },
+    "training_split_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Required materialized training split identity; an empty or implicit split is forbidden. / 必填的已物化训练划分标识；禁止空值或隐含划分。"
+    },
+    "preprocessing_profile_id": {
+      "const": "external_ppg_to_400_polyphase_v1",
+      "description": "Registered external-data polyphase mapping profile. / 已注册外部数据多相映射配置。"
+    },
+    "algorithm_id": {
+      "const": "m3_ptt_median_transit_delay_v1",
+      "description": "Frozen training-only median transit-delay algorithm. / 冻结的仅训练折中位传导延迟算法。"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lower-case SHA-256 digest. / 小写 SHA-256 摘要。"
+    }
+  }
+}

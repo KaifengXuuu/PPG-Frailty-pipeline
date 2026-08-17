@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m1.inference_output.v2",
+  "title": "M1 V2 PipelineResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "probabilities",
+    "predicted_label",
+    "confidence",
+    "coverage",
+    "motion_summary",
+    "quality_summary",
+    "physiology_summary",
+    "route_summary",
+    "feature_summary",
+    "runtime_summary",
+    "reason_codes",
+    "versions",
+    "timing_ms"
+  ],
+  "properties": {
+    "schema_version": {"const": "m1.inference_output.v2"},
+    "status": {
+      "enum": [
+        "ok",
+        "partial",
+        "invalid_input",
+        "insufficient_quality",
+        "processing_lag",
+        "runtime_error"
+      ]
+    },
+    "probabilities": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pre_frail", "robust_non_frail", "young"],
+          "properties": {
+            "pre_frail": {"type": "number", "minimum": 0, "maximum": 1},
+            "robust_non_frail": {"type": "number", "minimum": 0, "maximum": 1},
+            "young": {"type": "number", "minimum": 0, "maximum": 1}
+          }
+        }
+      ]
+    },
+    "predicted_label": {"enum": ["pre_frail", "robust_non_frail", "young", null]},
+    "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "coverage": {"type": "number", "minimum": 0, "maximum": 1},
+    "motion_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "p_active", "coverage", "threshold"],
+      "properties": {
+        "status": {"enum": ["ok", "partial", "no_estimate"]},
+        "p_active": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "coverage": {"type": "number", "minimum": 0, "maximum": 1},
+        "threshold": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+      }
+    },
+    "quality_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action_owner", "action_counts", "sqi_score", "sqi_valid", "coverage"],
+      "properties": {
+        "action_owner": {"enum": ["sqi", "coarse_denoise"]},
+        "action_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["KEEP_RAW", "SQI_DROP", "SQI_WEIGHT", "COARSE_REPLACE"],
+          "properties": {
+            "KEEP_RAW": {"type": "integer", "minimum": 0},
+            "SQI_DROP": {"type": "integer", "minimum": 0},
+            "SQI_WEIGHT": {"type": "integer", "minimum": 0},
+            "COARSE_REPLACE": {"type": "integer", "minimum": 0}
+          }
+        },
+        "sqi_score": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "sqi_valid": {"type": "boolean"},
+        "coverage": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "physiology_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "hr_bpm", "ppi_ms", "coverage"],
+      "properties": {
+        "status": {"enum": ["ok", "partial", "no_estimate"]},
+        "hr_bpm": {"type": ["number", "null"], "minimum": 0},
+        "ppi_ms": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "array", "items": {"type": "number", "exclusiveMinimum": 0}}
+          ]
+        },
+        "coverage": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "route_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["quality_policy_id", "signal_frontend_id", "feature_schema_id", "classifier_id"],
+      "properties": {
+        "quality_policy_id": {"type": "string", "minLength": 1},
+        "signal_frontend_id": {"type": "string", "minLength": 1},
+        "feature_schema_id": {"type": "string", "minLength": 1},
+        "classifier_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "feature_summary": {"type": "object"},
+    "runtime_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["execution_provider", "fallback_used", "backlog", "buffer_duration_sec"],
+      "properties": {
+        "execution_provider": {"type": "string", "minLength": 1},
+        "fallback_used": {"type": "boolean"},
+        "backlog": {"type": "boolean"},
+        "buffer_duration_sec": {"type": "number", "minimum": 1}
+      }
+    },
+    "reason_codes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "versions": {"type": "object", "additionalProperties": {"type": "string"}},
+    "timing_ms": {"type": "object", "additionalProperties": {"type": "number", "minimum": 0}}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": ["invalid_input", "insufficient_quality", "processing_lag", "runtime_error"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "probabilities": {"type": "null"},
+          "predicted_label": {"type": "null"},
+          "confidence": {"type": "null"}
+        }
+      }
+    }
+  ]
+}
+

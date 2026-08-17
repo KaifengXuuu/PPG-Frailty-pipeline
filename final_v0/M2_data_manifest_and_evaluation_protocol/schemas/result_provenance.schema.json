@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m2.result_provenance.v1",
+  "title": "M2 result provenance",
+  "type": "object",
+  "required": ["dataset_version_id", "dataset_manifest_sha256", "fold_registry_id", "fold_registry_sha256", "protocol_id", "repeat_index", "split_seed", "fold_index", "training_seed", "preprocessing_version", "config_hash", "evaluation_role", "metric_prefix", "independent_test"],
+  "properties": {
+    "dataset_version_id": {"type": "string"},
+    "dataset_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "fold_registry_id": {"type": "string"},
+    "fold_registry_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "protocol_id": {"type": "string"},
+    "repeat_index": {"type": "integer", "minimum": 0, "maximum": 4},
+    "split_seed": {"enum": [42, 10042, 20042, 30042, 40042]},
+    "fold_index": {"type": "integer", "minimum": 0, "maximum": 4},
+    "training_seed": {"type": "integer"},
+    "preprocessing_version": {"type": "string"},
+    "config_hash": {"type": "string"},
+    "evaluation_role": {"const": "oof_validation"},
+    "metric_prefix": {"const": "oof_validation_"},
+    "independent_test": {"const": false}
+  },
+  "additionalProperties": true
+}

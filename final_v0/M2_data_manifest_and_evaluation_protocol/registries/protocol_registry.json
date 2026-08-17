@@ -1,0 +1,62 @@
+{
+  "schema_version": "m2.protocol_registry.v1",
+  "active_protocol_id": "frailty3_fixed_epoch_oof_v2_corrected_sgkf",
+  "protocols": [
+    {
+      "protocol_id": "frailty3_fixed_epoch_oof_v2_corrected_sgkf",
+      "status": "active_future_benchmark_only",
+      "family": "fixed_epoch_oof_cv",
+      "fold_registry_id": "frailty3_future_corrected_sgkf5_v2",
+      "folds": 5,
+      "repeats": 5,
+      "seeds": [42, 10042, 20042, 30042, 40042],
+      "subject_grouped": true,
+      "early_stopping": false,
+      "outer_oof_visible_during_training": false,
+      "metric_prefix": "oof_validation_",
+      "independent_test_claim_allowed": false,
+      "comparability_group": "future_corrected_sgkf_all_candidates_rerun"
+    },
+    {
+      "protocol_id": "frailty3_fixed_epoch_oof_v1_sklearn142_bug_reproduction",
+      "status": "historical_reproduction_only",
+      "family": "fixed_epoch_oof_cv",
+      "fold_registry_id": "frailty3_historical_sgkf5_sklearn142_bug_v1",
+      "known_issue": "shuffle_group_count_mapping_bug_and_six_class_missing_folds",
+      "metric_prefix": "oof_validation_",
+      "independent_test_claim_allowed": false,
+      "comparability_group": "historical_buggy_membership_only"
+    },
+    {
+      "protocol_id": "frailty3_outer_fold_epoch_selection_legacy",
+      "status": "deprecated_data_leakage_history",
+      "family": "early_stopping_cv",
+      "known_issue": "outer_fold_used_for_epoch_or_model_selection",
+      "metric_prefix": "historical_validation_",
+      "independent_test_claim_allowed": false
+    },
+    {
+      "protocol_id": "frailty3_strict_repeated_holdout_legacy",
+      "status": "valid_per_split_not_current_main_protocol",
+      "family": "strict_holdout",
+      "selection_boundary": "train_inner_validation_only",
+      "metric_prefix": "holdout_",
+      "independent_test_claim_allowed": false
+    },
+    {
+      "protocol_id": "frailty3_test_used_for_early_stopping_legacy",
+      "status": "deprecated_data_leakage_history",
+      "family": "holdout_with_leakage",
+      "known_issue": "claimed_test_partition_used_for_early_stopping_or_selection",
+      "metric_prefix": "historical_leaky_",
+      "independent_test_claim_allowed": false
+    },
+    {
+      "protocol_id": "frailty3_debug_2fold_or_single_seed",
+      "status": "debug_only",
+      "family": "debug_cv",
+      "metric_prefix": "debug_",
+      "independent_test_claim_allowed": false
+    }
+  ]
+}

@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m1.pipeline_config.v2",
+  "title": "M1 V2 deploy pipeline config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "deployment_state",
+    "config_id",
+    "platform_profile_id",
+    "input_contract_ref",
+    "output_contract_ref",
+    "runtime",
+    "modules",
+    "versions",
+    "thresholds",
+    "artifacts"
+  ],
+  "properties": {
+    "schema_version": {"const": "m1.pipeline_config.v2"},
+    "deployment_state": {"enum": ["contract_example", "deploy_locked"]},
+    "config_id": {"type": "string", "minLength": 1},
+    "platform_profile_id": {"type": "string", "minLength": 1},
+    "input_contract_ref": {"const": "m1.signal_input.v2"},
+    "output_contract_ref": {"const": "m1.inference_output.v2"},
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "engine",
+        "device",
+        "threads",
+        "allowed_dependencies",
+        "execution_providers",
+        "buffer_duration_sec",
+        "backlog_policy"
+      ],
+      "properties": {
+        "engine": {"enum": ["python_numpy_scipy", "python_onnxruntime", "hybrid_python_onnxruntime"]},
+        "device": {"enum": ["cpu", "accelerator_with_cpu_fallback"]},
+        "threads": {"type": "integer", "minimum": 1},
+        "allowed_dependencies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["numpy", "scipy", "onnxruntime", "scikit-learn"]}
+        },
+        "execution_providers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "buffer_duration_sec": {"type": "number", "minimum": 1},
+        "backlog_policy": {"const": "explicit_no_result"}
+      }
+    },
+    "modules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "validation",
+        "preprocessing",
+        "motion_detector",
+        "data_classifier",
+        "quality_strategy",
+        "feature_extractor",
+        "classifier",
+        "aggregation",
+        "calibration"
+      ],
+      "properties": {
+        "validation": {"$ref": "#/$defs/module_ref"},
+        "preprocessing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version", "execution_mode", "algorithmic_latency_sec"],
+          "properties": {
+            "id": {"type": "string", "minLength": 1},
+            "version": {"type": "string", "minLength": 1},
+            "execution_mode": {"enum": ["streaming_causal", "buffered_zero_phase"]},
+            "algorithmic_latency_sec": {"type": "number", "minimum": 0}
+          }
+        },
+        "motion_detector": {"$ref": "#/$defs/module_ref"},
+        "data_classifier": {"$ref": "#/$defs/module_ref"},
+        "quality_strategy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["action_mode", "policy_id", "sqi_monitor_enabled", "signal_frontend_id"],
+          "properties": {
+            "action_mode": {"enum": ["sqi_gate", "coarse_denoise"]},
+            "policy_id": {"type": "string", "minLength": 1},
+            "sqi_monitor_enabled": {"const": true},
+            "signal_frontend_id": {"type": "string", "minLength": 1}
+          }
+        },
+        "feature_extractor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "feature_schema_id"],
+          "properties": {
+            "id": {"type": "string", "minLength": 1},
+            "feature_schema_id": {"type": "string", "minLength": 1}
+          }
+        },
+        "classifier": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "label_map_id"],
+          "properties": {
+            "id": {"type": "string", "minLength": 1},
+            "label_map_id": {"const": "frailty3.v1"}
+          }
+        },
+        "aggregation": {"$ref": "#/$defs/module_ref"},
+        "calibration": {"$ref": "#/$defs/module_ref"}
+      }
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": {"type": "string", "minLength": 1},
+      "required": [
+        "preprocessing_version",
+        "motion_version",
+        "sqi_version",
+        "feature_schema_version",
+        "classifier_version"
+      ]
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": {"type": ["number", "null"]}
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "files"],
+      "properties": {
+        "status": {"enum": ["pending_export", "locked"]},
+        "files": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/artifact_file"}
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "locked"}}},
+          "then": {"properties": {"files": {"minItems": 1}}}
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "module_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1}
+      }
+    },
+    "artifact_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "relative_path", "kind", "bytes", "sha256"],
+      "properties": {
+        "artifact_id": {"type": "string", "minLength": 1},
+        "relative_path": {"type": "string", "minLength": 1},
+        "kind": {
+          "enum": [
+            "model",
+            "onnx_external_data",
+            "imputer",
+            "scaler",
+            "calibrator",
+            "shapelets",
+            "rocket_kernels",
+            "coefficients",
+            "feature_schema",
+            "other"
+          ]
+        },
+        "bytes": {"type": "integer", "minimum": 0},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}
+

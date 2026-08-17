@@ -1,0 +1,66 @@
+{
+  "pipeline_generation": "final_pipeline_v2",
+  "profiles": [
+    {
+      "kind": "base",
+      "normal_pipeline_import": true,
+      "profile_id": "core",
+      "requirements_file": "requirements-core.txt",
+      "status": "resolution_input_only"
+    },
+    {
+      "kind": "delta_on_core",
+      "normal_pipeline_import": false,
+      "profile_id": "deep",
+      "requirements_file": "requirements-deep.txt",
+      "status": "resolution_input_only"
+    },
+    {
+      "kind": "delta_on_core",
+      "normal_pipeline_import": false,
+      "profile_id": "formal_benchmark",
+      "requirements_file": "requirements-formal-benchmark.txt",
+      "status": "resolution_input_only"
+    },
+    {
+      "kind": "isolated_post_selection_runtime",
+      "normal_pipeline_import": false,
+      "profile_id": "onnx_winner_gate",
+      "requirements_file": "requirements-onnx-winner-gate.txt",
+      "status": "validated_exact_lock"
+    },
+    {
+      "kind": "isolated_function_comparison_environment",
+      "normal_pipeline_import": false,
+      "profile_id": "prv_aura_compare",
+      "requirements_file": "requirements-prv-aura-compare.txt",
+      "status": "validated_exact_lock_hrv_analysis_1_0_2"
+    },
+    {
+      "kind": "legacy_function_comparison_delta",
+      "normal_pipeline_import": false,
+      "profile_id": "prv_rhenan_legacy_compare",
+      "requirements_file": "requirements-prv-rhenan-legacy-compare.txt",
+      "status": "resolution_input_only"
+    }
+  ],
+  "resolution_policy": {
+    "core_deep_formal_benchmark": "inspect_reference_conda_ml_without_mutation_then_full_regression_then_exact_lock",
+    "onnx_winner_gate": "recreate_exact_isolated_python_3_11_environment_do_not_modify_conda_ml",
+    "prv_aura_compare": "recreate_exact_isolated_python_3_11_environment_do_not_modify_conda_ml",
+    "prv_rhenan_legacy_compare": "isolated_pending_no_normal_pipeline_install",
+    "supplemental_artifact_legacy_ablation": "isolated_optional_pending_no_normal_pipeline_install"
+  },
+  "schema_version": "ppg_frailty.v2_dependency_profiles.v1",
+  "supplemental_optional_inputs": [
+    {
+      "blocks_formal_benchmark": false,
+      "input_id": "artifact_legacy_ablation",
+      "requirements_file": "requirements-artifact-legacy-ablation.txt",
+      "scope": [
+        "dwt_a2_legacy"
+      ],
+      "status": "resolution_input_only"
+    }
+  ]
+}

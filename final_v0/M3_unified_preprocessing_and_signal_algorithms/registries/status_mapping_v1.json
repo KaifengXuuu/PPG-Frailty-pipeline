@@ -1,0 +1,148 @@
+{
+  "schema_version": "m3.status_mapping.v1",
+  "registry_id": "m3_status_mapping_v1",
+  "status": "future_active",
+  "description_zh": "M3 原生模块状态、IMU 内部状态、M1 inference_output.v3 状态及单位字符串之间的唯一确定性映射。任何未登记值均 fail closed。",
+  "description_en": "Sole deterministic mapping among native M3 module states, internal IMU states, m1.inference_output.v3 states and unit strings. Every unregistered value fails closed.",
+  "finite_numeric_policy": {
+    "serialization": "json_null_plus_mask_and_reason_code",
+    "forbidden": ["NaN", "Infinity", "-Infinity"],
+    "description_zh": "缺失数值必须是 null，并同时带掩码和原因码；不得写入非标准 JSON 浮点字面量。",
+    "description_en": "Missing numerics are null with a mask and reason code; non-standard JSON floating literals are forbidden."
+  },
+  "module_status_to_M1": [
+    {
+      "m3_status": "valid",
+      "m1_module_status": "valid",
+      "m1_pipeline_status": "ok",
+      "condition": "always"
+    },
+    {
+      "m3_status": "repaired",
+      "m1_module_status": "repaired",
+      "m1_pipeline_status": "partial",
+      "condition": "always"
+    },
+    {
+      "m3_status": "partial",
+      "m1_module_status": "partial",
+      "m1_pipeline_status": "partial",
+      "condition": "always"
+    },
+    {
+      "m3_status": "invalid",
+      "m1_module_status": "invalid",
+      "m1_pipeline_status": "invalid_input",
+      "condition": "always"
+    },
+    {
+      "m3_status": "insufficient",
+      "m1_module_status": "no_estimate",
+      "m1_pipeline_status": "insufficient_quality",
+      "condition": "always"
+    },
+    {
+      "m3_status": "no_estimate",
+      "m1_module_status": "no_estimate",
+      "m1_pipeline_status": "insufficient_quality",
+      "condition": "always"
+    },
+    {
+      "m3_status": "initialization_pending",
+      "m1_module_status": "no_estimate",
+      "m1_pipeline_status": "processing_lag",
+      "condition": "end_of_stream=false"
+    },
+    {
+      "m3_status": "initialization_pending",
+      "m1_module_status": "no_estimate",
+      "m1_pipeline_status": "insufficient_quality",
+      "condition": "end_of_stream=true"
+    }
+  ],
+  "imu_internal_state_projection": [
+    {
+      "imu_state": "tracking",
+      "m3_status": "valid",
+      "description_zh": "EKF 就绪门、协方差门和更新条件均满足。",
+      "description_en": "EKF readiness, covariance and update gates are satisfied."
+    },
+    {
+      "imu_state": "prediction_only",
+      "m3_status": "partial",
+      "description_zh": "允许的短时纯预测，必须同时报告 prediction_only 原因；超过时限转 no_estimate。",
+      "description_en": "Allowed short prediction-only interval with an explicit reason; exceeding the limit becomes no_estimate."
+    },
+    {
+      "imu_state": "no_estimate",
+      "m3_status": "no_estimate",
+      "description_zh": "就绪、协方差、偏置或纯预测时限失败。",
+      "description_en": "Readiness, covariance, bias or prediction-only duration gate failed."
+    }
+  ],
+  "unit_normalization": [
+    {
+      "contract": "m1.signal_input.v2",
+      "channel_family": "accelerometer",
+      "input_unit": "m/s2",
+      "m3_core_unit": "m/s^2",
+      "numeric_conversion": "identity",
+      "description_zh": "仅规范字符串拼写，不改变数值。",
+      "description_en": "Normalizes spelling only and does not change numeric values."
+    },
+    {
+      "contract": "m1.signal_input.v2",
+      "channel_family": "accelerometer",
+      "input_unit": "g",
+      "m3_core_unit": "m/s^2",
+      "numeric_conversion": "multiply_by_9.80665",
+      "description_zh": "使用冻结标准重力常数显式换算。",
+      "description_en": "Explicit conversion using the frozen standard-gravity constant."
+    },
+    {
+      "contract": "m1.signal_input.v2",
+      "channel_family": "gyroscope",
+      "input_unit": "deg/s",
+      "m3_core_unit": "rad/s",
+      "numeric_conversion": "multiply_by_pi_over_180",
+      "description_zh": "显式角速度单位换算。",
+      "description_en": "Explicit angular-rate conversion."
+    },
+    {
+      "contract": "m1.signal_input.v2",
+      "channel_family": "gyroscope",
+      "input_unit": "rad/s",
+      "m3_core_unit": "rad/s",
+      "numeric_conversion": "identity",
+      "description_zh": "单位已为 SI，无数值换算。",
+      "description_en": "Already SI; no numeric conversion."
+    },
+    {
+      "contract": "m1.signal_input.v2",
+      "channel_family": "PPG",
+      "input_unit": "adc_counts|raw_counts",
+      "m3_core_unit": "preserve_input_counts",
+      "numeric_conversion": "identity",
+      "description_zh": "保留原始计数与 DC/AC，不按幅值猜单位。",
+      "description_en": "Preserves raw counts and DC/AC; units are never guessed from amplitude."
+    },
+    {
+      "contract": "m1.signal_input.v2",
+      "channel_family": "any",
+      "input_unit": "unknown",
+      "m3_core_unit": null,
+      "numeric_conversion": "forbidden",
+      "reason_code": "unit_unknown",
+      "description_zh": "未知单位显式无结果，不做幅值启发式推断。",
+      "description_en": "Unknown units produce an explicit no-result; amplitude heuristics are forbidden."
+    }
+  ],
+  "routing_status_rules": {
+    "high_quality": "return_preprocessed_signal_directly_to_feature_extractor",
+    "low_quality_or_motion_drop": "insufficient_quality_with_expected_abstention",
+    "low_quality_or_motion_denoise": "partial_or_ok_only_if_denoiser_and_feature_extractor_both_return_valid",
+    "denoiser_failure": "insufficient_quality_no_raw_fallback",
+    "description_zh": "先 SQI+可选 Motion detector，再分 high 与 low/motion；后者只能按会话前配置选择 drop 或 denoise→features。",
+    "description_en": "SQI plus optional motion detection precedes high versus low/motion routing; the latter follows only the pre-run choice of drop or denoise-to-features."
+  }
+}

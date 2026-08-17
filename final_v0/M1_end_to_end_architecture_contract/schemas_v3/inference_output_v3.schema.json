@@ -1,0 +1,240 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m1.inference_output.v3",
+  "title": "M1 V3 PipelineResult with sequential quality routing",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "probabilities",
+    "predicted_label",
+    "confidence",
+    "coverage",
+    "motion_summary",
+    "quality_summary",
+    "routing_summary",
+    "physiology_summary",
+    "route_summary",
+    "feature_summary",
+    "runtime_summary",
+    "reason_codes",
+    "versions",
+    "timing_ms"
+  ],
+  "properties": {
+    "schema_version": {"const": "m1.inference_output.v3"},
+    "status": {
+      "enum": [
+        "ok",
+        "partial",
+        "invalid_input",
+        "insufficient_quality",
+        "processing_lag",
+        "runtime_error"
+      ]
+    },
+    "probabilities": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pre_frail", "robust_non_frail", "young"],
+          "properties": {
+            "pre_frail": {"type": "number", "minimum": 0, "maximum": 1},
+            "robust_non_frail": {"type": "number", "minimum": 0, "maximum": 1},
+            "young": {"type": "number", "minimum": 0, "maximum": 1}
+          }
+        }
+      ]
+    },
+    "predicted_label": {"enum": ["pre_frail", "robust_non_frail", "young", null]},
+    "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "coverage": {"type": "number", "minimum": 0, "maximum": 1},
+    "motion_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["detector_enabled", "status", "p_active", "threshold", "state_counts", "coverage"],
+      "properties": {
+        "detector_enabled": {"type": "boolean"},
+        "status": {"enum": ["ok", "partial", "not_evaluated", "no_estimate"]},
+        "p_active": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "threshold": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "state_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["static", "motion", "not_evaluated", "unknown"],
+          "properties": {
+            "static": {"$ref": "#/$defs/nonnegative_count"},
+            "motion": {"$ref": "#/$defs/nonnegative_count"},
+            "not_evaluated": {"$ref": "#/$defs/nonnegative_count"},
+            "unknown": {"$ref": "#/$defs/nonnegative_count"}
+          }
+        },
+        "coverage": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "quality_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sqi_required", "status", "sqi_score", "quality_state_counts", "coverage"],
+      "properties": {
+        "sqi_required": {"const": true},
+        "status": {"enum": ["ok", "partial", "no_estimate"]},
+        "sqi_score": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "quality_state_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["high", "low", "unrecoverable", "unknown"],
+          "properties": {
+            "high": {"$ref": "#/$defs/nonnegative_count"},
+            "low": {"$ref": "#/$defs/nonnegative_count"},
+            "unrecoverable": {"$ref": "#/$defs/nonnegative_count"},
+            "unknown": {"$ref": "#/$defs/nonnegative_count"}
+          }
+        },
+        "coverage": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "routing_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route_policy_id",
+        "manual_policy",
+        "scheduled_window_count",
+        "candidate_reason_counts",
+        "action_counts",
+        "usable_feature_window_count",
+        "dropped_window_count",
+        "failure_window_count",
+        "window_coverage",
+        "time_coverage"
+      ],
+      "properties": {
+        "route_policy_id": {"const": "sqi_motion_router_v3"},
+        "manual_policy": {"enum": ["drop", "denoise_then_extract_features"]},
+        "scheduled_window_count": {"$ref": "#/$defs/nonnegative_count"},
+        "candidate_reason_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["low_quality", "motion", "low_quality_and_motion"],
+          "properties": {
+            "low_quality": {"$ref": "#/$defs/nonnegative_count"},
+            "motion": {"$ref": "#/$defs/nonnegative_count"},
+            "low_quality_and_motion": {"$ref": "#/$defs/nonnegative_count"}
+          }
+        },
+        "action_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "FORCE_DROP_INVALID",
+            "FORCE_DROP_UNRECOVERABLE",
+            "RETURN_HIGH_QUALITY_TO_FEATURES",
+            "POLICY_DROP_LOW_QUALITY",
+            "POLICY_DROP_MOTION",
+            "POLICY_DROP_LOW_QUALITY_AND_MOTION",
+            "DENOISE_LOW_QUALITY_THEN_EXTRACT",
+            "DENOISE_MOTION_THEN_EXTRACT",
+            "DENOISE_LOW_QUALITY_AND_MOTION_THEN_EXTRACT",
+            "FAILURE_NO_RESULT"
+          ],
+          "properties": {
+            "FORCE_DROP_INVALID": {"$ref": "#/$defs/nonnegative_count"},
+            "FORCE_DROP_UNRECOVERABLE": {"$ref": "#/$defs/nonnegative_count"},
+            "RETURN_HIGH_QUALITY_TO_FEATURES": {"$ref": "#/$defs/nonnegative_count"},
+            "POLICY_DROP_LOW_QUALITY": {"$ref": "#/$defs/nonnegative_count"},
+            "POLICY_DROP_MOTION": {"$ref": "#/$defs/nonnegative_count"},
+            "POLICY_DROP_LOW_QUALITY_AND_MOTION": {"$ref": "#/$defs/nonnegative_count"},
+            "DENOISE_LOW_QUALITY_THEN_EXTRACT": {"$ref": "#/$defs/nonnegative_count"},
+            "DENOISE_MOTION_THEN_EXTRACT": {"$ref": "#/$defs/nonnegative_count"},
+            "DENOISE_LOW_QUALITY_AND_MOTION_THEN_EXTRACT": {"$ref": "#/$defs/nonnegative_count"},
+            "FAILURE_NO_RESULT": {"$ref": "#/$defs/nonnegative_count"}
+          }
+        },
+        "usable_feature_window_count": {"$ref": "#/$defs/nonnegative_count"},
+        "dropped_window_count": {"$ref": "#/$defs/nonnegative_count"},
+        "failure_window_count": {"$ref": "#/$defs/nonnegative_count"},
+        "window_coverage": {"type": "number", "minimum": 0, "maximum": 1},
+        "time_coverage": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "physiology_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "hr_bpm", "ppi_ms", "coverage"],
+      "properties": {
+        "status": {"enum": ["ok", "partial", "no_estimate"]},
+        "hr_bpm": {"type": ["number", "null"], "minimum": 0},
+        "ppi_ms": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "array", "items": {"type": "number", "exclusiveMinimum": 0}}
+          ]
+        },
+        "coverage": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "route_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quality_router_id",
+        "manual_policy",
+        "high_quality_signal_source",
+        "denoiser_frontend_id",
+        "feature_schema_id",
+        "classifier_id",
+        "config_sha256"
+      ],
+      "properties": {
+        "quality_router_id": {"const": "sqi_motion_router_v3"},
+        "manual_policy": {"enum": ["drop", "denoise_then_extract_features"]},
+        "high_quality_signal_source": {"const": "preprocessed_raw"},
+        "denoiser_frontend_id": {"type": ["string", "null"]},
+        "feature_schema_id": {"type": "string", "minLength": 1},
+        "classifier_id": {"type": "string", "minLength": 1},
+        "config_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "feature_summary": {"type": "object"},
+    "runtime_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["execution_provider", "fallback_used", "backlog", "buffer_duration_sec"],
+      "properties": {
+        "execution_provider": {"type": "string", "minLength": 1},
+        "fallback_used": {"type": "boolean"},
+        "backlog": {"type": "boolean"},
+        "buffer_duration_sec": {"type": "number", "minimum": 1}
+      }
+    },
+    "reason_codes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "versions": {"type": "object", "additionalProperties": {"type": "string"}},
+    "timing_ms": {"type": "object", "additionalProperties": {"type": "number", "minimum": 0}}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": ["invalid_input", "insufficient_quality", "processing_lag", "runtime_error"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "probabilities": {"type": "null"},
+          "predicted_label": {"type": "null"},
+          "confidence": {"type": "null"}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "nonnegative_count": {"type": "integer", "minimum": 0}
+  }
+}
+

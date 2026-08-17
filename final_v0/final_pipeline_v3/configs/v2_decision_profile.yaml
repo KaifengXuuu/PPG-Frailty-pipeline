@@ -1,0 +1,381 @@
+schema_version: ppg_frailty.v2_decision_profile.v1
+pipeline_generation: final_pipeline_v2
+profile_id: confirmed_defaults_and_deferred_gates_20260816
+
+authority:
+  primary: user_confirmations_in_v2_dialogue
+  specification: AA_TODO/3/CODEX_IMPLEMENTATION_SPEC_PPG_FRAILTY_DEV0_MERGED.md
+  inherited_v1_configs: provenance_only_not_formal
+
+confirmed_defaults:
+  external_ptt_protocol:
+    decision_ids: [V2-001, V2-001a]
+    historical_split_use: smoke_only
+    formal_protocol: repeated_participant_grouped_5x5
+    seeds: [42, 10042, 20042, 30042, 40042]
+    fold_participant_counts: [5, 5, 4, 4, 4]
+    independent_test: false
+  external_ptt_channels:
+    decision_id: V2-002
+    device_location: distal_fingertip
+    pleth_1: RED
+    pleth_2: IR
+    mapping_kind: explicit_project_choice_with_source_provenance
+  labels:
+    decision_id: V2-003
+    machine_ids: [0, 1, 2]
+    display_names: [Pre-Frail, Robust/Non-Frail, Young]
+    source_frailty_status:
+      2: Pre-Frail
+      3: Robust/Non-Frail
+    young_label_origin: injected_after_loading_separate_young_dataset
+    snake_case_values: preserved_provenance_aliases
+  roles:
+    decision_id: V2-005
+    canonical_role_families: [B, R, S, W]
+    filename_suffix_semantics: file_index_only
+    cross_file_temporal_processing: false
+    frailty_input_when_quality_off: [B, R]
+  quality:
+    decision_ids: [V2-009, V2-009d]
+    default_mode: "off"
+    available_modes: ["off", diagnostics_only, route]
+    diagnostics_affects_retention_aggregation_prediction: false
+    supervised_route_ready_field_semantics: status_only_not_authorization
+    route_activation: hard_disabled_until_code_registered_supervised_artifact_and_hash
+  balance:
+    decision_id: V2-004
+    default_line:
+      line_id: line_a_equal_files
+      training_balance: equal_files
+      aggregation: equal_files_no_role_layer
+    comparison_line:
+      line_id: line_b_equal_role_families
+      training_balance: equal_role_families
+      aggregation: equal_role_families
+    run_selection: mutually_exclusive
+  imu_gravity:
+    decision_ids: [V2-007, V2-030, V2-036]
+    primary: no_precalibration_quaternion_error_state_ekf
+    reference_profile: calibrated_roll_pitch_ekf
+    enablement_gate: unit_tests_must_pass
+    persisted_parameters: [process_covariance, observation_covariance, unit_conversion]
+    input_unit_conversion:
+      internal_acceleration: g_to_m_per_s2
+      internal_gyroscope: degrees_per_second_to_radians_per_second
+      ptt_acceleration_v2_036: identity_m_per_s2_no_scale
+      ptt_gyroscope_v2_036: degrees_per_second_to_radians_per_second
+    ptt_unit_evidence:
+      path: final_v0/final_pipeline_v2/manifests/ptt_imu_unit_evidence_v2_036.json
+      sha256: c03669029f9e58e53ae24e5e9208aa47541b93d8fcc0b9dea2f215165dc70ee5
+      acceleration_source_unit: m/s^2
+      acceleration_scale_factor: 1.0
+      acceleration_multiply_9p80665: forbidden
+      gyroscope_source_unit: deg/s
+      gyroscope_evidence_boundary: header_and_historical_deg2rad_no_numeric_conflict_not_device_calibration
+    derived_channels: [A_dyn_x, A_dyn_y, A_dyn_z, A_dyn_magnitude, Omega, J]
+    robust_scaler_scope: outer_training_participants_only
+    robust_scaled_channels:
+    - A_dyn_x
+    - A_dyn_y
+    - A_dyn_z
+    - GX_rad_s
+    - GY_rad_s
+    - GZ_rad_s
+    - A_dyn_magnitude
+    - Omega
+    - J
+    per_window_imu_amplitude_normalization: forbidden_preserve_motion_intensity
+    required_comparator: causal_lowpass_0p3hz
+    silent_fallback: false
+  prv:
+    decision_ids: [V2-008, V2-014]
+    formal_backend: local_manual
+    native_cleaner_ablation: removed
+    aura_backend_scope: fixed_ppi_function_comparison_only
+    rhenan_backend_scope: fixed_ppi_function_comparison_only_legacy
+    library_backends_enter_classifier_pipeline: false
+    comparison_contract:
+      schema_version: ppg_frailty.prv_backend_comparison.v2
+      input_unit: milliseconds
+      fixture_ids:
+      - steady_75bpm
+      - alternating_75bpm
+      - dual_modulated
+      - slow_trend
+      - single_outlier_unmodified
+      input_cleaning: none
+      identical_input_sha256_required: true
+      native_output_names_preserved: true
+      cross_backend_numeric_identity_expected: false
+      missing_optional_dependency_status: unavailable_optional_dependency
+      classifier_integrated: false
+      prohibited_claims:
+      - frailty_classification_performance
+      - clinical_superiority
+      - interchangeable_backend_equivalence
+  direct_ppg_filter:
+    decision_id: V2-028
+    default_hz: [0.2, 8.0]
+    only_named_ablation_hz: [0.5, 5.0]
+  dependencies:
+    decision_ids: [V2-008e, V2-015a, V2-035, V2-035a]
+    reference_environment: conda_ml
+    unnecessary_upgrade_or_downgrade: forbidden
+    exact_lock_timing: after_successful_profile_install_and_full_regression
+    current_lock_status: pending
+    profile_count: 6
+    supplemental_optional_input: artifact_legacy_ablation
+    supplemental_blocks_formal_benchmark: false
+    aura_requested_probe:
+      hrv_analysis_version: 1.0.2
+      python_version_tested: 3.11.14
+      nolds_constraint: ">=0.4.1"
+      highest_tested_compatible_nolds_version: 0.6.2
+      incompatible_default_resolver_nolds_version: 0.6.3
+      astropy_version: 5.2.2
+      numpy_version: 1.26.4
+      status: validated_isolated_fixed_ppi_comparison_only
+      main_conda_ml_mutated: false
+      silent_downgrade: forbidden
+      vendor_patch_authorized: false
+  rocket:
+    decision_id: V2-016
+    reference: self_contained_deterministic_numpy_scipy_rocket
+    reference_kernel_count: 10000
+    minirocket: named_ablation_not_silent_replacement
+  shapeformer:
+    decision_ids: [V2-017, V2-029a, V2-029b]
+    reference_discovery: channel_specific_osd
+    num_pip_ratio: 0.20
+    pip_count_derivation: derived_from_actual_discovery_sequence_length_T
+    candidate_bounds: variable_length_bounded_by_three_consecutive_pips
+    fixed_shapelet_length_samples: null
+    candidate_stride: null
+    pip_selection_rule: upstream_zscored_time_index_perpendicular_distance_first_max
+    candidate_enumeration_rule: upstream_class_channel_source_sample_insertion_order
+    candidate_ranking_rule: upstream_numpy_default_argsort_then_reverse
+    selected_bank_order_rule: upstream_per_class_start_sample_default_argsort
+    discovery_position_search_boundary_rule: upstream_pcs_start_minus_w_plus_1_end_plus_w_half_open
+    information_gain_split_rule: upstream_positive_recall_grid_0p2
+    downstream_attention_probability_dropout_applied: false
+    shape_position_embedding_width_policy: upstream_observed_max_plus_1_per_axis
+    hard_coded_num_pips: forbidden
+    persisted_per_shapelet:
+    - source_channel
+    - start_sample
+    - end_sample
+    - start_seconds
+    - end_seconds
+    - candidate_length_samples
+    equal_shapelet_count_per_class: true
+    shapelets_per_class: 3
+    discovery_balance: participant_file_balanced
+    max_discovery_windows: 180
+    capacity_controls_are_project_specific_not_literature_defaults: true
+    failure_action: explicit_failure_no_effect_size_fallback
+    comparison_discovery: effect_size_fixed_v1
+    execution: mutually_exclusive
+    formal_config_status: materialized_in_formal_experiment_catalog_v2
+    effect_size_fixed_v1:
+      shapelet_length_samples: 128
+      stride_samples: 64
+    optional_fixed_length_ablations_samples: [400, 800]
+    unretained_historical_joint_route: not_a_registered_ablation_or_catalog_option
+    unretained_historical_joint_route_may_be_reference_or_fallback: false
+  epoch_budget:
+    decision_id: V2-018
+    default_fixed_epochs: 10
+    named_ablation_epochs: [7, 15]
+    outer_early_stopping: false
+  raw_time_scale:
+    decision_id: V2-019
+    reference_window_s: 5
+    reference_dl_fs_hz: 400
+    convolution_kernel_rule: fixed_kernel_sample_counts_no_physical_time_conversion
+    eligible_models: [CompactCNN1D, InceptionTimeFull]
+    ineligible_for_silent_application: [ShapeFormerChannelSpecificOSD, ShapeFormerEffectSizeFixedV1, ROCKET, MiniROCKET]
+  ensemble:
+    decision_ids: [V2-020, V2-032]
+    default: single_model
+    comparison_lines:
+    - raw_inception_time_full_five_member
+    - feature_matrix_inception_time_matrix_five_member
+    member_seeds: [42, 10042, 20042, 30042, 40042]
+    five_member_ensemble: explicit_comparison_ablation
+  sklearn_serialization:
+    decision_id: V2-021
+    primary: trusted_version_pinned_joblib_with_hash
+    portable_metadata: json
+    onnx: export_where_supported_not_primary_python_bundle
+    unsafe_untrusted_load: forbidden
+  onnx_gate:
+    decision_id: V2-022
+    winner_must_pass: true
+    every_ablation_must_export: false
+  formal_oof_output:
+    decision_id: V2-023
+    primary_format: parquet
+    missing_dependency_action: fail_closed
+    json_csv_silent_substitution: forbidden
+  benchmark_ranking:
+    decision_ids: [V2-024d1, V2-024d2]
+    display_sort_key: participant_level_mean_balanced_accuracy
+    max_qualified_per_comparison_group: 10
+    automatic_final_selection: false
+    manual_multiple_final_versions_allowed: true
+    ablation_may_be_manually_selected: true
+    preserve_ablation_provenance: true
+  benchmark_statistics:
+    decision_ids: [V2-024e1, V2-024e2]
+    cluster_unit: participant_with_all_five_repeat_oof_predictions
+    stratified_cluster_bootstrap_replicates: 10000
+    lcb95: lower_2p5_percentile_of_two_sided_95_ci
+    paired_permutation_replicates: 100000
+    correction: holm_within_comparison_family
+    bootstrap_metrics: [balanced_accuracy, macro_f1]
+    paired_permutation_metrics: [balanced_accuracy, macro_f1]
+    lcb95_columns: [balanced_accuracy_lcb95, macro_f1_lcb95]
+    holm_scope: same_comparison_group_and_same_metric
+    descriptive_only_metrics: [ece, inference_cost, worst_class]
+    affects_automatic_selection: false
+    archive_by_comparison_object: true
+  frozen_config_identity:
+    decision_id: V2-031
+    policy: no_hidden_defaults_materialize_every_formal_parameter
+    required_fields:
+    - architecture_parameters
+    - input_channels_and_order
+    - sampling_rate
+    - window_and_hop
+    - normalization
+    - padding_and_mask
+    - feature_schema_hash
+    - sqi_and_routing
+    - loss
+    - class_weighting
+    - sampler
+    - epoch_rule
+    - optimizer
+    - learning_rate
+    - weight_decay
+    - dropout
+    - label_smoothing
+    - gradient_clipping
+    - random_seeds
+    - fold_hash
+    - aggregation
+    - calibration
+  final_refit:
+    decision_id: V2-033
+    authority: manual_purpose_specific_final_selection
+    fit_scope: all_29_participants_from_scratch
+    single_model_seed: 42
+    ensemble_member_seeds: [42, 10042, 20042, 30042, 40042]
+    ensemble_is_not_one_seed42_model: true
+    performance_evidence: oof_only_no_internal_metric_from_full_refit
+    onnx_boundary: model_input_tensor_to_probabilities
+    python_bundle_retains_preprocessing: true
+  source_archive:
+    decision_id: V2-034
+    formal_run_requires: clean_tracked_final_pipeline_v2_commit
+    v1_status: transition_only
+    v1_inherited_location: history/v1_inherited
+    preserve_inventory_and_original_sha256: true
+  evidence_claim:
+    decision_id: V2-025
+    internal_29_subject_results: oof_validation
+    independent_test: false
+
+comparison_profiles:
+  line_b_role_family_balance:
+    status: implemented_comparison_config
+    formal_default: false
+  quality_diagnostics_only:
+    status: implemented_mode_manual_only
+    formal_default: false
+  sqi_plus_motion_override:
+    status: retained_ablation_but_gated
+    formal_default: false
+  historical_light_cnn_motion:
+    status: frozen_provenance_backup
+    formal_default: false
+  imu_lpf_0p3hz:
+    status: mandatory_matched_comparator
+    formal_default: false
+  prv_aura_and_rhenan:
+    status: fixed_ppi_function_outputs_only
+    classifier_comparison: false
+  artifact_reducers:
+    decision_id: V2-012
+    execution_status: implemented_or_registered_not_run_in_configuration_layer
+    default_control: identity
+    formal_candidate_comparisons:
+    - nlms_imu_anc
+    - ssa_decomposition
+    - spectral_mask
+    - pca_bss
+    - fastica_bss
+    - nmf_bss
+    named_historical_derived_ablations:
+    - emd_sifting_rate_only
+    - ceemd_lite_nlms_legacy
+    - dwt_a2_legacy
+    ans: not_created_no_evidence
+  ensemble_five_member:
+    status: explicit_comparison_ablation
+    formal_default: false
+  epoch_7_and_15:
+    status: one_factor_ablation
+    formal_default: false
+  direct_filter_0p5_to_5hz:
+    status: one_factor_ablation
+    formal_default: false
+  fixed_kernel_samples_resampling_ablation:
+    decision_id: V2-019
+    dl_fs_hz: [100, 160, 200]
+    kernel_sample_counts_change: false
+    physical_time_matched_claim: forbidden
+    eligible_models: [CompactCNN1D, InceptionTimeFull]
+    execution_status: not_run_in_configuration_layer
+  fixed_kernel_samples_context_10s_400hz_ablation:
+    decision_id: V2-019
+    window_s: 10
+    dl_fs_hz: 400
+    eligible_models: [CompactCNN1D, InceptionTimeFull]
+    execution_status: not_run_in_configuration_layer
+  fixed_kernel_samples_dilation2_ablation:
+    decision_id: V2-019
+    dilation: 2
+    eligible_models: [CompactCNN1D, InceptionTimeFull]
+    execution_status: not_run_in_configuration_layer
+
+deferred_gates:
+  device_specific_qc:
+    decision_id: V2-006
+    status: deferred_missing_device_information
+    blocks: [absolute_saturation_rails, device_range_thresholds]
+    physical_rules_without_device_constants: enabled
+  sqi_supervised_route:
+    decision_ids: [V2-009a, V2-009b, V2-009c]
+    status: deferred
+    supervised_route_ready: false
+    yaml_boolean_can_authorize: false
+    required_future_authority: code_registered_supervised_artifact_id_and_hash
+    blocks: [quality_route_mode, sqi_weighted_prediction]
+  motion_override_activation:
+    decision_id: V2-010
+    status: gated_pending_formal_supervised_evidence
+    required_internal_evidence: stratified_participant_grouped_5fold_on_29_subjects
+    required_external_evidence: pulse_transit_time_ppg_dataset
+  final_artifact_reducer_selection:
+    decision_id: V2-012
+    status: deferred_until_comparison_evidence
+    default: identity_no_denoise
+  target_hardware:
+    decision_id: V2-026
+    status: deferred_like_sqi
+    blocks: [device_latency_gate, device_power_gate, hardware_selected_model]
+  todo_only_scope:
+    decision_id: V2-027
+    status: deferred

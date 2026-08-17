@@ -1,0 +1,50 @@
+{
+  "audit_date": "2026-08-03",
+  "status": "verified_svm_assets_three_class_cnn_not_found",
+  "scope": [
+    "current workspace text/code/notebooks",
+    "Git branches dev0/main and origin refs",
+    "historical root and Arc notebooks",
+    "models filenames without deserialization",
+    "all confusion/confmat filenames with unrelated result families excluded"
+  ],
+  "three_class_datasets": [
+    {
+      "path": "train_window/motion_dataset_552samp_4s_2over.csv",
+      "bytes": 390733,
+      "rows": 552,
+      "label_counts": {"0_rest": 365, "1_sit_stand": 145, "2_walk": 42}
+    },
+    {
+      "path": "train_window/motion_dataset_791samp_3s_1over.csv",
+      "bytes": 515276,
+      "filename_claimed_rows": 791,
+      "rows": 731,
+      "label_counts": {"0_rest": 292, "1_sit_stand": 327, "2_walk": 112}
+    }
+  ],
+  "svm_models": {
+    "glob": "models/svm_motion_*.pkl",
+    "count": 649,
+    "rbf": 645,
+    "linear": 4,
+    "total_bytes": 49537847,
+    "timestamp_min": "20250915_145445",
+    "timestamp_max": "20251125_132151",
+    "deserialized": false
+  },
+  "verified_qualitative_history": [
+    "SVM good for rest",
+    "walking and sitting/standing were mixed",
+    "DWT plus CNN+LSTM marked give up because unexplainable/black box"
+  ],
+  "not_found": [
+    "three-output motion CNN head",
+    "three-class CNN CrossEntropy training",
+    "three-class motion CNN checkpoint",
+    "Rest/Sit&Stand/Walk 3x3 confusion matrix",
+    "persisted three-class BA/F1/report with seed and split",
+    "Git change that merges a three-class CNN into a binary CNN"
+  ],
+  "paper_wording": "Early multiclass SVM evidence exists and qualitatively records Rest as easier than Walk versus Sit/Stand; no verifiable three-class CNN result or 3x3 confusion matrix was preserved."
+}

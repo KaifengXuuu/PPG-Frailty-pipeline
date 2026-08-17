@@ -1,0 +1,98 @@
+{
+  "schema_version": "m1.pipeline_config.v3",
+  "deployment_state": "contract_example",
+  "config_id": "m3_mobile_causal_value_arm64_raw8_M4_retraining_required",
+  "platform_profile_id": "value_arm64_sbc",
+  "input_contract_ref": "m1.signal_input.v2",
+  "output_contract_ref": "m1.inference_output.v3",
+  "runtime": {
+    "engine": "python_numpy_scipy",
+    "device": "cpu",
+    "threads": 4,
+    "allowed_dependencies": ["numpy", "scipy", "scikit-learn"],
+    "execution_providers": [],
+    "buffer_duration_sec": 40,
+    "backlog_policy": "explicit_no_result"
+  },
+  "modules": {
+    "validation": {
+      "id": "m3_quality_gate_corrected_v1",
+      "version": "m3_module_bindings_v1"
+    },
+    "preprocessing": {
+      "id": "m3_ppg_preprocess_corrected_v1",
+      "version": "m3_preprocessing_profiles_corrected_v1",
+      "execution_mode": "streaming_causal",
+      "algorithmic_latency_sec": 0
+    },
+    "quality_router": {
+      "id": "sqi_motion_router_v3",
+      "version": "m1.quality_routing.v3",
+      "sqi": {
+        "id": "m3_sqi_components_v1",
+        "version": "m3_signal_quality_components.v1",
+        "required": true,
+        "high_quality_threshold_key": "sqi_high_quality_min",
+        "unrecoverable_threshold_key": "sqi_unrecoverable_below",
+        "failure_policy": "explicit_no_result"
+      },
+      "motion_detector": {
+        "enabled": false,
+        "id": null,
+        "version": null,
+        "threshold_key": null,
+        "disabled_state": "not_evaluated",
+        "failure_policy": "not_applicable"
+      },
+      "state_precedence": ["invalid", "unrecoverable_quality", "motion", "low_quality", "high_quality"],
+      "high_quality_branch": {
+        "action": "return_unchanged_to_feature_extractor",
+        "signal_source": "preprocessed_raw",
+        "denoiser_allowed": false
+      },
+      "degraded_branch": {
+        "manual_policy": "drop",
+        "selection_scope": "run_or_session_start",
+        "selection_provenance": "configuration_before_run",
+        "allow_window_override": false,
+        "denoiser_frontend_id": null,
+        "denoiser_version": null,
+        "feature_adapter_id": null,
+        "failure_policy": "expected_abstention"
+      }
+    },
+    "feature_extractor": {
+      "id": "m3_raw8_dynamic_sequence",
+      "feature_schema_id": "m3_raw8_dynamic_sequence.v1"
+    },
+    "classifier": {
+      "id": "m4_retrained_classifier_required",
+      "label_map_id": "frailty3.v1"
+    },
+    "aggregation": {
+      "id": "subject_coverage_aware",
+      "version": "pending_M7"
+    },
+    "calibration": {
+      "id": "frozen_multiclass_calibrator",
+      "version": "pending_M8"
+    }
+  },
+  "versions": {
+    "preprocessing_version": "m3_preprocessing_profiles_corrected_v1",
+    "quality_router_version": "m1.quality_routing.v3",
+    "sqi_version": "m3_signal_quality_components.v1",
+    "motion_version": "disabled",
+    "feature_schema_version": "m3_raw8_dynamic_sequence.v1",
+    "classifier_version": "M4_RETRAINING_REQUIRED"
+  },
+  "thresholds": {
+    "sqi_high_quality_min": null,
+    "sqi_unrecoverable_below": null,
+    "motion_probability": null
+  },
+  "artifacts": {
+    "status": "pending_export",
+    "files": []
+  }
+}

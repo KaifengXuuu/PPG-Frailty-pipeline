@@ -1,0 +1,126 @@
+{
+  "schema_version": "m3.feature_schemas.v1",
+  "registry_id": "m3_feature_schemas_v1",
+  "status": "contract_defined_M4_adapters_and_retraining_pending",
+  "description_zh": "M3 到 M4 的唯一特征语义权威。它区分动态加速度 raw8、PPG-derived PRV、生理质量组件与 IMU 运动诊断；旧 M1 适配器名称不得被当作语义兼容证明。",
+  "description_en": "Sole M3-to-M4 feature-semantics authority. It separates dynamic-acceleration raw8, PPG-derived PRV, signal-quality components and IMU motion diagnostics; legacy M1 adapter names do not prove semantic compatibility.",
+  "schemas": [
+    {
+      "feature_schema_version": "m3_raw8_dynamic_sequence.v1",
+      "output_adapter_id": "m3_sequence_8ch_dynamic_v1",
+      "status": "contract_defined_requires_M4_retraining",
+      "representation": "samples_by_channels_sequence",
+      "sampling_rate_hz": 400,
+      "channel_order": ["RED", "IR", "AX_dyn", "AY_dyn", "AZ_dyn", "GX", "GY", "GZ"],
+      "internal_dtype": "float64",
+      "model_export_dtype": "float32",
+      "preprocessing_profile_ids": [
+        "frailty3_raw8_classifier_400_v1",
+        "imu_ekf_si_400_causal_v1",
+        "imu_lpf_si_400_causal_v1"
+      ],
+      "scaling": {
+        "RED_IR": "per_window_median_iqr_div_1p349_no_clip_with_center_scale_retained",
+        "IMU": "training_fold_robust_median_iqr_no_clip",
+        "zero_iqr_policy": "explicit_no_estimate",
+        "fold_artifact_schema": "m3.fold_fitted_artifact.v1"
+      },
+      "raw_context_features": ["red_dc", "ir_dc", "red_ac", "ir_ac", "red_ir_ratios"],
+      "compatible_existing_M1_classifier_ids": [],
+      "legacy_incompatible_schema": "raw_8ch_sequence.v1",
+      "legacy_incompatible_adapter": "sequence_8ch_v1",
+      "compatibility_reason_zh": "AX/AY/AZ 已从原始加速度改为 EKF 或 LPF 重力分离后的动态加速度，且缩放合同不同；复用旧权重会产生未声明分布迁移。",
+      "compatibility_reason_en": "AX/AY/AZ now mean EKF- or LPF-separated dynamic acceleration rather than raw acceleration, and scaling differs; reusing legacy weights would create an undeclared distribution shift.",
+      "M4_gate": "train_and_compare_classifier_under_frailty3_future_corrected_sgkf5_v2"
+    },
+    {
+      "feature_schema_version": "heartbeat_hr_ppi_prv.v2",
+      "output_adapter_id": "tabular_physio_prv_v2",
+      "status": "contract_defined_M4_adapter_pending",
+      "representation": "coverage_aware_tabular_physiology",
+      "source_contract": "m3.physiology_result.v1",
+      "variability_semantics": "ppg_derived_prv_not_ecg_hrv",
+      "ordered_fields": [
+        "hr_bpm",
+        "valid_peak_count",
+        "valid_ppi_count",
+        "ppi_median_ms",
+        "ppi_iqr_ms",
+        "mean_nn_ms",
+        "sdnn_ms_ddof1",
+        "rmssd_ms",
+        "pnn50_fraction",
+        "lf_power",
+        "hf_power",
+        "lf_hf_ratio",
+        "valid_ppi_coverage",
+        "selected_channel_is_red",
+        "red_ir_consistency_score"
+      ],
+      "missing_value_policy": "json_null_plus_validity_and_coverage_features",
+      "legacy_schema": "heartbeat_hr_ppi_hrv.v1",
+      "legacy_adapter": "tabular_physio_v1",
+      "legacy_policy": "compatibility_adapter_must_be_explicit_and_PRV_must_not_be_relabelled_ECG_HRV",
+      "description_zh": "把峰/PPI/HR 与有覆盖门的 PPG-derived PRV 组成表格特征；60 秒以下不伪造时域 PRV，连续 120 秒以下不伪造频域 PRV。",
+      "description_en": "Builds tabular peak/PPI/HR and coverage-gated PPG-derived PRV; it fabricates neither time-domain PRV below 60 seconds nor frequency PRV below a contiguous 120 seconds."
+    },
+    {
+      "feature_schema_version": "m3_signal_quality_components.v1",
+      "output_adapter_id": "m3_sqi_components_v1",
+      "status": "contract_defined_thresholds_must_be_fit_on_training_fold",
+      "representation": "window_quality_vector_with_component_validity",
+      "ordered_fields": [
+        "skewness",
+        "excess_kurtosis",
+        "autocorrelation_periodicity_strength",
+        "template_correlation",
+        "normalized_spectral_entropy",
+        "valid_ppi_fraction",
+        "physiologically_valid_ibi_fraction",
+        "red_ir_consistency_score",
+        "source_nonfinite_fraction",
+        "flatline_fraction",
+        "clipping_risk",
+        "motion_probability_optional"
+      ],
+      "motion_detector_integration": "optional_input_after_M5_subject_level_calibration",
+      "routing_order": "SQI_plus_optional_motion_then_high_quality_or_low_quality_motion",
+      "threshold_fit_scope": "training_subjects_only",
+      "description_zh": "补齐偏度、峰度、自相关、模板相关、归一化谱熵、完整 IBI 生理合理性及 RED/IR 一致性；不可用组件保留 validity，不以零值冒充。",
+      "description_en": "Completes skewness, kurtosis, autocorrelation, template correlation, normalized spectral entropy, full IBI plausibility and RED/IR consistency; unavailable components carry validity rather than fake zeros."
+    },
+    {
+      "feature_schema_version": "m3_imu_motion_features.v1",
+      "output_adapter_id": "m3_imu_motion_v1",
+      "status": "future_active_EKF_primary_LPF_comparator",
+      "representation": "sample_sequence_plus_window_diagnostics",
+      "sample_channel_order": [
+        "GX",
+        "GY",
+        "GZ",
+        "AX_dyn",
+        "AY_dyn",
+        "AZ_dyn",
+        "JERK_X",
+        "JERK_Y",
+        "JERK_Z"
+      ],
+      "scalar_features": [
+        "dynamic_acc_norm_mean",
+        "dynamic_acc_norm_std",
+        "gyro_norm_mean",
+        "gyro_norm_std",
+        "jerk_l2_mean",
+        "jerk_l2_p95",
+        "gravity_update_acceptance_fraction",
+        "prediction_only_fraction",
+        "tilt_sigma_deg"
+      ],
+      "jerk_semantics": "vector_backward_difference_then_L2_only_for_scalar_features",
+      "primary_profile_id": "imu_ekf_si_400_causal_v1",
+      "comparator_profile_id": "imu_lpf_si_400_causal_v1",
+      "description_zh": "保留向量 jerk，不把 jerk norm 冒充三轴信号；EKF 与 LPF 使用相同 SI 输入/输出特征口径以支持 D5 对称比较。",
+      "description_en": "Retains vector jerk rather than substituting a jerk norm for three-axis data; EKF and LPF share SI input/output feature semantics for symmetric D5 comparison."
+    }
+  ]
+}

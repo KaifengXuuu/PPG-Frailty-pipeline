@@ -1,0 +1,628 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m3.physiology_result.v1",
+  "title": "M3 PPG physiology result / M3 PPG 生理结果",
+  "description": "Corrected dual-wavelength peak, heart-rate, PPI and pulse-rate-variability result. RED and IR are evaluated independently before score-based channel selection; peaks are never averaged into a fabricated consensus waveform. / 校正后的双波长峰、心率、PPI 与脉率变异性结果。RED 与 IR 先独立评估，再按得分选择通道；禁止把峰平均为虚构的共识波形。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "result_role",
+    "result_id",
+    "status",
+    "algorithm_registry_id",
+    "algorithm_registry_sha256",
+    "algorithm_ids",
+    "input_summary",
+    "channel_results",
+    "selection",
+    "agreement",
+    "heart_rate",
+    "ppi_prv",
+    "reason_codes",
+    "m1_compatibility",
+    "reference_evaluation",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "m3.physiology_result.v1",
+      "description": "Exact physiology result schema identifier. / 精确生理结果 Schema 标识。"
+    },
+    "result_role": {
+      "enum": [
+        "runtime_inference",
+        "reference_evaluation"
+      ],
+      "description": "Separates ordinary physiology inference from ECG-reference evaluation. / 区分普通生理推理与 ECG 参考评价。"
+    },
+    "result_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Run-unique physiology result identifier. / 单次运行唯一生理结果标识。"
+    },
+    "status": {
+      "enum": [
+        "valid",
+        "repaired",
+        "partial",
+        "invalid",
+        "insufficient",
+        "initialization_pending",
+        "no_estimate"
+      ],
+      "description": "Overall M3 status after dual-channel evaluation. / 双通道评估后的总体 M3 状态。"
+    },
+    "algorithm_registry_id": {
+      "const": "m3_physiology_corrected_v1",
+      "description": "Locked corrected physiology algorithm registry. / 冻结校正生理算法注册表。"
+    },
+    "algorithm_registry_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "algorithm_ids": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "peak_detector",
+        "channel_selector",
+        "ppi_prv"
+      ],
+      "properties": {
+        "peak_detector": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Registered corrected peak-detector ID. / 已注册校正峰检测器 ID。"
+        },
+        "channel_selector": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Registered dual-channel selector ID. / 已注册双通道选择器 ID。"
+        },
+        "ppi_prv": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Registered PPI/PRV algorithm ID. / 已注册 PPI/PRV 算法 ID。"
+        }
+      }
+    },
+    "input_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preprocessing_result_id",
+        "preprocessing_profile_id",
+        "sampling_rate_hz",
+        "duration_s",
+        "channel_order",
+        "units"
+      ],
+      "properties": {
+        "preprocessing_result_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Upstream m3.preprocessing_result.v1 result ID. / 上游 m3.preprocessing_result.v1 结果 ID。"
+        },
+        "preprocessing_profile_id": {
+          "enum": [
+            "frailty3_peak_ppg_400_offline_v1",
+            "mobile_peak_ppg_400_causal_v1"
+          ],
+          "description": "Only a profile with purpose=peak_detection_input is legal. / 仅允许 purpose=peak_detection_input 的配置。"
+        },
+        "sampling_rate_hz": {
+          "const": 400,
+          "description": "Corrected peak facade sampling rate. / 校正峰门面的采样率。"
+        },
+        "duration_s": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Observation duration used by validity gates. / 有效性门控使用的观测时长。"
+        },
+        "channel_order": {
+          "const": [
+            "RED",
+            "IR"
+          ],
+          "description": "Canonical dual-wavelength order. / 规范双波长顺序。"
+        },
+        "units": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "RED and IR units; raw/count units are preserved rather than guessed. / RED 与 IR 单位；保留原始/计数单位，不按幅值猜测。"
+        }
+      }
+    },
+    "channel_results": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "RED",
+        "IR"
+      ],
+      "properties": {
+        "RED": {
+          "$ref": "#/$defs/channel_result_or_null"
+        },
+        "IR": {
+          "$ref": "#/$defs/channel_result_or_null"
+        }
+      },
+      "description": "Independent per-wavelength results. / 各波长独立结果。"
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selected_channel",
+        "strategy",
+        "selected_score",
+        "score_margin",
+        "confidence"
+      ],
+      "properties": {
+        "selected_channel": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "RED",
+            "IR",
+            null
+          ],
+          "description": "Selected physical channel, or null when neither channel is usable. / 被选物理通道；两通道均不可用时为 null。"
+        },
+        "strategy": {
+          "const": "independent_detection_then_score_selection",
+          "description": "No consensus-peak averaging is permitted. / 禁止共识峰平均。"
+        },
+        "selected_score": {
+          "$ref": "#/$defs/number_or_null"
+        },
+        "score_margin": {
+          "$ref": "#/$defs/number_or_null"
+        },
+        "confidence": {
+          "$ref": "#/$defs/unit_interval_or_null"
+        }
+      }
+    },
+    "agreement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "matched_peak_count",
+        "median_peak_delta_ms",
+        "hr_difference_bpm",
+        "red_ir_consistency_score",
+        "consensus_peak_output"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "valid",
+            "insufficient",
+            "one_channel_only",
+            "no_channel"
+          ],
+          "description": "Availability of a meaningful RED/IR comparison. / RED/IR 比较的可用性。"
+        },
+        "matched_peak_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Tolerance-matched RED/IR peaks used only for diagnostics. / 仅用于诊断的容差匹配 RED/IR 峰数。"
+        },
+        "median_peak_delta_ms": {
+          "$ref": "#/$defs/number_or_null"
+        },
+        "hr_difference_bpm": {
+          "$ref": "#/$defs/number_or_null"
+        },
+        "red_ir_consistency_score": {
+          "$ref": "#/$defs/unit_interval_or_null"
+        },
+        "consensus_peak_output": {
+          "const": false,
+          "description": "Matched peaks are never emitted as a new physiological series. / 匹配峰不得作为新的生理序列输出。"
+        }
+      }
+    },
+    "heart_rate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "bpm",
+        "method",
+        "supporting_valid_ppi_count"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "valid",
+            "insufficient",
+            "invalid"
+          ],
+          "description": "Heart-rate estimate status. / 心率估计状态。"
+        },
+        "bpm": {
+          "$ref": "#/$defs/number_or_null"
+        },
+        "method": {
+          "const": "selected_channel_valid_ppi",
+          "description": "HR is derived only from valid PPIs of the selected channel. / HR 仅由所选通道的有效 PPI 推导。"
+        },
+        "supporting_valid_ppi_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of valid PPIs supporting bpm. / 支撑 bpm 的有效 PPI 数。"
+        }
+      }
+    },
+    "ppi_prv": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semantics",
+        "ppi_s",
+        "valid_ppi_mask",
+        "time_domain",
+        "frequency_domain"
+      ],
+      "properties": {
+        "semantics": {
+          "const": "ppg_derived_prv_not_ecg_hrv",
+          "description": "Scientific label: PPG-derived PRV must not be renamed ECG HRV. / 科学标签：PPG 派生 PRV 不得改称 ECG HRV。"
+        },
+        "ppi_s": {
+          "$ref": "#/$defs/numeric_array"
+        },
+        "valid_ppi_mask": {
+          "type": "array",
+          "items": {
+            "type": "boolean"
+          },
+          "description": "Mask aligned with ppi_s. / 与 ppi_s 对齐的掩码。"
+        },
+        "time_domain": {
+          "$ref": "#/$defs/prv_tier"
+        },
+        "frequency_domain": {
+          "$ref": "#/$defs/prv_tier"
+        }
+      }
+    },
+    "reason_codes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Registered reason codes explaining unavailable or degraded estimates. / 解释不可用或降级估计的已注册原因码。"
+    },
+    "m1_compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "feature_schema_version",
+        "output_adapter_id",
+        "pipeline_status",
+        "status_mapping_registry_id"
+      ],
+      "properties": {
+        "feature_schema_version": {
+          "const": "heartbeat_hr_ppi_prv.v2",
+          "description": "Corrected PRV-aware feature semantics. / 校正 PRV 感知特征语义。"
+        },
+        "output_adapter_id": {
+          "const": "tabular_physio_prv_v2",
+          "description": "New adapter; legacy tabular_physio_v1 compatibility must be explicit. / 新适配器；与旧 tabular_physio_v1 的兼容必须显式。"
+        },
+        "pipeline_status": {
+          "enum": [
+            "ok",
+            "partial",
+            "invalid_input",
+            "insufficient_quality",
+            "processing_lag",
+            "runtime_error"
+          ],
+          "description": "Projected M1 pipeline status. / 投影后的 M1 流水线状态。"
+        },
+        "status_mapping_registry_id": {
+          "const": "m3_status_mapping_v1",
+          "description": "Normative status mapping authority. / 规范状态映射权威。"
+        }
+      }
+    },
+    "reference_evaluation": {
+      "anyOf": [
+        {
+          "$ref": "ptt_reference_evaluation.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Required symmetric raw/delay_corrected ECG-reference scorecard for result_role=reference_evaluation; null for runtime inference. Its training_split_id is mandatory and non-empty. / result_role=reference_evaluation 时必填的 raw/delay_corrected 对称 ECG 参考 scorecard；普通推理时为 null。其 training_split_id 必须非空。"
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_files",
+        "source_sha256",
+        "config_sha256",
+        "created_utc"
+      ],
+      "properties": {
+        "source_files": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^final_v0/M3_unified_preprocessing_and_signal_algorithms/src/m3_signal_core/.+\\.py$"
+          },
+          "description": "Only future-active M3 src files. / 仅允许未来活动 M3 src 文件。"
+        },
+        "source_sha256": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/sha256"
+          },
+          "description": "SHA-256 map for source files. / 源文件 SHA-256 映射。"
+        },
+        "config_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "created_utc": {
+          "type": "string",
+          "format": "date-time",
+          "description": "UTC creation timestamp. / UTC 创建时间。"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "result_role": {
+            "const": "reference_evaluation"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reference_evaluation": {
+            "$ref": "ptt_reference_evaluation.schema.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "result_role": {
+            "const": "runtime_inference"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reference_evaluation": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lower-case SHA-256 digest. / 小写 SHA-256 摘要。"
+    },
+    "number_or_null": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Finite number or null; NaN and infinity are illegal JSON. / 有限数值或 null；NaN 与无穷值不是合法 JSON。"
+    },
+    "unit_interval_or_null": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Confidence/score in [0,1], or null. / [0,1] 置信度/得分；不可用时为 null。"
+    },
+    "numeric_array": {
+      "type": "array",
+      "items": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "description": "Finite numeric sequence with null for missing values. / 有限数值序列；缺失值用 null。"
+    },
+    "channel_result_or_null": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/channel_result"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "channel_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "polarity",
+        "peak_indices",
+        "peak_confidence",
+        "raw_ppi_s",
+        "valid_ppi_mask",
+        "valid_ppi_s",
+        "valid_peak_count",
+        "score",
+        "sqi_score",
+        "reason_codes"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "valid",
+            "repaired",
+            "partial",
+            "invalid",
+            "insufficient",
+            "no_estimate"
+          ],
+          "description": "Per-channel detector status. / 单通道检测器状态。"
+        },
+        "polarity": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "enum": [
+            -1,
+            1,
+            null
+          ],
+          "description": "Chosen physical peak polarity, or null. / 选择的物理峰极性；不可用时为 null。"
+        },
+        "peak_indices": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": "Strictly increasing zero-based indices; validator-enforced. / 严格递增的从零开始索引；由 validator 强制。"
+        },
+        "peak_confidence": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "description": "Confidence aligned with peak_indices. / 与 peak_indices 对齐的置信度。"
+        },
+        "raw_ppi_s": {
+          "$ref": "#/$defs/numeric_array"
+        },
+        "valid_ppi_mask": {
+          "type": "array",
+          "items": {
+            "type": "boolean"
+          },
+          "description": "Physiological validity mask aligned with raw_ppi_s. / 与 raw_ppi_s 对齐的生理有效性掩码。"
+        },
+        "valid_ppi_s": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "description": "Compacted positive PPI sequence used for HR/PRV. / 用于 HR/PRV 的压缩正 PPI 序列。"
+        },
+        "valid_peak_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of accepted peaks. / 接受峰数量。"
+        },
+        "score": {
+          "$ref": "#/$defs/number_or_null"
+        },
+        "sqi_score": {
+          "$ref": "#/$defs/unit_interval_or_null"
+        },
+        "reason_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Registered per-channel reason codes. / 已注册单通道原因码。"
+        }
+      }
+    },
+    "prv_tier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "required_duration_s",
+        "observed_duration_s",
+        "coverage",
+        "metrics",
+        "reason_codes"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "valid",
+            "insufficient",
+            "invalid"
+          ],
+          "description": "Tier availability status. / 分层可用性状态。"
+        },
+        "required_duration_s": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Registered minimum duration for this tier. / 该分层注册最小时长。"
+        },
+        "observed_duration_s": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Actual contiguous observation duration. / 实际连续观测时长。"
+        },
+        "coverage": {
+          "$ref": "#/$defs/unit_interval_or_null"
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/number_or_null"
+          },
+          "description": "Named PRV metrics; unavailable metrics are null. / 命名 PRV 指标；不可用指标为 null。"
+        },
+        "reason_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Registered tier-specific reason codes. / 已注册分层原因码。"
+        }
+      }
+    }
+  }
+}

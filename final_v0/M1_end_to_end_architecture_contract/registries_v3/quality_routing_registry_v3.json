@@ -1,0 +1,87 @@
+{
+  "registry_version": "m1.quality_routing.v3",
+  "architecture_version": "m1.architecture.v3",
+  "sqi_required": true,
+  "motion_detector_optional": true,
+  "first_stage_parallelism": {
+    "allowed_modules": ["sqi", "motion_detector_when_enabled"],
+    "join_required_before_route": true,
+    "denoiser_may_start_before_join": false
+  },
+  "state_axes": {
+    "quality_state": ["high", "low", "unrecoverable", "unknown"],
+    "motion_state": ["static", "motion", "not_evaluated", "unknown"],
+    "state_precedence": ["invalid", "unrecoverable_quality", "motion", "low_quality", "high_quality"]
+  },
+  "manual_policy_contract": {
+    "allowed_values": ["drop", "denoise_then_extract_features"],
+    "selection_scope": "run_or_session_start",
+    "window_override_allowed": false,
+    "test_metric_driven_switch_allowed": false
+  },
+  "allowed_terminal_action_codes": [
+    "FORCE_DROP_INVALID",
+    "FORCE_DROP_UNRECOVERABLE",
+    "RETURN_HIGH_QUALITY_TO_FEATURES",
+    "POLICY_DROP_LOW_QUALITY",
+    "POLICY_DROP_MOTION",
+    "POLICY_DROP_LOW_QUALITY_AND_MOTION",
+    "DENOISE_LOW_QUALITY_THEN_EXTRACT",
+    "DENOISE_MOTION_THEN_EXTRACT",
+    "DENOISE_LOW_QUALITY_AND_MOTION_THEN_EXTRACT",
+    "FAILURE_NO_RESULT"
+  ],
+  "policies": [
+    {
+      "id": "sqi_motion_router_v3",
+      "sqi_role": "required_first_stage_quality_axis",
+      "motion_role": "optional_first_stage_activity_axis",
+      "high_quality_rule": "quality_high_and_motion_static_or_not_evaluated",
+      "high_quality_action": "return_unchanged_to_feature_extractor",
+      "degraded_rule": "quality_low_or_motion_motion",
+      "unrecoverable_action": "forced_drop",
+      "module_failure_action": "explicit_no_result",
+      "implementation_status": "specified_not_implemented"
+    }
+  ],
+  "denoiser_frontends": [
+    {
+      "id": "spectral_track_v1",
+      "family": "spectral_suppression_and_temporal_tracking",
+      "feature_adapter_id": "heartbeat_feature_block_adapter_v1",
+      "target_feature_schema_id": "heartbeat_hr_ppi_hrv.v1",
+      "restored_waveform_claim": false,
+      "implementation_status": "specified_not_implemented"
+    },
+    {
+      "id": "dual_ppg_bss_v1",
+      "family": "dual_wavelength_blind_source_separation",
+      "feature_adapter_id": "denoised_signal_to_heartbeat_adapter_v1",
+      "target_feature_schema_id": "heartbeat_hr_ppi_hrv.v1",
+      "restored_waveform_claim": false,
+      "implementation_status": "specified_not_implemented"
+    },
+    {
+      "id": "nonstationary_decomposition_v1",
+      "family": "wavelet_emd_vmd_ssa_comparison",
+      "feature_adapter_id": "denoised_signal_to_heartbeat_adapter_v1",
+      "target_feature_schema_id": "heartbeat_hr_ppi_hrv.v1",
+      "restored_waveform_claim": false,
+      "implementation_status": "specified_not_implemented"
+    },
+    {
+      "id": "adaptive_filter_anc_v1",
+      "family": "wiener_lms_nlms_rls_anc_comparison",
+      "feature_adapter_id": "denoised_signal_to_heartbeat_adapter_v1",
+      "target_feature_schema_id": "heartbeat_hr_ppi_hrv.v1",
+      "restored_waveform_claim": false,
+      "implementation_status": "specified_not_implemented_high_signal_loss_risk"
+    }
+  ],
+  "legacy_migration": {
+    "sqi_gate": "requires_explicit_migration_to_required_sqi_plus_drop",
+    "coarse_denoise": "requires_explicit_migration_to_sqi_first_high_bypass_and_denoise_then_extract",
+    "forbidden_v3_terms": ["action_owner", "SQI_WEIGHT", "COARSE_REPLACE", "diagnostic_candidates_may_run_in_parallel"]
+  }
+}
+

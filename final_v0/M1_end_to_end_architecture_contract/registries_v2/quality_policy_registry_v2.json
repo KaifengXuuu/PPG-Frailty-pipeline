@@ -1,0 +1,28 @@
+{
+  "registry_version": "m1.quality_policy.v2",
+  "sqi_monitor_required": true,
+  "action_mode_cardinality": "exactly_one",
+  "diagnostic_candidates_may_run_in_parallel": true,
+  "allowed_final_action_codes": ["KEEP_RAW", "SQI_DROP", "SQI_WEIGHT", "COARSE_REPLACE"],
+  "policies": [
+    {
+      "id": "sqi_gate_v2",
+      "action_mode": "sqi_gate",
+      "action_owner": "sqi",
+      "sqi_role": "diagnostic_and_accept_reject_action",
+      "allowed_signal_frontends": ["identity"],
+      "allowed_action_codes": ["KEEP_RAW", "SQI_DROP", "SQI_WEIGHT"],
+      "implementation_status": "specified_not_implemented"
+    },
+    {
+      "id": "coarse_denoise_shared_sqi_v1",
+      "action_mode": "coarse_denoise",
+      "action_owner": "coarse_denoise",
+      "sqi_role": "diagnostic_confidence_and_coverage_only",
+      "allowed_signal_frontends": ["spectral_track", "dual_ppg_bss", "nonstationary", "adaptive_filter"],
+      "allowed_action_codes": ["KEEP_RAW", "COARSE_REPLACE"],
+      "implementation_status": "specified_not_implemented"
+    }
+  ]
+}
+

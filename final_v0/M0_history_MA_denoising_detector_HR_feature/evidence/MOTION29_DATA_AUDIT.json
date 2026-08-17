@@ -1,0 +1,49 @@
+{
+  "audit_date": "2026-08-03",
+  "status": "pass",
+  "sampling_rate_assumed_by_project_hz": 400,
+  "datasets": {
+    "PPG_Testing_05_01_2026/StudyData": {"subjects": 21, "files": 189},
+    "PPG_Testing_05_01_2026/TestDataYoungers": {"subjects": 8, "files": 72}
+  },
+  "combined": {
+    "subjects": 29,
+    "files": 261,
+    "roles_per_subject": 9,
+    "header": ["RED", "IR", "AX", "AY", "AZ", "GX", "GY", "GZ"],
+    "role_counts": {"B": 29, "R1": 29, "R2": 29, "R3": 29, "R4": 29, "S1": 29, "S2": 29, "W1": 29, "W2": 29}
+  },
+  "duration_seconds": {
+    "B": {"mean": 302.337, "median": 300.565, "min": 298.715, "max": 361.690},
+    "R1": {"mean": 298.296, "median": 300.517, "min": 238.860, "max": 302.322},
+    "R2": {"mean": 298.718, "median": 300.473, "min": 239.070, "max": 310.527},
+    "R3": {"mean": 300.434, "median": 300.502, "min": 298.993, "max": 303.728},
+    "R4": {"mean": 301.328, "median": 300.695, "min": 298.995, "max": 314.137},
+    "S1": {"mean": 21.614, "median": 21.328, "min": 10.682, "max": 35.500},
+    "S2": {"mean": 19.454, "median": 18.435, "min": 12.170, "max": 38.203},
+    "W1": {"mean": 11.869, "median": 12.470, "min": 6.883, "max": 17.990},
+    "W2": {"mean": 10.799, "median": 10.070, "min": 6.888, "max": 19.918}
+  },
+  "supervision": {
+    "target_name": "activity_binary",
+    "static": ["B", "R1", "R2", "R3", "R4"],
+    "motion": ["S1", "S2", "W1", "W2"],
+    "S_definition": "stand-and-sit repeated movement",
+    "W_definition": "walking",
+    "claim_boundary": "activity/motion state, not optical-artifact truth"
+  },
+  "sequence": {
+    "all_subjects_match_active_then_recovery": true,
+    "common_form": "B -> active -> R1 -> active -> R2 -> active -> R3 -> active -> R4",
+    "order_source": "filesystem modification timestamps plus user-confirmed active-then-relax protocol",
+    "order_confidence": "provisional_until_formal_protocol_manifest",
+    "patterns": [
+      {"sequence": ["B", "W1", "R1", "S1", "R2", "W2", "R3", "S2", "R4"], "subjects": 8},
+      {"sequence": ["B", "S1", "R1", "W1", "R2", "S2", "R3", "W2", "R4"], "subjects": 7},
+      {"sequence": ["B", "S1", "R1", "W1", "R2", "W2", "R3", "S2", "R4"], "subjects": 6},
+      {"sequence": ["B", "W1", "R1", "S1", "R2", "S2", "R3", "W2", "R4"], "subjects": 6},
+      {"sequence": ["B", "S1", "R1", "S2", "R2", "W1", "R3", "W2", "R4"], "subjects": 1},
+      {"sequence": ["B", "W1", "R1", "W2", "R2", "S1", "R3", "S2", "R4"], "subjects": 1}
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ppg-frailty-final-pipeline-v2"
+version = "2.0.0.dev0"
+description = "Decision-profiled PPG frailty V2 research pipeline"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=2.3,<3",
+  "scipy>=1.15,<2",
+  "scikit-learn>=1.4,<2",
+  "PyYAML>=6,<7",
+  "joblib>=1.4,<2"
+]
+
+[project.optional-dependencies]
+deep = ["torch>=2.0"]
+formal-benchmark = ["pandas>=2.3,<3", "pyarrow>=15"]
+onnx-winner-gate = ["onnx>=1.15", "onnxruntime>=1.17"]
+prv-aura-compare = ["hrv-analysis"]
+prv-rhenan-legacy-compare = ["hrv==0.2.10"]
+
+[project.scripts]
+ppg-frailty = "ppg_frailty.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

@@ -1,0 +1,66 @@
+{
+  "registry_version": "m1.platform_profiles.v2",
+  "status": "candidate_profiles_not_benchmarked",
+  "budgets_are_measured_results": false,
+  "allowed_dependencies": ["numpy", "scipy", "onnxruntime", "scikit-learn"],
+  "streaming_contract": {
+    "bounded_buffer_required": true,
+    "minimum_example_buffer_sec": 40,
+    "whole_record_inference_allowed": false
+  },
+  "power_scope": "central_compute_board_only_excludes_display_wearable_and_future_cuff",
+  "profiles": [
+    {
+      "id": "high_performance_x86_64",
+      "cpu_arch": "x86_64",
+      "os": "linux_64bit",
+      "processor_class_examples": ["Intel Core Ultra class", "AMD Ryzen Embedded class"],
+      "examples_are_procurement_recommendations": false,
+      "reference_role": "golden_parity_and_high_margin_candidate",
+      "system_ram_gb": {"minimum": 16, "target": 32},
+      "accelerator": "optional_npu_or_gpu",
+      "budgets": {
+        "max_pipeline_latency_ms_per_hop": 500,
+        "max_peak_process_ram_mb": 4096,
+        "max_bundle_mb": 500,
+        "target_display_update_sec": 2,
+        "compute_power_w_range": [15, 45]
+      }
+    },
+    {
+      "id": "accelerated_arm64_edge",
+      "cpu_arch": "arm64",
+      "os": "linux_64bit",
+      "processor_class_examples": ["NVIDIA Jetson Orin class", "ARM64 SoC with supported NPU class"],
+      "examples_are_procurement_recommendations": false,
+      "reference_role": "primary_accelerated_product_candidate",
+      "system_ram_gb": {"minimum": 8, "target": 16},
+      "accelerator": "npu_or_gpu_with_cpu_fallback",
+      "budgets": {
+        "max_pipeline_latency_ms_per_hop": 750,
+        "max_peak_process_ram_mb": 2048,
+        "max_bundle_mb": 250,
+        "target_display_update_sec": 2,
+        "compute_power_w_range": [10, 25]
+      }
+    },
+    {
+      "id": "value_arm64_sbc",
+      "cpu_arch": "arm64",
+      "os": "linux_64bit",
+      "processor_class_examples": ["Rockchip RK3588 class", "Raspberry Pi 5 class"],
+      "examples_are_procurement_recommendations": false,
+      "reference_role": "cost_power_lower_bound_candidate",
+      "system_ram_gb": {"minimum": 4, "target": 8},
+      "accelerator": "cpu_only_or_optional_npu",
+      "budgets": {
+        "max_pipeline_latency_ms_per_hop": 2000,
+        "max_peak_process_ram_mb": 1024,
+        "max_bundle_mb": 100,
+        "target_display_update_sec": 5,
+        "compute_power_w_range": [5, 15]
+      }
+    }
+  ]
+}
+

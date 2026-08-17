@@ -1,0 +1,227 @@
+schema_version: ppg_frailty.motion_detector_contract.v2
+contract_id: v2_010_motion_detector_registered_not_run
+execution_status: implemented_contract_registered_not_run
+
+scientific_execution_gate:
+  schema_version: ppg_frailty.motion_scientific_execution_gate.v1
+  operation: motion_formal_reference
+  source_tree_policy: tracked_clean_final_pipeline_v2_no_override
+  source_snapshot_roots: [src, configs, tools, requirements, locks]
+  required_dependency_profile_ids: [core, deep]
+  require_exact_locks: true
+  internal_checkpoints: [entry_preflight, every_fit_pre, every_fit_post]
+  ptt_checkpoints: [entry_preflight, predict_pre, predict_post]
+
+selection:
+  mutually_exclusive: true
+  default_option: sqi_only
+  options:
+    - option_id: sqi_only
+      formal_default: true
+      status: implemented_default
+      effect: motion_not_computed_and_never_changes_classification
+    - option_id: sqi_plus_motion_override
+      formal_default: false
+      status: registered_ablation_gate_closed_until_formal_evidence
+      effect: may_override_high_sqi_only_after_frozen_supervised_gate
+    - option_id: historical_light_cnn_backup
+      formal_default: false
+      status: historical_frozen_backup_not_v2_run
+      effect: disabled_unless_explicit_historical_backup_run
+      prohibited_alias: v2_ir_only_ablation
+
+supervision:
+  target: protocol_activity_motion_state_not_optical_artifact_truth
+  canonical_role_labels:
+    B: 0
+    R: 0
+    S: 1
+    W: 1
+  class_names:
+    0: static
+    1: motion
+  grouping_variable: participant_id
+
+formal_model:
+  model_id: formal_local_supervised_motion_detector_v2
+  physical_input_sources:
+    - RED_optical_raw_source
+    - IR_optical_raw_source
+    - AX_accelerometer_raw_source
+    - AY_accelerometer_raw_source
+    - AZ_accelerometer_raw_source
+    - GX_gyroscope_raw_source
+    - GY_gyroscope_raw_source
+    - GZ_gyroscope_raw_source
+  network_tensor_schema:
+    status: frozen_before_training
+    silent_channel_derivation: forbidden
+    implied_channel_count: 11
+    ordered_channels:
+      - RED
+      - IR
+      - A_dyn_x
+      - A_dyn_y
+      - A_dyn_z
+      - GX
+      - GY
+      - GZ
+      - A_dyn_magnitude
+      - Omega
+      - J
+    ordered_units:
+      - window_robust_z
+      - window_robust_z
+      - m/s^2
+      - m/s^2
+      - m/s^2
+      - rad/s
+      - rad/s
+      - rad/s
+      - m/s^2
+      - rad/s
+      - m/s^3
+    schema_sha256: 33761751d50be6b9cc7d44b62f0a5ea1f9089ad619a577c7a65a3b862fc82fc2
+    tensor_layout: window_channel_sample
+  sampling_and_windows:
+    fs_hz: 400.0
+    window_s: 8.0
+    hop_s: 2.0
+    window_samples: 3200
+    hop_samples: 800
+  preprocessing:
+    internal_acceleration_source_unit: g
+    internal_acceleration_unit_conversion: g_to_m_per_s2
+    internal_gyroscope_source_unit: deg/s
+    internal_gyroscope_unit_conversion: degrees_per_second_to_radians_per_second
+    ptt_acceleration_source_unit_v2_036: m/s^2
+    ptt_acceleration_unit_conversion_v2_036: identity_m_per_s2_no_scale
+    ptt_acceleration_scale_factor_v2_036: 1.0
+    ptt_acceleration_multiply_9p80665: forbidden
+    ptt_gyroscope_source_unit_v2_036: deg/s
+    ptt_gyroscope_unit_conversion_v2_036: degrees_per_second_to_radians_per_second
+    reference_gravity_profile: calibrated_roll_pitch_ekf_v2_reference
+    calibration_source_role: B
+    calibration_scope: same_participant_B_file_only
+    ptt_calibration_source_role: PTT_SIT_STATIC_CALIBRATION
+    ptt_calibration_scope: same_participant_sit_file_explicit_external_preprocessing
+    cross_participant_calibration: forbidden
+    process_covariance_diagonal_per_second: [5.0, 5.0, 0.05, 0.05, 0.05]
+    observation_covariance_diagonal_rad2: [0.5, 0.5]
+    initial_covariance_diagonal: [1.0, 1.0, 0.5, 0.5, 0.5]
+    dynamic_observation_scale: 3.0
+    accelerometer_lowpass_hz: 20.0
+    gyroscope_lowpass_hz: 40.0
+    sensor_filter_order: 4
+    calibration_interval_s: [5.0, 100.0]
+    failure_action: fail_closed_no_lpf_fallback
+    lpf_profile: profile_a_lpf_gravity_0p3hz_ablation_only
+  normalization:
+    ppg: per_window_median_iqr_mad_then_one
+    imu: all_nine_channels_outer_training_participant_only_median_iqr
+    imu_per_window_amplitude_normalization: forbidden
+  candidate_constructor: ppg_frailty.models.motion.build_formal_motion_cnn
+  constructor_requires_explicit_channel_names: false
+
+internal_training_and_oof:
+  canonical_entry_id: formal_internal_motion_reference_source_bound_v2
+  injected_examples_or_callbacks_allowed: false
+  dataset_version_id: frailty3_m2_20260815_a054800abda272f6
+  participant_count: 29
+  split_registry_id: frailty29_single_sgkf5_seed42_v2
+  source_split_registry_id: frailty3_future_corrected_sgkf5_v2
+  split_csv: splits/sgkf5_seed42_v2.csv
+  split_csv_sha256: 130b2887eb29a5a534397b4ce4dc7032f9de30ae46533fa0b2c41559ff4a1284
+  n_repeats: 1
+  n_folds: 5
+  split_seeds: [42]
+  training_seed: 42
+  runtime_split_recomputation_allowed: false
+  all_5_cells_required_before_external_gate: true
+  formal_training:
+    schema_version: ppg_frailty.formal_motion_trainer.v2
+    fixed_epochs: 10
+    batch_size: 16
+    optimizer: adam
+    learning_rate: 0.001
+    weight_decay: 0.0
+    loss: binary_cross_entropy_with_logits
+    class_weighting: none_balancing_is_sampler_only
+    sampler: historical_dataset_class_inverse_x_participant_sqrt
+    dropout: 0.0
+    label_smoothing: 0.0
+    gradient_clip_norm: 1.0
+    seed: 42
+    num_workers: 0
+    augmentation: none
+    device: cpu
+    inference_warmup_iterations: 10
+    inference_timed_iterations: 50
+    early_stopping: forbidden_fixed_epoch_rule
+    provenance_boundary: historical_sampler_batch_lr_and_adam_port_v2_epochs_and_tensor_contract
+
+threshold:
+  rule_id: participant_balanced_class_median_midpoint_train_only_v1
+  score_origin: outer_training_fit_predictions_only
+  fit_scope: outer_training_participants_only_no_oof_no_ptt
+  per_participant_center: within_class_median
+  cohort_class_center: median_across_participants
+  threshold_formula: (static_center + motion_center) / 2
+  optimize_balanced_accuracy_or_f1: false
+  outer_oof_scores_allowed: false
+  ptt_scores_allowed: false
+
+ptt_external_gate:
+  status: requires_complete_internal_formal_evidence_and_exact_v2_036_unit_artifact
+  canonical_entry_id: formal_ptt_motion_reference_source_bound_v2
+  injected_examples_or_callbacks_allowed: false
+  imu_unit_gate: exact_v2_036_path_sha_schema_and_66_source_hashes_before_conversion
+  unit_evidence_schema: ppg_frailty.ptt_imu_unit_evidence.v3
+  unit_evidence_relative_path: final_v0/final_pipeline_v2/manifests/ptt_imu_unit_evidence_v2_036.json
+  unit_evidence_sha256: c03669029f9e58e53ae24e5e9208aa47541b93d8fcc0b9dea2f215165dc70ee5
+  acceleration_source_unit: m/s^2
+  acceleration_conversion: identity_m_per_s2_no_scale
+  acceleration_scale_factor: 1.0
+  acceleration_multiply_9p80665: forbidden
+  gyroscope_source_unit: deg/s
+  gyroscope_conversion: degrees_per_second_to_radians_per_second
+  gyroscope_evidence_boundary: header_and_historical_deg2rad_no_numeric_conflict_not_device_calibration
+  action_after_open: evaluation_only_never_fit_or_recalibrate
+  registry_id: ptt_formal_repeated_grouped_activity_balanced_5x5_v2
+  split_csv: splits/ptt_formal_repeated_grouped_5x5_v2.csv
+  split_csv_sha256: 138f999da334e2280c9e7df3304f9f017496f0ed6b60562a8d33e3c69c502dec
+  n_repeats: 5
+  n_folds: 5
+  seeds: [42, 10042, 20042, 30042, 40042]
+  fold_subject_counts: [5, 5, 4, 4, 4]
+  independence_claim: none_not_an_independent_external_test
+
+major_comparison_metrics:
+  - participant_macro_balanced_accuracy
+  - worst_fold_balanced_accuracy
+  - participant_macro_f1
+  - ece
+  - parameter_count
+  - inference_cost
+
+historical_light_cnn_backup:
+  status: frozen_historical_evidence_only_not_v2_execution
+  model_id: historical_b_light_cnn_backup_20260427
+  source_run: .CNN_results/20260427-01_peak_hr_gate_balanced_v2
+  historical_loader_ppg_rule: pleth_2_then_pleth_1_then_IR_then_PPG
+  source_detector_config_base_channels: 24
+  resolved_network_base_channels: 12
+  input_channel_count: 10
+  fs_hz: 256.0
+  window_s: 8.0
+  hop_s: 2.0
+  threshold: 0.05
+  external_dataset: simultaneous_measurements
+  external_window_count: 12032
+  external_balanced_accuracy: 0.7802173951757236
+  external_f1: 0.7633982422884715
+  parameter_count: 6181
+  pytorch_sha256: 4bd4d8302dbfabd099a91e5478a274da5553b71737a41c48bf513034a66356e0
+  onnx_sha256: 4280cd9fe1246f6a7cf32d76c2781a768d04608bb9b235f475a9eda5b08356c9
+  onnx_data_sha256: b1ef787dd416d35f24d5b1cd8f78697016dc218e0469d81ead0d3b481ebfb7f8
+  claim_boundary: pooled_overlapping_window_historical_external_SIM_only_not_V2_or_PTT

@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m3.reference_fixture_manifest.v1",
+  "title": "M3 deterministic reference fixture manifest / M3 确定性参考 fixture 清单",
+  "description": "Manifest contract for byte-hashed synthetic/reference fixtures used to verify corrected filtering, IMU gravity separation, peak detection and PRV behavior. Fixtures prove implementation behavior but do not establish clinical performance. / 用于验证校正滤波、IMU 重力分离、峰检测与 PRV 行为的逐字节哈希合成/参考 fixture 清单合同。Fixture 可证明实现行为，但不能证明临床性能。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "fixture_manifest_id",
+    "generator",
+    "seed",
+    "sampling_rate_hz",
+    "files"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "m3.reference_fixture_manifest.v1",
+      "description": "Optional explicit schema version for newly regenerated manifests; the existing v1 byte-hashed snapshot predates this field. / 新重生成清单可显式记录的 Schema 版本；现有 v1 逐字节快照早于该字段。"
+    },
+    "fixture_manifest_id": {
+      "const": "m3_reference_fixtures_v1",
+      "description": "Frozen fixture-set identity. / 冻结 fixture 集标识。"
+    },
+    "status": {
+      "enum": [
+        "deterministic_synthetic_truth",
+        "generated_and_hashed",
+        "manifest_only",
+        "invalid"
+      ],
+      "description": "Fixture materialization state. / fixture 实体化状态。"
+    },
+    "generator": {
+      "type": "string",
+      "pattern": "^(tools|reference_fixtures)/.+\\.py$",
+      "description": "Path relative to the M3 package; absolute paths are forbidden. / 相对 M3 包的路径；禁止绝对路径。"
+    },
+    "generator_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Deterministic generator seed. / 确定性生成器种子。"
+    },
+    "sampling_rate_hz": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Nominal fixture sampling rate. / fixture 标称采样率。"
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/file_entry"
+      },
+      "description": "Unique fixture entries; file-name uniqueness and on-disk hashes are validator-enforced. / 唯一 fixture 条目；文件名唯一性与磁盘哈希由 validator 强制。"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Scientific and operational limits of the fixture set. / fixture 集的科学与运行限制。"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lower-case SHA-256 digest over exact file bytes. / 精确文件字节的小写 SHA-256 摘要。"
+    },
+    "file_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file",
+        "sha256",
+        "dtype",
+        "shape"
+      ],
+      "properties": {
+        "file": {
+          "type": "string",
+          "pattern": "^[^/\\\\]+\\.(npy|npz|json|csv)$",
+          "description": "File name within reference_fixtures; no traversal or absolute path. / reference_fixtures 内文件名；禁止路径穿越或绝对路径。"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Optional exact byte length for additional integrity checking. / 用于附加完整性检查的可选精确字节数。"
+        },
+        "dtype": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stored NumPy/serialized data type. / 存储的 NumPy/序列化数据类型。"
+        },
+        "shape": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": "Exact stored array shape. / 精确存储数组形状。"
+        },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Ordered columns for multichannel fixtures. / 多通道 fixture 的有序列名。"
+        },
+        "semantics": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Bilingual or otherwise explicit scientific meaning of the fixture payload. / fixture 载荷的双语或其他明确科学含义。"
+        }
+      }
+    }
+  }
+}

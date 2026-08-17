@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m1.pipeline_config.v3",
+  "title": "M1 V3 sequential SQI-motion routing deploy config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "deployment_state",
+    "config_id",
+    "platform_profile_id",
+    "input_contract_ref",
+    "output_contract_ref",
+    "runtime",
+    "modules",
+    "versions",
+    "thresholds",
+    "artifacts"
+  ],
+  "properties": {
+    "schema_version": {"const": "m1.pipeline_config.v3"},
+    "deployment_state": {"enum": ["contract_example", "deploy_locked"]},
+    "config_id": {"type": "string", "minLength": 1},
+    "platform_profile_id": {"type": "string", "minLength": 1},
+    "input_contract_ref": {"const": "m1.signal_input.v2"},
+    "output_contract_ref": {"const": "m1.inference_output.v3"},
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "engine",
+        "device",
+        "threads",
+        "allowed_dependencies",
+        "execution_providers",
+        "buffer_duration_sec",
+        "backlog_policy"
+      ],
+      "properties": {
+        "engine": {"enum": ["python_numpy_scipy", "python_onnxruntime", "hybrid_python_onnxruntime"]},
+        "device": {"enum": ["cpu", "accelerator_with_cpu_fallback"]},
+        "threads": {"type": "integer", "minimum": 1},
+        "allowed_dependencies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["numpy", "scipy", "onnxruntime", "scikit-learn"]}
+        },
+        "execution_providers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "buffer_duration_sec": {"type": "number", "minimum": 1},
+        "backlog_policy": {"const": "explicit_no_result"}
+      }
+    },
+    "modules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "validation",
+        "preprocessing",
+        "quality_router",
+        "feature_extractor",
+        "classifier",
+        "aggregation",
+        "calibration"
+      ],
+      "properties": {
+        "validation": {"$ref": "#/$defs/module_ref"},
+        "preprocessing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version", "execution_mode", "algorithmic_latency_sec"],
+          "properties": {
+            "id": {"type": "string", "minLength": 1},
+            "version": {"type": "string", "minLength": 1},
+            "execution_mode": {"enum": ["streaming_causal", "buffered_zero_phase"]},
+            "algorithmic_latency_sec": {"type": "number", "minimum": 0}
+          }
+        },
+        "quality_router": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "version",
+            "sqi",
+            "motion_detector",
+            "state_precedence",
+            "high_quality_branch",
+            "degraded_branch"
+          ],
+          "properties": {
+            "id": {"const": "sqi_motion_router_v3"},
+            "version": {"type": "string", "minLength": 1},
+            "sqi": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "version",
+                "required",
+                "high_quality_threshold_key",
+                "unrecoverable_threshold_key",
+                "failure_policy"
+              ],
+              "properties": {
+                "id": {"type": "string", "minLength": 1},
+                "version": {"type": "string", "minLength": 1},
+                "required": {"const": true},
+                "high_quality_threshold_key": {"const": "sqi_high_quality_min"},
+                "unrecoverable_threshold_key": {"const": "sqi_unrecoverable_below"},
+                "failure_policy": {"const": "explicit_no_result"}
+              }
+            },
+            "motion_detector": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["enabled", "id", "version", "threshold_key", "disabled_state", "failure_policy"],
+              "properties": {
+                "enabled": {"type": "boolean"},
+                "id": {"type": ["string", "null"]},
+                "version": {"type": ["string", "null"]},
+                "threshold_key": {"enum": ["motion_probability", null]},
+                "disabled_state": {"const": "not_evaluated"},
+                "failure_policy": {"enum": ["explicit_no_result", "not_applicable"]}
+              },
+              "oneOf": [
+                {
+                  "properties": {
+                    "enabled": {"const": true},
+                    "id": {"type": "string", "minLength": 1},
+                    "version": {"type": "string", "minLength": 1},
+                    "threshold_key": {"const": "motion_probability"},
+                    "failure_policy": {"const": "explicit_no_result"}
+                  }
+                },
+                {
+                  "properties": {
+                    "enabled": {"const": false},
+                    "id": {"type": "null"},
+                    "version": {"type": "null"},
+                    "threshold_key": {"type": "null"},
+                    "failure_policy": {"const": "not_applicable"}
+                  }
+                }
+              ]
+            },
+            "state_precedence": {
+              "const": ["invalid", "unrecoverable_quality", "motion", "low_quality", "high_quality"]
+            },
+            "high_quality_branch": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["action", "signal_source", "denoiser_allowed"],
+              "properties": {
+                "action": {"const": "return_unchanged_to_feature_extractor"},
+                "signal_source": {"const": "preprocessed_raw"},
+                "denoiser_allowed": {"const": false}
+              }
+            },
+            "degraded_branch": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "manual_policy",
+                "selection_scope",
+                "selection_provenance",
+                "allow_window_override",
+                "denoiser_frontend_id",
+                "denoiser_version",
+                "feature_adapter_id",
+                "failure_policy"
+              ],
+              "properties": {
+                "manual_policy": {"enum": ["drop", "denoise_then_extract_features"]},
+                "selection_scope": {"const": "run_or_session_start"},
+                "selection_provenance": {"const": "configuration_before_run"},
+                "allow_window_override": {"const": false},
+                "denoiser_frontend_id": {"type": ["string", "null"]},
+                "denoiser_version": {"type": ["string", "null"]},
+                "feature_adapter_id": {"type": ["string", "null"]},
+                "failure_policy": {"enum": ["expected_abstention", "explicit_no_result_no_raw_fallback"]}
+              },
+              "oneOf": [
+                {
+                  "properties": {
+                    "manual_policy": {"const": "drop"},
+                    "denoiser_frontend_id": {"type": "null"},
+                    "denoiser_version": {"type": "null"},
+                    "feature_adapter_id": {"type": "null"},
+                    "failure_policy": {"const": "expected_abstention"}
+                  }
+                },
+                {
+                  "properties": {
+                    "manual_policy": {"const": "denoise_then_extract_features"},
+                    "denoiser_frontend_id": {"type": "string", "minLength": 1},
+                    "denoiser_version": {"type": "string", "minLength": 1},
+                    "feature_adapter_id": {"type": "string", "minLength": 1},
+                    "failure_policy": {"const": "explicit_no_result_no_raw_fallback"}
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "feature_extractor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "feature_schema_id"],
+          "properties": {
+            "id": {"type": "string", "minLength": 1},
+            "feature_schema_id": {"type": "string", "minLength": 1}
+          }
+        },
+        "classifier": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "label_map_id"],
+          "properties": {
+            "id": {"type": "string", "minLength": 1},
+            "label_map_id": {"const": "frailty3.v1"}
+          }
+        },
+        "aggregation": {"$ref": "#/$defs/module_ref"},
+        "calibration": {"$ref": "#/$defs/module_ref"}
+      }
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": {"type": "string", "minLength": 1},
+      "required": [
+        "preprocessing_version",
+        "quality_router_version",
+        "sqi_version",
+        "motion_version",
+        "feature_schema_version",
+        "classifier_version"
+      ]
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sqi_high_quality_min", "sqi_unrecoverable_below", "motion_probability"],
+      "properties": {
+        "sqi_high_quality_min": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "sqi_unrecoverable_below": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "motion_probability": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "files"],
+      "properties": {
+        "status": {"enum": ["pending_export", "locked"]},
+        "files": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/artifact_file"}
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"deployment_state": {"const": "deploy_locked"}}},
+      "then": {
+        "properties": {
+          "thresholds": {
+            "properties": {
+              "sqi_high_quality_min": {"type": "number"},
+              "sqi_unrecoverable_below": {"type": "number"}
+            }
+          },
+          "artifacts": {
+            "properties": {
+              "status": {"const": "locked"},
+              "files": {"minItems": 1}
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "module_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1}
+      }
+    },
+    "artifact_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "relative_path", "kind", "bytes", "sha256"],
+      "properties": {
+        "artifact_id": {"type": "string", "minLength": 1},
+        "relative_path": {"type": "string", "minLength": 1},
+        "kind": {
+          "enum": [
+            "model",
+            "onnx_external_data",
+            "imputer",
+            "scaler",
+            "calibrator",
+            "rocket_kernels",
+            "coefficients",
+            "feature_schema",
+            "other"
+          ]
+        },
+        "bytes": {"type": "integer", "minimum": 0},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}
+

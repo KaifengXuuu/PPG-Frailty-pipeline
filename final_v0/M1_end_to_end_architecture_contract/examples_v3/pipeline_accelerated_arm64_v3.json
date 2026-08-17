@@ -1,0 +1,87 @@
+{
+  "schema_version": "m1.pipeline_config.v3",
+  "deployment_state": "contract_example",
+  "config_id": "m1_v3_example_accelerated_arm64_bss_denoise",
+  "platform_profile_id": "accelerated_arm64_edge",
+  "input_contract_ref": "m1.signal_input.v2",
+  "output_contract_ref": "m1.inference_output.v3",
+  "runtime": {
+    "engine": "hybrid_python_onnxruntime",
+    "device": "accelerator_with_cpu_fallback",
+    "threads": 6,
+    "allowed_dependencies": ["numpy", "scipy", "onnxruntime", "scikit-learn"],
+    "execution_providers": ["TARGET_VENDOR_EP_PENDING_M9", "CPUExecutionProvider"],
+    "buffer_duration_sec": 40,
+    "backlog_policy": "explicit_no_result"
+  },
+  "modules": {
+    "validation": {"id": "signal_validation_v1", "version": "specified"},
+    "preprocessing": {
+      "id": "mobile_8ch_profile",
+      "version": "pending_M3",
+      "execution_mode": "buffered_zero_phase",
+      "algorithmic_latency_sec": 0
+    },
+    "quality_router": {
+      "id": "sqi_motion_router_v3",
+      "version": "specified_contract",
+      "sqi": {
+        "id": "sqi_composite_v3",
+        "version": "pending_M4_1",
+        "required": true,
+        "high_quality_threshold_key": "sqi_high_quality_min",
+        "unrecoverable_threshold_key": "sqi_unrecoverable_below",
+        "failure_policy": "explicit_no_result"
+      },
+      "motion_detector": {
+        "enabled": true,
+        "id": "motion29_oof_selected",
+        "version": "pending_M5",
+        "threshold_key": "motion_probability",
+        "disabled_state": "not_evaluated",
+        "failure_policy": "explicit_no_result"
+      },
+      "state_precedence": ["invalid", "unrecoverable_quality", "motion", "low_quality", "high_quality"],
+      "high_quality_branch": {
+        "action": "return_unchanged_to_feature_extractor",
+        "signal_source": "preprocessed_raw",
+        "denoiser_allowed": false
+      },
+      "degraded_branch": {
+        "manual_policy": "denoise_then_extract_features",
+        "selection_scope": "run_or_session_start",
+        "selection_provenance": "configuration_before_run",
+        "allow_window_override": false,
+        "denoiser_frontend_id": "dual_ppg_bss_v1",
+        "denoiser_version": "pending_M4_2",
+        "feature_adapter_id": "denoised_signal_to_heartbeat_adapter_v1",
+        "failure_policy": "explicit_no_result_no_raw_fallback"
+      }
+    },
+    "feature_extractor": {
+      "id": "heartbeat_tabular",
+      "feature_schema_id": "heartbeat_hr_ppi_hrv.v1"
+    },
+    "classifier": {
+      "id": "tabular_physiology_sklearn",
+      "label_map_id": "frailty3.v1"
+    },
+    "aggregation": {"id": "subject_coverage_aware", "version": "pending_M7"},
+    "calibration": {"id": "frozen_multiclass_calibrator", "version": "pending_M8"}
+  },
+  "versions": {
+    "preprocessing_version": "pending_M3",
+    "quality_router_version": "m1.quality_routing.v3",
+    "sqi_version": "pending_M4_1",
+    "motion_version": "pending_M5",
+    "feature_schema_version": "heartbeat_hr_ppi_hrv.v1",
+    "classifier_version": "pending_M8"
+  },
+  "thresholds": {
+    "sqi_high_quality_min": null,
+    "sqi_unrecoverable_below": null,
+    "motion_probability": null
+  },
+  "artifacts": {"status": "pending_export", "files": []}
+}
+

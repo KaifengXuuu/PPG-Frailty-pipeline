@@ -1,0 +1,313 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m3.module_binding.v1",
+  "title": "M3 module binding registry / M3 模块绑定注册表",
+  "description": "Registry contract that binds public module roles to concrete callables. A future-active callable must live under M3 src/m3_signal_core; repository-root implementations are allowed only in the separate historical crosswalk. / 把公共模块角色绑定到具体 callable 的注册表合同。未来活动 callable 必须位于 M3 src/m3_signal_core；仓库根目录实现只能出现在独立历史映射表中。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "registry_id",
+    "status",
+    "future_active_root",
+    "contract_authorities",
+    "bindings"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "m3.module_binding.v1",
+      "description": "Exact registry schema version. / 精确注册表 Schema 版本。"
+    },
+    "registry_id": {
+      "const": "m3_module_bindings_v1",
+      "description": "Stable registry identity. / 稳定注册表标识。"
+    },
+    "status": {
+      "enum": [
+        "contract_defined_core_bindings_present_profile_lock_adapter_pending",
+        "active"
+      ],
+      "description": "Current status distinguishes available core callables from the still-required profile-locked facade before M4. / 当前状态区分已有核心 callable 与 M4 前仍需实现的配置锁定门面。"
+    },
+    "future_active_root": {
+      "const": "final_v0/M3_unified_preprocessing_and_signal_algorithms/src/m3_signal_core",
+      "description": "Only authoritative implementation root for future benchmarks. / 未来 benchmark 唯一权威实现根目录。"
+    },
+    "contract_authorities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "m1_input_contract",
+        "m1_config_contract",
+        "m1_output_contract",
+        "m2_dataset_version_id",
+        "m2_fold_registry_id",
+        "m2_protocol_id",
+        "m3_preprocessing_registry_id",
+        "m3_physiology_registry_id"
+      ],
+      "properties": {
+        "m1_input_contract": {
+          "const": "m1.signal_input.v2",
+          "description": "M1 raw signal input authority. / M1 原始信号输入权威。"
+        },
+        "m1_config_contract": {
+          "const": "m1.pipeline_config.v3",
+          "description": "M1 pipeline configuration authority. / M1 流水线配置权威。"
+        },
+        "m1_output_contract": {
+          "const": "m1.inference_output.v3",
+          "description": "M1 inference output authority. / M1 推理输出权威。"
+        },
+        "m2_dataset_version_id": {
+          "const": "frailty3_m2_20260815_a054800abda272f6",
+          "description": "Frozen M2 dataset identity. / 冻结 M2 数据集标识。"
+        },
+        "m2_fold_registry_id": {
+          "const": "frailty3_future_corrected_sgkf5_v2",
+          "description": "Future corrected subject-level fold authority. / 未来校正受试者级折叠权威。"
+        },
+        "m2_protocol_id": {
+          "const": "frailty3_fixed_epoch_oof_v2_corrected_sgkf",
+          "description": "Future OOF evaluation protocol. / 未来 OOF 评估协议。"
+        },
+        "m3_preprocessing_registry_id": {
+          "const": "m3_preprocessing_profiles_corrected_v1",
+          "description": "Corrected preprocessing profile authority. / 校正预处理配置权威。"
+        },
+        "m3_physiology_registry_id": {
+          "const": "m3_physiology_corrected_v1",
+          "description": "Corrected physiology algorithm authority. / 校正生理算法权威。"
+        }
+      }
+    },
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/binding"
+      },
+      "description": "Unique module bindings; binding_id uniqueness is validator-enforced. / 唯一模块绑定；binding_id 唯一性由 validator 强制。"
+    }
+  },
+  "$defs": {
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "binding_id",
+        "module_role",
+        "lifecycle",
+        "implementation_path",
+        "callable",
+        "exported_by",
+        "profile_ids",
+        "algorithm_ids",
+        "input_contract_ids",
+        "output_contract_ids",
+        "runtime_dependencies",
+        "future_benchmark_allowed",
+        "activation_gate",
+        "description_zh",
+        "description_en"
+      ],
+      "properties": {
+        "binding_id": {
+          "type": "string",
+          "pattern": "^m3_[a-z0-9_]+_v[0-9]+$",
+          "description": "Stable binding identifier. / 稳定绑定标识。"
+        },
+        "module_role": {
+          "enum": [
+            "signal_quality_gate",
+            "ppg_preprocessing",
+            "signal_resampling",
+            "imu_preprocessing",
+            "peak_detection",
+            "dual_channel_selection",
+            "ppi_prv_extraction",
+            "transit_delay_calibration",
+            "reference_evaluation",
+            "fold_fitted_scaling",
+            "raw8_feature_view"
+          ],
+          "description": "Public architectural role. / 公共架构角色。"
+        },
+        "lifecycle": {
+          "enum": [
+            "future_active_core",
+            "future_active_profile_locked",
+            "specified_not_implemented",
+            "historical_reproduction_only"
+          ],
+          "description": "Lifecycle state; only future_active values may enter a new benchmark. / 生命周期状态；只有 future_active 值可进入新 benchmark。"
+        },
+        "implementation_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Repository-relative Python implementation path, or null only when not implemented. / 仓库相对 Python 实现路径；仅未实现时可为 null。"
+        },
+        "callable": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Importable public callable, or null only when not implemented. / 可导入公共 callable；仅未实现时可为 null。"
+        },
+        "exported_by": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Package initializer exporting the public symbol. / 导出公共符号的包初始化文件。"
+        },
+        "profile_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Allowed preprocessing profile IDs; empty when profiles do not apply. / 允许的预处理 profile ID；不适用时为空。"
+        },
+        "algorithm_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Allowed physiology algorithm IDs; empty when algorithms do not apply. / 允许的生理算法 ID；不适用时为空。"
+        },
+        "input_contract_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Accepted machine contract identifiers. / 接受的机器合同标识。"
+        },
+        "output_contract_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Emitted machine contract identifiers. / 输出的机器合同标识。"
+        },
+        "runtime_dependencies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "numpy",
+              "scipy",
+              "onnxruntime",
+              "scikit-learn"
+            ]
+          },
+          "description": "Dependencies restricted to the user-approved deployment allowlist. / 依赖仅限用户批准的部署白名单。"
+        },
+        "future_benchmark_allowed": {
+          "type": "boolean",
+          "description": "True only for eligible corrected bindings. / 仅符合条件的校正绑定可为 true。"
+        },
+        "activation_gate": {
+          "enum": [
+            "core_callable_present_profile_locked_facade_required_before_M4",
+            "ready_for_future_benchmark",
+            "implementation_required_before_use",
+            "historical_reproduction_only"
+          ],
+          "description": "Unambiguous remaining gate before use. / 使用前尚需满足的明确门槛。"
+        },
+        "description_zh": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Detailed Chinese binding description. / 详细中文绑定说明。"
+        },
+        "description_en": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Detailed English binding description. / 详细英文绑定说明。"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "lifecycle": {
+                "enum": [
+                  "future_active_core",
+                  "future_active_profile_locked"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "implementation_path": {
+                "type": "string",
+                "pattern": "^final_v0/M3_unified_preprocessing_and_signal_algorithms/src/m3_signal_core/.+\\.py$"
+              },
+              "callable": {
+                "type": "string",
+                "pattern": "^m3_signal_core\\."
+              },
+              "exported_by": {
+                "const": "final_v0/M3_unified_preprocessing_and_signal_algorithms/src/m3_signal_core/__init__.py"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "lifecycle": {
+                "const": "specified_not_implemented"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "implementation_path": {
+                "type": "null"
+              },
+              "callable": {
+                "type": "null"
+              },
+              "exported_by": {
+                "type": "null"
+              },
+              "future_benchmark_allowed": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "lifecycle": {
+                "const": "historical_reproduction_only"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "future_benchmark_allowed": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

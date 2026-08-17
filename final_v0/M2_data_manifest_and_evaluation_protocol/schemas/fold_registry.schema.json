@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m2.fold_registry.v1",
+  "title": "M2 materialized subject fold registry",
+  "type": "object",
+  "required": ["registry_id", "status", "dataset_version_id", "n_splits", "n_repeats", "seeds", "repeats", "payload_sha256"],
+  "properties": {
+    "registry_id": {"type": "string"},
+    "status": {"enum": ["historical_reproduction_only", "active_future_benchmark_only"]},
+    "dataset_version_id": {"type": "string"},
+    "n_splits": {"const": 5},
+    "n_repeats": {"const": 5},
+    "seeds": {"const": [42, 10042, 20042, 30042, 40042]},
+    "repeats": {"type": "array", "minItems": 5, "maxItems": 5},
+    "payload_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "additionalProperties": true
+}

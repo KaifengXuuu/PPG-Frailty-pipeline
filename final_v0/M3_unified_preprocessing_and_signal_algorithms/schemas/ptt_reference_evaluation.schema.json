@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m3.ptt_reference_evaluation.v1",
+  "title": "M3 symmetric raw/delay-corrected PTT reference evaluation / M3 raw 与延迟校正对称 PTT 参考评价",
+  "description": "Strict evaluation contract for ECG-reference event timing, PPI, HR and coverage. raw and delay_corrected must expose the same scorecard fields so correction cannot hide a degraded metric. / ECG 参考事件定时、PPI、HR 与覆盖率的严格评价合同。raw 与 delay_corrected 必须暴露相同 scorecard 字段，避免延迟校正隐藏退化指标。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evaluation_subject_id",
+    "delay_artifact_id",
+    "dataset_id",
+    "training_split_id",
+    "preprocessing_profile_id",
+    "algorithm_id",
+    "delay_training_subjects_disjoint",
+    "tolerance_ms",
+    "raw",
+    "delay_corrected",
+    "ppi_error_ms_mae",
+    "hr_error_bpm",
+    "coverage_fraction",
+    "failure_reason"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "m3.ptt_reference_evaluation.v1",
+      "description": "Exact evaluator output schema. / 精确评价器输出 Schema。"
+    },
+    "evaluation_subject_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Subject evaluated outside the delay-training roster. / 延迟训练名单之外的评价受试者。"
+    },
+    "delay_artifact_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Exact m3.transit_delay_artifact.v1 identity. / 精确 m3.transit_delay_artifact.v1 标识。"
+    },
+    "dataset_id": {
+      "const": "ptt_ppg_1_1_0_local",
+      "description": "M2 external synchronized dataset identity. / M2 外部同步数据集标识。"
+    },
+    "training_split_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Required split used to fit the delay artifact. / 拟合延迟制品所用的必填划分。"
+    },
+    "preprocessing_profile_id": {
+      "const": "external_ppg_to_400_polyphase_v1",
+      "description": "External PPG mapping profile used before scoring. / 评分前使用的外部 PPG 映射配置。"
+    },
+    "algorithm_id": {
+      "const": "m3_ptt_ecg_reference_evaluation_v1",
+      "description": "Frozen symmetric evaluator algorithm ID. / 冻结对称评价算法 ID。"
+    },
+    "delay_training_subjects_disjoint": {
+      "const": true,
+      "description": "Leakage assertion enforced at runtime. / 运行时强制的防泄漏断言。"
+    },
+    "tolerance_ms": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "One-to-one event matching tolerance. / 一对一事件匹配容差。"
+    },
+    "raw": {
+      "$ref": "#/$defs/scorecard"
+    },
+    "delay_corrected": {
+      "$ref": "#/$defs/scorecard"
+    },
+    "ppi_error_ms_mae": {
+      "$ref": "#/$defs/number_or_null",
+      "description": "Deprecated alias of delay_corrected.ppi_error_ms_mae. / delay_corrected.ppi_error_ms_mae 的弃用别名。"
+    },
+    "hr_error_bpm": {
+      "$ref": "#/$defs/number_or_null",
+      "description": "Deprecated alias of delay_corrected.hr_error_bpm. / delay_corrected.hr_error_bpm 的弃用别名。"
+    },
+    "coverage_fraction": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Deprecated alias of delay_corrected.coverage_fraction. / delay_corrected.coverage_fraction 的弃用别名。"
+    },
+    "failure_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Deprecated alias of delay_corrected.failure_reason. / delay_corrected.failure_reason 的弃用别名。"
+    }
+  },
+  "$defs": {
+    "number_or_null": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Finite number or null; NaN and infinity are forbidden. / 有限数值或 null；禁止 NaN 与无穷值。"
+    },
+    "scorecard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "matched",
+        "precision",
+        "recall",
+        "f1",
+        "timing_error_samples_median",
+        "timing_error_samples_mae",
+        "timing_error_ms_median",
+        "timing_error_ms_mae",
+        "ppi_error_ms_mae",
+        "hr_error_bpm",
+        "coverage_fraction",
+        "failure_reason"
+      ],
+      "properties": {
+        "matched": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "One-to-one matched event count. / 一对一匹配事件数。"
+        },
+        "precision": {
+          "$ref": "#/$defs/unit_interval"
+        },
+        "recall": {
+          "$ref": "#/$defs/unit_interval"
+        },
+        "f1": {
+          "$ref": "#/$defs/unit_interval"
+        },
+        "timing_error_samples_median": {
+          "$ref": "#/$defs/number_or_null"
+        },
+        "timing_error_samples_mae": {
+          "$ref": "#/$defs/number_or_null"
+        },
+        "timing_error_ms_median": {
+          "$ref": "#/$defs/number_or_null"
+        },
+        "timing_error_ms_mae": {
+          "$ref": "#/$defs/number_or_null"
+        },
+        "ppi_error_ms_mae": {
+          "$ref": "#/$defs/number_or_null"
+        },
+        "hr_error_bpm": {
+          "$ref": "#/$defs/number_or_null"
+        },
+        "coverage_fraction": {
+          "$ref": "#/$defs/unit_interval"
+        },
+        "failure_reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Registered failure reason, or null when at least one event matched. / 已注册失败原因；至少匹配一个事件时为 null。"
+        }
+      }
+    },
+    "unit_interval": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Finite fraction in [0,1]. / [0,1] 内有限比例。"
+    }
+  }
+}

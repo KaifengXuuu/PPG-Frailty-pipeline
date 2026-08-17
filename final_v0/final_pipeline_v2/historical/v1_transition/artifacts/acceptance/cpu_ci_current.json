@@ -1,0 +1,220 @@
+{
+  "active_source_snapshot": {
+    "file_count": 159,
+    "report": "artifacts/acceptance/source_snapshot_current.json",
+    "tree_sha256": "d4ccf5a24a4c22ae5e75438d41ef6d1e5125e6b0b55230a18431bbd48fbecc13"
+  },
+  "clean_temporary_working_directory": true,
+  "cpu_only": true,
+  "environment": {
+    "numpy": "1.26.4",
+    "onnxruntime": null,
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "python": "3.10.12",
+    "scikit_learn": "1.4.2",
+    "scipy": "1.15.3",
+    "torch": "2.11.0+cpu"
+  },
+  "evidence": {
+    "artifact_parallel": "artifacts/acceptance/runs/artifact_parallel_20260815T165715Z_517223.json",
+    "cli_smoke": "artifacts/acceptance/runs/cli_smoke_20260815T165715Z_517223.json",
+    "model_parallel": "artifacts/acceptance/runs/model_parallel_20260815T165715Z_517223.json",
+    "raw_window_ablation": "artifacts/acceptance/runs/raw_window_ablation_20260815T165715Z_517223.json",
+    "real_reduced_experiment": "artifacts/acceptance/runs/experiment_reduced_r0_f0_20260815T165715Z_517223",
+    "source_snapshot": "artifacts/acceptance/source_snapshot_current.json",
+    "strict_acceptance": "artifacts/acceptance/strict_acceptance_current.json",
+    "test_report": "artifacts/acceptance/cpu_ci_tests_current.json"
+  },
+  "failed_stages": [],
+  "quantitative_contracts_included": true,
+  "run_id": "20260815T165715Z_517223",
+  "schema_version": "ppg_frailty.cpu_ci.v1",
+  "scientific_claim": "cpu_acceptance_plus_real_reduced_smoke_and_synthetic_contracts_no_5x5_frailty_or_external_ptt_performance_claim",
+  "stages": [
+    {
+      "command_role": "all_tests_warnings_as_errors",
+      "duration_s": 78.226879635,
+      "returncode": 0,
+      "stage_id": "all_tests_warnings_as_errors",
+      "status": "passed",
+      "stderr_tail": "...............................................................................................................................................................\n----------------------------------------------------------------------\nRan 159 tests in 76.340s\n\nOK\n",
+      "stdout_summary": {
+        "counts": {
+          "errors": 0,
+          "failed": 0,
+          "passed": 159,
+          "run": 159,
+          "skipped": 0
+        },
+        "status": "passed",
+        "suite": "all"
+      }
+    },
+    {
+      "command_role": "all_package_imports",
+      "duration_s": 1.039395588,
+      "returncode": 0,
+      "stage_id": "all_package_imports",
+      "status": "passed",
+      "stderr_tail": "",
+      "stdout_summary": {
+        "count": 107,
+        "schema_version": "ppg_frailty.import_sweep.v1",
+        "status": "passed"
+      }
+    },
+    {
+      "command_role": "cli_list_modules",
+      "duration_s": 1.012346787,
+      "returncode": 0,
+      "stage_id": "cli_list_modules",
+      "status": "passed",
+      "stderr_tail": "",
+      "stdout_summary": {
+        "count": 24,
+        "schema_version": "ppg_frailty.module_registry.v1"
+      }
+    },
+    {
+      "command_role": "cli_validate_four_configs",
+      "duration_s": 1.096435994,
+      "returncode": 0,
+      "stage_id": "cli_validate_four_configs",
+      "status": "passed",
+      "stderr_tail": "",
+      "stdout_summary": {
+        "result_count": 4,
+        "result_identities": [
+          "feature_matrix_v1.yaml",
+          "motion_benchmark_v1.yaml",
+          "reference_all_roles_v1.yaml",
+          "reference_static_v1.yaml"
+        ],
+        "schema_version": "ppg_frailty.config_validation_matrix.v1",
+        "status": "passed"
+      }
+    },
+    {
+      "command_role": "cli_clean_temp_real_fold_smoke",
+      "duration_s": 1.762298659,
+      "returncode": 0,
+      "stage_id": "cli_clean_temp_real_fold_smoke",
+      "status": "passed",
+      "stderr_tail": "",
+      "stdout_summary": {
+        "preflight": {
+          "config_id": "reference_static_raw_compactcnn_v1",
+          "participant_count": 29,
+          "record_count": 261,
+          "split_count": 1,
+          "split_seeds": [
+            42
+          ]
+        },
+        "status": "smoke_passed"
+      }
+    },
+    {
+      "command_role": "cli_real_motion_feature_vector_reduced_r0_f0",
+      "duration_s": 38.163428955,
+      "returncode": 0,
+      "stage_id": "cli_real_motion_feature_vector_reduced_r0_f0",
+      "status": "passed",
+      "stderr_tail": "",
+      "stdout_summary": {
+        "config_id": "motion_benchmark_spectral_rate_only_v1",
+        "fold_indices": [
+          0
+        ],
+        "output_dir": "/home/trinker/Code/github/PPG-Frailty-pipeline/final_v0/final_pipeline_v1/artifacts/acceptance/runs/experiment_reduced_r0_f0_20260815T165715Z_517223",
+        "repeat_indices": [
+          0
+        ],
+        "scientific_scope": "smoke_not_scientific_benchmark",
+        "status": "passed"
+      }
+    },
+    {
+      "command_role": "cli_all_artifact_comparison",
+      "duration_s": 1.268328744,
+      "returncode": 0,
+      "stage_id": "cli_all_artifact_comparison",
+      "status": "passed",
+      "stderr_tail": "",
+      "stdout_summary": {
+        "output": "artifacts/acceptance/runs/artifact_parallel_20260815T165715Z_517223.json",
+        "result_count": 9,
+        "schema_version": "ppg_frailty.synthetic_artifact_comparison.v1",
+        "scientific_scope": "synthetic_contract_test_not_external_ptt_benchmark",
+        "status": "passed"
+      }
+    },
+    {
+      "command_role": "cli_all_model_comparison",
+      "duration_s": 1.615601552,
+      "returncode": 0,
+      "stage_id": "cli_all_model_comparison",
+      "status": "passed",
+      "stderr_tail": "",
+      "stdout_summary": {
+        "output": "artifacts/acceptance/runs/model_parallel_20260815T165715Z_517223.json",
+        "result_count": 13,
+        "result_identities": [
+          "CompactCNN1D",
+          "InceptionTimeFull",
+          "InceptionTimeSmall",
+          "InceptionTimeMatrix",
+          "InceptionTimeFiveMemberEnsemble",
+          "ROCKET",
+          "MiniROCKET",
+          "LogisticRegressionL2",
+          "RBFSVM",
+          "ExtraTrees",
+          "ShapeFormerEffectSize",
+          "FileBagFusionCompact",
+          "FileBagFusionInception"
+        ],
+        "schema_version": "ppg_frailty.synthetic_model_comparison.v1",
+        "scientific_scope": "reduced_synthetic_contract_test_not_frailty_benchmark",
+        "status": "passed"
+      }
+    },
+    {
+      "command_role": "cli_raw_window_ablation",
+      "duration_s": 1.009193732,
+      "returncode": 0,
+      "stage_id": "cli_raw_window_ablation",
+      "status": "passed",
+      "stderr_tail": "",
+      "stdout_summary": {
+        "factor": "raw_window_s",
+        "output": "artifacts/acceptance/runs/raw_window_ablation_20260815T165715Z_517223.json",
+        "result_count": 2,
+        "result_identities": [
+          5.0,
+          10.0
+        ]
+      }
+    },
+    {
+      "command_role": "strict_acceptance",
+      "duration_s": 1.56039635,
+      "returncode": 0,
+      "stage_id": "strict_acceptance",
+      "status": "passed",
+      "stderr_tail": "",
+      "stdout_summary": {
+        "counts": {
+          "checks": 18,
+          "failed": 0,
+          "passed": 18,
+          "pending": 0
+        },
+        "schema_version": "ppg_frailty.strict_acceptance.v1",
+        "status": "passed"
+      }
+    }
+  ],
+  "status": "passed",
+  "warnings_policy": "error"
+}

@@ -1,0 +1,610 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m3.preprocessing_result.v1",
+  "title": "M3 preprocessing result contract / M3 预处理结果合同",
+  "description": "Machine-readable metadata contract for one corrected M3 preprocessing call. It preserves three non-interchangeable layers: immutable source_raw, bounded-repair repaired_raw, and algorithmic filtered output. / 单次校正后 M3 预处理调用的机器可读元数据合同。它保留三个不可互换层级：不可变 source_raw、有限修复后的 repaired_raw，以及算法滤波后的 filtered 输出。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "result_id",
+    "status",
+    "module_binding_id",
+    "module_version",
+    "profile_id",
+    "preprocessing_registry_id",
+    "preprocessing_registry_sha256",
+    "input_summary",
+    "output_summary",
+    "signal_layers",
+    "masks",
+    "reason_codes",
+    "diagnostics",
+    "m1_compatibility",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "m3.preprocessing_result.v1",
+      "description": "Exact result schema identifier; consumers fail closed on any other value. / 精确结果 Schema 标识；消费者遇到其他值时必须拒绝继续。"
+    },
+    "result_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Run-unique result identifier, not a profile or algorithm identifier. / 单次运行唯一结果标识，不得用配置或算法标识代替。"
+    },
+    "status": {
+      "$ref": "#/$defs/m3_status"
+    },
+    "module_binding_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Binding ID from m3_module_bindings_v1 that selected the callable. / 从 m3_module_bindings_v1 选择实际 callable 的绑定 ID。"
+    },
+    "module_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Public M3 module API version. / M3 公共模块 API 版本。"
+    },
+    "profile_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Exact profile_id from m3_preprocessing_profiles_corrected_v1; free-form filter parameters are forbidden at the benchmark boundary. / m3_preprocessing_profiles_corrected_v1 中的精确 profile_id；benchmark 边界禁止自由传入滤波参数。"
+    },
+    "preprocessing_registry_id": {
+      "const": "m3_preprocessing_profiles_corrected_v1",
+      "description": "Locked preprocessing registry identity. / 冻结预处理注册表标识。"
+    },
+    "preprocessing_registry_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "input_summary": {
+      "$ref": "#/$defs/signal_summary",
+      "description": "Metadata for immutable source_raw exactly as supplied before repair; it must never be silently replaced by repaired_raw. / 修复前调用方原样提供且不可变的 source_raw 元数据；不得被 repaired_raw 静默替换。"
+    },
+    "output_summary": {
+      "$ref": "#/$defs/signal_summary",
+      "description": "Metadata for the algorithmic filtered output. / 算法滤波输出元数据。"
+    },
+    "signal_layers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_raw",
+        "repaired_raw",
+        "filtered"
+      ],
+      "properties": {
+        "source_raw": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/layer_reference"
+            },
+            {
+              "properties": {
+                "semantic_role": {
+                  "const": "immutable_source_observation"
+                }
+              }
+            }
+          ],
+          "description": "Original observation before interpolation or replacement. / 插值或替换前的原始观测。"
+        },
+        "repaired_raw": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/layer_reference"
+            },
+            {
+              "properties": {
+                "semantic_role": {
+                  "const": "bounded_repair_before_filtering"
+                }
+              }
+            }
+          ],
+          "description": "Raw-domain signal after only declared bounded repairs and before filtering. / 仅执行已声明有限修复且尚未滤波的原始域信号。"
+        },
+        "filtered": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/layer_reference"
+            },
+            {
+              "properties": {
+                "semantic_role": {
+                  "const": "algorithmic_filtered_output"
+                }
+              }
+            }
+          ],
+          "description": "Filtered/resampled signal consumed by downstream physiology or features. / 供下游生理算法或特征使用的滤波/重采样信号。"
+        }
+      }
+    },
+    "masks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shape",
+        "valid_count",
+        "invalid_count",
+        "repaired_count",
+        "semantics",
+        "storage"
+      ],
+      "properties": {
+        "shape": {
+          "$ref": "#/$defs/vector_shape"
+        },
+        "valid_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Samples accepted after validation and optional bounded repair. / 校验及可选有限修复后被接受的样本数。"
+        },
+        "invalid_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Samples that remain invalid and must not contribute to features. / 仍无效且不得参与特征计算的样本数。"
+        },
+        "repaired_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Samples repaired by a declared deterministic policy. / 由已声明确定性策略修复的样本数。"
+        },
+        "per_channel_valid_count": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": "Optional valid counts keyed by canonical channel name. / 以规范通道名为键的可选有效计数。"
+        },
+        "semantics": {
+          "const": "true_means_usable_after_declared_repairs",
+          "description": "Normative Boolean mask meaning. / 布尔掩码的规范含义。"
+        },
+        "storage": {
+          "$ref": "#/$defs/array_storage"
+        }
+      }
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "description": "Only codes registered by m3_reason_codes_corrected_v1 are legal; profile_id and algorithm_id are never reason codes. / 仅允许 m3_reason_codes_corrected_v1 已登记代码；profile_id 与 algorithm_id 永远不得充当原因码。"
+    },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase_mode",
+        "timestamp_policy",
+        "finite_value_policy",
+        "resampling",
+        "unit_conversion",
+        "raw_metrics"
+      ],
+      "properties": {
+        "phase_mode": {
+          "enum": [
+            "offline_zero_phase",
+            "streaming_causal"
+          ],
+          "description": "Filtering phase mode selected by the registered profile. / 注册配置选择的滤波相位模式。"
+        },
+        "timestamp_policy": {
+          "enum": [
+            "preserve_valid_input",
+            "generate_uniform_grid_from_fs",
+            "stream_state_continuation"
+          ],
+          "description": "How sample times were obtained. / 样本时间的获得方式。"
+        },
+        "finite_value_policy": {
+          "const": "json_null_plus_mask_and_reason_code",
+          "description": "NaN and infinity are forbidden; missing numeric values are null with a validity mask and reason code. / 禁止 NaN 与无穷值；缺失数值必须以 null、有效掩码及原因码共同表达。"
+        },
+        "resampling": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "applied",
+            "source_fs_hz",
+            "target_fs_hz",
+            "method",
+            "shared_index_mapping"
+          ],
+          "properties": {
+            "applied": {
+              "type": "boolean",
+              "description": "Whether sampling-rate conversion was executed. / 是否实际执行采样率转换。"
+            },
+            "source_fs_hz": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Validated source sampling rate in hertz. / 已校验源采样率，单位 Hz。"
+            },
+            "target_fs_hz": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Registered target sampling rate in hertz. / 注册目标采样率，单位 Hz。"
+            },
+            "method": {
+              "enum": [
+                "none",
+                "scipy_resample_poly"
+              ],
+              "description": "Corrected route uses no resampling or explicit SciPy polyphase resampling. / 校正路线仅允许不重采样或显式 SciPy 多相重采样。"
+            },
+            "shared_index_mapping": {
+              "type": "boolean",
+              "description": "True when signal, time, masks and annotations use the same source-to-target index mapping; required whenever applied=true. / 信号、时间、掩码与标注使用同一源到目标索引映射时为 true；applied=true 时必须如此。"
+            }
+          }
+        },
+        "unit_conversion": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "input_units",
+            "output_units",
+            "explicit"
+          ],
+          "properties": {
+            "input_units": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Units supplied by the caller in channel order. / 调用方按通道顺序提供的单位。"
+            },
+            "output_units": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Units emitted after explicit conversion. / 显式转换后输出的单位。"
+            },
+            "explicit": {
+              "type": "boolean",
+              "description": "Must be true when any numeric conversion occurred; amplitude-based unit guessing is forbidden. / 发生任何数值换算时必须为 true；禁止按幅值猜测单位。"
+            }
+          }
+        },
+        "raw_metrics": {
+          "type": "object",
+          "required": [
+            "source_nonfinite_fraction"
+          ],
+          "patternProperties": {
+            "^(source|repaired|filtered)_[a-z0-9_]+$": {
+              "type": [
+                "number",
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "description": "Layer-qualified metrics only. source_* describes immutable source_raw, repaired_* describes bounded-repair raw, and filtered_* describes algorithm output; source_nonfinite_fraction is always retained. / 仅允许带层级前缀的指标。source_* 描述不可变 source_raw，repaired_* 描述有限修复 raw，filtered_* 描述算法输出；始终保留 source_nonfinite_fraction。"
+        },
+        "module_metrics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "number",
+              "integer",
+              "string",
+              "boolean",
+              "null"
+            ]
+          },
+          "description": "Finite scalar diagnostics only; missing numerics use null. / 仅允许有限标量诊断；缺失数值使用 null。"
+        }
+      }
+    },
+    "m1_compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status_mapping_registry_id",
+        "module_status",
+        "pipeline_status"
+      ],
+      "properties": {
+        "status_mapping_registry_id": {
+          "const": "m3_status_mapping_v1",
+          "description": "Registry used to project M3 state into M1 output vocabulary. / 用于把 M3 状态投影到 M1 输出词汇表的注册表。"
+        },
+        "module_status": {
+          "enum": [
+            "valid",
+            "repaired",
+            "partial",
+            "invalid",
+            "insufficient",
+            "initialization_pending",
+            "no_estimate"
+          ],
+          "description": "Normalized module state exposed to the M1 router. / 暴露给 M1 路由器的规范模块状态。"
+        },
+        "pipeline_status": {
+          "enum": [
+            "ok",
+            "partial",
+            "invalid_input",
+            "insufficient_quality",
+            "processing_lag",
+            "runtime_error"
+          ],
+          "description": "Projected m1.inference_output.v3 pipeline status. / 投影后的 m1.inference_output.v3 流水线状态。"
+        }
+      }
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lower-case SHA-256 digest over canonical bytes. / 规范字节的小写 SHA-256 摘要。"
+    },
+    "m3_status": {
+      "enum": [
+        "valid",
+        "repaired",
+        "partial",
+        "invalid",
+        "insufficient",
+        "initialization_pending",
+        "no_estimate"
+      ],
+      "description": "Native M3 processing status; mapping to M1 is explicit. / M3 原生处理状态；到 M1 的映射必须显式。"
+    },
+    "tensor_shape": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "integer",
+          "minimum": 1
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "Two-dimensional [samples, channels] shape. / 二维 [样本数, 通道数] 形状。"
+    },
+    "vector_shape": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "integer",
+          "minimum": 0
+        }
+      ],
+      "items": false,
+      "minItems": 1,
+      "maxItems": 1,
+      "description": "One-dimensional [samples] mask shape. / 一维 [样本数] 掩码形状。"
+    },
+    "timestamp_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "monotonic",
+        "uniform_grid",
+        "start_s",
+        "end_s"
+      ],
+      "properties": {
+        "source": {
+          "enum": [
+            "provided",
+            "generated_from_fs",
+            "continued_stream_state"
+          ],
+          "description": "Origin of timestamps. / 时间戳来源。"
+        },
+        "monotonic": {
+          "type": "boolean",
+          "description": "Whether timestamps are strictly increasing after validation. / 校验后时间戳是否严格递增。"
+        },
+        "uniform_grid": {
+          "type": "boolean",
+          "description": "Whether timestamps lie on the registered uniform grid. / 时间戳是否位于注册均匀网格。"
+        },
+        "start_s": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "First finite timestamp, or null for empty/invalid input. / 首个有限时间戳；空或无效输入时为 null。"
+        },
+        "end_s": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Last finite timestamp, or null for empty/invalid input. / 最后有限时间戳；空或无效输入时为 null。"
+        }
+      }
+    },
+    "signal_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shape",
+        "dtype",
+        "channel_order",
+        "units",
+        "sampling_rate_hz",
+        "timestamps",
+        "storage"
+      ],
+      "properties": {
+        "shape": {
+          "$ref": "#/$defs/tensor_shape"
+        },
+        "dtype": {
+          "enum": [
+            "float32",
+            "float64"
+          ],
+          "description": "Declared array dtype; computation may use float64 while model export may use float32. / 已声明数组类型；计算可用 float64，模型导出可用 float32。"
+        },
+        "channel_order": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Canonical ordered channel names. / 规范有序通道名称。"
+        },
+        "units": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Units aligned one-to-one with channel_order. / 与 channel_order 一一对应的单位。"
+        },
+        "sampling_rate_hz": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Validated sampling rate in hertz. / 已校验采样率，单位 Hz。"
+        },
+        "timestamps": {
+          "$ref": "#/$defs/timestamp_summary"
+        },
+        "storage": {
+          "$ref": "#/$defs/array_storage"
+        }
+      }
+    },
+    "layer_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semantic_role",
+        "storage"
+      ],
+      "properties": {
+        "semantic_role": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Normative signal-layer meaning. / 规范信号层含义。"
+        },
+        "storage": {
+          "$ref": "#/$defs/array_storage"
+        }
+      }
+    },
+    "array_storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "relative_path",
+        "key"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "in_memory_ndarray",
+            "relative_npz_artifact",
+            "not_emitted"
+          ],
+          "description": "Payload transport mode; absolute paths are forbidden. / 数据载荷传输方式；禁止绝对路径。"
+        },
+        "relative_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(?![A-Za-z]:)(?!/)(?!\\\\).*$",
+          "description": "Relative artifact path, or null for in-memory/not-emitted data. / 相对制品路径；内存或未输出数据时为 null。"
+        },
+        "key": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Array key inside the artifact, or null when not applicable. / 制品内数组键；不适用时为 null。"
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code_root",
+        "source_files",
+        "source_sha256",
+        "config_sha256",
+        "created_utc"
+      ],
+      "properties": {
+        "code_root": {
+          "const": "final_v0/M3_unified_preprocessing_and_signal_algorithms/src",
+          "description": "Only M3 src is future-active; root scripts are historical evidence only. / 未来活动实现仅来自 M3 src；根目录脚本仅为历史证据。"
+        },
+        "source_files": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^final_v0/M3_unified_preprocessing_and_signal_algorithms/src/m3_signal_core/.+\\.py$"
+          },
+          "description": "Exact M3 implementation files used. / 实际使用的 M3 实现文件。"
+        },
+        "source_sha256": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/sha256"
+          },
+          "description": "File-relative SHA-256 map. / 相对文件 SHA-256 映射。"
+        },
+        "config_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "dataset_version_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "M2 dataset version for benchmark calls, otherwise null. / benchmark 调用的 M2 数据集版本，否则为 null。"
+        },
+        "fold_registry_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "M2 fold registry when fold-fitted state is used, otherwise null. / 使用折内拟合状态时的 M2 折叠注册表，否则为 null。"
+        },
+        "created_utc": {
+          "type": "string",
+          "format": "date-time",
+          "description": "UTC creation timestamp in RFC 3339 form. / RFC 3339 格式的 UTC 创建时间。"
+        }
+      }
+    }
+  }
+}

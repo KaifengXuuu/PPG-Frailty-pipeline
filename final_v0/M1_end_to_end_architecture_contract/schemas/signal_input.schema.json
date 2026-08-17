@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m1.signal_input.v1",
+  "title": "M1 SignalBatch metadata / M1 信号批元数据",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_id",
+    "shape",
+    "dtype",
+    "channel_order",
+    "sampling_rate_hz",
+    "units",
+    "timestamps",
+    "missing_values",
+    "source"
+  ],
+  "properties": {
+    "schema_version": {"const": "m1.signal_input.v1"},
+    "record_id": {"type": "string", "minLength": 1},
+    "subject_id": {"type": ["string", "null"]},
+    "shape": {
+      "type": "array",
+      "prefixItems": [{"const": "n_samples"}, {"const": 8}],
+      "items": false
+    },
+    "dtype": {"const": "float32"},
+    "channel_order": {
+      "const": ["RED", "IR", "AX", "AY", "AZ", "GX", "GY", "GZ"]
+    },
+    "sampling_rate_hz": {"type": "number", "exclusiveMinimum": 0},
+    "units": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["RED", "IR", "AX", "AY", "AZ", "GX", "GY", "GZ"],
+      "properties": {
+        "RED": {"enum": ["adc_counts", "raw_counts", "unknown"]},
+        "IR": {"enum": ["adc_counts", "raw_counts", "unknown"]},
+        "AX": {"enum": ["g", "m/s2", "unknown"]},
+        "AY": {"enum": ["g", "m/s2", "unknown"]},
+        "AZ": {"enum": ["g", "m/s2", "unknown"]},
+        "GX": {"enum": ["deg/s", "rad/s", "unknown"]},
+        "GY": {"enum": ["deg/s", "rad/s", "unknown"]},
+        "GZ": {"enum": ["deg/s", "rad/s", "unknown"]}
+      }
+    },
+    "timestamps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape", "dtype", "unit", "monotonic"],
+      "properties": {
+        "shape": {"const": ["n_samples"]},
+        "dtype": {"const": "float64"},
+        "unit": {"const": "seconds"},
+        "monotonic": {"const": true},
+        "wall_clock_origin": {"type": ["string", "null"]}
+      }
+    },
+    "missing_values": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw_encoding", "valid_mask_shape", "post_validation"],
+      "properties": {
+        "raw_encoding": {"const": "NaN_or_Inf_with_valid_mask"},
+        "valid_mask_shape": {"const": ["n_samples", 8]},
+        "post_validation": {"const": "finite_or_window_rejected"}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device_id", "firmware_version", "transport"],
+      "properties": {
+        "device_id": {"type": "string", "minLength": 1},
+        "firmware_version": {"type": "string", "minLength": 1},
+        "transport": {"enum": ["ble", "usb", "serial", "file", "unknown"]}
+      }
+    }
+  }
+}
+

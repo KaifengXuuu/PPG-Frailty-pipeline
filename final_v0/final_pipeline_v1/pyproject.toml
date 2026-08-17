@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ppg-frailty-final-pipeline-v1"
+version = "1.0.0.dev1"
+description = "Contract-first PPG frailty research pipeline"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26,<2",
+  "scipy>=1.15,<2",
+  "scikit-learn>=1.4,<2",
+  "PyYAML>=6,<7",
+  "joblib>=1.4,<2"
+]
+
+[project.optional-dependencies]
+deep = ["torch>=2.0"]
+tabular = ["pandas>=2.3,<3"]
+parquet = ["pyarrow>=15"]
+onnx = ["onnxruntime>=1.17"]
+
+[project.scripts]
+ppg-frailty = "ppg_frailty.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
