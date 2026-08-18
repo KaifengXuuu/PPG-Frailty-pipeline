@@ -30,6 +30,7 @@ _SLUG_RE = re.compile(r"[^A-Za-z0-9_-]+")
 _IDENTITY_ONLY_PATHS = frozenset({"config_id"})
 _CATALOG_SEARCH_OVERRIDE_PATHS = frozenset(
     {
+        "quality.mode",
         "training.learning_rate",
         "training.weight_decay",
         "model.logistic_c",
@@ -47,11 +48,27 @@ _CATALOG_SEARCH_OVERRIDE_PATHS = frozenset(
         "model.architecture_parameters.ridge_alpha",
     }
 )
+_MODEL_AXIS_PROVENANCE_MIRRORS = {
+    "model.logistic_c": "model.architecture_parameters.C",
+    "model.svm_c": "model.architecture_parameters.C",
+    "model.svm_gamma": "model.architecture_parameters.gamma",
+    "model.extra_trees_max_features": (
+        "model.architecture_parameters.max_features"
+    ),
+    "model.extra_trees_min_samples_leaf": (
+        "model.architecture_parameters.min_samples_leaf"
+    ),
+    "model.n_kernels": "model.architecture_parameters.n_kernels",
+    "model.alpha": "model.architecture_parameters.ridge_alpha",
+}
 
 
 def _derived_axis_values(path: str, value: Any) -> dict[str, Any]:
     """Return schema fields that describe the same declared study factor."""
 
+    mirror = _MODEL_AXIS_PROVENANCE_MIRRORS.get(path)
+    if mirror is not None:
+        return {mirror: copy.deepcopy(value)}
     if path != "training.fixed_epochs":
         return {}
     if isinstance(value, bool) or value not in {7, 10, 15}:
@@ -498,10 +515,24 @@ def _expand_catalog_sweep(
     if len(ordinary_ids) != 13:
         raise RuntimeError("formal catalog no longer contains exactly 13 ordinary candidates")
     requested_ids = {case.catalog_entry for case in plan.cases}
-    if requested_ids != ordinary_ids:
+    unknown_ids = requested_ids - set(entry_by_id)
+    if unknown_ids:
+        raise ValueError(
+            "catalog cases contain unknown entries: "
+            f"{sorted(unknown_ids)}"
+        )
+    if plan.catalog.scope == "ordinary_13" and requested_ids != ordinary_ids:
         raise ValueError(
             "ordinary_13 cases must cover the exact registered candidate set: "
             f"missing={sorted(ordinary_ids-requested_ids)}, "
+            f"unknown={sorted(requested_ids-ordinary_ids)}"
+        )
+    if (
+        plan.catalog.scope == "selected_ordinary"
+        and not requested_ids <= ordinary_ids
+    ):
+        raise ValueError(
+            "selected_ordinary cases must use only registered ordinary entries: "
             f"unknown={sorted(requested_ids-ordinary_ids)}"
         )
     payloads = resolved_catalog_payloads(
@@ -525,15 +556,21 @@ def _expand_catalog_sweep(
         )
     }
     resolved: list[ResolvedCase] = []
+    selected_roles: list[str] = []
+    selected_groups: list[str] = []
     for case in plan.cases:
         entry = entry_by_id[case.catalog_entry]
-        if entry["catalog_role"] not in {
-            "reference_candidate",
-            "ablation_candidate",
-        }:
+        allowed_roles = (
+            {"matched_comparator", "ensemble_comparison"}
+            if plan.catalog.scope == "matched_ensemble_pair"
+            else {"reference_candidate", "ablation_candidate"}
+        )
+        if entry["catalog_role"] not in allowed_roles:
             raise ValueError(
                 f"catalog case cannot use role {entry['catalog_role']}"
             )
+        selected_roles.append(str(entry["catalog_role"]))
+        selected_groups.append(str(entry["representation_mode"]))
         expected_group = str(entry["representation_mode"])
         if case.output_group != expected_group:
             raise ValueError(
@@ -602,6 +639,16 @@ def _expand_catalog_sweep(
                 rationale=case.rationale,
             )
         )
+    if plan.catalog.scope == "matched_ensemble_pair":
+        if sorted(selected_roles) != ["ensemble_comparison", "matched_comparator"]:
+            raise ValueError(
+                "matched_ensemble_pair requires one matched comparator and "
+                "one ensemble comparison"
+            )
+        if len(set(selected_groups)) != 1:
+            raise ValueError(
+                "matched_ensemble_pair entries must use one representation route"
+            )
     reference_ids = [case.case_id for case in resolved if case.is_reference]
     if len(reference_ids) > 1:
         raise ValueError("catalog_sweep has more than one global reference case")

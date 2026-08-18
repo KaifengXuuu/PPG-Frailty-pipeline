@@ -1,0 +1,42 @@
+# Reusable Stage 6 template. It has exactly one active factor.
+# 1) Replace base_config with the selected finalist resolved config.
+# 2) Run learning rate below.
+# 3) Save the selected LR into the next locked base config.
+# 4) Replace the only axis with batch size [32, 64, 128].
+# 5) Lock the selected batch size, then replace the only axis with
+#    fixed epochs [7, 10, 15].
+# Optional later factor: weight decay [0.00001, 0.0001, 0.001].
+# For a classical finalist, replace the axis with one applicable model factor:
+# Logistic C [0.1, 1.0, 10.0]; SVM C [0.1, 1.0, 10.0], then gamma;
+# ExtraTrees max_features [sqrt, 0.5, 1.0], then min_samples_leaf [1, 2, 5];
+# ROCKET n_kernels [1000, 5000, 10000], then alpha [0.1, 1.0, 10.0].
+# Never place LR, batch size and epochs in this file simultaneously.
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: staged_static_06_learning_rate_v2
+  kind: ablation
+  purpose: "Confirm one training factor at a time on the manually selected final model."
+  flow_position: "Stage 6 after finalist and module-route selection; repeat this template sequentially for each factor."
+  decision_role: ablation
+  reference_case_id: null
+  thesis_sections:
+    - "Sequential single-factor training ablations"
+base_config: configs/reference_static_role_aware_v2.yaml
+axes:
+  - path: training.learning_rate
+    values: [0.0003, 0.001, 0.003]
+    reference: 0.001
+execution:
+  repeats: [0, 1, 2, 3, 4]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 1
+  parallel_level: cases
+  continue_on_error: true
+  allow_parallel_deep: false
+output:
+  root: artifacts/studies/static_line_b_staged_v2
+report:
+  top_k: 3
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10

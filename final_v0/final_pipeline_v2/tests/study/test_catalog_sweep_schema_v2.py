@@ -294,17 +294,36 @@ class CatalogSweepSchemaTests(unittest.TestCase):
                     "formal_profile": None,
                 }
             )
-        with self.assertRaisesRegex(ValueError, "overrides or a formal_profile"):
-            catalog_case_spec_from_mapping(
-                {
-                    "case_id": "safe_case",
-                    "catalog_entry": "compact_cnn",
-                    "screen_profile_id": "screen_00",
-                    "output_group": "raw",
-                    "overrides": {},
-                    "rationale": "Missing profile definition.",
-                    "formal_profile": None,
-                }
+        canonical = catalog_case_spec_from_mapping(
+            {
+                "case_id": "safe_case",
+                "catalog_entry": "compact_cnn",
+                "screen_profile_id": "canonical",
+                "output_group": "raw",
+                "overrides": {},
+                "rationale": "Exact catalog baseline without overrides.",
+                "formal_profile": None,
+            }
+        )
+        self.assertEqual(canonical.overrides, {})
+        self.assertEqual(
+            CatalogSpec(path="catalog.yaml", scope="selected_ordinary").scope,
+            "selected_ordinary",
+        )
+        with self.assertRaisesRegex(ValueError, "exactly two distinct"):
+            StudyPlan(
+                schema_version="ppg_frailty.study_plan.v2",
+                study=_study("catalog_sweep"),
+                catalog=CatalogSpec(
+                    path="catalog.yaml",
+                    scope="matched_ensemble_pair",
+                ),
+                search=SparseSearchSpec(
+                    method="deterministic_sparse_profiles",
+                    selection_seed=42,
+                    interpretation="Matched ensemble factor.",
+                ),
+                cases=(canonical,),
             )
         with self.assertRaisesRegex(ValueError, "key mismatch"):
             formal_profile_spec_from_mapping(

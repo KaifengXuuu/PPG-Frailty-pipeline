@@ -1,0 +1,63 @@
+# Stage 4 runs exactly one matched Inception route.
+# The checked-in default is Raw InceptionFull. If Matrix Inception advanced,
+# replace both catalog entries with:
+#   inception_matrix_member0_comparator
+#   inception_matrix_five_member_ensemble
+# and change both output_group values to feature_matrix.
+# If neither eligible Inception route advanced, skip this stage.
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: staged_static_04_selected_inception_ensemble_v2
+  kind: catalog_sweep
+  purpose: "Isolate the ensemble factor by comparing member 0 with the fixed five-member probability ensemble for one selected Inception route."
+  flow_position: "Stage 4 after ordinary architecture screening and before finalist module ablations."
+  decision_role: ablation
+  reference_case_id: selected_inception__member0
+  thesis_sections:
+    - "Matched single-network versus five-member probability ensemble"
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: matched_ensemble_pair
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: "A paired ensemble-factor comparison; model architecture and representation are otherwise identical."
+  controlled_factors:
+    - "Same selected Inception architecture, representation, participants, folds and preprocessing"
+    - "Member 0 uses seed 50042"
+    - "The ensemble uses seeds 50042, 60042, 70042, 80042 and 90042"
+    - "Five member probabilities are averaged within each held-out outer fold"
+  notes:
+    - "Do not select the best member and do not average member-level metrics."
+    - "This template is not valid for InceptionSmall or Fusion Inception."
+cases:
+  - case_id: selected_inception__member0
+    catalog_entry: inception_full_member0_comparator
+    screen_profile_id: matched_member0
+    output_group: raw
+    overrides: {}
+    rationale: "Matched single-network comparator using fixed member 0."
+    formal_profile: null
+  - case_id: selected_inception__five_member
+    catalog_entry: inception_full_five_member_ensemble
+    screen_profile_id: five_member_probability_mean
+    output_group: raw
+    overrides: {}
+    rationale: "Five fixed members combined by fold-level arithmetic mean probability."
+    formal_profile: null
+execution:
+  repeats: [0, 1, 2, 3, 4]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 1
+  parallel_level: cases
+  continue_on_error: false
+  allow_parallel_deep: false
+output:
+  root: artifacts/studies/static_line_b_staged_v2
+report:
+  top_k: 2
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10

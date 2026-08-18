@@ -245,8 +245,10 @@ def _print_expansion(runner: StudyRunner, plan: StudyPlan) -> None:
     )
 
 
-def _generate_report_with_progress(study_dir: str | Path) -> None:
-    sink = TerminalProgressSink()
+def _generate_report_with_progress(
+    study_dir: str | Path,
+    sink: TerminalProgressSink,
+) -> None:
     sink(ProgressEvent(event="report_started", current=0, total=1))
     report = generate_study_report(study_dir)
     sink(
@@ -257,38 +259,48 @@ def _generate_report_with_progress(study_dir: str | Path) -> None:
             message=str(report.summary_markdown),
         )
     )
-    sink.close()
     print(f"Report: {report.summary_markdown}")
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.command == "report":
-        _generate_report_with_progress(args.study_dir)
-        return 0
-    plan = (
-        _run_plan(args)
-        if args.command == "run"
-        else _ablation_plan(args)
-        if args.command == "ablation"
-        else _grid_plan(args)
+    sink = TerminalProgressSink()
+    sink(
+        ProgressEvent(
+            event="program_started",
+            message="loading command and study plan",
+        )
     )
-    runner = StudyRunner(
-        pipeline_root=PIPELINE_ROOT,
-        progress_sink=TerminalProgressSink(),
-    )
-    if args.dry_run:
-        _print_expansion(runner, plan)
-        return 0
-    run_result = runner.run(
-        plan,
-        output_root=args.output_root,
-        resume_directory=args.resume,
-    )
-    if not args.no_report:
-        _generate_report_with_progress(run_result.output_directory)
-    print(f"Study output: {run_result.output_directory}")
-    return 0 if run_result.status == "passed" else 2
+    try:
+        if args.command == "report":
+            _generate_report_with_progress(args.study_dir, sink)
+            return 0
+        plan = (
+            _run_plan(args)
+            if args.command == "run"
+            else _ablation_plan(args)
+            if args.command == "ablation"
+            else _grid_plan(args)
+        )
+        sink(ProgressEvent(event="plan_loaded", message="study plan loaded"))
+        runner = StudyRunner(
+            pipeline_root=PIPELINE_ROOT,
+            progress_sink=sink,
+        )
+        if args.dry_run:
+            _print_expansion(runner, plan)
+            return 0
+        run_result = runner.run(
+            plan,
+            output_root=args.output_root,
+            resume_directory=args.resume,
+        )
+        if not args.no_report:
+            _generate_report_with_progress(run_result.output_directory, sink)
+        print(f"Study output: {run_result.output_directory}")
+        return 0 if run_result.status == "passed" else 2
+    finally:
+        sink.close()
 
 
 if __name__ == "__main__":

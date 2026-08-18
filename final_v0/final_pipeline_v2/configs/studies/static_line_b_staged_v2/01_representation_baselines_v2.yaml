@@ -1,0 +1,75 @@
+# Stage 1: inexpensive representatives only. This is a representation screen,
+# not a final model winner study.
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: staged_static_01_representation_baselines_v2
+  kind: catalog_sweep
+  purpose: "Compare one low-cost canonical model from each Line B representation before spending compute on architecture families."
+  flow_position: "Stage 1 of the staged pure-static finalist flow."
+  decision_role: screening
+  reference_case_id: null
+  thesis_sections:
+    - "Four representation lines"
+    - "Line B role-aware aggregation"
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: "Four predeclared canonical baselines; representation screening only."
+  controlled_factors:
+    - "All 29 participants in repeat 0 and its five frozen held-out folds"
+    - "Static roles B, R1, R2, R3, R4; Line B aggregation"
+    - "400 Hz; 5 s raw windows/2.5 s hop; 10 s engineering windows/5 s hop"
+    - "Calibrated EKF; quality off; identity reducer; motion override disabled"
+    - "Deep models use fixed 10 epochs, batch 64, Adam LR 0.001, weight decay 0.0001"
+  notes:
+    - "ROCKET/Ridge is used instead of Matrix Inception because this stage prioritizes cost."
+    - "Do not call the highest case here the final model."
+    - "If routes are close, rerun this plan with all repeats before pruning Stage 2."
+cases:
+  - case_id: raw__compact_cnn
+    catalog_entry: compact_cnn
+    screen_profile_id: canonical
+    output_group: raw
+    overrides: {}
+    rationale: "Low-cost raw-signal baseline."
+    formal_profile: null
+  - case_id: feature_vector__logistic
+    catalog_entry: logistic_regression
+    screen_profile_id: canonical
+    output_group: feature_vector
+    overrides: {}
+    rationale: "Low-cost engineered-vector baseline."
+    formal_profile: null
+  - case_id: feature_matrix__rocket_ridge
+    catalog_entry: rocket_numpy
+    screen_profile_id: canonical
+    output_group: feature_matrix
+    overrides: {}
+    rationale: "Low-cost ordered-matrix baseline using canonical ROCKET/Ridge."
+    formal_profile: null
+  - case_id: fusion__compact
+    catalog_entry: fusion_compact
+    screen_profile_id: canonical
+    output_group: fusion
+    overrides: {}
+    rationale: "Compact raw-plus-feature fusion baseline."
+    formal_profile: null
+execution:
+  repeats: [0]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 2
+  parallel_level: cases
+  continue_on_error: true
+  allow_parallel_deep: true
+output:
+  root: artifacts/studies/static_line_b_staged_v2
+report:
+  top_k: 4
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10

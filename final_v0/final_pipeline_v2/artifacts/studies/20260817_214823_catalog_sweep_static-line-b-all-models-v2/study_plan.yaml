@@ -1,0 +1,473 @@
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: static_line_b_all_models_v2
+  kind: catalog_sweep
+  purpose: Preliminary pure-static Line B screening of all 13 ordinary candidates
+    with a small deterministic set of broad, model-relevant profiles.
+  flow_position: First model-family screen before deeper single-factor ablations,
+    ensemble tests, and manual final-use-case selection.
+  decision_role: screening
+  reference_case_id: null
+  thesis_sections:
+  - Static B/R1-R4 frailty classification
+  - Line B role-aware aggregation
+  - Four representation/model branches
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: ordinary_13
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: Random-search-style sparse screening with predeclared profiles;
+    descriptive screening, not a single-factor causal ablation.
+  controlled_factors:
+  - All 29 participants; static roles B, R1, R2, R3, R4 only
+  - Frozen participant-level 5x5 outer-CV registry and repeat split seeds
+  - 'Line B: window to file to role to participant; equal role families'
+  - Canonical 400-Hz acquisition/feature grid; separate lower-rate DL views only for
+    registered fixed-kernel cases
+  - Butterworth 0.2-8 Hz zero-phase PPG filter
+  - Calibrated roll-pitch EKF with same-participant static calibration
+  - Quality off; no SQI gate, supervised motion detector, route exclusion, or motion
+    denoiser
+  - Identity artifact reducer
+  - Raw windows 5 s / 2.5 s hop; engineering windows 10 s / 5 s hop
+  - 'Frailty raw input: RED, IR, A_dyn_x, A_dyn_y, A_dyn_z, GX, GY, GZ'
+  - 'Deep models: fixed 10 epochs, batch 64, Adam, canonical sampler/loss/class weighting'
+  - Classical and ROCKET models do not consume epoch or Adam fields
+  - No ensemble/comparator entries and no automatic winner selection
+  notes:
+  - selection_seed documents profile design only; no parameters are sampled at runtime
+  - CompactCNN and raw InceptionFull use registered 100/200/400-Hz profiles without
+    optimizer changes
+  - ShapeFormer discovery and architecture parameters remain frozen
+  - ordinary_13 means every non-comparator, non-ensemble catalog candidate; it includes
+    the explicitly named MiniROCKET and fixed-ShapeFormer ablation candidates
+cases:
+- case_id: compact_cnn__fs100
+  catalog_entry: compact_cnn
+  screen_profile_id: fs100
+  output_group: raw
+  overrides: {}
+  rationale: Registered fixed-kernel DL input at 100 Hz; all optimizer controls remain
+    fixed.
+  formal_profile:
+    family: fixed_kernel_samples
+    profile_id: compactcnn1d__fs_100
+- case_id: compact_cnn__fs200
+  catalog_entry: compact_cnn
+  screen_profile_id: fs200
+  output_group: raw
+  overrides: {}
+  rationale: Registered fixed-kernel DL input at 200 Hz; all optimizer controls remain
+    fixed.
+  formal_profile:
+    family: fixed_kernel_samples
+    profile_id: compactcnn1d__fs_200
+- case_id: compact_cnn__fs400_reference
+  catalog_entry: compact_cnn
+  screen_profile_id: fs400_reference
+  output_group: raw
+  overrides: {}
+  rationale: Registered fixed-kernel DL input at 400 Hz; all optimizer controls remain
+    fixed.
+  formal_profile:
+    family: fixed_kernel_samples
+    profile_id: compactcnn1d__reference
+- case_id: inception_full__fs100
+  catalog_entry: inception_full
+  screen_profile_id: fs100
+  output_group: raw
+  overrides: {}
+  rationale: Registered fixed-kernel DL input at 100 Hz; all optimizer controls remain
+    fixed.
+  formal_profile:
+    family: fixed_kernel_samples
+    profile_id: inceptiontimefull__fs_100
+- case_id: inception_full__fs200
+  catalog_entry: inception_full
+  screen_profile_id: fs200
+  output_group: raw
+  overrides: {}
+  rationale: Registered fixed-kernel DL input at 200 Hz; all optimizer controls remain
+    fixed.
+  formal_profile:
+    family: fixed_kernel_samples
+    profile_id: inceptiontimefull__fs_200
+- case_id: inception_full__fs400_reference
+  catalog_entry: inception_full
+  screen_profile_id: fs400_reference
+  output_group: raw
+  overrides: {}
+  rationale: Registered fixed-kernel DL input at 400 Hz; all optimizer controls remain
+    fixed.
+  formal_profile:
+    family: fixed_kernel_samples
+    profile_id: inceptiontimefull__reference
+- case_id: inception_small__lr3e4_wd1e3
+  catalog_entry: inception_small
+  screen_profile_id: lr3e4_wd1e3
+  output_group: raw
+  overrides:
+    training.learning_rate: 0.0003
+    training.weight_decay: 0.001
+  rationale: Sparse log-scale optimizer profile; raw input remains canonical 400 Hz.
+  formal_profile: null
+- case_id: inception_small__lr1e3_wd1e4
+  catalog_entry: inception_small
+  screen_profile_id: lr1e3_wd1e4
+  output_group: raw
+  overrides:
+    training.learning_rate: 0.001
+    training.weight_decay: 0.0001
+  rationale: Sparse log-scale optimizer profile; raw input remains canonical 400 Hz.
+  formal_profile: null
+- case_id: inception_small__lr3e3_wd1e5
+  catalog_entry: inception_small
+  screen_profile_id: lr3e3_wd1e5
+  output_group: raw
+  overrides:
+    training.learning_rate: 0.003
+    training.weight_decay: 1.0e-05
+  rationale: Sparse log-scale optimizer profile; raw input remains canonical 400 Hz.
+  formal_profile: null
+- case_id: inception_matrix__lr3e4_wd1e3
+  catalog_entry: inception_matrix
+  screen_profile_id: lr3e4_wd1e3
+  output_group: feature_matrix
+  overrides:
+    training.learning_rate: 0.0003
+    training.weight_decay: 0.001
+  rationale: Sparse log-scale optimizer profile on the fixed engineered matrix.
+  formal_profile: null
+- case_id: inception_matrix__lr1e3_wd1e4
+  catalog_entry: inception_matrix
+  screen_profile_id: lr1e3_wd1e4
+  output_group: feature_matrix
+  overrides:
+    training.learning_rate: 0.001
+    training.weight_decay: 0.0001
+  rationale: Sparse log-scale optimizer profile on the fixed engineered matrix.
+  formal_profile: null
+- case_id: inception_matrix__lr3e3_wd1e5
+  catalog_entry: inception_matrix
+  screen_profile_id: lr3e3_wd1e5
+  output_group: feature_matrix
+  overrides:
+    training.learning_rate: 0.003
+    training.weight_decay: 1.0e-05
+  rationale: Sparse log-scale optimizer profile on the fixed engineered matrix.
+  formal_profile: null
+- case_id: shapeformer_osd__lr1e4_wd1e3
+  catalog_entry: shapeformer_channel_specific_osd
+  screen_profile_id: lr1e4_wd1e3
+  output_group: raw
+  overrides:
+    training.learning_rate: 0.0001
+    training.weight_decay: 0.001
+  rationale: Conservative optimizer profile; all literature-fidelity ShapeFormer values
+    remain frozen.
+  formal_profile: null
+- case_id: shapeformer_osd__lr3e4_wd1e4
+  catalog_entry: shapeformer_channel_specific_osd
+  screen_profile_id: lr3e4_wd1e4
+  output_group: raw
+  overrides:
+    training.learning_rate: 0.0003
+    training.weight_decay: 0.0001
+  rationale: Conservative optimizer profile; all literature-fidelity ShapeFormer values
+    remain frozen.
+  formal_profile: null
+- case_id: shapeformer_osd__lr1e3_wd1e5
+  catalog_entry: shapeformer_channel_specific_osd
+  screen_profile_id: lr1e3_wd1e5
+  output_group: raw
+  overrides:
+    training.learning_rate: 0.001
+    training.weight_decay: 1.0e-05
+  rationale: Conservative optimizer profile; all literature-fidelity ShapeFormer values
+    remain frozen.
+  formal_profile: null
+- case_id: shapeformer_fixed__lr1e4_wd1e3
+  catalog_entry: shapeformer_effect_size_fixed_v1
+  screen_profile_id: lr1e4_wd1e3
+  output_group: raw
+  overrides:
+    training.learning_rate: 0.0001
+    training.weight_decay: 0.001
+  rationale: Conservative optimizer profile; the named fixed-shapelet ablation remains
+    frozen.
+  formal_profile: null
+- case_id: shapeformer_fixed__lr3e4_wd1e4
+  catalog_entry: shapeformer_effect_size_fixed_v1
+  screen_profile_id: lr3e4_wd1e4
+  output_group: raw
+  overrides:
+    training.learning_rate: 0.0003
+    training.weight_decay: 0.0001
+  rationale: Conservative optimizer profile; the named fixed-shapelet ablation remains
+    frozen.
+  formal_profile: null
+- case_id: shapeformer_fixed__lr1e3_wd1e5
+  catalog_entry: shapeformer_effect_size_fixed_v1
+  screen_profile_id: lr1e3_wd1e5
+  output_group: raw
+  overrides:
+    training.learning_rate: 0.001
+    training.weight_decay: 1.0e-05
+  rationale: Conservative optimizer profile; the named fixed-shapelet ablation remains
+    frozen.
+  formal_profile: null
+- case_id: fusion_compact__lr3e4_wd1e3
+  catalog_entry: fusion_compact
+  screen_profile_id: lr3e4_wd1e3
+  output_group: fusion
+  overrides:
+    training.learning_rate: 0.0003
+    training.weight_decay: 0.001
+  rationale: Sparse optimizer profile; both input branches and fusion architecture
+    remain fixed.
+  formal_profile: null
+- case_id: fusion_compact__lr1e3_wd1e4
+  catalog_entry: fusion_compact
+  screen_profile_id: lr1e3_wd1e4
+  output_group: fusion
+  overrides:
+    training.learning_rate: 0.001
+    training.weight_decay: 0.0001
+  rationale: Sparse optimizer profile; both input branches and fusion architecture
+    remain fixed.
+  formal_profile: null
+- case_id: fusion_compact__lr3e3_wd1e5
+  catalog_entry: fusion_compact
+  screen_profile_id: lr3e3_wd1e5
+  output_group: fusion
+  overrides:
+    training.learning_rate: 0.003
+    training.weight_decay: 1.0e-05
+  rationale: Sparse optimizer profile; both input branches and fusion architecture
+    remain fixed.
+  formal_profile: null
+- case_id: fusion_inception__lr3e4_wd1e3
+  catalog_entry: fusion_inception
+  screen_profile_id: lr3e4_wd1e3
+  output_group: fusion
+  overrides:
+    training.learning_rate: 0.0003
+    training.weight_decay: 0.001
+  rationale: Sparse optimizer profile; both input branches and fusion architecture
+    remain fixed.
+  formal_profile: null
+- case_id: fusion_inception__lr1e3_wd1e4
+  catalog_entry: fusion_inception
+  screen_profile_id: lr1e3_wd1e4
+  output_group: fusion
+  overrides:
+    training.learning_rate: 0.001
+    training.weight_decay: 0.0001
+  rationale: Sparse optimizer profile; both input branches and fusion architecture
+    remain fixed.
+  formal_profile: null
+- case_id: fusion_inception__lr3e3_wd1e5
+  catalog_entry: fusion_inception
+  screen_profile_id: lr3e3_wd1e5
+  output_group: fusion
+  overrides:
+    training.learning_rate: 0.003
+    training.weight_decay: 1.0e-05
+  rationale: Sparse optimizer profile; both input branches and fusion architecture
+    remain fixed.
+  formal_profile: null
+- case_id: logistic_regression__c0p1
+  catalog_entry: logistic_regression
+  screen_profile_id: c0p1
+  output_group: feature_vector
+  overrides:
+    model.logistic_c: 0.1
+    model.architecture_parameters.C: 0.1
+  rationale: Three-point L2 inverse-regularization search; solver and preprocessing
+    remain fixed.
+  formal_profile: null
+- case_id: logistic_regression__c1
+  catalog_entry: logistic_regression
+  screen_profile_id: c1
+  output_group: feature_vector
+  overrides:
+    model.logistic_c: 1.0
+    model.architecture_parameters.C: 1.0
+  rationale: Three-point L2 inverse-regularization search; solver and preprocessing
+    remain fixed.
+  formal_profile: null
+- case_id: logistic_regression__c10
+  catalog_entry: logistic_regression
+  screen_profile_id: c10
+  output_group: feature_vector
+  overrides:
+    model.logistic_c: 10.0
+    model.architecture_parameters.C: 10.0
+  rationale: Three-point L2 inverse-regularization search; solver and preprocessing
+    remain fixed.
+  formal_profile: null
+- case_id: rbf_svm__c0p1_gamma0p001
+  catalog_entry: rbf_svm
+  screen_profile_id: c0p1_gamma0p001
+  output_group: feature_vector
+  overrides:
+    model.svm_c: 0.1
+    model.svm_gamma: 0.001
+    model.architecture_parameters.C: 0.1
+    model.architecture_parameters.gamma: 0.001
+  rationale: Sparse C/gamma pair spanning broad RBF capacity and regularization.
+  formal_profile: null
+- case_id: rbf_svm__c1_gamma_scale
+  catalog_entry: rbf_svm
+  screen_profile_id: c1_gamma_scale
+  output_group: feature_vector
+  overrides:
+    model.svm_c: 1.0
+    model.svm_gamma: scale
+    model.architecture_parameters.C: 1.0
+    model.architecture_parameters.gamma: scale
+  rationale: Sparse C/gamma pair spanning broad RBF capacity and regularization.
+  formal_profile: null
+- case_id: rbf_svm__c10_gamma0p1
+  catalog_entry: rbf_svm
+  screen_profile_id: c10_gamma0p1
+  output_group: feature_vector
+  overrides:
+    model.svm_c: 10.0
+    model.svm_gamma: 0.1
+    model.architecture_parameters.C: 10.0
+    model.architecture_parameters.gamma: 0.1
+  rationale: Sparse C/gamma pair spanning broad RBF capacity and regularization.
+  formal_profile: null
+- case_id: extra_trees__sqrt_leaf5
+  catalog_entry: extra_trees
+  screen_profile_id: sqrt_leaf5
+  output_group: feature_vector
+  overrides:
+    model.extra_trees_max_features: sqrt
+    model.extra_trees_min_samples_leaf: 5
+    model.architecture_parameters.max_features: sqrt
+    model.architecture_parameters.min_samples_leaf: 5
+  rationale: Sparse feature-subsampling/leaf-regularization search; tree count remains
+    500.
+  formal_profile: null
+- case_id: extra_trees__half_leaf2
+  catalog_entry: extra_trees
+  screen_profile_id: half_leaf2
+  output_group: feature_vector
+  overrides:
+    model.extra_trees_max_features: 0.5
+    model.extra_trees_min_samples_leaf: 2
+    model.architecture_parameters.max_features: 0.5
+    model.architecture_parameters.min_samples_leaf: 2
+  rationale: Sparse feature-subsampling/leaf-regularization search; tree count remains
+    500.
+  formal_profile: null
+- case_id: extra_trees__all_leaf1
+  catalog_entry: extra_trees
+  screen_profile_id: all_leaf1
+  output_group: feature_vector
+  overrides:
+    model.extra_trees_max_features: 1.0
+    model.extra_trees_min_samples_leaf: 1
+    model.architecture_parameters.max_features: 1.0
+    model.architecture_parameters.min_samples_leaf: 1
+  rationale: Sparse feature-subsampling/leaf-regularization search; tree count remains
+    500.
+  formal_profile: null
+- case_id: rocket__k1000_a10
+  catalog_entry: rocket_numpy
+  screen_profile_id: k1000_a10
+  output_group: feature_matrix
+  overrides:
+    model.n_kernels: 1000
+    model.alpha: 10.0
+    model.architecture_parameters.n_kernels: 1000
+    model.architecture_parameters.ridge_alpha: 10.0
+  rationale: Sparse transform-capacity/ridge pair; matrix and kernel-length family
+    remain fixed.
+  formal_profile: null
+- case_id: rocket__k5000_a1
+  catalog_entry: rocket_numpy
+  screen_profile_id: k5000_a1
+  output_group: feature_matrix
+  overrides:
+    model.n_kernels: 5000
+    model.alpha: 1.0
+    model.architecture_parameters.n_kernels: 5000
+    model.architecture_parameters.ridge_alpha: 1.0
+  rationale: Sparse transform-capacity/ridge pair; matrix and kernel-length family
+    remain fixed.
+  formal_profile: null
+- case_id: rocket__k10000_a0p1
+  catalog_entry: rocket_numpy
+  screen_profile_id: k10000_a0p1
+  output_group: feature_matrix
+  overrides:
+    model.n_kernels: 10000
+    model.alpha: 0.1
+    model.architecture_parameters.n_kernels: 10000
+    model.architecture_parameters.ridge_alpha: 0.1
+  rationale: Sparse transform-capacity/ridge pair; matrix and kernel-length family
+    remain fixed.
+  formal_profile: null
+- case_id: minirocket__k500_a10
+  catalog_entry: minirocket_ablation
+  screen_profile_id: k500_a10
+  output_group: feature_matrix
+  overrides:
+    model.n_kernels: 500
+    model.alpha: 10.0
+    model.architecture_parameters.n_kernels: 500
+    model.architecture_parameters.ridge_alpha: 10.0
+  rationale: Sparse transform-capacity/ridge pair; matrix and kernel-length family
+    remain fixed.
+  formal_profile: null
+- case_id: minirocket__k1000_a1
+  catalog_entry: minirocket_ablation
+  screen_profile_id: k1000_a1
+  output_group: feature_matrix
+  overrides:
+    model.n_kernels: 1000
+    model.alpha: 1.0
+    model.architecture_parameters.n_kernels: 1000
+    model.architecture_parameters.ridge_alpha: 1.0
+  rationale: Sparse transform-capacity/ridge pair; matrix and kernel-length family
+    remain fixed.
+  formal_profile: null
+- case_id: minirocket__k5000_a0p1
+  catalog_entry: minirocket_ablation
+  screen_profile_id: k5000_a0p1
+  output_group: feature_matrix
+  overrides:
+    model.n_kernels: 5000
+    model.alpha: 0.1
+    model.architecture_parameters.n_kernels: 5000
+    model.architecture_parameters.ridge_alpha: 0.1
+  rationale: Sparse transform-capacity/ridge pair; matrix and kernel-length family
+    remain fixed.
+  formal_profile: null
+execution:
+  repeats:
+  - 0
+  folds:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  jobs: 1
+  parallel_level: cases
+  continue_on_error: true
+  allow_parallel_deep: true
+output:
+  root: artifacts/studies
+report:
+  top_k: 20
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10

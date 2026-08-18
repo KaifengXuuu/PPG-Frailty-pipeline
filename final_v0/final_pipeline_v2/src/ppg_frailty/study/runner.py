@@ -8,8 +8,14 @@ import json
 import os
 import time
 import traceback
-from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-from dataclasses import asdict, dataclass, is_dataclass
+from concurrent.futures import (
+    FIRST_COMPLETED,
+    Future,
+    ProcessPoolExecutor,
+    ThreadPoolExecutor,
+    wait,
+)
+from dataclasses import asdict, dataclass, is_dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -152,22 +158,72 @@ def _contains_deep_case(expansion: StudyExpansion) -> bool:
 
 
 def _executor_progress_adapter(
-    sink: ProgressSink, case_id: str
+    sink: ProgressSink,
+    case_id: str,
+    *,
+    repeats: tuple[int, ...],
+    folds: tuple[int, ...],
 ) -> Callable[[Any], None]:
+    repeat_positions = {value: index + 1 for index, value in enumerate(repeats)}
+    fold_positions = {value: index + 1 for index, value in enumerate(folds)}
+    completed_repeats = 0
+
     def emit(value: Any) -> None:
+        nonlocal completed_repeats
         event = ProgressEvent.from_value(value)
-        if event.case_id is None:
-            event = ProgressEvent(
-                event=event.event,
-                current=event.current,
-                total=event.total,
-                case_id=case_id,
-                repeat=event.repeat,
-                fold=event.fold,
-                epoch=event.epoch,
-                message=event.message,
-                timestamp_utc=event.timestamp_utc,
+        unit_current = event.unit_current
+        unit_total = event.unit_total
+        detail_current = event.detail_current
+        detail_total = event.detail_total
+        detail_label = event.detail_label
+        if event.event in {"module_start", "run_start"}:
+            unit_current = completed_repeats
+            unit_total = len(repeats)
+            detail_current = 0
+            detail_total = len(folds)
+            detail_label = (
+                "loading pipeline / preflight"
+                if event.event == "module_start"
+                else "CV setup"
             )
+        elif event.repeat in repeat_positions and event.fold in fold_positions:
+            repeat_position = repeat_positions[int(event.repeat)]
+            fold_position = fold_positions[int(event.fold)]
+            if event.event == "cell_complete":
+                detail_current = fold_position
+                if fold_position == len(folds):
+                    completed_repeats = max(completed_repeats, repeat_position)
+            else:
+                detail_current = max(0, fold_position - 1)
+            unit_current = completed_repeats
+            unit_total = len(repeats)
+            detail_total = len(folds)
+            detail_label = (
+                f"CV repeat {repeat_position}/{len(repeats)} · "
+                f"fold {fold_position}/{len(folds)}"
+            )
+        elif event.event == "run_complete":
+            completed_repeats = len(repeats)
+            unit_current = completed_repeats
+            unit_total = len(repeats)
+            detail_current = len(folds)
+            detail_total = len(folds)
+            detail_label = "CV complete"
+        elif event.event == "run_error":
+            unit_current = completed_repeats
+            unit_total = len(repeats)
+            detail_current = 0
+            detail_total = 0
+            detail_label = "CV failed"
+        event = replace(
+            event,
+            case_id=event.case_id or case_id,
+            unit_current=unit_current,
+            unit_total=unit_total,
+            detail_current=detail_current,
+            detail_total=detail_total,
+            detail_label=detail_label,
+        )
         sink(event)
 
     return emit
@@ -194,9 +250,20 @@ def default_experiment_executor(
 ) -> Mapping[str, Any]:
     """Delayed adapter to the canonical full runner; importing does not train."""
 
+    emit = _executor_progress_adapter(
+        progress_sink,
+        case.case_id,
+        repeats=tuple(plan.execution.repeats),
+        folds=tuple(plan.execution.folds),
+    )
+    emit(
+        {
+            "event": "module_start",
+            "message": "loading canonical pipeline and preflight",
+        }
+    )
     from ppg_frailty import experiment as experiment_module
 
-    emit = _executor_progress_adapter(progress_sink, case.case_id)
     experiment_output = case_directory / "experiment"
     full_runner = getattr(experiment_module, "run_full_experiment", None)
     cell_runner = getattr(experiment_module, "run_outer_cell", None)
@@ -303,6 +370,54 @@ def _process_default_case(request: Mapping[str, Any]) -> Mapping[str, Any]:
         plan,
         child_sink,
     )
+
+
+class _ExecutorEventRelay:
+    """Relay complete child JSONL rows to the parent terminal without new IPC."""
+
+    def __init__(self, sink: ProgressSink) -> None:
+        self._sink = sink
+        self._case_by_path: dict[Path, str] = {}
+        self._offsets: dict[Path, int] = {}
+        self._buffers: dict[Path, bytes] = {}
+
+    def register(self, case_id: str, path: Path) -> None:
+        self._case_by_path[path] = case_id
+        self._offsets[path] = 0
+        self._buffers[path] = b""
+
+    def unregister(self, path: Path) -> None:
+        self._case_by_path.pop(path, None)
+        self._offsets.pop(path, None)
+        self._buffers.pop(path, None)
+
+    def drain(self) -> int:
+        relayed = 0
+        for path, case_id in tuple(self._case_by_path.items()):
+            if not path.is_file():
+                continue
+            with path.open("rb") as stream:
+                stream.seek(self._offsets[path])
+                chunk = stream.read()
+            if not chunk:
+                continue
+            self._offsets[path] += len(chunk)
+            rows = (self._buffers[path] + chunk).split(b"\n")
+            self._buffers[path] = rows.pop()
+            for encoded in rows:
+                if not encoded.strip():
+                    continue
+                try:
+                    event = ProgressEvent.from_value(
+                        json.loads(encoded.decode("utf-8"))
+                    )
+                except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
+                    continue
+                if event.case_id is None:
+                    event = replace(event, case_id=case_id)
+                self._sink(event)
+                relayed += 1
+        return relayed
 
 
 @dataclass(frozen=True)
@@ -586,6 +701,12 @@ class StudyRunner:
         output_root: str | Path | None = None,
         resume_directory: str | Path | None = None,
     ) -> StudyRunResult:
+        self.progress_sink(
+            ProgressEvent(
+                event="study_preparing",
+                message="resolving cases and materializing configs",
+            )
+        )
         expansion = self.expand(plan)
         resumed_run = resume_directory is not None
         output = (
@@ -598,7 +719,10 @@ class StudyRunner:
         self._materialize(expansion, output, resumed=resumed_run)
         jsonl = JsonlProgressSink(output / "progress_events.jsonl")
         original_sink = self.progress_sink
-        self.progress_sink = CompositeProgressSink((original_sink, jsonl))
+        self.progress_sink = CompositeProgressSink(
+            (original_sink, jsonl),
+            close_sinks=(jsonl,),
+        )
         deep = _contains_deep_case(expansion)
         requested_jobs = int(plan.execution.jobs)
         effective_jobs = requested_jobs
@@ -613,6 +737,7 @@ class StudyRunner:
                 f"jobs reduced {requested_jobs}->1"
             )
         total = len(expansion.cases)
+        repeats_per_case = len(plan.execution.repeats)
         records: list[Mapping[str, Any]] = []
         pending: list[tuple[ResolvedCase, Path, Path]] = []
         resumed_count = 0
@@ -621,6 +746,8 @@ class StudyRunner:
                 event="study_started",
                 current=0,
                 total=total,
+                unit_current=0,
+                unit_total=repeats_per_case,
                 message=job_message,
             )
         )
@@ -636,6 +763,8 @@ class StudyRunner:
                         current=len(records),
                         total=total,
                         case_id=case.case_id,
+                        unit_current=repeats_per_case,
+                        unit_total=repeats_per_case,
                     )
                 )
             else:
@@ -643,6 +772,9 @@ class StudyRunner:
         completed = len(records)
         chosen_executor = self.executor or default_experiment_executor
         if effective_jobs == 1:
+            self.progress_sink(
+                ProgressEvent(event="study_running", message="running cases")
+            )
             for case, config_path, case_directory in pending:
                 self.progress_sink(
                     ProgressEvent(
@@ -650,6 +782,8 @@ class StudyRunner:
                         current=completed,
                         total=total,
                         case_id=case.case_id,
+                        unit_current=0,
+                        unit_total=repeats_per_case,
                     )
                 )
                 payload = self._run_one(
@@ -663,6 +797,10 @@ class StudyRunner:
                         current=completed,
                         total=total,
                         case_id=case.case_id,
+                        unit_current=(
+                            repeats_per_case if payload["status"] == "passed" else 0
+                        ),
+                        unit_total=repeats_per_case,
                         message=str(payload["status"]),
                     )
                 )
@@ -670,20 +808,27 @@ class StudyRunner:
                     break
         else:
             pool_type = ProcessPoolExecutor if self.executor is None else ThreadPoolExecutor
+            if pool_type is ProcessPoolExecutor:
+                suspend_refresh = getattr(original_sink, "suspend_refresh", None)
+                if callable(suspend_refresh):
+                    suspend_refresh()
             futures: dict[
                 Future[Any],
                 tuple[ResolvedCase, Path, bool, float, str, int | None, Path | None],
             ] = {}
+            relay = _ExecutorEventRelay(self.progress_sink)
             with pool_type(max_workers=effective_jobs) as pool:
                 for case, config_path, case_directory in pending:
                     submitted = time.perf_counter()
                     submitted_utc = _utc_now()
                     self.progress_sink(
                         ProgressEvent(
-                            event="case_started",
+                            event="case_queued",
                             current=completed,
                             total=total,
                             case_id=case.case_id,
+                            unit_current=0,
+                            unit_total=repeats_per_case,
                         )
                     )
                     if self.executor is None:
@@ -698,6 +843,10 @@ class StudyRunner:
                             "attempt_directory": str(attempt_directory),
                         }
                         future = pool.submit(_process_default_case, request)
+                        relay.register(
+                            case.case_id,
+                            attempt_directory / "executor_events.jsonl",
+                        )
                         needs_parent_record = True
                     else:
                         attempt = None
@@ -720,40 +869,66 @@ class StudyRunner:
                         attempt,
                         attempt_directory,
                     )
-                for future in as_completed(futures):
-                    (
-                        case,
-                        case_directory,
-                        needs_parent_record,
-                        submitted,
-                        submitted_utc,
-                        attempt,
-                        attempt_directory,
-                    ) = futures[future]
-                    payload = (
-                        self._wrap_process_result(
-                            future,
+                self.progress_sink(
+                    ProgressEvent(
+                        event="study_running",
+                        message=f"running {effective_jobs} cases in parallel",
+                    )
+                )
+                remaining = set(futures)
+                while remaining:
+                    done, _ = wait(
+                        remaining,
+                        timeout=0.5,
+                        return_when=FIRST_COMPLETED,
+                    )
+                    relay.drain()
+                    for future in done:
+                        remaining.remove(future)
+                        (
                             case,
                             case_directory,
-                            attempt=attempt,
-                            attempt_directory=attempt_directory,
-                            started=submitted,
-                            started_utc=submitted_utc,
+                            needs_parent_record,
+                            submitted,
+                            submitted_utc,
+                            attempt,
+                            attempt_directory,
+                        ) = futures[future]
+                        payload = (
+                            self._wrap_process_result(
+                                future,
+                                case,
+                                case_directory,
+                                attempt=attempt,
+                                attempt_directory=attempt_directory,
+                                started=submitted,
+                                started_utc=submitted_utc,
+                            )
+                            if needs_parent_record
+                            else future.result()
                         )
-                        if needs_parent_record
-                        else future.result()
-                    )
-                    records.append(payload)
-                    completed += 1
-                    self.progress_sink(
-                        ProgressEvent(
-                            event="case_finished",
-                            current=completed,
-                            total=total,
-                            case_id=case.case_id,
-                            message=str(payload["status"]),
+                        if attempt_directory is not None:
+                            relay.unregister(
+                                attempt_directory / "executor_events.jsonl"
+                            )
+                        records.append(payload)
+                        completed += 1
+                        self.progress_sink(
+                            ProgressEvent(
+                                event="case_finished",
+                                current=completed,
+                                total=total,
+                                case_id=case.case_id,
+                                unit_current=(
+                                    repeats_per_case
+                                    if payload["status"] == "passed"
+                                    else 0
+                                ),
+                                unit_total=repeats_per_case,
+                                message=str(payload["status"]),
+                            )
                         )
-                    )
+                relay.drain()
         by_case = {str(record["case_id"]): record for record in records}
         ordered = tuple(
             by_case[case.case_id]

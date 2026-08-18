@@ -14,7 +14,9 @@ _DECISION_ROLES = frozenset(
     {"single_run", "screening", "ablation", "robustness", "candidate_comparison"}
 )
 _CATALOG_BALANCE_LINES = frozenset({"line_b"})
-_CATALOG_SCOPES = frozenset({"ordinary_13"})
+_CATALOG_SCOPES = frozenset(
+    {"ordinary_13", "selected_ordinary", "matched_ensemble_pair"}
+)
 _CATALOG_OUTPUT_GROUPS = frozenset(
     {"raw", "fusion", "feature_vector", "feature_matrix"}
 )
@@ -208,10 +210,6 @@ class CatalogCaseSpec:
         if not isinstance(self.overrides, Mapping):
             raise TypeError("catalog case overrides must be a mapping")
         _validate_override_paths(self.overrides)
-        if not self.overrides and self.formal_profile is None:
-            raise ValueError(
-                "catalog case requires overrides or a formal_profile"
-            )
         if self.formal_profile is not None and not isinstance(
             self.formal_profile, FormalProfileSpec
         ):
@@ -339,6 +337,21 @@ class StudyPlan:
                     raise ValueError(
                         "ordinary_13 catalog_sweep requires 13 distinct "
                         "catalog_entry values"
+                    )
+            if self.catalog.scope == "matched_ensemble_pair":
+                entries = {case.catalog_entry for case in self.cases}
+                if len(self.cases) != 2 or len(entries) != 2:
+                    raise ValueError(
+                        "matched_ensemble_pair requires exactly two distinct "
+                        "catalog entries"
+                    )
+                if any(
+                    case.overrides or case.formal_profile is not None
+                    for case in self.cases
+                ):
+                    raise ValueError(
+                        "matched_ensemble_pair cannot add overrides or formal "
+                        "profiles; the registered ensemble factor must be isolated"
                     )
             return
         if not str(self.base_config or "").strip():
