@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import gc
 import inspect
 import json
 import os
@@ -73,6 +74,73 @@ def _jsonable(value: Any) -> Any:
     if hasattr(value, "item"):
         return _jsonable(value.item())
     raise TypeError(f"value is not JSON compatible: {type(value)!r}")
+
+
+_COMPACT_CELL_FIELDS = (
+    "status",
+    "repeat_index",
+    "fold_index",
+    "split_seed",
+    "training_seed",
+    "model_machine_id",
+    "model_id",
+    "representation_mode",
+    "elapsed_seconds",
+    "retained_train_record_count",
+    "retained_oof_record_count",
+    "selected_record_count",
+    "oof_window_prediction_count",
+    "class_order",
+    "metrics",
+    "operational_metrics",
+)
+
+
+def _compact_experiment_result(value: Any) -> dict[str, Any]:
+    """Return a small study index while full experiment details remain on disk."""
+
+    def field(name: str, default: Any = None) -> Any:
+        if isinstance(value, Mapping):
+            return value.get(name, default)
+        return getattr(value, name, default)
+
+    compact_cells: list[dict[str, Any]] = []
+    for raw in field("cell_results", ()) or ():
+        if not isinstance(raw, Mapping):
+            continue
+        compact_cells.append(
+            {
+                key: _jsonable(raw[key])
+                for key in _COMPACT_CELL_FIELDS
+                if key in raw
+            }
+        )
+    return {
+        "schema_version": "ppg_frailty.study_executor_result.v3",
+        "status": str(field("status", "passed")),
+        "scientific_scope": field("scientific_scope"),
+        "config_id": field("config_id"),
+        "config_hash": field("config_hash"),
+        "repeat_indices": _jsonable(field("repeat_indices", ())),
+        "fold_indices": _jsonable(field("fold_indices", ())),
+        "output_dir": (
+            None if field("output_dir") is None else str(field("output_dir"))
+        ),
+        "cell_results": compact_cells,
+        "metrics": _jsonable(field("metrics", {})),
+        "failure_reasons": _jsonable(field("failure_reasons", ())),
+        "detail_source": "persisted_experiment_artifacts",
+    }
+
+
+def _compact_case_record(record: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep case status/pointers while removing legacy nested experiment payloads."""
+
+    compact = dict(record)
+    result = compact.get("result")
+    if isinstance(result, Mapping):
+        compact["result"] = _compact_experiment_result(result)
+    return compact
 
 
 def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
@@ -280,7 +348,10 @@ def default_experiment_executor(
             folds=plan.execution.folds,
             progress_callback=emit,
         )
-        return _jsonable(result)
+        compact = _compact_experiment_result(result)
+        del result
+        gc.collect()
+        return compact
     if not callable(cell_runner):
         if callable(full_runner) and not complete_5x5:
             raise RuntimeError(
@@ -295,16 +366,17 @@ def default_experiment_executor(
     failed_cells: list[str] = []
     for repeat in plan.execution.repeats:
         for fold in plan.execution.folds:
-            cell_result = _jsonable(
-                _invoke_with_supported_kwargs(
-                    cell_runner,
-                    config_path=config_path,
-                    output_dir=experiment_output / f"repeat_{repeat:02d}_fold_{fold:02d}",
-                    repeat_index=repeat,
-                    fold_index=fold,
-                    progress_callback=emit,
-                )
+            raw_result = _invoke_with_supported_kwargs(
+                cell_runner,
+                config_path=config_path,
+                output_dir=experiment_output / f"repeat_{repeat:02d}_fold_{fold:02d}",
+                repeat_index=repeat,
+                fold_index=fold,
+                progress_callback=emit,
             )
+            cell_result = _compact_experiment_result(raw_result)
+            del raw_result
+            gc.collect()
             nested_cells = (
                 cell_result.get("cell_results")
                 if isinstance(cell_result, Mapping)
@@ -623,7 +695,7 @@ class StudyRunner:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if payload.get("config_sha256") != case.config_sha256:
             raise ValueError(f"resume result config drift for {case.case_id}")
-        return payload if payload.get("status") == "passed" else None
+        return _compact_case_record(payload) if payload.get("status") == "passed" else None
 
     def _run_one(
         self,
@@ -798,7 +870,7 @@ class StudyRunner:
                         total=total,
                         case_id=case.case_id,
                         unit_current=(
-                            repeats_per_case if payload["status"] == "passed" else 0
+                            repeats_per_case
                         ),
                         unit_total=repeats_per_case,
                         message=str(payload["status"]),
@@ -921,8 +993,6 @@ class StudyRunner:
                                 case_id=case.case_id,
                                 unit_current=(
                                     repeats_per_case
-                                    if payload["status"] == "passed"
-                                    else 0
                                 ),
                                 unit_total=repeats_per_case,
                                 message=str(payload["status"]),

@@ -37,8 +37,23 @@ def _read_csv_table(path: Path) -> tuple[Mapping[str, Any], ...]:
 
 
 def _first_shallow(paths: Iterable[Path]) -> Path | None:
+    values = _shallowest(paths)
+    return values[0] if values else None
+
+
+def _shallowest(paths: Iterable[Path]) -> tuple[Path, ...]:
+    """Select a root aggregate, or every equally shallow per-cell artifact."""
+
     values = tuple(paths)
-    return min(values, key=lambda path: (len(path.parts), str(path))) if values else None
+    if not values:
+        return ()
+    minimum_depth = min(len(path.parts) for path in values)
+    return tuple(
+        sorted(
+            (path for path in values if len(path.parts) == minimum_depth),
+            key=str,
+        )
+    )
 
 
 def _cell_rows(case_id: str, result: Mapping[str, Any], case_directory: Path) -> list[dict[str, Any]]:
@@ -142,18 +157,25 @@ def _oof_rows(
     *,
     filename: str,
 ) -> tuple[list[dict[str, Any]], str | None]:
-    candidates = tuple(artifact_root.rglob(filename))
-    target = _first_shallow(candidates)
-    if target is None:
+    targets = _shallowest(artifact_root.rglob(filename))
+    if not targets:
         return [], f"{filename} not found"
-    try:
-        from ppg_frailty.training import read_oof_parquet
+    from ppg_frailty.training import read_oof_parquet
 
-        values = read_oof_parquet(target)
-        rows = [{"case_id": case_id, **_mapping(value)} for value in values]
-        return rows, None
-    except Exception as error:  # noqa: BLE001 - reporting records the limitation.
-        return [], f"cannot read {target.name}: {type(error).__name__}: {error}"
+    rows: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for target in targets:
+        try:
+            values = read_oof_parquet(target)
+            rows.extend(
+                {"case_id": case_id, **_mapping(value)}
+                for value in values
+            )
+        except Exception as error:  # noqa: BLE001 - report the exact limitation.
+            errors.append(
+                f"cannot read {target}: {type(error).__name__}: {error}"
+            )
+    return rows, "; ".join(errors) if errors else None
 
 
 def _case_artifact_root(
@@ -187,30 +209,54 @@ def _manifest_case_directory(
 
 
 def _quality_rows(case_id: str, case_directory: Path) -> list[dict[str, Any]]:
-    target = _first_shallow(case_directory.rglob("quality_diagnostics.json"))
-    if target is None:
+    targets = _shallowest(case_directory.rglob("quality_diagnostics.json"))
+    if not targets:
         return []
-    payload = _read_json(target)
     rows: list[dict[str, Any]] = []
-    if isinstance(payload, Mapping) and isinstance(payload.get("cells"), list):
-        for cell in payload["cells"]:
-            if not isinstance(cell, Mapping):
-                continue
-            for item in cell.get("rows", ()):
+
+    def projected(item: Mapping[str, Any], target: Path) -> dict[str, Any]:
+        value = dict(item)
+        components = (
+            value.get("components")
+            if isinstance(value.get("components"), Mapping)
+            else {}
+        )
+        value["components"] = {
+            name: dict(components[name])
+            for name in ("predictor_availability", "non_predictor_features")
+            if isinstance(components.get(name), Mapping)
+        }
+        value["full_detail_artifact"] = target.relative_to(
+            case_directory
+        ).as_posix()
+        return value
+
+    for target in targets:
+        payload = _read_json(target)
+        if isinstance(payload, Mapping) and isinstance(payload.get("cells"), list):
+            for cell in payload["cells"]:
+                if not isinstance(cell, Mapping):
+                    continue
+                for item in cell.get("rows", ()):
+                    if isinstance(item, Mapping):
+                        rows.append(
+                            {
+                                "case_id": case_id,
+                                "repeat": cell.get("repeat_index"),
+                                "fold": cell.get("fold_index"),
+                                "quality_mode": cell.get("quality_mode"),
+                                **projected(item, target),
+                            }
+                        )
+        elif isinstance(payload, Mapping):
+            for item in payload.get("rows", ()):
                 if isinstance(item, Mapping):
                     rows.append(
                         {
                             "case_id": case_id,
-                            "repeat": cell.get("repeat_index"),
-                            "fold": cell.get("fold_index"),
-                            "quality_mode": cell.get("quality_mode"),
-                            **dict(item),
+                            **projected(item, target),
                         }
                     )
-    elif isinstance(payload, Mapping):
-        for item in payload.get("rows", ()):
-            if isinstance(item, Mapping):
-                rows.append({"case_id": case_id, **dict(item)})
     return rows
 
 
@@ -242,11 +288,13 @@ class CollectedStudy:
     controlled_parameters: tuple[Mapping[str, Any], ...]
     cell_rows: tuple[Mapping[str, Any], ...]
     history_rows: tuple[Mapping[str, Any], ...]
+    file_oof_rows: tuple[Mapping[str, Any], ...]
     subject_oof_rows: tuple[Mapping[str, Any], ...]
     role_oof_rows: tuple[Mapping[str, Any], ...]
     quality_rows: tuple[Mapping[str, Any], ...]
     trusted_config_metrics: tuple[Mapping[str, Any], ...]
     limitations: tuple[str, ...]
+    oof_read_failures: tuple[Mapping[str, Any], ...] = ()
 
 
 def collect_study(root: str | Path) -> CollectedStudy:
@@ -261,14 +309,26 @@ def collect_study(root: str | Path) -> CollectedStudy:
     manifest = _read_json(manifest_path)
     if not isinstance(plan, Mapping) or not isinstance(manifest, Mapping):
         raise TypeError("study plan and manifest roots must be mappings")
+    run_records: dict[str, Mapping[str, Any]] = {}
+    run_result_path = study_root / "study_run_result.json"
+    if run_result_path.is_file():
+        run_result = _read_json(run_result_path)
+        if isinstance(run_result, Mapping):
+            run_records = {
+                str(row["case_id"]): row
+                for row in run_result.get("case_records", ())
+                if isinstance(row, Mapping) and row.get("case_id") is not None
+            }
     case_records: list[Mapping[str, Any]] = []
     cell_rows: list[Mapping[str, Any]] = []
     history_rows: list[Mapping[str, Any]] = []
+    file_oof_rows: list[Mapping[str, Any]] = []
     oof_rows: list[Mapping[str, Any]] = []
     role_oof_rows: list[Mapping[str, Any]] = []
     quality_rows: list[Mapping[str, Any]] = []
     config_metrics: list[Mapping[str, Any]] = []
     limitations: list[str] = []
+    oof_read_failures: list[Mapping[str, Any]] = []
     for case in manifest.get("cases", ()):
         if not isinstance(case, Mapping):
             continue
@@ -290,12 +350,23 @@ def collect_study(root: str | Path) -> CollectedStudy:
             )
             limitations.append(f"{case_id}: case_result.json not found")
             continue
-        record = _read_json(result_path)
+        record = run_records.get(case_id)
+        if record is None:
+            record = _read_json(result_path)
         if not isinstance(record, Mapping):
             raise TypeError(f"case result root must be a mapping: {result_path}")
+        result = (
+            record.get("result")
+            if isinstance(record.get("result"), Mapping)
+            else {}
+        )
         case_records.append(
             {
-                **dict(record),
+                **{
+                    key: value
+                    for key, value in record.items()
+                    if key != "result"
+                },
                 "output_group": case.get("output_group"),
                 "case_directory": case.get(
                     "case_directory",
@@ -305,9 +376,23 @@ def collect_study(root: str | Path) -> CollectedStudy:
             }
         )
         artifact_root = _case_artifact_root(case_directory, record)
-        result = record.get("result") if isinstance(record.get("result"), Mapping) else {}
         cell_rows.extend(_cell_rows(case_id, result, artifact_root))
         history_rows.extend(_history_rows(case_id, result, artifact_root))
+        current_file_oof, file_limitation = _oof_rows(
+            case_id,
+            artifact_root,
+            filename="oof_file_predictions.parquet",
+        )
+        file_oof_rows.extend(current_file_oof)
+        if file_limitation is not None:
+            limitations.append(f"{case_id}: {file_limitation}")
+            oof_read_failures.append(
+                {
+                    "case_id": case_id,
+                    "oof_level": "file",
+                    "error": file_limitation,
+                }
+            )
         current_oof, limitation = _oof_rows(
             case_id,
             artifact_root,
@@ -316,6 +401,13 @@ def collect_study(root: str | Path) -> CollectedStudy:
         oof_rows.extend(current_oof)
         if limitation is not None:
             limitations.append(f"{case_id}: {limitation}")
+            oof_read_failures.append(
+                {
+                    "case_id": case_id,
+                    "oof_level": "participant",
+                    "error": limitation,
+                }
+            )
         current_role_oof, role_limitation = _oof_rows(
             case_id,
             artifact_root,
@@ -346,9 +438,11 @@ def collect_study(root: str | Path) -> CollectedStudy:
         ),
         cell_rows=tuple(cell_rows),
         history_rows=tuple(history_rows),
+        file_oof_rows=tuple(file_oof_rows),
         subject_oof_rows=tuple(oof_rows),
         role_oof_rows=tuple(role_oof_rows),
         quality_rows=tuple(quality_rows),
         trusted_config_metrics=tuple(config_metrics),
         limitations=tuple(dict.fromkeys(limitations)),
+        oof_read_failures=tuple(oof_read_failures),
     )

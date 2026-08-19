@@ -2,7 +2,60 @@
 
 状态：confirmed
 来源：用户项目总纲、`_agent/arc/PROJECT_HANDOFF.md`、2026-06-10 后实验与代码复核
-最后手动更新时间：2026-07-26
+最后手动更新时间：2026-08-18
+
+## 2026-08-18：活动 V2 的分阶段 Static Line B 筛选路线
+
+- 状态：confirmed
+- 来源：用户确认的六阶段省算力流程；当前代码、配置、dry-run 和测试复核。
+- 总原则：原 39-case mega-study 保留作完整探索；日常模型筛选优先按六阶段流程，
+  每阶段人工阅读报告并记录晋级决定，不自动继承赢家。
+
+### Stage 1：Representation baseline
+
+- 当前状态：可运行。
+- 默认预算：4 cases × 1 repeat × 5 folds = 20 outer cells。
+- 退出条件：判断 Raw、Feature vector、Feature matrix、Fusion 哪些线路值得进入
+  Stage 2；结果接近时先升级 Stage 1 到完整 5×5。
+
+### Stage 2：晋级 representation 内模型比较
+
+- 当前状态：可运行模板；启动前必须人工删除未晋级 representation block。
+- 最大候选：Raw 3、Feature vector 3、Feature matrix 2、Fusion 2；ShapeFormer、
+  MiniROCKET 和 ensemble 不混入本阶段。
+- 退出条件：每条晋级线路形成可解释的模型 shortlist。
+
+### Stage 3：ShapeFormer 稳定性阶梯
+
+- 当前状态：可运行。
+- 顺序：one-cell implementation test → one-repeat diagnostic → stable 后 full 5×5。
+- 退出条件：无 OOM/NaN、OOF/概率有效、资源可接受；失败不得阻断普通模型。
+
+### Stage 4：选中 Inception route 的 ensemble 因素
+
+- 当前状态：Raw InceptionFull 与 Matrix Inception 两组 registered pair 可运行，
+  每次只选择其中一组。
+- 比较：fixed member 0 对 five-member fold-level probability mean。
+- 退出条件：完成 matched single/ensemble paired report；无 eligible Inception
+  winner 时跳过。
+
+### Stage 5：Finalist 的 SQI 与 motion 路线
+
+- 当前状态：部分可运行、部分 deferred。
+- 已可运行：finalist 上 `quality.mode=off` 对 `diagnostics_only`，且 prediction/
+  retention 应一致。
+- 待实现：supervised SQI route、8ch/11ch motion model input、EKF/Profile-A、
+  reducer selection、motion override、formal motion 5×5、A3/A4 runners。
+- 升级条件：对应正式 runner、provenance、focused tests 和 no-training dry-run 完成。
+
+### Stage 6：最终模型的串行单因素消融
+
+- 当前状态：可运行模板。
+- 顺序：每条锁定线路独立运行一个 axis；人工写回 winner 后再切换下一个 axis。
+- Deep 建议顺序：LR → batch size → fixed epochs → weight decay。
+- Classical 使用各自 factor：Logistic C；SVM C/gamma；ExtraTrees max_features/
+  min_samples_leaf；ROCKET kernels/ridge alpha。
+- 禁止：把多个因素同时展开成大 grid，或跨 representation 混用一个 baseline。
 
 ## 当前总路线
 

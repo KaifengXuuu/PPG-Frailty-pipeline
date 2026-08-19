@@ -210,6 +210,8 @@ class TerminalProgressSink:
         self._overall_total = 0
         self._overall_label = "starting"
         self._units_by_case: dict[str, int] = {}
+        self._outcomes_by_case: dict[str, str] = {}
+        self._study_status: str | None = None
         self._active: dict[str, _ActiveDetail] = {}
 
     def __call__(self, event: ProgressEvent) -> None:
@@ -257,6 +259,8 @@ class TerminalProgressSink:
             self._overall_total = int(event.total) * units_per_case
             self._overall_label = event.message or "study"
             self._units_by_case.clear()
+            self._outcomes_by_case.clear()
+            self._study_status = None
             self._active.clear()
             return
         if name == "study_running":
@@ -286,18 +290,19 @@ class TerminalProgressSink:
         if name == "case_resumed" and event.case_id:
             completed = int(event.unit_total or event.unit_current or 0)
             self._units_by_case[event.case_id] = completed
+            self._outcomes_by_case[event.case_id] = "resumed"
             self._overall_current = min(
                 self._overall_total, sum(self._units_by_case.values())
             )
             self._active.pop(event.case_id, None)
             return
         if name == "case_finished" and event.case_id:
-            if event.message in {"passed", "success", "complete", "completed"}:
-                completed = int(event.unit_total or event.unit_current or 0)
-                self._units_by_case[event.case_id] = completed
-                self._overall_current = min(
-                    self._overall_total, sum(self._units_by_case.values())
-                )
+            completed = int(event.unit_total or event.unit_current or 0)
+            self._units_by_case[event.case_id] = completed
+            self._outcomes_by_case[event.case_id] = event.message or "unknown"
+            self._overall_current = min(
+                self._overall_total, sum(self._units_by_case.values())
+            )
             self._active.pop(event.case_id, None)
             self._overall_label = (
                 f"{event.current}/{event.total} cases · last {event.message}"
@@ -306,9 +311,23 @@ class TerminalProgressSink:
             )
             return
         if name == "study_finished":
-            if event.message == "passed":
-                self._overall_current = self._overall_total
-            self._overall_label = event.message or "study complete"
+            if event.total:
+                units_per_case = max(1, self._overall_total // int(event.total))
+                self._overall_current = min(
+                    self._overall_total,
+                    int(event.current) * units_per_case,
+                )
+            self._study_status = event.message or "complete"
+            counts: dict[str, int] = {}
+            for outcome in self._outcomes_by_case.values():
+                counts[outcome] = counts.get(outcome, 0) + 1
+            summary = " · ".join(
+                f"{count} {outcome}"
+                for outcome, count in sorted(counts.items())
+            )
+            self._overall_label = " · ".join(
+                part for part in (self._study_status, summary) if part
+            )
             self._active.clear()
             return
         if name == "report_started":
@@ -316,7 +335,11 @@ class TerminalProgressSink:
             return
         if name == "report_finished":
             self._active.pop("__report__", None)
-            self._overall_label = "report complete"
+            self._overall_label = event.message or (
+                "report complete"
+                if self._study_status is None
+                else f"report complete · study {self._study_status}"
+            )
             return
         if not self._study_mode and event.total:
             self._overall_current = int(event.current)
@@ -379,7 +402,7 @@ class TerminalProgressSink:
         now = self._clock()
         elapsed = now - self._started_at
         count = (
-            f"{self._overall_current}/{self._overall_total} repeats"
+            f"{self._overall_current}/{self._overall_total} case-repeats"
             if self._study_mode and self._overall_total
             else f"{self._overall_current}/{self._overall_total}"
             if self._overall_total

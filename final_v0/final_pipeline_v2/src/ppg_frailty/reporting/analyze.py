@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, fields, replace
 from statistics import fmean, pstdev
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -16,6 +16,13 @@ from sklearn.metrics import (
     precision_recall_fscore_support,
 )
 
+from ..training.aggregation import (
+    BALANCE_LINES,
+    LINE_A_EQUAL_FILES,
+    LINE_B_EQUAL_ROLE_FAMILIES,
+    aggregate_hierarchy,
+)
+from ..training.oof import OofPredictionRow
 from .collect import CollectedStudy
 
 
@@ -618,6 +625,352 @@ def _route_role_quality_tables(
     return coverage, distributions
 
 
+_OOF_ROW_FIELDS = frozenset(field.name for field in fields(OofPredictionRow))
+
+
+def _oof_object(row: Mapping[str, Any]) -> OofPredictionRow:
+    """Rebuild one strict OOF row from the report-safe mapping projection."""
+
+    payload = {
+        name: row[name]
+        for name in _OOF_ROW_FIELDS
+        if name in row
+    }
+    for name in ("probabilities", "member_training_seeds", "class_order"):
+        if name in payload:
+            payload[name] = tuple(payload[name] or ())
+    return OofPredictionRow(**payload)
+
+
+def _participant_replay_key(row: OofPredictionRow) -> tuple[Any, ...]:
+    return (
+        row.repeat,
+        row.fold,
+        row.split_seed,
+        row.participant_id,
+        row.prediction_kind,
+        row.member_index,
+        row.training_seed,
+        row.model_hash,
+        row.signal_route,
+    )
+
+
+def _validate_source_line_replay(
+    *,
+    case_id: str,
+    source_line: str,
+    source_rows: Sequence[OofPredictionRow],
+    replayed: Sequence[OofPredictionRow],
+    persisted_rows: Sequence[Mapping[str, Any]],
+) -> str:
+    """Verify retained probabilities and fully-dropped participant coverage."""
+
+    if not persisted_rows:
+        return "not_checked_no_persisted_subject_oof"
+    persisted = tuple(_oof_object(row) for row in persisted_rows)
+    if any(row.level != "participant" for row in persisted):
+        raise ValueError("persisted subject OOF contains a non-participant row")
+    if any(row.aggregation_rule != source_line for row in persisted):
+        raise ValueError("persisted subject OOF disagrees with the file-OOF source line")
+    retained_persisted = tuple(row for row in persisted if row.retained)
+    dropped_persisted = tuple(row for row in persisted if not row.retained)
+    expected = {
+        _participant_replay_key(row): row
+        for row in retained_persisted
+    }
+    actual = {_participant_replay_key(row): row for row in replayed}
+    if len(expected) != len(retained_persisted) or len(actual) != len(replayed):
+        raise ValueError("duplicate participant OOF identity during aggregation replay")
+    if expected.keys() != actual.keys():
+        raise ValueError("file-OOF replay participant roster differs from persisted subject OOF")
+    for key, observed in actual.items():
+        reference = expected[key]
+        if (
+            observed.label != reference.label
+            or tuple(observed.class_order) != tuple(reference.class_order)
+            or observed.aggregation_rule != reference.aggregation_rule
+        ):
+            raise ValueError("file-OOF replay participant metadata differs from persisted OOF")
+        if not np.allclose(
+            np.asarray(observed.probabilities, dtype=np.float64),
+            np.asarray(reference.probabilities, dtype=np.float64),
+            rtol=0.0,
+            atol=1e-7,
+        ):
+            raise ValueError(
+                f"{case_id}: file-OOF source-line replay probability mismatch"
+            )
+
+    source_by_participant: dict[
+        tuple[Any, ...], list[OofPredictionRow]
+    ] = {}
+    for row in source_rows:
+        source_by_participant.setdefault(_participant_replay_key(row), []).append(row)
+    retained_source_keys = {
+        key
+        for key, rows in source_by_participant.items()
+        if any(row.retained for row in rows)
+    }
+    dropped_source_keys = set(source_by_participant) - retained_source_keys
+    if retained_source_keys != set(actual):
+        raise ValueError("file-OOF retained participant coverage differs from replay")
+    persisted_dropped_keys = {
+        _participant_replay_key(row)
+        for row in dropped_persisted
+    }
+    if len(persisted_dropped_keys) != len(dropped_persisted):
+        raise ValueError("duplicate dropped participant OOF identity during replay")
+    if persisted_dropped_keys != dropped_source_keys:
+        raise ValueError(
+            "file-OOF fully-dropped participant coverage differs from persisted OOF"
+        )
+    return "exact_match_persisted_subject_oof_atol_1e-7_with_dropped_coverage"
+
+
+def _aggregation_line_tables(
+    collected: CollectedStudy,
+    *,
+    complete_by_case: Mapping[str, bool],
+) -> tuple[
+    list[Mapping[str, Any]],
+    list[Mapping[str, Any]],
+    list[Mapping[str, Any]],
+    list[str],
+]:
+    """Build Line A/Line B views from one fitted model's file-level OOF.
+
+    The source line reproduces the persisted participant OOF. The other line is
+    explicitly post-hoc aggregation sensitivity only; it is not a separately
+    trained Line A/Line B model and is never eligible for the primary ranking.
+    """
+
+    file_by_case: dict[str, list[Mapping[str, Any]]] = {}
+    for row in collected.file_oof_rows:
+        file_by_case.setdefault(str(row.get("case_id")), []).append(row)
+    subject_by_case: dict[str, list[Mapping[str, Any]]] = {}
+    for row in collected.subject_oof_rows:
+        subject_by_case.setdefault(str(row.get("case_id")), []).append(row)
+    statuses = _record_statuses(collected)
+    bins = int(collected.plan.get("report", {}).get("calibration_bins", 10))
+    summaries: list[Mapping[str, Any]] = []
+    repeat_metrics: list[Mapping[str, Any]] = []
+    per_class_metrics: list[Mapping[str, Any]] = []
+    notes: list[str] = []
+    read_failures_by_case: dict[str, list[Mapping[str, Any]]] = {}
+    for failure in collected.oof_read_failures:
+        case_id = str(failure.get("case_id", ""))
+        if case_id:
+            read_failures_by_case.setdefault(case_id, []).append(failure)
+    for case_id, failures in sorted(read_failures_by_case.items()):
+        details = "; ".join(
+            f"{row.get('oof_level', 'unknown')}: {row.get('error', 'read failed')}"
+            for row in failures
+        )
+        notes.append(
+            f"{case_id}: Line A/Line B file-OOF reaggregation suppressed "
+            f"because OOF input was incomplete or unreadable: {details}"
+        )
+
+    for case_id, raw_rows in sorted(file_by_case.items()):
+        if case_id in read_failures_by_case:
+            continue
+        try:
+            source_rows = tuple(_oof_object(row) for row in raw_rows)
+            if not source_rows or any(row.level != "file" for row in source_rows):
+                raise ValueError("Line A/Line B report replay requires file-level OOF rows")
+            source_lines = {row.aggregation_rule for row in source_rows}
+            if len(source_lines) != 1 or next(iter(source_lines)) not in BALANCE_LINES:
+                raise ValueError("file-level OOF must declare exactly one supported source line")
+            source_line = next(iter(source_lines))
+            participant_by_line: dict[str, tuple[OofPredictionRow, ...]] = {}
+            for balance_line in BALANCE_LINES:
+                replay_source = tuple(
+                    replace(row, aggregation_rule=balance_line)
+                    for row in source_rows
+                )
+                participant_by_line[balance_line] = aggregate_hierarchy(
+                    replay_source,
+                    balance_line=balance_line,
+                    quality_weighted=False,
+                ).participant_rows
+            source_validation = _validate_source_line_replay(
+                case_id=case_id,
+                source_line=source_line,
+                source_rows=source_rows,
+                replayed=participant_by_line[source_line],
+                persisted_rows=subject_by_case.get(case_id, ()),
+            )
+            participant_source_keys = {
+                _participant_replay_key(row)
+                for row in source_rows
+            }
+            retained_participant_source_keys = {
+                _participant_replay_key(row)
+                for row in source_rows
+                if row.retained
+            }
+            dropped_participant_count = (
+                len(participant_source_keys)
+                - len(retained_participant_source_keys)
+            )
+            case_rows: list[dict[str, Any]] = []
+            for balance_line in BALANCE_LINES:
+                participant_maps = [
+                    {"case_id": case_id, **asdict(row)}
+                    for row in participant_by_line[balance_line]
+                ]
+                by_repeat: dict[int, list[Mapping[str, Any]]] = {}
+                for row in participant_maps:
+                    by_repeat.setdefault(int(row["repeat"]), []).append(row)
+                current_repeats: list[Mapping[str, Any]] = []
+                for repeat, rows in sorted(by_repeat.items()):
+                    metric = _oof_metric_row(case_id, rows, repeat=repeat)
+                    if metric is None:
+                        continue
+                    projected = {
+                        key: value
+                        for key, value in metric.items()
+                        if key not in {"per_class", "confusion_matrix"}
+                    }
+                    projected.update(
+                        {
+                            "balance_line": balance_line,
+                            "declared_source_line": source_line,
+                            "view_role": (
+                                "declared_source_line"
+                                if balance_line == source_line
+                                else "posthoc_aggregation_only"
+                            ),
+                            "metric_source": "file_oof_reaggregation",
+                        }
+                    )
+                    _, repeat_ece = _calibration_rows(
+                        case_id,
+                        rows,
+                        bins=bins,
+                    )
+                    projected["expected_calibration_error"] = repeat_ece
+                    current_repeats.append(projected)
+                    repeat_metrics.append(projected)
+                    for row in metric["per_class"]:
+                        per_class_metrics.append(
+                            {
+                                **row,
+                                "balance_line": balance_line,
+                                "declared_source_line": source_line,
+                                "view_role": (
+                                    "declared_source_line"
+                                    if balance_line == source_line
+                                    else "posthoc_aggregation_only"
+                                ),
+                                "metric_source": "per_repeat_file_oof_reaggregation",
+                            }
+                        )
+                if not current_repeats:
+                    raise ValueError("file-level OOF produced no per-repeat metrics")
+                ba_statistics = _descriptive_statistics(
+                    row.get("balanced_accuracy") for row in current_repeats
+                )
+                f1_statistics = _descriptive_statistics(
+                    row.get("macro_f1") for row in current_repeats
+                )
+                worst_recall_statistics = _descriptive_statistics(
+                    row.get("worst_class_recall") for row in current_repeats
+                )
+                worst_f1_statistics = _descriptive_statistics(
+                    row.get("worst_class_f1") for row in current_repeats
+                )
+                ece_statistics = _descriptive_statistics(
+                    row.get("expected_calibration_error")
+                    for row in current_repeats
+                )
+                primary_eligible = (
+                    balance_line == source_line
+                    and statuses.get(case_id) == "passed"
+                    and source_validation.startswith("exact_match")
+                    and bool(complete_by_case.get(case_id, False))
+                )
+                case_rows.append(
+                    {
+                        "case_id": case_id,
+                        "balance_line": balance_line,
+                        "declared_source_line": source_line,
+                        "view_role": (
+                            "declared_source_line"
+                            if balance_line == source_line
+                            else "posthoc_aggregation_only"
+                        ),
+                        "case_status": statuses.get(case_id, "not_run"),
+                        "primary_ranking_eligible": primary_eligible,
+                        "participant_mean_balanced_accuracy": ba_statistics["mean"],
+                        "participant_mean_macro_f1": f1_statistics["mean"],
+                        "repeat_balanced_accuracy_population_sd": ba_statistics[
+                            "population_sd"
+                        ],
+                        "repeat_balanced_accuracy_ci95_low": ba_statistics["ci95_low"],
+                        "repeat_balanced_accuracy_ci95_high": ba_statistics["ci95_high"],
+                        "repeat_macro_f1_population_sd": f1_statistics[
+                            "population_sd"
+                        ],
+                        "repeat_macro_f1_ci95_low": f1_statistics["ci95_low"],
+                        "repeat_macro_f1_ci95_high": f1_statistics["ci95_high"],
+                        "worst_class_recall": worst_recall_statistics["mean"],
+                        "worst_class_f1": worst_f1_statistics["mean"],
+                        "expected_calibration_error": ece_statistics["mean"],
+                        "repeat_worst_class_recall_population_sd": (
+                            worst_recall_statistics["population_sd"]
+                        ),
+                        "repeat_worst_class_f1_population_sd": (
+                            worst_f1_statistics["population_sd"]
+                        ),
+                        "repeat_expected_calibration_error_population_sd": (
+                            ece_statistics["population_sd"]
+                        ),
+                        "repeat_count": len(current_repeats),
+                        "participant_oof_prediction_count": len(participant_maps),
+                        "participant_oof_total_count": len(
+                            participant_source_keys
+                        ),
+                        "dropped_participant_oof_count": dropped_participant_count,
+                        "file_oof_prediction_count": len(source_rows),
+                        "retained_file_oof_prediction_count": sum(
+                            row.retained for row in source_rows
+                        ),
+                        "dropped_file_oof_prediction_count": sum(
+                            not row.retained for row in source_rows
+                        ),
+                        "source_replay_validation": (
+                            source_validation
+                            if balance_line == source_line
+                            else "not_applicable_posthoc_view"
+                        ),
+                        "metric_source": "file_oof_reaggregation",
+                    }
+                )
+            lookup = {str(row["balance_line"]): row for row in case_rows}
+            line_a = lookup[LINE_A_EQUAL_FILES]
+            line_b = lookup[LINE_B_EQUAL_ROLE_FAMILIES]
+            ba_delta = (
+                float(line_a["participant_mean_balanced_accuracy"])
+                - float(line_b["participant_mean_balanced_accuracy"])
+            )
+            f1_delta = (
+                float(line_a["participant_mean_macro_f1"])
+                - float(line_b["participant_mean_macro_f1"])
+            )
+            for row in case_rows:
+                row["line_a_minus_line_b_balanced_accuracy"] = ba_delta
+                row["line_a_minus_line_b_macro_f1"] = f1_delta
+            summaries.extend(case_rows)
+        except Exception as error:  # noqa: BLE001 - preserve the exact report limitation.
+            notes.append(
+                f"{case_id}: Line A/Line B file-OOF reaggregation unavailable: "
+                f"{type(error).__name__}: {error}"
+            )
+    return summaries, repeat_metrics, per_class_metrics, notes
+
+
 @dataclass(frozen=True)
 class StudyAnalysis:
     """All normalized tables consumed by CSV, Markdown, HTML, and plots."""
@@ -632,6 +985,9 @@ class StudyAnalysis:
     confusion_row_normalized: tuple[Mapping[str, Any], ...]
     calibration_bins: tuple[Mapping[str, Any], ...]
     paired_deltas: tuple[Mapping[str, Any], ...]
+    aggregation_line_comparison: tuple[Mapping[str, Any], ...]
+    aggregation_line_repeat_metrics: tuple[Mapping[str, Any], ...]
+    aggregation_line_per_class_metrics: tuple[Mapping[str, Any], ...]
     coverage: tuple[Mapping[str, Any], ...]
     route_role_coverage: tuple[Mapping[str, Any], ...]
     quality_distributions: tuple[Mapping[str, Any], ...]
@@ -1094,6 +1450,21 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
     route_role_coverage, quality_distributions = _route_role_quality_tables(
         collected
     )
+    (
+        aggregation_line_comparison,
+        aggregation_line_repeat_metrics,
+        aggregation_line_per_class_metrics,
+        aggregation_line_notes,
+    ) = _aggregation_line_tables(
+        collected,
+        complete_by_case={
+            str(row.get("case_id")): bool(
+                row.get("complete_for_requested_execution")
+            )
+            for row in summaries
+        },
+    )
+    notes.extend(aggregation_line_notes)
     return StudyAnalysis(
         case_summary=tuple(summaries),
         metric_distribution_summary=tuple(metric_distributions),
@@ -1105,6 +1476,11 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         confusion_row_normalized=tuple(confusion_row_normalized),
         calibration_bins=tuple(calibration),
         paired_deltas=tuple(paired),
+        aggregation_line_comparison=tuple(aggregation_line_comparison),
+        aggregation_line_repeat_metrics=tuple(aggregation_line_repeat_metrics),
+        aggregation_line_per_class_metrics=tuple(
+            aggregation_line_per_class_metrics
+        ),
         coverage=tuple(coverage_rows),
         route_role_coverage=tuple(route_role_coverage),
         quality_distributions=tuple(quality_distributions),

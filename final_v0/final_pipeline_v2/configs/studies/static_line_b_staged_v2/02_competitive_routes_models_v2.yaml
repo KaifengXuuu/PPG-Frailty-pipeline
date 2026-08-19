@@ -1,11 +1,12 @@
-# Stage 2 is manual-adaptive. Before a formal run, delete every complete
-# output_group block that did not advance from Stage 1. The unpruned file is a
-# valid superset for dry-run review, not a recommendation to run all ten cases.
+# Extreme-compute-saving Stage 2 supplement. Reuse the already completed r0
+# evidence for canonical Raw CompactCNN, canonical Raw InceptionFull and
+# Feature-vector LogisticRegressionL2. This plan runs only the three missing
+# canonical comparisons; it does not import or relabel the earlier artifacts.
 schema_version: ppg_frailty.study_plan.v2
 study:
   study_id: staged_static_02_competitive_routes_models_v2
   kind: catalog_sweep
-  purpose: "Compare model families only inside representation routes manually advanced from Stage 1."
+  purpose: "Complete the missing one-repeat Raw and Feature-vector model comparisons while reusing already reviewed r0 evidence."
   flow_position: "Stage 2 after representation screening and before ShapeFormer/ensemble work."
   decision_role: candidate_comparison
   reference_case_id: null
@@ -19,96 +20,48 @@ search:
   method: deterministic_sparse_profiles
   selection_seed: 42
   runtime_sampling: false
-  interpretation: "Canonical architecture comparison within manually selected representation routes."
+  interpretation: "Three-case canonical r0 supplement; combine its report manually with the declared reused r0 evidence."
   controlled_factors:
-    - "Same participants, 5x5 folds, Line B, signal preparation, windows and aggregation"
+    - "Same participants, repeat 0 and all five held-out folds, Line B, signal preparation, windows and aggregation"
     - "Quality off; identity reducer; motion override disabled"
     - "Canonical model parameters; no optimizer or representation grid"
   notes:
-    - "Delete whole non-advanced representation blocks before execution."
+    - "Reuse Raw CompactCNN and Logistic r0 from artifacts/studies/static_line_b_staged_v2/20260818_234543_catalog_sweep_staged-static-01-representation-baselines-v2."
+    - "Reuse Raw InceptionFull 400 Hz r0 from artifacts/studies/20260817_214823_catalog_sweep_static-line-b-all-models-v2/raw/inception_full__fs400_reference."
+    - "The new report covers only these three supplemental cases; the reused evidence remains separately identified and must be reviewed alongside it."
+    - "Every generated report shows canonical Line B plus Line A equal-file post-hoc aggregation sensitivity; Line A is not separate training or selection evidence."
     - "ShapeFormer and ensemble entries are intentionally excluded."
 cases:
-  # RAW block
-  - case_id: raw__compact_cnn
-    catalog_entry: compact_cnn
-    screen_profile_id: canonical
-    output_group: raw
-    overrides: {}
-    rationale: "Raw compact reference."
-    formal_profile: null
+  # Missing canonical Raw comparison.
   - case_id: raw__inception_small
     catalog_entry: inception_small
     screen_profile_id: canonical
     output_group: raw
     overrides: {}
-    rationale: "Raw lower-capacity Inception candidate."
+    rationale: "Complete the missing canonical 400 Hz InceptionSmall r0 comparison."
     formal_profile: null
-  - case_id: raw__inception_full
-    catalog_entry: inception_full
-    screen_profile_id: canonical
-    output_group: raw
-    overrides: {}
-    rationale: "Raw full Inception candidate."
-    formal_profile: null
-  # FEATURE VECTOR block
-  - case_id: feature_vector__logistic
-    catalog_entry: logistic_regression
-    screen_profile_id: canonical
-    output_group: feature_vector
-    overrides: {}
-    rationale: "Linear L2 baseline."
-    formal_profile: null
+  # Missing canonical Feature-vector comparisons.
   - case_id: feature_vector__rbf_svm
     catalog_entry: rbf_svm
     screen_profile_id: canonical
     output_group: feature_vector
     overrides: {}
-    rationale: "Nonlinear kernel candidate."
+    rationale: "Complete the missing canonical nonlinear feature-vector r0 comparison."
     formal_profile: null
   - case_id: feature_vector__extra_trees
     catalog_entry: extra_trees
     screen_profile_id: canonical
     output_group: feature_vector
     overrides: {}
-    rationale: "Tree-ensemble candidate."
-    formal_profile: null
-  # FEATURE MATRIX block
-  - case_id: feature_matrix__rocket_ridge
-    catalog_entry: rocket_numpy
-    screen_profile_id: canonical
-    output_group: feature_matrix
-    overrides: {}
-    rationale: "ROCKET/Ridge matrix candidate."
-    formal_profile: null
-  - case_id: feature_matrix__inception
-    catalog_entry: inception_matrix
-    screen_profile_id: canonical
-    output_group: feature_matrix
-    overrides: {}
-    rationale: "Deep ordered-matrix candidate."
-    formal_profile: null
-  # FUSION block
-  - case_id: fusion__compact
-    catalog_entry: fusion_compact
-    screen_profile_id: canonical
-    output_group: fusion
-    overrides: {}
-    rationale: "Compact fusion candidate."
-    formal_profile: null
-  - case_id: fusion__inception
-    catalog_entry: fusion_inception
-    screen_profile_id: canonical
-    output_group: fusion
-    overrides: {}
-    rationale: "Inception fusion candidate."
+    rationale: "Complete the missing canonical tree-ensemble feature-vector r0 comparison."
     formal_profile: null
 execution:
-  repeats: [0, 1, 2, 3, 4]
+  repeats: [0]
   folds: [0, 1, 2, 3, 4]
-  jobs: 2
+  jobs: 1
   parallel_level: cases
   continue_on_error: true
-  allow_parallel_deep: true
+  allow_parallel_deep: false
 output:
   root: artifacts/studies/static_line_b_staged_v2
 report:

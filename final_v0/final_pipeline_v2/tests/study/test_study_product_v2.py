@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -14,7 +14,14 @@ import yaml
 
 from ppg_frailty.reporting import generate_study_report
 from ppg_frailty.reporting.analyze import analyze_study
-from ppg_frailty.reporting.collect import CollectedStudy
+from ppg_frailty.reporting.collect import CollectedStudy, _oof_rows
+from ppg_frailty.experiment import _artifact_index_cell_summary
+from ppg_frailty.training.aggregation import (
+    LINE_A_EQUAL_FILES,
+    LINE_B_EQUAL_ROLE_FAMILIES,
+    aggregate_hierarchy,
+)
+from ppg_frailty.training.oof import OofPredictionRow
 from ppg_frailty.study import (
     NullProgressSink,
     ProgressEvent,
@@ -22,7 +29,10 @@ from ppg_frailty.study import (
     parse_study_plan,
     validate_canonical_expansion,
 )
-from ppg_frailty.study.runner import _process_default_case
+from ppg_frailty.study.runner import (
+    _compact_experiment_result,
+    _process_default_case,
+)
 
 
 def fake_executor(case, config_path, case_directory, plan, progress_sink):
@@ -279,6 +289,22 @@ class StudyProductTests(unittest.TestCase):
         self.assertIn("Predictive ranking", summary)
         self.assertIn("Deployment measurements", summary)
         self.assertIn("Macro-F1 LCB95", summary)
+        self.assertIn(
+            "Aggregation sensitivity from the same file-level OOF",
+            summary,
+        )
+        self.assertIn("not selection evidence", summary)
+        self.assertIn("N/A — no rows were available.", summary)
+        self.assertEqual(
+            json.loads(
+                (
+                    result.output_directory
+                    / "tables"
+                    / "aggregation_line_comparison.json"
+                ).read_text(encoding="utf-8")
+            ),
+            [],
+        )
         index = json.loads(report.output_index.read_text(encoding="utf-8"))
         paths = {row["path"] for row in index["artifacts"]}
         self.assertEqual(
@@ -297,6 +323,9 @@ class StudyProductTests(unittest.TestCase):
         self.assertIn("tables/incomplete_cases.csv", paths)
         self.assertIn("tables/confusion_counts.csv", paths)
         self.assertIn("tables/confusion_row_normalized.csv", paths)
+        self.assertIn("tables/aggregation_line_comparison.csv", paths)
+        self.assertIn("tables/aggregation_line_repeat_metrics.csv", paths)
+        self.assertIn("tables/aggregation_line_per_class_metrics.csv", paths)
         self.assertEqual(
             len(
                 [
@@ -552,6 +581,456 @@ class StudyProductTests(unittest.TestCase):
         self.assertEqual(result.passed_case_count, 2)
         self.assertEqual(result.failed_case_count, 0)
 
+    def test_study_executor_result_drops_large_details_after_persistence(self) -> None:
+        compact = _compact_experiment_result(
+            {
+                "status": "passed",
+                "scientific_scope": "selected_outer_cell",
+                "config_id": "compact",
+                "config_hash": "a" * 64,
+                "repeat_indices": [0],
+                "fold_indices": [0],
+                "output_dir": str(self.root / "experiment"),
+                "cell_results": [
+                    {
+                        "status": "passed",
+                        "repeat_index": 0,
+                        "fold_index": 0,
+                        "metrics": {"balanced_accuracy": 0.5},
+                        "quality_diagnostics": [{"blob": "x" * 100_000}],
+                        "training_history": [{"epoch": 1}],
+                    }
+                ],
+            }
+        )
+        self.assertEqual(compact["status"], "passed")
+        self.assertEqual(
+            compact["cell_results"][0]["metrics"]["balanced_accuracy"],
+            0.5,
+        )
+        self.assertNotIn("quality_diagnostics", compact["cell_results"][0])
+        self.assertNotIn("training_history", compact["cell_results"][0])
+        self.assertLess(len(json.dumps(compact)), 10_000)
+
+    def test_experiment_index_points_to_dedicated_large_artifacts(self) -> None:
+        summary = _artifact_index_cell_summary(
+            {
+                "status": "passed",
+                "metrics": {"macro_f1": 0.4},
+                "quality_diagnostics": [{"record_id": "r1"}, {"record_id": "r2"}],
+                "training_history": [{"epoch": 1}],
+            }
+        )
+        self.assertNotIn("quality_diagnostics", summary)
+        self.assertNotIn("training_history", summary)
+        self.assertEqual(summary["quality_diagnostic_row_count"], 2)
+        self.assertEqual(summary["training_history_row_count"], 1)
+        self.assertEqual(
+            summary["quality_diagnostics_artifact"],
+            "quality_diagnostics.json",
+        )
+
+    def test_report_collector_combines_equal_depth_per_fold_oof_files(self) -> None:
+        artifact_root = self.root / "experiment"
+        paths: list[Path] = []
+        for fold in (0, 1):
+            target = (
+                artifact_root
+                / f"repeat_00_fold_{fold:02d}"
+                / "oof_subject_predictions.parquet"
+            )
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"fixture")
+            paths.append(target)
+
+        def fake_read(path: Path):
+            return [{"participant_id": path.parent.name}]
+
+        with patch(
+            "ppg_frailty.training.read_oof_parquet",
+            side_effect=fake_read,
+        ):
+            rows, limitation = _oof_rows(
+                "case",
+                artifact_root,
+                filename="oof_subject_predictions.parquet",
+            )
+        self.assertIsNone(limitation)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(
+            {row["participant_id"] for row in rows},
+            {"repeat_00_fold_00", "repeat_00_fold_01"},
+        )
+
+        root_aggregate = artifact_root / "oof_subject_predictions.parquet"
+        root_aggregate.write_bytes(b"aggregate")
+        with patch(
+            "ppg_frailty.training.read_oof_parquet",
+            side_effect=fake_read,
+        ):
+            aggregate_rows, limitation = _oof_rows(
+                "case",
+                artifact_root,
+                filename="oof_subject_predictions.parquet",
+            )
+        self.assertIsNone(limitation)
+        self.assertEqual(len(aggregate_rows), 1)
+        self.assertEqual(
+            aggregate_rows[0]["participant_id"],
+            "experiment",
+        )
+
+    def test_file_oof_reports_line_a_sensitivity_without_changing_primary_rank(self) -> None:
+        probabilities = {
+            "P0": {
+                "B": (0.98, 0.01, 0.01),
+                "R": (0.20, 0.79, 0.01),
+            },
+            "P1": {
+                "B": (0.05, 0.90, 0.05),
+                "R": (0.05, 0.90, 0.05),
+            },
+            "P2": {
+                "B": (0.05, 0.05, 0.90),
+                "R": (0.05, 0.05, 0.90),
+            },
+        }
+        file_rows: list[OofPredictionRow] = []
+        for repeat, seed in ((0, 42), (1, 10042)):
+            for participant_index, (participant_id, by_role) in enumerate(
+                probabilities.items()
+            ):
+                current_by_role = by_role
+                if repeat == 1 and participant_id == "P0":
+                    current_by_role = {
+                        "B": (0.01, 0.98, 0.01),
+                        "R": (0.01, 0.98, 0.01),
+                    }
+                for role in ("B", "R1", "R2", "R3", "R4"):
+                    role_family = role[0]
+                    file_rows.append(
+                        OofPredictionRow(
+                            participant_id=participant_id,
+                            file_id=f"{participant_id}_{role}",
+                            role=role,
+                            label=participant_index,
+                            probabilities=current_by_role[role_family],
+                            repeat=repeat,
+                            fold=0,
+                            split_seed=seed,
+                            training_seed=seed,
+                            config_hash="a" * 64,
+                            manifest_hash="b" * 64,
+                            fold_hash="c" * 64,
+                            preprocessing_hash="d" * 64,
+                            feature_hash="e" * 64,
+                            model_hash="f" * 64,
+                            representation_mode="raw",
+                            signal_route="direct_x_filter",
+                            quality_score=1.0,
+                            retained=True,
+                            level="file",
+                            prediction_kind="single_model",
+                            class_order=(0, 1, 2),
+                            aggregation_rule=LINE_B_EQUAL_ROLE_FAMILIES,
+                        )
+                    )
+            for role in ("B", "R1", "R2", "R3", "R4"):
+                file_rows.append(
+                    OofPredictionRow(
+                        participant_id="P3",
+                        file_id=f"P3_{role}",
+                        role=role,
+                        label=0,
+                        probabilities=(),
+                        repeat=repeat,
+                        fold=0,
+                        split_seed=seed,
+                        training_seed=seed,
+                        config_hash="a" * 64,
+                        manifest_hash="b" * 64,
+                        fold_hash="c" * 64,
+                        preprocessing_hash="d" * 64,
+                        feature_hash="e" * 64,
+                        model_hash="f" * 64,
+                        representation_mode="raw",
+                        signal_route="direct_x_filter",
+                        quality_score=1.0,
+                        retained=False,
+                        level="file",
+                        prediction_kind="single_model",
+                        class_order=(),
+                        aggregation_rule=LINE_B_EQUAL_ROLE_FAMILIES,
+                        rejection_reason="synthetic_all_files_dropped",
+                    )
+                )
+        retained_subject_rows = aggregate_hierarchy(
+            file_rows,
+            balance_line=LINE_B_EQUAL_ROLE_FAMILIES,
+        ).participant_rows
+        dropped_subject_rows = tuple(
+            replace(
+                next(
+                    row
+                    for row in file_rows
+                    if row.repeat == repeat and row.participant_id == "P3"
+                ),
+                file_id=f"participant::P3",
+                role="participant",
+                level="participant",
+            )
+            for repeat in (0, 1)
+        )
+        subject_rows = (*retained_subject_rows, *dropped_subject_rows)
+        bundle = CollectedStudy(
+            root=self.root,
+            plan={
+                "execution": {"repeats": [0, 1], "folds": [0]},
+                "report": {"calibration_bins": 5},
+            },
+            manifest={
+                "cases": [{"case_id": "case_001", "is_reference": True}],
+                "reference_case_id": "case_001",
+            },
+            case_records=({"case_id": "case_001", "status": "passed"},),
+            varied_parameters=(),
+            controlled_parameters=(),
+            cell_rows=(
+                {
+                    "case_id": "case_001",
+                    "status": "passed",
+                    "repeat": 0,
+                    "fold": 0,
+                },
+                {
+                    "case_id": "case_001",
+                    "status": "passed",
+                    "repeat": 1,
+                    "fold": 0,
+                },
+            ),
+            history_rows=(),
+            file_oof_rows=tuple(
+                {"case_id": "case_001", **asdict(row)}
+                for row in file_rows
+            ),
+            subject_oof_rows=tuple(
+                {"case_id": "case_001", **asdict(row)}
+                for row in subject_rows
+            ),
+            role_oof_rows=(),
+            quality_rows=(),
+            trusted_config_metrics=(),
+            limitations=(),
+        )
+        analysis = analyze_study(bundle)
+        by_line = {
+            str(row["balance_line"]): row
+            for row in analysis.aggregation_line_comparison
+        }
+        self.assertEqual(set(by_line), {LINE_A_EQUAL_FILES, LINE_B_EQUAL_ROLE_FAMILIES})
+        self.assertAlmostEqual(
+            float(
+                by_line[LINE_B_EQUAL_ROLE_FAMILIES][
+                    "participant_mean_balanced_accuracy"
+                ]
+            ),
+            5.0 / 6.0,
+        )
+        self.assertAlmostEqual(
+            float(
+                by_line[LINE_A_EQUAL_FILES][
+                    "participant_mean_balanced_accuracy"
+                ]
+            ),
+            2.0 / 3.0,
+        )
+        self.assertTrue(
+            by_line[LINE_B_EQUAL_ROLE_FAMILIES]["primary_ranking_eligible"]
+        )
+        self.assertFalse(by_line[LINE_A_EQUAL_FILES]["primary_ranking_eligible"])
+        self.assertEqual(
+            by_line[LINE_A_EQUAL_FILES]["view_role"],
+            "posthoc_aggregation_only",
+        )
+        self.assertAlmostEqual(
+            float(
+                by_line[LINE_A_EQUAL_FILES][
+                    "line_a_minus_line_b_balanced_accuracy"
+                ]
+            ),
+            -1.0 / 6.0,
+        )
+        self.assertAlmostEqual(
+            float(by_line[LINE_B_EQUAL_ROLE_FAMILIES]["worst_class_f1"]),
+            0.5,
+        )
+        self.assertEqual(
+            by_line[LINE_B_EQUAL_ROLE_FAMILIES]["participant_oof_total_count"],
+            8,
+        )
+        self.assertEqual(
+            by_line[LINE_B_EQUAL_ROLE_FAMILIES]["dropped_participant_oof_count"],
+            2,
+        )
+        self.assertEqual(
+            by_line[LINE_B_EQUAL_ROLE_FAMILIES][
+                "dropped_file_oof_prediction_count"
+            ],
+            10,
+        )
+        line_b_repeats = [
+            row
+            for row in analysis.aggregation_line_repeat_metrics
+            if row["balance_line"] == LINE_B_EQUAL_ROLE_FAMILIES
+        ]
+        self.assertEqual(len(analysis.aggregation_line_repeat_metrics), 4)
+        self.assertEqual(len(analysis.aggregation_line_per_class_metrics), 12)
+        self.assertAlmostEqual(
+            float(
+                by_line[LINE_B_EQUAL_ROLE_FAMILIES][
+                    "expected_calibration_error"
+                ]
+            ),
+            sum(float(row["expected_calibration_error"]) for row in line_b_repeats)
+            / 2.0,
+        )
+        self.assertEqual(len(analysis.predictive_leaderboard), 1)
+
+        report_bundle = replace(
+            bundle,
+            plan={
+                **bundle.plan,
+                "report": {
+                    "calibration_bins": 5,
+                    "write_static_figures": False,
+                    "write_html": True,
+                },
+            },
+        )
+        report = generate_study_report(self.root, collected=report_bundle)
+        reported_lines = json.loads(
+            (
+                self.root
+                / "tables"
+                / "aggregation_line_comparison.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(len(reported_lines), 2)
+        self.assertEqual(
+            {row["balance_line"] for row in reported_lines},
+            {LINE_A_EQUAL_FILES, LINE_B_EQUAL_ROLE_FAMILIES},
+        )
+        reported_by_line = {
+            str(row["balance_line"]): row
+            for row in reported_lines
+        }
+        self.assertAlmostEqual(
+            float(
+                reported_by_line[LINE_B_EQUAL_ROLE_FAMILIES][
+                    "participant_mean_balanced_accuracy"
+                ]
+            ),
+            5.0 / 6.0,
+        )
+        self.assertAlmostEqual(
+            float(
+                reported_by_line[LINE_A_EQUAL_FILES][
+                    "participant_mean_balanced_accuracy"
+                ]
+            ),
+            2.0 / 3.0,
+        )
+        self.assertEqual(
+            sum(
+                bool(row["primary_ranking_eligible"])
+                for row in reported_lines
+            ),
+            1,
+        )
+        markdown = report.summary_markdown.read_text(encoding="utf-8")
+        self.assertIsNotNone(report.summary_html)
+        html = report.summary_html.read_text(encoding="utf-8")
+        for expected in (
+            "Aggregation sensitivity from the same file-level OOF",
+            LINE_A_EQUAL_FILES,
+            LINE_B_EQUAL_ROLE_FAMILIES,
+            "Mean BA",
+        ):
+            self.assertIn(expected, markdown)
+            self.assertIn(expected, html)
+        summary_payload = json.loads(
+            (self.root / "study_summary.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            len(
+                summary_payload["analysis"][
+                    "aggregation_line_comparison"
+                ]
+            ),
+            2,
+        )
+
+        incomplete = analyze_study(
+            replace(
+                bundle,
+                plan={
+                    "execution": {"repeats": [0, 1, 2], "folds": [0]},
+                    "report": {"calibration_bins": 5},
+                },
+            )
+        )
+        incomplete_by_line = {
+            str(row["balance_line"]): row
+            for row in incomplete.aggregation_line_comparison
+        }
+        self.assertFalse(
+            incomplete_by_line[LINE_B_EQUAL_ROLE_FAMILIES][
+                "primary_ranking_eligible"
+            ]
+        )
+
+        unreadable = analyze_study(
+            replace(
+                bundle,
+                oof_read_failures=(
+                    {
+                        "case_id": "case_001",
+                        "oof_level": "file",
+                        "error": "synthetic fold parquet failure",
+                    },
+                ),
+            )
+        )
+        self.assertEqual(unreadable.aggregation_line_comparison, ())
+        self.assertTrue(
+            any(
+                "OOF input was incomplete or unreadable" in note
+                for note in unreadable.notes
+            )
+        )
+
+        tampered_subject_rows = list(subject_rows)
+        tampered_subject_rows[0] = replace(
+            tampered_subject_rows[0],
+            probabilities=(0.0, 1.0, 0.0),
+        )
+        tampered = replace(
+            bundle,
+            subject_oof_rows=tuple(
+                {"case_id": "case_001", **asdict(row)}
+                for row in tampered_subject_rows
+            ),
+        )
+        rejected = analyze_study(tampered)
+        self.assertEqual(rejected.aggregation_line_comparison, ())
+        self.assertTrue(
+            any(
+                "source-line replay probability mismatch" in note
+                for note in rejected.notes
+            )
+        )
+
     def test_two_axis_grid_writes_descriptive_interaction_view(self) -> None:
         runner = StudyRunner(
             pipeline_root=self.root,
@@ -621,6 +1100,7 @@ class StudyProductTests(unittest.TestCase):
                 },
             ),
             history_rows=(),
+            file_oof_rows=(),
             subject_oof_rows=(),
             role_oof_rows=(),
             quality_rows=(),
@@ -735,6 +1215,7 @@ class StudyProductTests(unittest.TestCase):
             controlled_parameters=(),
             cell_rows=(),
             history_rows=(),
+            file_oof_rows=(),
             subject_oof_rows=(),
             role_oof_rows=(
                 {

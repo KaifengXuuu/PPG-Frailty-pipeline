@@ -1,5 +1,59 @@
 # Decision Log
 
+## 2026-08-18：Static Line B 模型筛选采用六阶段人工晋级流程
+
+- 状态：confirmed
+- 来源：用户明确“确认录入”；六个 staged YAML、catalog/schema、runner 和测试复核。
+- 背景：原 `static_line_b_all_models_v2.yaml` 一次展开 13 个普通 candidate 的
+  39 个 sparse profiles，完整 5×5 需要 975 outer cells，适合保留作完整 mega-study，
+  但不适合作为每次模型探索的首个入口。
+- 用户需求：保留原 YAML 不动，另建六个配置，先筛 representation，再在晋级线路内
+  比模型；ShapeFormer 独立逐级放量；ensemble 只在选中的 Inception route 上运行；
+  SQI/motion 和训练超参数均按单因素、分线路比较。
+- 决策：
+  1. Stage 1 使用 Raw CompactCNN、Feature-vector Logistic、Feature-matrix
+     ROCKET/Ridge 和 Fusion Compact 四个低成本代表；默认 repeat 0 的五个 frozen
+     folds，共 20 outer cells。结果只作线路筛选；若线路接近，先升级完整 5×5。
+  2. Stage 2 由人工删除未晋级 representation 的完整 case block，再对晋级线路内
+     的普通模型做完整比较；不实现自动 winner 或跨 YAML 结果依赖。
+  3. Stage 3 将 canonical ShapeFormer 与普通模型隔离，按 one-cell → one-repeat →
+     full 5×5 人工升级，前一级稳定后才启动后一级。
+  4. Stage 4 仅允许已登记的 Raw InceptionFull 或 Matrix Inception matched pair：
+     member 0/seed 50042 对固定五成员概率算术平均；若赢家没有 registered matched
+     ensemble，则跳过而不是套用其他模型。
+  5. Stage 5 当前只执行 static `off` 对非因果 `diagnostics_only`；真实 SQI/motion、
+     8/11-channel motion input、EKF/Profile-A、reducer 和 motion override 按顺序规划，
+     但在正式 runner 完成前保持 deferred。
+  6. Stage 6 使用可重复编辑的单轴模板。每轮人工把上一轮 winner 写入新的 locked
+     base，再依次运行 LR、batch、epochs/WD 或 classical model-specific factor；
+     禁止构造 LR × batch × epoch 笛卡尔积。
+- 备选方案：原 39-case mega-study 继续保留并可单独运行；自动晋级/自动选择器未采用。
+- 决策原因：把算力优先投入有竞争力的 representation/model，同时避免单 repeat
+  诊断被误写成最终结论、避免跨阶段隐式选择和多因素混杂。
+- 影响范围：
+  `final_v0/final_pipeline_v2/configs/studies/static_line_b_staged_v2/`、
+  `src/ppg_frailty/study/schema.py`、`expand.py` 及相应 study tests/report metadata。
+- 后续追踪：每阶段人工记录晋级原因；Stage 5 的 deferred 模块完成正式 runner 和
+  no-training/focused validation 后，才能把对应 YAML 从规划说明升级为可执行 comparison。
+
+## 2026-08-18：长实验终端进度采用双层 repeat/fold 显示
+
+- 状态：confirmed
+- 来源：用户要求；progress/runner 实现与 4 个专用进度测试、完整 study test 复核。
+- 背景：旧进度只显示 case，启动/预处理期间不计时；`jobs=2` 时 child 的 cell 事件
+  只写入各 attempt JSONL，主终端可能长时间停在 0/39。
+- 决策：总条从加载 plan 前开始计时，以完成 repeat 数作为稳定工作单位，显示
+  elapsed 和近似 ETA；子条显示当前 case 的 repeat/fold 并自动覆盖、完成后收起；
+  ProcessPool 的 child JSONL 由父进程定期 relay。
+- 备选方案：按 fold/member 显示总进度会过细且频繁跳动；只保留 case 级进度无法
+  解释单个 5×5 case 的长时间运行，因此均未采用。
+- 决策原因：repeat 是论文指标汇总的自然单位，fold 适合作为瞬时细节；两层显示兼顾
+  ETA 稳定性和人工观察，同时不把 progress callback 深入科学算法模块。
+- 影响范围：`frailty_3class_sweep_v2.py`、`src/ppg_frailty/study/progress.py`、
+  `runner.py` 和 `tests/study/test_progress_v2.py`。已启动的旧进程不会热加载新显示。
+- 后续追踪：后续若增加模块级进度，只作为同一 transient sub-line 的 detail，
+  不改变 repeat 级总进度语义。
+
 ## 2026-08-17：`final_pipeline_v3` 冻结为旧门禁版历史快照
 
 - 状态：confirmed

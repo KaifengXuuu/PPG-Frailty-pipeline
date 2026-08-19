@@ -2721,6 +2721,21 @@ def _write_empty_oof(path: Path, reason: str) -> None:
         raise
 
 
+def _artifact_index_cell_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep large diagnostics in their dedicated artifacts, not in every index."""
+
+    compact = dict(summary)
+    quality_rows = compact.pop('quality_diagnostics', ())
+    history_rows = compact.pop('training_history', ())
+    compact.update({
+        'quality_diagnostics_artifact': 'quality_diagnostics.json',
+        'quality_diagnostic_row_count': len(quality_rows),
+        'training_history_artifact': 'training_history.json',
+        'training_history_row_count': len(history_rows),
+    })
+    return compact
+
+
 def _write_cell_artifacts(directory: Path, cell: _CellResult) -> None:
     '''Write the six mandatory, non-overwriting artifacts for one outer cell.
 
@@ -2787,7 +2802,7 @@ def _write_cell_artifacts(directory: Path, cell: _CellResult) -> None:
         {
             'schema_version': 'ppg_frailty.metrics_per_fold_seed.v2',
             'pipeline_generation': 'final_pipeline_v2',
-            'cells': [dict(cell.summary)],
+            'cells': [_artifact_index_cell_summary(cell.summary)],
         },
     )
     _strict_json(
@@ -2810,7 +2825,7 @@ def _write_cell_artifacts(directory: Path, cell: _CellResult) -> None:
             'pipeline_generation': 'final_pipeline_v2',
             'status': 'passed',
             'scientific_scope': cell.summary['scientific_scope'],
-            'cell': dict(cell.summary),
+            'cell': _artifact_index_cell_summary(cell.summary),
             'mandatory_artifacts': [
                 'run_manifest.json',
                 'metrics_per_fold_seed.json',
@@ -2983,7 +2998,7 @@ def _run_one_outer_cell(
                 repeat_indices=(repeat_index,),
                 fold_indices=(fold_index,),
                 output_dir=str(target),
-                cell_results=(dict(cell.summary),),
+                cell_results=(_artifact_index_cell_summary(cell.summary),),
                 metrics=dict(cell.summary["metrics"]),
                 provenance={
                     "preflight_status": report.status,
@@ -3184,7 +3199,10 @@ def _write_full_root_artifacts(
             'schema_version': 'ppg_frailty.metrics_per_fold_seed.v2',
             'pipeline_generation': 'final_pipeline_v2',
             'status': result.status,
-            'cells': [dict(cell.summary) for cell in cell_values],
+            'cells': [
+                _artifact_index_cell_summary(cell.summary)
+                for cell in cell_values
+            ],
         },
     )
     _strict_json(
@@ -3701,7 +3719,7 @@ def run_full_experiment(
                     )
                     cell.summary['scientific_scope'] = scope
                     passed_cells.append(cell)
-                    summaries.append(dict(cell.summary))
+                    summaries.append(_artifact_index_cell_summary(cell.summary))
                     _write_cell_artifacts(cell_directory, cell)
                     _notify_progress(
                         progress_callback,

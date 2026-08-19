@@ -241,6 +241,46 @@ def _report_markdown(
     )
     lines.extend(
         [
+            "## Aggregation sensitivity from the same file-level OOF",
+            "",
+            "The declared-source row reproduces the aggregation used by the fitted "
+            "model and, when eligible, the primary leaderboard. The other row "
+            "reaggregates the same "
+            "held-out file probabilities post hoc. It is not a separately retrained "
+            "Line A/Line B experiment and is not selection evidence.",
+            "",
+        ]
+    )
+    lines.extend(
+        _markdown_table(
+            analysis.aggregation_line_comparison,
+            (
+                ("case_id", "Case"),
+                ("balance_line", "Aggregation view"),
+                ("view_role", "Role"),
+                ("participant_mean_balanced_accuracy", "Mean BA"),
+                ("participant_mean_macro_f1", "Mean Macro-F1"),
+                (
+                    "line_a_minus_line_b_balanced_accuracy",
+                    "Line A − Line B BA",
+                ),
+                ("line_a_minus_line_b_macro_f1", "Line A − Line B Macro-F1"),
+                ("worst_class_recall", "Worst recall"),
+                ("worst_class_f1", "Worst F1"),
+                ("expected_calibration_error", "ECE"),
+                ("repeat_count", "Repeats"),
+                ("participant_oof_prediction_count", "Retained participant OOF n"),
+                ("participant_oof_total_count", "All participant units n"),
+                ("dropped_participant_oof_count", "Dropped participant units n"),
+                ("file_oof_prediction_count", "All file OOF n"),
+                ("dropped_file_oof_prediction_count", "Dropped files n"),
+                ("source_replay_validation", "Source replay"),
+                ("primary_ranking_eligible", "Primary ranking eligible"),
+            ),
+        )
+    )
+    lines.extend(
+        [
             "## Worst-class F1 stability review",
             "",
             "This secondary view reorders the BA-ranked complete cases by worst-class "
@@ -387,6 +427,9 @@ def _report_markdown(
             "- [outputs_index.json](outputs_index.json): machine-readable inventory",
             "- [study_summary.json](study_summary.json): report context and tables",
             "- [tables/predictive_leaderboard.csv](tables/predictive_leaderboard.csv)",
+            "- [tables/aggregation_line_comparison.csv](tables/aggregation_line_comparison.csv)",
+            "- [tables/aggregation_line_repeat_metrics.csv](tables/aggregation_line_repeat_metrics.csv)",
+            "- [tables/aggregation_line_per_class_metrics.csv](tables/aggregation_line_per_class_metrics.csv)",
             "- [tables/metric_distribution_summary.csv](tables/metric_distribution_summary.csv)",
             "- [tables/worst_class_f1_stability.csv](tables/worst_class_f1_stability.csv)",
             "- [tables/incomplete_cases.csv](tables/incomplete_cases.csv)",
@@ -460,6 +503,30 @@ th{{background:#f0f3f6}}img{{max-width:100%;height:auto}}figure{{margin:2rem 0}}
     ("repeat_macro_f1_ci95_high", "Macro-F1 CI95 high"),
     ("worst_fold_balanced_accuracy", "Worst-fold BA"),
     ("worst_class_f1", "Worst F1"),
+))}
+<h2>Aggregation sensitivity from the same file-level OOF</h2>
+<p class="notice">The declared-source row reproduces the aggregation used by
+the fitted model and, when eligible, the primary leaderboard. The other row
+reaggregates the same held-out file probabilities post hoc. It is not a separately retrained
+Line A/Line B experiment and is not selection evidence.</p>
+{_html_table(analysis.aggregation_line_comparison, (
+    ("case_id", "Case"), ("balance_line", "Aggregation view"),
+    ("view_role", "Role"),
+    ("participant_mean_balanced_accuracy", "Mean BA"),
+    ("participant_mean_macro_f1", "Mean Macro-F1"),
+    ("line_a_minus_line_b_balanced_accuracy", "Line A - Line B BA"),
+    ("line_a_minus_line_b_macro_f1", "Line A - Line B Macro-F1"),
+    ("worst_class_recall", "Worst recall"),
+    ("worst_class_f1", "Worst F1"),
+    ("expected_calibration_error", "ECE"),
+    ("repeat_count", "Repeats"),
+    ("participant_oof_prediction_count", "Retained participant OOF n"),
+    ("participant_oof_total_count", "All participant units n"),
+    ("dropped_participant_oof_count", "Dropped participant units n"),
+    ("file_oof_prediction_count", "All file OOF n"),
+    ("dropped_file_oof_prediction_count", "Dropped files n"),
+    ("source_replay_validation", "Source replay"),
+    ("primary_ranking_eligible", "Primary ranking eligible"),
 ))}
 <h2>Worst-class F1 stability review</h2>
 {_html_table(analysis.worst_class_f1_stability, (
@@ -730,6 +797,21 @@ def generate_study_report(
         ("varied_parameters", bundle.varied_parameters, "Declared variables and resolved case values"),
         ("controlled_parameters", bundle.controlled_parameters, "Complete non-variable resolved parameter list"),
         ("predictive_leaderboard", analysis.predictive_leaderboard, "BA-ranked manual review table"),
+        (
+            "aggregation_line_comparison",
+            analysis.aggregation_line_comparison,
+            "Declared source aggregation plus non-selection post-hoc sensitivity from the same file OOF",
+        ),
+        (
+            "aggregation_line_repeat_metrics",
+            analysis.aggregation_line_repeat_metrics,
+            "Per-repeat Line A/Line B metrics reaggregated from the same file OOF",
+        ),
+        (
+            "aggregation_line_per_class_metrics",
+            analysis.aggregation_line_per_class_metrics,
+            "Per-repeat per-class Line A/Line B metrics reaggregated from the same file OOF",
+        ),
         ("deployment_measurements", analysis.deployment_table, "Operational measurements, separate from ranking"),
         ("repeat_metrics", analysis.repeat_metrics, "Participant OOF or labeled cell fallback per repeat"),
         ("fold_metrics", analysis.fold_metrics, "Per repeat/fold cell metrics"),
@@ -778,7 +860,11 @@ def generate_study_report(
         ),
         ("cell_metrics_raw", bundle.cell_rows, "Normalized raw cell metrics"),
         ("training_history_raw", bundle.history_rows, "Normalized training history"),
-        ("quality_diagnostics_raw", bundle.quality_rows, "Normalized quality diagnostics"),
+        (
+            "quality_diagnostics_raw",
+            bundle.quality_rows,
+            "Report projection of quality diagnostics; full beat-level audits remain in each case quality_diagnostics.json",
+        ),
         ("case_records", bundle.case_records, "Case pass/fail/resume records"),
     )
     index: list[dict[str, Any]] = []

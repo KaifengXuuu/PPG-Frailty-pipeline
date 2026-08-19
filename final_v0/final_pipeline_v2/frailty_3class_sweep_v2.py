@@ -248,6 +248,8 @@ def _print_expansion(runner: StudyRunner, plan: StudyPlan) -> None:
 def _generate_report_with_progress(
     study_dir: str | Path,
     sink: TerminalProgressSink,
+    *,
+    study_status: str | None = None,
 ) -> None:
     sink(ProgressEvent(event="report_started", current=0, total=1))
     report = generate_study_report(study_dir)
@@ -256,9 +258,14 @@ def _generate_report_with_progress(
             event="report_finished",
             current=1,
             total=1,
-            message=str(report.summary_markdown),
+            message=(
+                "report complete"
+                if study_status is None
+                else f"report complete · study {study_status}"
+            ),
         )
     )
+    sink.close()
     print(f"Report: {report.summary_markdown}")
 
 
@@ -288,6 +295,7 @@ def main(argv: list[str] | None = None) -> int:
             progress_sink=sink,
         )
         if args.dry_run:
+            sink.close()
             _print_expansion(runner, plan)
             return 0
         run_result = runner.run(
@@ -296,7 +304,13 @@ def main(argv: list[str] | None = None) -> int:
             resume_directory=args.resume,
         )
         if not args.no_report:
-            _generate_report_with_progress(run_result.output_directory, sink)
+            _generate_report_with_progress(
+                run_result.output_directory,
+                sink,
+                study_status=run_result.status,
+            )
+        else:
+            sink.close()
         print(f"Study output: {run_result.output_directory}")
         return 0 if run_result.status == "passed" else 2
     finally:

@@ -6,8 +6,12 @@ import io
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
+from frailty_3class_sweep_v2 import _generate_report_with_progress
 from ppg_frailty.study import ProgressEvent, TerminalProgressSink
 from ppg_frailty.study.runner import (
     _ExecutorEventRelay,
@@ -95,7 +99,7 @@ class ProgressDisplayTests(unittest.TestCase):
             )
         )
         total_line, detail_line = sink._lines()
-        self.assertIn("1/4 repeats", total_line)
+        self.assertIn("1/4 case-repeats", total_line)
         self.assertIn("elapsed 00:01:10", total_line)
         self.assertIn("ETA~ 00:03:30", total_line)
         self.assertIsNotNone(detail_line)
@@ -115,6 +119,100 @@ class ProgressDisplayTests(unittest.TestCase):
         self.assertIsNone(sink._lines()[1])
         sink.close()
         self.assertTrue(stream.getvalue().endswith("\n"))
+
+    def test_failed_case_is_terminal_and_partial_status_is_preserved(self) -> None:
+        clock = _Clock()
+        sink = TerminalProgressSink(
+            stream=_TtyBuffer(),
+            width=10,
+            refresh_interval=0,
+            ansi=True,
+            clock=clock,
+        )
+        sink(
+            ProgressEvent(
+                event="study_started",
+                current=0,
+                total=4,
+                unit_current=0,
+                unit_total=1,
+                message="jobs=3",
+            )
+        )
+        for index, (case_id, status) in enumerate(
+            (
+                ("raw", "passed"),
+                ("vector", "passed"),
+                ("matrix", "passed"),
+                ("fusion", "failed"),
+            ),
+            start=1,
+        ):
+            sink(
+                ProgressEvent(
+                    event="case_finished",
+                    current=index,
+                    total=4,
+                    case_id=case_id,
+                    unit_current=1,
+                    unit_total=1,
+                    message=status,
+                )
+            )
+        sink(
+            ProgressEvent(
+                event="study_finished",
+                current=4,
+                total=4,
+                message="partial",
+            )
+        )
+        total_line, detail_line = sink._lines()
+        self.assertIn("4/4 case-repeats", total_line)
+        self.assertIn("1 failed", total_line)
+        self.assertIn("3 passed", total_line)
+        self.assertIn("partial", total_line)
+        self.assertIn("ETA~ 00:00:00", total_line)
+        self.assertIsNone(detail_line)
+
+    def test_report_path_starts_after_closed_progress_line(self) -> None:
+        stream = _TtyBuffer()
+        sink = TerminalProgressSink(
+            stream=stream,
+            refresh_interval=0,
+            ansi=False,
+        )
+        sink(
+            ProgressEvent(
+                event="study_started",
+                current=0,
+                total=1,
+                unit_current=0,
+                unit_total=1,
+            )
+        )
+        sink(
+            ProgressEvent(
+                event="study_finished",
+                current=1,
+                total=1,
+                message="partial",
+            )
+        )
+        with patch(
+            "frailty_3class_sweep_v2.generate_study_report",
+            return_value=SimpleNamespace(summary_markdown=Path("/tmp/SUMMARY.md")),
+        ), redirect_stdout(stream):
+            _generate_report_with_progress(
+                "/tmp/study",
+                sink,
+                study_status="partial",
+            )
+        sink.close()
+        rendered = stream.getvalue()
+        self.assertIn("report complete · study partial", rendered)
+        self.assertIn("\nReport: /tmp/SUMMARY.md\n", rendered)
+        self.assertNotIn("report completeReport:", rendered)
 
     def test_adapter_uses_repeat_as_unit_and_fold_as_detail(self) -> None:
         events: list[ProgressEvent] = []

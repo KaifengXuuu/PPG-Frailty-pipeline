@@ -17,9 +17,12 @@ record the decision, then edit only the documented selector in the next file.
    complete repeat. If routes are close, rerun with all repeats before pruning.
 
 2. 02_competitive_routes_models_v2.yaml
-   Before execution, delete every complete representation block that did not
-   advance from Stage 1. The checked-in ten-case file is a valid review
-   superset, not an instruction to spend compute on all four routes.
+   Extreme-compute-saving r0 supplement with exactly three missing canonical
+   cases: Raw InceptionSmall, Feature-vector RBF-SVM and Feature-vector
+   ExtraTrees. Reuse the reviewed r0 evidence for Raw CompactCNN, Raw
+   InceptionFull 400 Hz and Feature-vector Logistic; do not rerun them in this
+   stage. The supplemental report does not import or relabel those earlier
+   artifacts, so review the separately identified evidence alongside it.
 
 3. 03_shapeformer_stability_v2.yaml
    Default execution is one cell. If stable, rerun one complete repeat, then
@@ -57,6 +60,15 @@ Run or dry-run any stage from the final_pipeline_v2 directory:
 
     python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/01_representation_baselines_v2.yaml --dry-run
 
+Run the three-case Stage 2 supplement:
+
+    python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/02_competitive_routes_models_v2.yaml
+
+Stage 1 contains deep raw/fusion cases, so its plan disables concurrent deep
+case execution. A larger command-line jobs value is accepted but is
+automatically reduced to one effective case at a time to avoid memory
+oversubscription.
+
 Escalate Stage 1 to full 5x5 only when the one-repeat routes are too close:
 
     python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/01_representation_baselines_v2.yaml --repeats all --folds all
@@ -69,10 +81,24 @@ ShapeFormer stability ladder:
 
     python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/03_shapeformer_stability_v2.yaml --repeats all --folds all
 
+Every default run generates a report, and every standalone report rebuild uses
+the same reporting path:
+
+    python3 frailty_3class_sweep_v2.py report --study-dir PATH_TO_STUDY
+
+When file-level OOF is present, the report always includes both balanced
+accuracy views: the declared canonical Line B result and Line A equal-file
+post-hoc reaggregation of the same held-out file probabilities. Line A is
+aggregation sensitivity only, not separately trained evidence and never a
+selection or leaderboard result. An explicit --no-report skips report creation
+for that run; the standalone report command can add it later without training.
+
 ## Default budgets
 
 - Stage 1: 4 cases, 20 outer cells by default; 100 only if manually escalated.
-- Stage 2: at most 10 cases, 250 outer cells; normally fewer after pruning.
+- Stage 2: 3 supplemental cases, repeat 0 with all five folds, 15 outer cells.
+  The reused CompactCNN, InceptionFull and Logistic r0 evidence is not counted
+  again.
 - Stage 3: 1, then 5, then 25 outer cells.
 - Stage 4: 2 scientific cases, 50 outer cells and 150 fitted networks.
 - Stage 5: at most 8 runnable diagnostic cases, 200 outer cells; normally

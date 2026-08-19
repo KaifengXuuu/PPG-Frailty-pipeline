@@ -6,6 +6,7 @@ ROCKET、特征基线与 FileBag 融合测试。
 from __future__ import annotations
 
 import unittest
+import warnings
 
 import numpy as np
 import torch
@@ -62,13 +63,66 @@ class RocketAndFusionTests(unittest.TestCase):
         x = rng.normal(size=(9, 2, 20)).astype(np.float32)
         y = np.asarray([0, 1, 2] * 3)
         ids = [f"P{index}" for index in range(9)]
-        model = RocketRidgeClassifier(n_kernels=16, seed=2).fit(x, y, participant_ids=ids)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            model = RocketRidgeClassifier(n_kernels=16, seed=2).fit(
+                x,
+                y,
+                participant_ids=ids,
+            )
+        numerical_messages = [
+            str(item.message)
+            for item in caught
+            if "ill-conditioned" in str(item.message).lower()
+            or "singular matrix" in str(item.message).lower()
+        ]
+        self.assertEqual(numerical_messages, [])
+        self.assertEqual(model.classifier.coef_.dtype, np.dtype(np.float64))
+        ridge_provenance = model.fitted_object_provenance_["ridge_classifier"]
+        self.assertEqual(ridge_provenance["compute_dtype"], "float64")
+        self.assertEqual(ridge_provenance["solver_requested"], "auto")
+        self.assertEqual(ridge_provenance["coefficient_dtype"], "float64")
+        self.assertEqual(ridge_provenance["training_design_shape"], (9, 32))
         probability = model.predict_proba(x)
         self.assertEqual(probability.shape, (9, 3))
         np.testing.assert_allclose(probability.sum(axis=1), 1.0)
         mini = MiniRocketAblation(n_kernels=8)
         self.assertEqual(mini.model_id, "minirocket_engineering_ablation")
         self.assertIn("not_reference", mini.scientific_status)
+
+    def test_rocket_float64_ridge_handles_wide_rank_deficient_design(self) -> None:
+        class _RankDeficientTransformer:
+            def fit_transform(self, x, mask=None):
+                del mask
+                base = np.linspace(1.0, 2.0, 20_000, dtype=np.float32)
+                return np.repeat(base[None, :], len(x), axis=0)
+
+            def transform(self, x, mask=None):
+                return self.fit_transform(x, mask)
+
+        x = np.ones((9, 2, 20), dtype=np.float32)
+        y = np.asarray([0, 1, 2] * 3)
+        model = RocketRidgeClassifier(n_kernels=10_000, seed=2)
+        model.transformer = _RankDeficientTransformer()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            model.fit(
+                x,
+                y,
+                participant_ids=[f"P{index}" for index in range(9)],
+            )
+        self.assertFalse(
+            [
+                item
+                for item in caught
+                if "ill-conditioned" in str(item.message).lower()
+                or "singular matrix" in str(item.message).lower()
+            ]
+        )
+        self.assertEqual(model.classifier.coef_.dtype, np.dtype(np.float64))
+        probability = model.predict_proba(x)
+        self.assertTrue(np.isfinite(probability).all())
+        np.testing.assert_allclose(probability.sum(axis=1), 1.0)
 
     def test_feature_baseline_freezes_feature_width(self) -> None:
         """English: Feature schema mismatch fails closed.

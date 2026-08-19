@@ -196,7 +196,12 @@ class RocketRidgeClassifier:
         self.seed = int(seed)
         self.scaler = MaskedChannelRobustScaler()
         self.transformer = RocketTransformer(n_kernels=n_kernels, seed=seed)
-        self.classifier = RidgeClassifier(alpha=alpha)
+        self.ridge_compute_dtype = "float64"
+        self.ridge_solver_requested = "auto"
+        self.classifier = RidgeClassifier(
+            alpha=alpha,
+            solver=self.ridge_solver_requested,
+        )
         self.classes_: np.ndarray | None = None
         self.fitted_participant_ids_: tuple[str, ...] = ()
         self.fitted_object_provenance_: dict[str, dict[str, object]] = {}
@@ -219,7 +224,10 @@ class RocketRidgeClassifier:
         if labels.shape != (len(x),) or len(participant_ids) != len(x):
             raise ValueError("labels and participant_ids must align with samples")
         scaled = self.scaler.fit_transform(x, mask)
-        features = self.transformer.fit_transform(scaled, mask)
+        features = np.asarray(
+            self.transformer.fit_transform(scaled, mask),
+            dtype=np.float64,
+        )
         weights = None if sample_weight is None else np.asarray(sample_weight, dtype=np.float64)
         if weights is not None and (
             weights.shape != (labels.size,) or not np.isfinite(weights).all() or np.any(weights < 0)
@@ -242,6 +250,18 @@ class RocketRidgeClassifier:
             "ridge_classifier": {
                 "object_type": type(self.classifier).__name__,
                 "fitted_participant_ids": self.fitted_participant_ids_,
+                "alpha": self.alpha,
+                "compute_dtype": self.ridge_compute_dtype,
+                "solver_requested": self.ridge_solver_requested,
+                "solver_effective": str(
+                    getattr(
+                        self.classifier,
+                        "solver_",
+                        self.ridge_solver_requested,
+                    )
+                ),
+                "coefficient_dtype": str(self.classifier.coef_.dtype),
+                "training_design_shape": tuple(int(value) for value in features.shape),
             },
         }
         return self
@@ -250,7 +270,11 @@ class RocketRidgeClassifier:
         """Return ridge decision scores / 返回岭分类决策分数。"""
 
         scaled = self.scaler.transform(x, mask)
-        scores = np.asarray(self.classifier.decision_function(self.transformer.transform(scaled, mask)))
+        features = np.asarray(
+            self.transformer.transform(scaled, mask),
+            dtype=np.float64,
+        )
+        scores = np.asarray(self.classifier.decision_function(features))
         if scores.ndim == 1:
             scores = np.stack([-scores, scores], axis=1)
         return scores

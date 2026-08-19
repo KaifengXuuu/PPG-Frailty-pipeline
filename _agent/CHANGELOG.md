@@ -2,7 +2,38 @@
 
 状态：confirmed
 来源：用户确认后的 `_agent` 整理、git history、代码/数据/结果目录复核
-最后手动更新时间：2026-07-26
+最后手动更新时间：2026-08-18
+
+## 2026-08-18
+
+- 状态：confirmed
+- 来源：用户明确“确认录入”；代码检查、CLI dry-run、unittest 和 diff 自审。
+- 变更：保留
+  `final_v0/final_pipeline_v2/configs/studies/static_line_b_all_models_v2.yaml`
+  原 39-case mega-study 不变；新增
+  `configs/studies/static_line_b_staged_v2/`，其中 6 个 YAML 组成省算力的
+  Static Line B 分阶段模型筛选流程，并附目录级 `README.md`。
+- 变更：study catalog 编排新增 `selected_ordinary` 和
+  `matched_ensemble_pair` scope；canonical catalog case 可使用空 override；
+  matched pair 强制恰好一个 member-0 comparator 和一个 five-member ensemble、
+  同 representation 且不得混入额外 override/formal profile。
+- 变更：单因素 study 可同步模型运行参数与 `architecture_parameters` provenance，
+  使 Logistic、SVM、ExtraTrees 和 ROCKET 的模型专属轴仍保持一个科学因素。
+- 变更：终端进度升级为双层刷新显示。总进度以 `case × repeat` 为单位并显示
+  elapsed/ETA；子进度显示当前 case/repeat/fold，完成后自动覆盖或收起；
+  `jobs=2` ProcessPool 通过 child `executor_events.jsonl` 向父进程回传进度。
+- 更新目的：避免原 39-case × 3 profiles × 5 × 5 的 mega-study 成为日常首筛入口，
+  同时保持人工可读、可逐阶段运行、无自动 winner propagation 的实验流程。
+- 影响：Stage 1 默认仅运行 4 个低成本 representation baseline、1 repeat × 5 folds，
+  共 20 outer cells；线路接近时才人工升级到完整 5×5。Stage 2 以后由人工根据前一
+  报告裁剪或替换候选。
+- 未完成：Stage 5 当前真正可运行的只有 `quality.mode=off` 对
+  `diagnostics_only`；supervised SQI routing、motion override、denoiser efficacy、
+  formal motion 5×5、A3/A4 runners 仍为 deferred，不得描述为已实现。
+- 验证状态：6/6 staged YAML CLI dry-run 通过；ShapeFormer one-repeat/full-5×5
+  override dry-run 通过；Stage 1 默认/完整升级 dry-run 通过；study tests 37/37
+  通过；原 mega-study 仍展开 39 cases；`git diff --check` 通过；未运行训练、CV
+  或正式 sweep。
 
 ## 2026-07-26
 

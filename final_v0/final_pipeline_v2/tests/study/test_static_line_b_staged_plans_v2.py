@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import replace
 from pathlib import Path
+import tempfile
 import unittest
 
 from ppg_frailty.study import (
@@ -52,25 +53,97 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
         )
         self.assertEqual(plan.execution.repeats, (0,))
         self.assertEqual(plan.execution.folds, (0, 1, 2, 3, 4))
+        self.assertFalse(plan.execution.allow_parallel_deep)
 
-    def test_stage_02_is_the_unpruned_ten_case_ordinary_superset(self) -> None:
-        _plan, expansion = _load("02_competitive_routes_models_v2.yaml")
-        self.assertEqual(len(expansion.cases), 10)
+    def test_stage_01_jobs_override_is_reduced_for_deep_cases(self) -> None:
+        plan = load_study_plan(
+            PLAN_DIR / "01_representation_baselines_v2.yaml"
+        )
+        plan = replace(
+            plan,
+            execution=replace(plan.execution, jobs=3),
+        )
+
+        def fake_executor(case, config_path, case_directory, plan, progress_sink):
+            del case, config_path, case_directory, plan, progress_sink
+            return {"status": "passed", "cell_results": []}
+
+        with tempfile.TemporaryDirectory() as temporary:
+            result = StudyRunner(
+                pipeline_root=ROOT,
+                executor=fake_executor,
+            ).run(plan, output_root=temporary)
+        self.assertEqual(result.effective_jobs, 1)
+
+    def test_stage_02_is_the_three_case_r0_supplement(self) -> None:
+        plan, expansion = _load("02_competitive_routes_models_v2.yaml")
+        self.assertEqual(plan.catalog.balance_line, "line_b")
+        self.assertEqual(plan.catalog.scope, "selected_ordinary")
+        self.assertEqual(len(expansion.cases), 3)
         self.assertEqual(
             Counter(case.output_group for case in expansion.cases),
-            {"raw": 3, "feature_vector": 3, "feature_matrix": 2, "fusion": 2},
+            {"raw": 1, "feature_vector": 2},
         )
         entries = {str(case.catalog_entry) for case in expansion.cases}
-        self.assertFalse(
-            entries
-            & {
-                "minirocket_ablation",
-                "shapeformer_channel_specific_osd",
-                "shapeformer_effect_size_fixed_v1",
-                "inception_full_five_member_ensemble",
-                "inception_matrix_five_member_ensemble",
-            }
+        self.assertEqual(
+            entries,
+            {
+                "inception_small",
+                "rbf_svm",
+                "extra_trees",
+            },
         )
+        self.assertEqual(plan.execution.repeats, (0,))
+        self.assertEqual(plan.execution.folds, (0, 1, 2, 3, 4))
+        self.assertEqual(plan.execution.jobs, 1)
+        self.assertFalse(plan.execution.allow_parallel_deep)
+        self.assertEqual(
+            len(expansion.cases)
+            * len(plan.execution.repeats)
+            * len(plan.execution.folds),
+            15,
+        )
+        self.assertTrue(
+            all(case.screen_profile_id == "canonical" for case in plan.cases)
+        )
+        self.assertTrue(all(case.overrides == {} for case in plan.cases))
+        self.assertTrue(all(case.formal_profile is None for case in plan.cases))
+        self.assertEqual(
+            {case.case_id for case in expansion.cases},
+            {
+                "raw__inception_small",
+                "feature_vector__rbf_svm",
+                "feature_vector__extra_trees",
+            },
+        )
+        self.assertEqual(
+            {
+                case.case_id: case.config["config_id"]
+                for case in expansion.cases
+            },
+            {
+                "raw__inception_small":
+                    "formal_inception_small_line_b_v2__canonical",
+                "feature_vector__rbf_svm":
+                    "formal_rbf_svm_line_b_v2__canonical",
+                "feature_vector__extra_trees":
+                    "formal_extra_trees_line_b_v2__canonical",
+            },
+        )
+        for case in expansion.cases:
+            self.assertEqual(
+                case.config["training"]["training_balance"],
+                "equal_role_families",
+            )
+            self.assertEqual(
+                case.config["aggregation"]["balance_line"],
+                "line_b_equal_role_families",
+            )
+            self.assertEqual(case.config["quality"]["mode"], "off")
+            self.assertEqual(case.config["artifact"]["reducer"], "identity")
+            self.assertFalse(
+                case.config["artifact"]["motion_detector_enabled"]
+            )
 
     def test_stage_03_defaults_to_one_shapeformer_outer_cell(self) -> None:
         plan, expansion = _load("03_shapeformer_stability_v2.yaml")
