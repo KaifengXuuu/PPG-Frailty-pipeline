@@ -2,7 +2,34 @@
 
 状态：confirmed
 来源：用户确认后的 `_agent` 整理、git history、代码/数据/结果目录复核
-最后手动更新时间：2026-08-18
+最后手动更新时间：2026-08-19
+
+## 2026-08-19
+
+- 状态：confirmed
+- 来源：用户明确“确认录入”；代码、恢复产物、测试与 diff 自审。
+- 变更：`final_pipeline_v2` 对 `features` 与 `aggregation` 采用 exact-key、
+  exact-value fail-closed 校验；final-refit 预检要求 OOF 保存的源码版本为当前完整
+  `ppg_frailty` 源码树的确定性 SHA-256，并新增显式 bundle-directory 执行入口。
+- 变更：study execution contract 显式透传并记录 `measure_operational_costs`；现有 staged
+  YAML 均声明该开关，避免 resume 时改变 operational measurement 语义。
+- 变更：压缩 experiment diagnostics，只保存 detector/run/polarity/pairing-rule 参数、
+  聚合值、有效性、计数、原因统计和错误摘要；不再序列化或哈希逐搏 pairing rows 与
+  `beat_audit`。代表性旧文件按同格式估算由 `84,177,969 B` 降至 `745,435 B`，约降
+  `99.1%`，且不改变 predictor、route、retention、aggregation 或 prediction。
+- 变更：study report 对同一份 held-out OOF 并列输出三个 participant 视角：window
+  equal-weight、Line A equal-file、Line B equal-role；HTML 引用完整 PNG，包括三分类
+  precision/recall/F1、confusion counts/row-normalized 与可用的 learning curves。
+- 变更：新增 completed-case 恢复工具，并从历史 sweep、Stage 1、Stage 2 只复制完成
+  case 的必要结果到独立恢复目录；共 13 cases、65 cells、536 个索引文件，不复制旧
+  diagnostics，也不修改原结果目录。
+- 归档：静态可达性和 registry 审计确认活动源码 143/143 可达；仅将已证明不可达的
+  `train/sampling.py` facade 移入 V1 transition archive，未按表面重复归档公共模块。
+- 验证状态：safe suite 298/298、study/report 46/46、source-snapshot 定向测试、
+  `py_compile`/`compileall` 与 `git diff --check` 均通过；恢复目录 390 组源/副本 SHA、
+  13/13 canonical config hash 和 outputs index 535/535 可校验 hash 全部一致。未启动训练。
+- 注意：旧 OOF 的 placeholder source hash 不能再进入 final-refit；正式 operational
+  结论仍须代码稳定后用新鲜、完整的 5×5 证据生成。
 
 ## 2026-08-18
 

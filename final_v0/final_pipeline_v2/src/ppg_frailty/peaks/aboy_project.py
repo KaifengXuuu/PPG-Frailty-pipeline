@@ -478,6 +478,7 @@ def _result_for_wavelength(
     record_id: str,
     run_id: str | None,
     min_peaks: int,
+    min_observation_sec: float = 8.0,
 ) -> PulseResult:
     """Detect one wavelength and build the public result contract."""
 
@@ -509,6 +510,8 @@ def _result_for_wavelength(
             "wavelength": label,
             "selected_polarity": int(best.polarity),
             "polarity_selected": bool(candidate.polarity == best.polarity),
+            "min_observation_sec": float(min_observation_sec),
+            "min_peaks": int(min_peaks),
         }
         for candidate in candidates
         for row in candidate.block_rows
@@ -587,13 +590,22 @@ def detect_pulses_per_wavelength_aboy_project(
 ) -> dict[str, PulseResult]:
     """Run the same implementation independently for RED and IR."""
 
+    from .resolver import validate_peak_detection_parameters
+
+    min_observation_sec, min_peaks = validate_peak_detection_parameters(
+        min_observation_sec,
+        min_peaks,
+    )
     matrix, sample_offset, route, record_id = _prepare_input(
         values,
         fs_hz=fs_hz,
         source_route=source_route,
     )
-    if matrix.shape[0] / float(fs_hz) < float(min_observation_sec):
-        raise ValueError("HR/PPI requires at least eight seconds of observation")
+    if matrix.shape[0] / float(fs_hz) < min_observation_sec:
+        raise ValueError(
+            "HR/PPI requires at least "
+            f"{min_observation_sec:g} seconds of observation"
+        )
     block_samples = int(round(BLOCK_SECONDS * float(fs_hz)))
     if matrix.shape[0] < block_samples:
         raise ValueError(
@@ -610,6 +622,7 @@ def detect_pulses_per_wavelength_aboy_project(
             record_id=record_id,
             run_id=run_id,
             min_peaks=min_peaks,
+            min_observation_sec=min_observation_sec,
         )
         for channel, label in enumerate(labels)
     }

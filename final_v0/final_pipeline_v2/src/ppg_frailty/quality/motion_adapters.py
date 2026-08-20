@@ -354,7 +354,15 @@ def fit_formal_motion_model(
         weight_decay=config.weight_decay,
     )
     final_loss = float("nan")
-    for _ in range(config.fixed_epochs):
+    training_history: list[dict[str, Any]] = []
+    evaluation_loader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=config.num_workers,
+        drop_last=False,
+    )
+    for epoch_index in range(config.fixed_epochs):
         model.train()
         total_loss = 0.0
         total_rows = 0
@@ -373,8 +381,58 @@ def fit_formal_motion_model(
             total_loss += float(loss.detach().cpu()) * int(batch_values.shape[0])
             total_rows += int(batch_values.shape[0])
         final_loss = total_loss / max(total_rows, 1)
+        model.eval()
+        observed_labels: list[np.ndarray] = []
+        observed_predictions: list[np.ndarray] = []
+        with torch.no_grad():
+            for batch_values, batch_labels in evaluation_loader:
+                logits = model(batch_values.to(config.device))
+                observed_predictions.append(
+                    (torch.sigmoid(logits) >= 0.5).to(torch.int64).cpu().numpy()
+                )
+                observed_labels.append(batch_labels.to(torch.int64).cpu().numpy())
+        truth = np.concatenate(observed_labels)
+        predicted = np.concatenate(observed_predictions)
+        recalls = [
+            float(np.mean(predicted[truth == label] == label))
+            for label in (0, 1)
+            if np.any(truth == label)
+        ]
+        training_history.append(
+            {
+                "epoch": epoch_index + 1,
+                "training_loss": float(final_loss),
+                "training_balanced_accuracy": float(np.mean(recalls)),
+                "data_scope": (
+                    "all_29_internal_participants"
+                    if context.final_fit
+                    else "outer_training_participants_only"
+                ),
+                "outer_heldout_used": False,
+                "used_for_epoch_selection_or_checkpoint": False,
+            }
+        )
     if not np.isfinite(final_loss):
         raise RuntimeError("formal motion training produced a non-finite loss")
+
+    history_path = context.artifact_directory / "motion_training_history.json"
+    if history_path.exists():
+        raise FileExistsError(f"refusing to overwrite motion history: {history_path}")
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    history_payload = {
+        "schema_version": "ppg_frailty.motion_training_history.v1",
+        "repeat_index": context.repeat_index,
+        "fold_index": context.fold_index,
+        "final_fit": context.final_fit,
+        "selection_rule": "fixed_epoch_history_is_diagnostic_only",
+        "rows": training_history,
+    }
+    history_temporary = history_path.with_suffix(history_path.suffix + ".tmp")
+    history_temporary.write_text(
+        json.dumps(history_payload, sort_keys=True, indent=2, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    history_temporary.replace(history_path)
 
     inference_cost = _benchmark_inference(model, scaled, config)
     artifact_path = context.artifact_directory / "formal_motion_model.pt"

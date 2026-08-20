@@ -31,6 +31,7 @@ def aggregate_hierarchy_strict(
     *,
     balance_line: str = CANONICAL_BALANCE_LINE,
     quality_weighted: bool = False,
+    quality_weight_source: str | None = None,
 ) -> HierarchyAggregation:
     """直接调用唯一聚合器 / Delegate directly to the sole aggregator."""
 
@@ -38,6 +39,7 @@ def aggregate_hierarchy_strict(
         tuple(rows),
         balance_line=balance_line,
         quality_weighted=quality_weighted,
+        quality_weight_source=quality_weight_source,
     )
 
 

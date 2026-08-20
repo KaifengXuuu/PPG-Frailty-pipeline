@@ -13,6 +13,24 @@ from typing import Iterable, Mapping
 import numpy as np
 
 
+def _normalized_oof_seed(value: object, *, field: str) -> int:
+    """Normalize one seed without truncation into the persisted int64 domain."""
+
+    if isinstance(value, (bool, np.bool_)):
+        raise ValueError(f"{field} must contain integer seeds")
+    try:
+        seed = int(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{field} must contain integer seeds") from exc
+    if isinstance(value, (float, np.floating)) and (
+        not np.isfinite(value) or float(value) != float(seed)
+    ):
+        raise ValueError(f"{field} must contain finite integer seeds")
+    if seed < 0 or seed > 0xFFFF_FFFF:
+        raise ValueError(f"{field} must contain executable uint32 seeds")
+    return seed
+
+
 @dataclass(frozen=True)
 class OofPredictionRow:
     """One auditable prediction before or after hierarchy aggregation.
@@ -101,11 +119,22 @@ class OofPredictionRow:
             raise ValueError("member_index must be non-negative")
         if self.split_seed < 0:
             raise ValueError("split_seed must be non-negative")
-        if self.training_seed is not None and self.training_seed < 0:
-            raise ValueError("training_seed must be null or non-negative")
+        if self.training_seed is not None:
+            object.__setattr__(
+                self,
+                "training_seed",
+                _normalized_oof_seed(self.training_seed, field="training_seed"),
+            )
         if self.prediction_kind not in {"single_model", "ensemble_member", "ensemble_average"}:
             raise ValueError("invalid prediction_kind")
-        member_seeds = tuple(int(value) for value in self.member_training_seeds)
+        if not isinstance(self.member_training_seeds, (list, tuple)):
+            raise ValueError(
+                "member_training_seeds must be an ordered list or tuple"
+            )
+        member_seeds = tuple(
+            _normalized_oof_seed(value, field="member_training_seeds")
+            for value in self.member_training_seeds
+        )
         if self.prediction_kind == "single_model":
             if self.training_seed is None or self.member_index is not None or member_seeds:
                 raise ValueError("single_model requires one training_seed and no member semantics")
@@ -117,8 +146,10 @@ class OofPredictionRow:
         else:
             if self.training_seed is not None or self.member_index is not None:
                 raise ValueError("ensemble_average cannot be represented as one training seed/member")
-            if member_seeds != (50042, 60042, 70042, 80042, 90042):
-                raise ValueError("ensemble_average requires the exact five V2 member seeds")
+            if not member_seeds or len(member_seeds) != len(set(member_seeds)):
+                raise ValueError(
+                    "ensemble_average requires a non-empty unique member seed roster"
+                )
             if not str(self.ensemble_base_model_id).strip():
                 raise ValueError("ensemble_average requires ensemble_base_model_id")
         object.__setattr__(self, "member_training_seeds", member_seeds)
@@ -256,6 +287,7 @@ def validate_expected_oof_roster(
     expected_config_hashes: Iterable[str],
     expected_level: str = "participant",
     expected_member_count: int = 1,
+    expect_ensemble: bool | None = None,
     require_trace: bool = True,
 ) -> None:
     """Validate the complete formal frozen-OOF Cartesian product.
@@ -280,8 +312,18 @@ def validate_expected_oof_roster(
         raise ValueError("formal OOF validation requires rows, roster and configurations")
     if any(len(key) != 3 or not values for key, values in roster.items()):
         raise ValueError("roster keys must be (repeat,fold,seed) with non-empty subjects")
-    if expected_member_count <= 0:
+    if (
+        isinstance(expected_member_count, (bool, np.bool_))
+        or not isinstance(expected_member_count, (int, np.integer))
+        or int(expected_member_count) <= 0
+    ):
         raise ValueError("expected_member_count must be positive")
+    expected_member_count = int(expected_member_count)
+    ensemble_expected = (
+        expected_member_count != 1
+        if expect_ensemble is None
+        else bool(expect_ensemble)
+    )
     validate_unique_subject_oof(frozen)
 
     selected = tuple(row for row in frozen if row.level == expected_level)
@@ -335,13 +377,13 @@ def validate_expected_oof_roster(
             for participant in roster[(repeat, fold, seed)]:
                 key = (repeat, fold, seed, config_hash, participant)
                 values = grouped.get(key, [])
-                expected_rows = 1 if expected_member_count == 1 else expected_member_count + 1
+                expected_rows = expected_member_count + 1 if ensemble_expected else 1
                 if len(values) != expected_rows:
                     raise ValueError(
                         "OOF subject/member completeness failed for "
                         f"{key}: expected {expected_rows}, observed {len(values)}"
                     )
-                if expected_member_count == 1:
+                if not ensemble_expected:
                     if values[0].prediction_kind != "single_model" or values[0].member_index is not None:
                         raise ValueError(f"single-model OOF semantics are invalid for {key}")
                 else:
@@ -352,6 +394,17 @@ def validate_expected_oof_roster(
                     if len(averages) != 1:
                         raise ValueError(f"OOF ensemble requires exactly one average row for {key}")
                     average = averages[0]
+                    ordered_members = sorted(members, key=lambda row: row.member_index)
+                    observed_member_seeds = tuple(
+                        int(row.training_seed) for row in ordered_members
+                    )
+                    if (
+                        len(average.member_training_seeds) != expected_member_count
+                        or observed_member_seeds != average.member_training_seeds
+                    ):
+                        raise ValueError(
+                            "OOF ensemble average roster does not match indexed member seeds"
+                        )
                     coherent_fields = (
                         "participant_id", "file_id", "role", "label", "repeat",
                         "fold", "split_seed", "config_hash", "manifest_hash",
@@ -382,7 +435,7 @@ def validate_expected_oof_roster(
                         expected_average = np.asarray(
                             [
                                 row.probabilities
-                                for row in sorted(members, key=lambda row: row.member_index)
+                                for row in ordered_members
                             ],
                             dtype=np.float64,
                         ).mean(axis=0)
@@ -408,9 +461,30 @@ validate_formal_oof = validate_expected_oof_roster
 
 
 OOF_SCHEMA_VERSION = "ppg_frailty_oof_v2"
+_GENERIC_SEED_SEMANTICS = (
+    b"single_model_rows_store_the_executed_training_seed;"
+    b"ensemble_member_rows_store_indexed_explicit_member_seeds;"
+    b"ensemble_average_rows_store_the_complete_ordered_member_roster"
+)
+_GENERIC_ENSEMBLE_SEMANTICS = (
+    b"n_member_rows_plus_exact_probability_average"
+)
+_LEGACY_SEED_SEMANTICS = (
+    b"ordinary_single_outer_cv_training_seed_equals_repeat_split_seed;"
+    b"ensemble_member_seeds_are_fixed_and_split_seed_independent;"
+    b"matched_single_comparator_uses_member0_seed_50042"
+)
+_LEGACY_ENSEMBLE_SEMANTICS = (
+    b"five_member_rows_plus_exact_probability_average"
+)
 
 
-def _arrow_schema(pa: object, *, empty_reason: str | None = None) -> object:
+def _arrow_schema(
+    pa: object,
+    *,
+    empty_reason: str | None = None,
+    legacy_ensemble_metadata: bool = False,
+) -> object:
     """Build the one explicit nullable/non-nullable V2 Arrow schema."""
 
     fields = [
@@ -469,11 +543,15 @@ def _arrow_schema(pa: object, *, empty_reason: str | None = None) -> object:
     metadata = {
         b"schema_version": OOF_SCHEMA_VERSION.encode("ascii"),
         b"seed_semantics": (
-            b"ordinary_single_outer_cv_training_seed_equals_repeat_split_seed;"
-            b"ensemble_member_seeds_are_fixed_and_split_seed_independent;"
-            b"matched_single_comparator_uses_member0_seed_50042"
+            _LEGACY_SEED_SEMANTICS
+            if legacy_ensemble_metadata
+            else _GENERIC_SEED_SEMANTICS
         ),
-        b"ensemble_semantics": b"five_member_rows_plus_exact_probability_average",
+        b"ensemble_semantics": (
+            _LEGACY_ENSEMBLE_SEMANTICS
+            if legacy_ensemble_metadata
+            else _GENERIC_ENSEMBLE_SEMANTICS
+        ),
         b"artifact_state": b"empty" if empty_reason is not None else b"populated",
         b"empty_reason": (
             str(empty_reason).strip().encode("utf-8") if empty_reason is not None else b""
@@ -491,10 +569,22 @@ def _schema_for_readback(pa: object, table: object) -> object:
     metadata = table.schema.metadata or {}
     state = metadata.get(b"artifact_state")
     reason_bytes = metadata.get(b"empty_reason")
+    semantics = (
+        metadata.get(b"seed_semantics"),
+        metadata.get(b"ensemble_semantics"),
+    )
+    if semantics == (_GENERIC_SEED_SEMANTICS, _GENERIC_ENSEMBLE_SEMANTICS):
+        legacy_ensemble_metadata = False
+    elif semantics == (_LEGACY_SEED_SEMANTICS, _LEGACY_ENSEMBLE_SEMANTICS):
+        legacy_ensemble_metadata = True
+    else:
+        raise ValueError("OOF seed/ensemble semantics metadata is unsupported")
     if state == b"populated":
         if reason_bytes != b"" or table.num_rows == 0:
             raise ValueError("populated OOF artifacts require rows and an empty empty_reason")
-        return _arrow_schema(pa)
+        return _arrow_schema(
+            pa, legacy_ensemble_metadata=legacy_ensemble_metadata
+        )
     if state == b"empty":
         try:
             reason = (reason_bytes or b"").decode("utf-8").strip()
@@ -502,7 +592,11 @@ def _schema_for_readback(pa: object, table: object) -> object:
             raise ValueError("OOF empty_reason metadata is not valid UTF-8") from exc
         if not reason or table.num_rows != 0:
             raise ValueError("empty OOF artifacts require zero rows and a non-empty reason")
-        return _arrow_schema(pa, empty_reason=reason)
+        return _arrow_schema(
+            pa,
+            empty_reason=reason,
+            legacy_ensemble_metadata=legacy_ensemble_metadata,
+        )
     raise ValueError("OOF artifact_state metadata must be populated or empty")
 
 

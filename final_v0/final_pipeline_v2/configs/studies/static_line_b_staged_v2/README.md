@@ -4,7 +4,7 @@ This folder is the compute-saving alternative to
 configs/studies/static_line_b_all_models_v2.yaml. The original 39-case plan is
 unchanged and remains available.
 
-The six files form a manual scientific workflow. Results never auto-select a
+The numbered files plus the final ShapeFormer stage form a manual scientific workflow. Results never auto-select a
 winner and no later file silently inherits an earlier result. Read each report,
 record the decision, then edit only the documented selector in the next file.
 
@@ -24,10 +24,15 @@ record the decision, then edit only the documented selector in the next file.
    stage. The supplemental report does not import or relabel those earlier
    artifacts, so review the separately identified evidence alongside it.
 
-3. 03_shapeformer_stability_v2.yaml
-   Default execution is one cell. If stable, rerun one complete repeat, then
-   full 5x5 only after another manual review. ShapeFormer failure is isolated
-   from ordinary models.
+3. stage3_alter.yaml
+   Executable specification for the revised nine-case legacy-to-V2 bridge and
+   an optional, advisory Phase 0 data/source/cache audit. It freezes repeat 0,
+   folds 0-4, seed 42, ten epochs, the requested execution and numeric report
+   orders, L5-to-L6 sampler-plus-class-weight bundle, post-hoc aggregation
+   views, and sampling diagnostics. Phase 0 never gates or changes training;
+   the current plan enables it for additional context and it may be skipped by
+   setting `legacy_bridge.phase0.enabled: false`. No existing C0 result is
+   automatically selected, paired, imported, or retrained.
 
 4. 04_selected_inception_ensemble_v2.yaml
    The checked-in route is Raw InceptionFull. The file header gives the exact
@@ -35,11 +40,13 @@ record the decision, then edit only the documented selector in the next file.
    model has no registered matched ensemble.
 
 5. 05_sqi_motion_finalists_v2.yaml
-   The runnable part is quality off versus diagnostics_only on example
+   The checked-in cases compare quality off with diagnostics_only on example
    finalists. Prune or replace those examples first. diagnostics_only must not
-   change predictions. Supervised SQI routing, motion override, denoiser
-   efficacy and formal motion 5x5 remain planned and are not disguised as
-   executable comparisons.
+   change predictions. The ordinary V2 `quality.mode=route` state machine and
+   registered reducers are executable configuration choices, but are not
+   silently inserted into this particular staged plan. Motion evidence and a
+   formal motion 5x5 remain separate scientific studies rather than execution
+   authorization for the core route.
 
 6. 06_sequential_single_factor_ablation_v2.yaml
    This is a reusable one-axis template. Replace base_config with the selected
@@ -51,6 +58,13 @@ record the decision, then edit only the documented selector in the next file.
    then ridge alpha. The YAML header lists the registered sparse values.
    If more than one parallel route remains, copy the template and run one
    within-route comparison per locked base; do not mix routes in one axis.
+
+Last. stage_last_shapeformer_stability_v2.yaml
+   ShapeFormer is intentionally deferred until every numbered stage has been
+   reviewed because its fold-local discovery and model fitting are unusually
+   expensive. Default execution is one cell. If stable, rerun one complete
+   repeat, then full 5x5 only after another manual review. Its failure remains
+   isolated from ordinary models.
 
 ## Commands
 
@@ -64,6 +78,21 @@ Run the three-case Stage 2 supplement:
 
     python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/02_competitive_routes_models_v2.yaml
 
+Inspect the Stage 3 protocol without expansion or training:
+
+    python3 -c "import sys; sys.path.insert(0, 'src'); from ppg_frailty.study import load_study_plan; p=load_study_plan('configs/studies/static_line_b_staged_v2/stage3_alter.yaml'); print(p.legacy_bridge.to_dict())"
+
+Stage 3 expands through an isolated Legacy Bridge runtime. With the checked-in
+`legacy_bridge.phase0.enabled: true`, a `run` also executes the advisory Phase 0
+source/manifest/channel/IMU/cache/split audit. Its status is recorded but never
+blocks, changes, or selects training. Set the flag to `false` to skip the audit;
+the nine training cases and their inputs remain unchanged. The formal command is:
+
+    python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/stage3_alter.yaml
+
+This command is the full 45-fit study, not a dry-run. Use `--dry-run` to inspect
+the nine resolved cases without Phase 0 or training.
+
 Stage 1 contains deep raw/fusion cases, so its plan disables concurrent deep
 case execution. A larger command-line jobs value is accepted but is
 automatically reduced to one effective case at a time to avoid memory
@@ -73,13 +102,13 @@ Escalate Stage 1 to full 5x5 only when the one-repeat routes are too close:
 
     python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/01_representation_baselines_v2.yaml --repeats all --folds all
 
-ShapeFormer stability ladder:
+Stage-last ShapeFormer stability ladder:
 
-    python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/03_shapeformer_stability_v2.yaml
+    python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/stage_last_shapeformer_stability_v2.yaml
 
-    python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/03_shapeformer_stability_v2.yaml --repeats 0 --folds all
+    python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/stage_last_shapeformer_stability_v2.yaml --repeats 0 --folds all
 
-    python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/03_shapeformer_stability_v2.yaml --repeats all --folds all
+    python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/stage_last_shapeformer_stability_v2.yaml --repeats all --folds all
 
 Every default run generates a report, and every standalone report rebuild uses
 the same reporting path:
@@ -99,11 +128,14 @@ for that run; the standalone report command can add it later without training.
 - Stage 2: 3 supplemental cases, repeat 0 with all five folds, 15 outer cells.
   The reused CompactCNN, InceptionFull and Logistic r0 evidence is not counted
   again.
-- Stage 3: 1, then 5, then 25 outer cells.
+- Stage 3: exactly 9 cases, 45 fits and 450 model-epochs. The optional advisory
+  Phase 0 audit adds no fits or model-epochs and its status does not affect this
+  budget.
 - Stage 4: 2 scientific cases, 50 outer cells and 150 fitted networks.
 - Stage 5: at most 8 runnable diagnostic cases, 200 outer cells; normally
   fewer after finalist pruning. Planned motion work is not counted.
 - Stage 6: 3 cases and 75 outer cells for each active factor.
+- Stage last (ShapeFormer): 1, then 5, then 25 outer cells.
 
 Every study writes to artifacts/studies/static_line_b_staged_v2 under its own
 timestamped study directory. The existing non-overwrite and atomic publication

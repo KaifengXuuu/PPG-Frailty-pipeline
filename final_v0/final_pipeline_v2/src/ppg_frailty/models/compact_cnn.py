@@ -15,6 +15,8 @@ same encoder can be reused by the file-bag fusion route.
 from __future__ import annotations
 
 from collections.abc import Sequence
+import math
+import operator
 
 try:
     import torch
@@ -32,8 +34,6 @@ class CompactCNN1D(nn.Module):
     将窗口位置误当成固定语义。
     """
 
-    feature_dim: int = 128
-
     def __init__(
         self,
         n_channels: int,
@@ -42,17 +42,45 @@ class CompactCNN1D(nn.Module):
         kernel_sizes: Sequence[int] = (9, 9, 7),
         dilations: Sequence[int] = (1, 1, 1),
         pool_sizes: Sequence[int] = (4, 4),
+        stage_channels: Sequence[int] = (32, 64, 128),
+        stage_dropouts: Sequence[float] = (0.10, 0.15),
     ) -> None:
         super().__init__()
         kernels = tuple(int(value) for value in kernel_sizes)
         dilation_values = tuple(int(value) for value in dilations)
         pools = tuple(int(value) for value in pool_sizes)
+        raw_stage_channels = tuple(stage_channels)
+        try:
+            channels = tuple(
+                operator.index(value)
+                for value in raw_stage_channels
+                if not isinstance(value, bool)
+            )
+        except TypeError as exc:
+            raise ValueError("stage_channels must contain three positive integers") from exc
+        if len(channels) != len(raw_stage_channels):
+            raise ValueError("stage_channels must contain three positive integers")
+        if any(isinstance(value, bool) for value in stage_dropouts):
+            raise ValueError("stage_dropouts must contain numeric probabilities")
+        dropout_values = tuple(float(value) for value in stage_dropouts)
         if len(kernels) != 3 or any(value <= 0 or value % 2 == 0 for value in kernels):
             raise ValueError('kernel_sizes must contain three positive odd integers')
         if len(dilation_values) != 3 or any(value <= 0 for value in dilation_values):
             raise ValueError('dilations must contain three positive integers')
         if len(pools) != 2 or any(value <= 0 for value in pools):
             raise ValueError('pool_sizes must contain two positive integers')
+        if len(channels) != 3 or any(value <= 0 for value in channels):
+            raise ValueError("stage_channels must contain three positive integers")
+        if len(dropout_values) != 2 or any(
+            not math.isfinite(value) or not 0.0 <= value < 1.0
+            for value in dropout_values
+        ):
+            raise ValueError("stage_dropouts must contain two probabilities in [0,1)")
+        if isinstance(dropout, bool):
+            raise ValueError("dropout must be a numeric probability")
+        classifier_dropout = float(dropout)
+        if not math.isfinite(classifier_dropout) or not 0.0 <= classifier_dropout < 1.0:
+            raise ValueError("dropout must be a probability in [0,1)")
         self.kernel_sizes = kernels
         self.dilations = dilation_values
         self.pool_sizes = pools
@@ -60,42 +88,43 @@ class CompactCNN1D(nn.Module):
             raise ValueError("n_channels must be positive and n_classes must exceed one")
         self.n_channels = int(n_channels)
         self.n_classes = int(n_classes)
-        self.stage_channels = (32, 64, 128)
-        self.stage_dropouts = (0.10, 0.15)
-        self.classifier_dropout = float(dropout)
+        self.stage_channels = channels
+        self.stage_dropouts = dropout_values
+        self.classifier_dropout = classifier_dropout
+        self.feature_dim = channels[-1]
 
         # English: Three convolutional stages are deliberately small enough for
         # an embedded CPU deployment target.
         # 中文：三个卷积阶段特意保持紧凑，以适配嵌入式 CPU 部署目标。
         self.encoder = nn.Sequential(
             nn.Conv1d(
-                n_channels, 32, kernel_size=kernels[0],
+                n_channels, channels[0], kernel_size=kernels[0],
                 dilation=dilation_values[0],
                 padding=dilation_values[0] * (kernels[0] - 1) // 2,
             ),
-            nn.BatchNorm1d(32),
+            nn.BatchNorm1d(channels[0]),
             nn.ReLU(inplace=True),
             nn.MaxPool1d(kernel_size=pools[0]),
-            nn.Dropout(0.10),
+            nn.Dropout(dropout_values[0]),
             nn.Conv1d(
-                32, 64, kernel_size=kernels[1],
+                channels[0], channels[1], kernel_size=kernels[1],
                 dilation=dilation_values[1],
                 padding=dilation_values[1] * (kernels[1] - 1) // 2,
             ),
-            nn.BatchNorm1d(64),
+            nn.BatchNorm1d(channels[1]),
             nn.ReLU(inplace=True),
             nn.MaxPool1d(kernel_size=pools[1]),
-            nn.Dropout(0.15),
+            nn.Dropout(dropout_values[1]),
             nn.Conv1d(
-                64, 128, kernel_size=kernels[2],
+                channels[1], channels[2], kernel_size=kernels[2],
                 dilation=dilation_values[2],
                 padding=dilation_values[2] * (kernels[2] - 1) // 2,
             ),
-            nn.BatchNorm1d(128),
+            nn.BatchNorm1d(channels[2]),
             nn.ReLU(inplace=True),
             nn.AdaptiveAvgPool1d(1),
         )
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(classifier_dropout)
         self.classifier = nn.Linear(self.feature_dim, n_classes)
 
     def forward_features(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:

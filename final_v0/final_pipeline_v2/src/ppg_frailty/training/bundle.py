@@ -24,9 +24,11 @@ from ..models import (
     create_model,
     normalize_model_config,
     normalize_model_id,
+    resolve_seed_policy,
     validate_frozen_model_run_provenance,
     validate_resolved_architecture,
 )
+from ..module_registry import model_factory_contract
 from ..provenance import sha256_file, stable_payload_sha256
 
 
@@ -49,16 +51,59 @@ _TRUSTED_FINAL_IDENTITY_FIELDS = frozenset(
         "model_kind", "model_family", "representation_mode",
     }
 )
-_ESTIMATOR_MODEL_IDS = frozenset(
-    {
-        "logistic_regression",
-        "rbf_svm",
-        "extra_trees",
-        "rocket_numpy",
-        "minirocket_ablation",
-    }
-)
 _ESTIMATOR_NOT_APPLICABLE = "not_applicable_estimator_native"
+_ENSEMBLE_MODEL_KINDS = frozenset({"ensemble", "five_member_ensemble"})
+
+
+def _is_ensemble_model_kind(value: object) -> bool:
+    """Recognize the generic kind and its historical five-member alias."""
+
+    return str(value) in _ENSEMBLE_MODEL_KINDS
+
+
+def _model_uses_estimator(model_id: str) -> bool:
+    """Resolve estimator behavior from the registry, not a duplicated ID set."""
+
+    return model_factory_contract(str(model_id))["execution_backend"] == "estimator"
+
+
+def _model_is_ensemble(model_id: str) -> bool:
+    """Resolve ensemble behavior from the model factory-field capability."""
+
+    return "member_seeds" in set(
+        model_factory_contract(str(model_id))["factory_fields"]
+    )
+
+
+def _validated_refit_seed_roster(values: object) -> tuple[int, ...]:
+    """Return a non-empty unique roster representable in persisted int64 fields."""
+
+    if not isinstance(values, (list, tuple)):
+        raise ValueError(
+            "final-refit training_seeds must be an ordered list or tuple"
+        )
+    raw_values = tuple(values)
+    seeds: list[int] = []
+    for value in raw_values:
+        if isinstance(value, (bool, np.bool_)):
+            raise ValueError("final-refit training_seeds must contain integers")
+        try:
+            seed = int(value)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("final-refit training_seeds must contain integers") from exc
+        if isinstance(value, (float, np.floating)) and (
+            not np.isfinite(value) or float(value) != float(seed)
+        ):
+            raise ValueError("final-refit training_seeds must contain finite integers")
+        if seed < 0 or seed > 0xFFFF_FFFF:
+            raise ValueError(
+                "final-refit training_seeds must be in the executable uint32 range"
+            )
+        seeds.append(seed)
+    roster = tuple(seeds)
+    if not roster or len(roster) != len(set(roster)):
+        raise ValueError("final-refit training_seeds must be non-empty and unique")
+    return roster
 REQUIRED_RUNTIME_ENVIRONMENT_KEYS = (
     "python",
     "python_implementation",
@@ -183,22 +228,33 @@ class FinalRefitPlan:
 
     def __post_init__(self) -> None:
         participants = tuple(sorted(set(map(str, self.participant_ids))))
-        seeds = tuple(int(value) for value in self.training_seeds)
+        seeds = _validated_refit_seed_roster(self.training_seeds)
         if not str(self.purpose).strip() or not str(self.model_id).strip():
             raise ValueError("final refit requires purpose and model_id")
         if len(participants) != 29:
             raise ValueError("V2 final refit must use exactly all 29 internal participants")
         if self.model_kind == "single_model":
-            if seeds != (42,):
-                raise ValueError("single-model final refit seed is exactly 42")
-        elif self.model_kind == "five_member_ensemble":
-            if seeds != (50042, 60042, 70042, 80042, 90042):
-                raise ValueError("ensemble final refit requires the exact five member seeds")
+            if len(seeds) != 1:
+                raise ValueError("single-model final refit requires exactly one training seed")
+        elif _is_ensemble_model_kind(self.model_kind):
+            pass
         else:
-            raise ValueError("model_kind must be single_model or five_member_ensemble")
+            raise ValueError(
+                "model_kind must be single_model, ensemble, or the legacy "
+                "five_member_ensemble alias"
+            )
         if self.model_family == "deep":
-            if self.epoch_rule != "fixed_epoch" or self.fixed_epochs not in {7, 10, 15}:
-                raise ValueError("deep final refit requires fixed_epoch in {7,10,15}")
+            if self.epoch_rule != "fixed_epoch":
+                raise ValueError("deep final refit requires epoch_rule=fixed_epoch")
+            if (
+                isinstance(self.fixed_epochs, (bool, np.bool_))
+                or not isinstance(self.fixed_epochs, (int, np.integer))
+                or int(self.fixed_epochs) <= 0
+            ):
+                raise ValueError(
+                    "deep final refit fixed_epochs must be a positive integer"
+                )
+            object.__setattr__(self, "fixed_epochs", int(self.fixed_epochs))
         elif self.model_family == "classical_or_rocket":
             if self.epoch_rule != "not_applicable" or self.fixed_epochs is not None:
                 raise ValueError("classical/ROCKET final refit must not carry a fake epoch")
@@ -316,7 +372,7 @@ def materialize_final_refit_binding(
     _canonical_name, machine_id = normalize_model_id(
         str(normalized_model["model_id"])
     )
-    estimator_model = machine_id in _ESTIMATOR_MODEL_IDS
+    estimator_model = _model_uses_estimator(machine_id)
     training_pairs = {
         "class_weighting": "class_weighting",
         "sampler": "sampler",
@@ -736,26 +792,12 @@ def _execute_prepared_full_cohort_refit(
 
     if not isinstance(trainer, UnifiedTrainer):
         raise TypeError("trainer must be UnifiedTrainer")
-    if trainer.config.execution_mode != "formal":
-        raise ValueError("final refit requires the formal training execution mode")
     _canonical_plan_name, plan_machine_id = normalize_model_id(plan.model_id)
-    ensemble_machine_ids = {
-        "inception_full_five_member_ensemble",
-        "inception_matrix_five_member_ensemble",
-    }
-    ensemble_seeds = (50042, 60042, 70042, 80042, 90042)
-    if plan.model_kind == "five_member_ensemble":
-        if plan_machine_id not in ensemble_machine_ids:
-            raise ValueError("final ensemble model_kind requires an ensemble model identity")
-        if plan.training_seeds != ensemble_seeds:
-            raise ValueError("final ensemble refit requires the exact five member seeds")
-        if int(trainer.config.seed) != ensemble_seeds[0]:
-            raise ValueError("V2 ensemble final refit orchestration seed must be 50042")
-    else:
-        if plan_machine_id in ensemble_machine_ids:
-            raise ValueError("final ensemble model identity requires five_member_ensemble kind")
-        if int(trainer.config.seed) != 42:
-            raise ValueError("V2 single-model final refit trainer seed must be 42")
+    plan_is_ensemble = _is_ensemble_model_kind(plan.model_kind)
+    if plan_is_ensemble != _model_is_ensemble(plan_machine_id):
+        raise ValueError(
+            "final model_kind and registry ensemble capability disagree"
+        )
     binding_pairs = {
         "resolved_model_config_hash": binding.resolved_model_config_hash,
         "architecture_parameters_hash": binding.architecture_parameters_hash,
@@ -768,6 +810,13 @@ def _execute_prepared_full_cohort_refit(
             raise ValueError(f"FinalRefitPlan {name} differs from the supplied binding")
     if stable_payload_sha256(asdict(trainer.config)) != binding.training_config_hash:
         raise ValueError("executor trainer config differs from the final-refit binding")
+    if (
+        not plan_is_ensemble
+        and int(trainer.config.seed) != plan.training_seeds[0]
+    ):
+        raise ValueError(
+            "single-model trainer orchestration seed differs from FinalRefitPlan"
+        )
     if plan.registry_hash != str(registry_hash):
         raise ValueError("FinalRefitPlan registry_hash differs from executor input")
     run = dict(binding.frozen_run_provenance)
@@ -783,12 +832,21 @@ def _execute_prepared_full_cohort_refit(
             raise ValueError(f"final refit run provenance {name} differs from plan")
     if tuple(run["random_seeds"]) != plan.training_seeds:
         raise ValueError("final refit run provenance seed roster differs from plan")
-    expected_seed_policy = (
-        "final_refit_five_member_seeds"
-        if plan.model_kind == "five_member_ensemble"
-        else "final_refit_single_seed_42"
-    )
-    if run["seed_policy"] != expected_seed_policy:
+    try:
+        resolved_run_seeds = (
+            resolve_seed_policy(
+                str(run["seed_policy"]), member_seeds=plan.training_seeds
+            )
+            if plan_is_ensemble
+            else resolve_seed_policy(
+                str(run["seed_policy"]), seed=plan.training_seeds[0]
+            )
+        )
+    except ValueError as exc:
+        raise ValueError(
+            "final refit run provenance seed_policy differs from plan"
+        ) from exc
+    if resolved_run_seeds != plan.training_seeds:
         raise ValueError("final refit run provenance seed_policy differs from plan")
     epoch_identity = dict(run["epoch_rule"])
     if plan.model_family == "deep":
@@ -802,18 +860,25 @@ def _execute_prepared_full_cohort_refit(
         or epoch_identity.get("fixed_epochs") is not None
     ):
         raise ValueError("final classical/ROCKET run provenance must use no epoch")
+    # Training balance and prediction aggregation are independent, hash-bound
+    # modules.  The former controls row mass and train/inner diagnostics; the
+    # latter controls the persisted participant view.  Binding both values is
+    # required, but equality between them is not.
     aggregation = dict(run["aggregation"])
-    if aggregation.get("balance_line") != trainer.config.expected_aggregation_rule:
-        raise ValueError("final run aggregation differs from trainer balance line")
+    if aggregation.get("balance_line") not in {
+        "line_a_equal_files",
+        "line_b_equal_role_families",
+    }:
+        raise ValueError("final run aggregation balance line is not registered")
     spec = ModelInputSpec.from_value(binding.input_spec)
     normalized_model = dict(binding.resolved_model_config)
     if normalized_model["model_id"] != normalize_model_id(plan.model_id)[1]:
         raise ValueError("final refit model config identity differs from plan")
-    if plan.model_kind == "five_member_ensemble":
+    if plan_is_ensemble:
         if tuple(normalized_model.get("member_seeds", ())) != plan.training_seeds:
             raise ValueError("final ensemble model config seed roster differs from plan")
-    elif int(normalized_model.get("seed", -1)) != 42:
-        raise ValueError("final single-model config seed must be 42")
+    elif int(normalized_model.get("seed", -1)) != plan.training_seeds[0]:
+        raise ValueError("final single-model config seed differs from plan")
     scope = FullCohortRefitScope(
         participant_ids=plan.participant_ids,
         registry_hash=str(registry_hash),
@@ -837,8 +902,6 @@ def _execute_prepared_full_cohort_refit(
     else:
         if estimator is None or model_factory is not None:
             raise ValueError("classical/ROCKET final refit requires exactly estimator")
-        if trainer.config.epoch_profile in {"ablation_7", "ablation_15"}:
-            raise ValueError("epoch ablations cannot be applied to classical/ROCKET refit")
         validate_resolved_architecture(estimator, declared_architecture, spec)
         result = trainer.fit_estimator(estimator, full_dataset, scope)
 
@@ -852,11 +915,13 @@ def _execute_prepared_full_cohort_refit(
         raise RuntimeError(
             f"final refit model identity mismatch: {observed_model_id} != {expected_machine_id}"
         )
-    if plan.model_kind == "five_member_ensemble":
+    if plan_is_ensemble:
         if result.provenance.member_training_seeds != plan.training_seeds:
             raise RuntimeError("final ensemble refit member seed roster drifted")
     elif result.provenance.training_seed != plan.training_seeds[0]:
         raise RuntimeError("final single-model refit seed drifted")
+    if result.provenance.training_seed != int(trainer.config.seed):
+        raise RuntimeError("final refit orchestration seed drifted from trainer config")
     if result.selected_epoch != plan.fixed_epochs:
         raise RuntimeError("final refit selected_epoch differs from the frozen plan")
     validate_resolved_architecture(result.model, declared_architecture, spec)
@@ -1084,7 +1149,7 @@ def _validate_trusted_final_refit_manifest(
         raise ValueError("trusted final-refit identity field schema drift")
     normalized = _jsonable(dict(identity))
     participants = tuple(str(value) for value in normalized["participant_ids"])
-    seeds = tuple(int(value) for value in normalized["training_seeds"])
+    raw_seeds = normalized["training_seeds"]
     if (
         normalized["performance_evidence"]
         != "outer_oof_only_no_refit_self_evaluation"
@@ -1095,18 +1160,41 @@ def _validate_trusted_final_refit_manifest(
         or normalized["representation_mode"]
         not in {"raw", "feature_vector", "feature_matrix", "fusion"}
         or normalized["model_kind"]
-        not in {"single_model", "five_member_ensemble"}
+        not in {"single_model", "ensemble", "five_member_ensemble"}
         or normalized["model_family"]
         not in {"deep", "classical_or_rocket"}
     ):
         raise ValueError("trusted final-refit scope/model identity invalid")
-    expected_seeds = (
-        (50042, 60042, 70042, 80042, 90042)
-        if normalized["model_kind"] == "five_member_ensemble"
-        else (42,)
-    )
-    if seeds != expected_seeds:
+    try:
+        seeds = _validated_refit_seed_roster(raw_seeds)
+    except ValueError as exc:
+        raise ValueError("trusted final-refit seed roster invalid") from exc
+    if (
+        normalized["model_kind"] == "single_model" and len(seeds) != 1
+    ):
         raise ValueError("trusted final-refit seed roster invalid")
+    _, machine_model_id = normalize_model_id(str(normalized["model_id"]))
+    kind_is_ensemble = _is_ensemble_model_kind(normalized["model_kind"])
+    if kind_is_ensemble != _model_is_ensemble(machine_model_id):
+        raise ValueError("trusted final-refit model kind/identity mismatch")
+    family_is_classical = normalized["model_family"] == "classical_or_rocket"
+    if family_is_classical != _model_uses_estimator(machine_model_id):
+        raise ValueError("trusted final-refit model family/identity mismatch")
+    if normalized["model_family"] == "deep":
+        fixed_epochs = normalized["fixed_epochs"]
+        if (
+            normalized["epoch_rule"] != "fixed_epoch"
+            or isinstance(fixed_epochs, (bool, np.bool_))
+            or not isinstance(fixed_epochs, (int, np.integer))
+            or int(fixed_epochs) <= 0
+        ):
+            raise ValueError("trusted deep final-refit epoch identity invalid")
+    elif (
+        normalized["epoch_rule"] != "not_applicable"
+        or normalized["fixed_epochs"] is not None
+        or kind_is_ensemble
+    ):
+        raise ValueError("trusted classical final-refit epoch/model identity invalid")
     for name in (
         "manual_selection_hash", "selection_record_file_sha256",
         "oof_evidence_hash", "config_hash", "registry_hash", "dataset_hash",
@@ -1128,7 +1216,7 @@ def _validate_trusted_final_refit_manifest(
         or manifest.get("source_snapshot_hash")
         != normalized["source_snapshot_hash"]
         or manifest.get("machine_model_id")
-        != normalize_model_id(str(normalized["model_id"]))[1]
+        != machine_model_id
     ):
         raise ValueError("trusted final-refit manifest identity mismatch")
     return normalized
@@ -1466,10 +1554,12 @@ def _pipeline_adapter_contract(
         raise ValueError("pipeline adapter input_schema_hash disagrees with input_spec")
     if raw_roles is None:
         raise ValueError("pipeline adapter must declare allowed_role_families")
-    allowed_roles = tuple(str(value) for value in raw_roles)
-    if allowed_roles != ("B", "R"):
+    from .aggregation import canonical_role_family
+
+    allowed_roles = tuple(canonical_role_family(value) for value in raw_roles)
+    if not allowed_roles or len(allowed_roles) != len(set(allowed_roles)):
         raise ValueError(
-            "SQI-off V2 bundle adapter allowed_role_families must be exactly B,R"
+            "bundle adapter allowed_role_families must be non-empty and unique"
         )
     if not hasattr(adapter, "transform_record") and not callable(adapter):
         raise TypeError("pipeline adapter must be callable or expose transform_record")

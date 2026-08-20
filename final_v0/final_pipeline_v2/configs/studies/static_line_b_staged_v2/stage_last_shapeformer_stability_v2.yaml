@@ -1,13 +1,13 @@
-# Run this same file in three explicit steps:
+# Run this final, high-cost stage in three explicit steps:
 # 1) one cell (default command);
 # 2) one repeat: add --repeats 0 --folds all;
 # 3) only if stable, full 5x5: add --repeats all --folds all.
 schema_version: ppg_frailty.study_plan.v2
 study:
-  study_id: staged_static_03_shapeformer_stability_v2
+  study_id: staged_static_stage_last_shapeformer_stability_v2
   kind: catalog_sweep
   purpose: "Isolate ShapeFormer implementation/stability diagnostics from all ordinary model studies."
-  flow_position: "Stage 3 after ordinary route screening; advance one-cell to one-repeat to 5x5 manually."
+  flow_position: "Stage last after all ordinary, bridge, ensemble, quality, and ablation work; advance one-cell to one-repeat to 5x5 manually."
   decision_role: robustness
   reference_case_id: shapeformer__channel_specific_osd
   thesis_sections:
@@ -27,7 +27,7 @@ search:
     - "No other model shares this study or its failure status"
   notes:
     - "A one-cell or one-repeat result is diagnostic only and cannot be ranked as final evidence."
-    - "The fixed-effect-size ShapeFormer variant belongs to a later named ablation, not this stability gate."
+    - "The fixed-effect-size ShapeFormer variant belongs to a separate named ablation, not this stability stage."
 cases:
   - case_id: shapeformer__channel_specific_osd
     catalog_entry: shapeformer_channel_specific_osd
@@ -43,6 +43,7 @@ execution:
   parallel_level: cases
   continue_on_error: false
   allow_parallel_deep: false
+  measure_operational_costs: false
 output:
   root: artifacts/studies/static_line_b_staged_v2
 report:

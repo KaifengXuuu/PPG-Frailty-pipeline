@@ -11,7 +11,7 @@
 
 ## Identity and deviation / 身份与偏离
 
-Fixed 128-sample/stride-64 outer-fold effect-size discovery plus non-overlapping patch embedding before mask-aware generic self-attention and trainable shapelet distances; not PISD/original parity.
+Outer-fold fixed-length effect-size discovery defaults to 128 samples and stride 64; both controls are runtime-selectable and provenance-bound. It uses non-overlapping patch embedding before mask-aware generic self-attention and trainable shapelet distances; not PISD/original parity.
 
 中文：本卡只描述已实现接口和命名边界，不把架构存在、单元测试通过或历史分数
 解释为 V2 性能证据。

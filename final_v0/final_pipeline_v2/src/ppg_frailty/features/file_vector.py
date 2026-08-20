@@ -4,12 +4,19 @@
 """
 
 from ..contracts import FeatureVectorV1
-from .registry import FeatureRegistry, build_feature_vector, default_registry, summarize_engineering
+from .registry import (
+    FeatureRegistry,
+    build_feature_vector,
+    default_registry,
+    registry_for_groups,
+    summarize_engineering,
+)
 
 __all__ = [
     "FeatureRegistry",
     "FeatureVectorV1",
     "build_feature_vector",
     "default_registry",
+    "registry_for_groups",
     "summarize_engineering",
 ]

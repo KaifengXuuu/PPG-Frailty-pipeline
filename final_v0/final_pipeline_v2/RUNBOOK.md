@@ -143,15 +143,16 @@ Dashboard job 使用独立 output root，进度只读取该 job 的目录。
 
 ## 9. 特殊边界
 
-- Ensemble outer CV：每个 repeat/fold 固定复用 member seeds
-  `[50042,60042,70042,80042,90042]`；matched single comparator 固定 seed `50042`。
-  每个 fold 只对五成员 probabilities 取均值，不能选择最佳 member 或平均 member metrics。
+- Ensemble outer CV：具名 historical comparison preset 使用
+  `[50042,60042,70042,80042,90042]`，matched single comparator 使用 seed `50042`；
+  ordinary V2 由配置中的唯一 `member_seeds` roster 决定任意正成员数。每个 fold 始终
+  对已声明成员 probabilities 取均值，不能选择最佳 member 或平均 member metrics。
 - Frailty raw/fusion/ShapeFormer：固定 8 通道
   `RED,IR,A_dyn_X,A_dyn_Y,A_dyn_Z,GX,GY,GZ`。motion detector/denoiser 默认也是
   8ch axes reference；额外 magnitude/jerk 组成的 11ch 只在具名 augmentation
   ablation 中启用。
-- Final use-case refit：只在人工选择完成后运行；single seed=42，final five-member
-  roster 为 `[50042,60042,70042,80042,90042]`。
+- Final use-case refit：只在人工选择完成后运行；训练 seed/ensemble roster 继承并绑定
+  被选配置。`42` 与 five-member roster 只是当前 reference preset，不是 core 门禁。
 - PTT external：V2-036 将 sit acceleration 按源 `m/s²` 直接使用，不乘 9.80665；
   gyro 根据 header 从 `deg/s` 转 `rad/s`。这不改变 internal frailty source 的 `g` 单位。
 - Aura PRV：固定 `hrv-analysis==1.0.2`，使用独立 requirements 文件；普通 pipeline

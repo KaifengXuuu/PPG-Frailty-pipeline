@@ -14,10 +14,13 @@ from .pairing import (
 from .resolver import (
     ABLATION_DETECTOR_ID,
     CANONICAL_DETECTOR_ID,
+    DEFAULT_MIN_OBSERVATION_SEC,
+    DEFAULT_MIN_PEAKS,
     REGISTERED_DETECTOR_IDS,
     detect_pulses,
     detect_pulses_per_wavelength,
     resolve_detector_id,
+    validate_peak_detection_parameters,
 )
 
 __all__ = [
@@ -25,6 +28,8 @@ __all__ = [
     "BeatPairAudit",
     "BeatPairingResult",
     "CANONICAL_DETECTOR_ID",
+    "DEFAULT_MIN_OBSERVATION_SEC",
+    "DEFAULT_MIN_PEAKS",
     "DETECTOR_NAME",
     "DUAL_WAVELENGTH_PAIRING_SCHEMA_VERSION",
     "EventMatchMetrics",
@@ -37,4 +42,5 @@ __all__ = [
     "pair_dual_wavelength_beats",
     "resolve_detector_id",
     "select_reference_wavelength",
+    "validate_peak_detection_parameters",
 ]

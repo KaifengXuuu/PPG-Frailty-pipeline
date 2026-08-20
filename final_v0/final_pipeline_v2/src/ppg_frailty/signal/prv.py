@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, Mapping
 
 import numpy as np
 from scipy import interpolate, signal
@@ -12,6 +13,240 @@ from .peaks import MIN_BASIC_RATE_PEAKS
 
 
 MIN_TIME_DOMAIN_PRV_INTERVALS = 30
+
+
+@dataclass(frozen=True)
+class PrvConfig:
+    """Runtime PRV thresholds and spectral parameters.
+
+    Defaults reproduce the pre-configuration implementation.  ``from_mapping``
+    reads the public ``features`` section and supplies an explicit default for
+    every omitted field, so persisted configuration is executed rather than
+    merely reported as provenance.
+    """
+
+    rate_prv_min_duration_s: float = 8.0
+    rate_prv_min_peaks: int = MIN_BASIC_RATE_PEAKS
+    time_prv_min_duration_s: float = 60.0
+    time_prv_min_coverage: float = 0.80
+    time_prv_min_intervals: int = MIN_TIME_DOMAIN_PRV_INTERVALS
+    spectral_prv_min_duration_s: float = 300.0
+    spectral_prv_min_coverage: float = 0.80
+    spectral_prv_min_intervals: int = 200
+    tachogram_fs_hz: float = 4.0
+    vlf_band_hz: tuple[float, float] = (0.003, 0.04)
+    lf_band_hz: tuple[float, float] = (0.04, 0.15)
+    hf_band_hz: tuple[float, float] = (0.15, 0.40)
+    sample_entropy_m: int = 2
+    sample_entropy_r_sd_fraction: float = 0.20
+    sample_entropy_min_intervals: int = 200
+
+    @classmethod
+    def from_mapping(cls, features: Mapping[str, Any] | None) -> "PrvConfig":
+        """Resolve supported feature fields without requiring boilerplate."""
+
+        if features is None:
+            return cls().validated()
+        if not isinstance(features, Mapping):
+            raise ValueError("features must be a mapping when resolving PRV config")
+        defaults = cls()
+        if (
+            "rate_prv_min_peaks" in features
+            and "time_prv_min_accepted_peaks" in features
+            and features["rate_prv_min_peaks"]
+            != features["time_prv_min_accepted_peaks"]
+        ):
+            raise ValueError(
+                "features.rate_prv_min_peaks conflicts with its deprecated "
+                "time_prv_min_accepted_peaks alias"
+            )
+        bands_raw = features.get("spectral_bands_hz", {})
+        if bands_raw is None:
+            bands_raw = {}
+        if not isinstance(bands_raw, Mapping):
+            raise ValueError("features.spectral_bands_hz must be a mapping")
+        unknown_bands = set(bands_raw) - {"vlf", "lf", "hf"}
+        if unknown_bands:
+            raise ValueError(
+                "features.spectral_bands_hz contains unknown bands: "
+                f"{sorted(unknown_bands)}"
+            )
+        entropy_raw = features.get("sample_entropy", {})
+        if entropy_raw is None:
+            entropy_raw = {}
+        if not isinstance(entropy_raw, Mapping):
+            raise ValueError("features.sample_entropy must be a mapping")
+        unknown_entropy = set(entropy_raw) - {
+            "m",
+            "r_sd_fraction",
+            "min_intervals",
+        }
+        if unknown_entropy:
+            raise ValueError(
+                "features.sample_entropy contains unknown fields: "
+                f"{sorted(unknown_entropy)}"
+            )
+
+        def band(name: str, default: tuple[float, float]) -> tuple[float, float]:
+            raw = bands_raw.get(name, default)
+            if (
+                isinstance(raw, (str, bytes))
+                or not isinstance(raw, (list, tuple))
+                or len(raw) != 2
+            ):
+                raise ValueError(f"features.spectral_bands_hz.{name} must have two edges")
+            return (float(raw[0]), float(raw[1]))
+
+        # ``time_prv_min_accepted_peaks`` was the old public name for the
+        # basic-rate peak threshold.  Execute it as that compatibility alias;
+        # the time-domain interval threshold has its own unambiguous field.
+        rate_min_peaks = features.get(
+            "rate_prv_min_peaks",
+            features.get(
+                "time_prv_min_accepted_peaks",
+                defaults.rate_prv_min_peaks,
+            ),
+        )
+        time_coverage = features.get(
+            "time_prv_min_coverage",
+            defaults.time_prv_min_coverage,
+        )
+        result = cls(
+            rate_prv_min_duration_s=float(
+                features.get(
+                    "rate_prv_min_duration_s",
+                    defaults.rate_prv_min_duration_s,
+                )
+            ),
+            rate_prv_min_peaks=rate_min_peaks,
+            time_prv_min_duration_s=float(
+                features.get(
+                    "time_prv_min_duration_s",
+                    defaults.time_prv_min_duration_s,
+                )
+            ),
+            time_prv_min_coverage=float(time_coverage),
+            time_prv_min_intervals=features.get(
+                "time_prv_min_intervals",
+                defaults.time_prv_min_intervals,
+            ),
+            spectral_prv_min_duration_s=float(
+                features.get(
+                    "spectral_prv_min_duration_s",
+                    defaults.spectral_prv_min_duration_s,
+                )
+            ),
+            spectral_prv_min_coverage=float(
+                features.get(
+                    "spectral_prv_min_coverage",
+                    defaults.spectral_prv_min_coverage,
+                )
+            ),
+            spectral_prv_min_intervals=features.get(
+                "spectral_prv_min_intervals",
+                defaults.spectral_prv_min_intervals,
+            ),
+            tachogram_fs_hz=float(
+                features.get("tachogram_fs_hz", defaults.tachogram_fs_hz)
+            ),
+            vlf_band_hz=band("vlf", defaults.vlf_band_hz),
+            lf_band_hz=band("lf", defaults.lf_band_hz),
+            hf_band_hz=band("hf", defaults.hf_band_hz),
+            sample_entropy_m=entropy_raw.get("m", defaults.sample_entropy_m),
+            sample_entropy_r_sd_fraction=float(
+                entropy_raw.get(
+                    "r_sd_fraction",
+                    defaults.sample_entropy_r_sd_fraction,
+                )
+            ),
+            sample_entropy_min_intervals=entropy_raw.get(
+                "min_intervals",
+                defaults.sample_entropy_min_intervals,
+            ),
+        )
+        return result.validated()
+
+    def validated(self) -> "PrvConfig":
+        """Reject non-finite or structurally invalid numerical settings."""
+
+        positive_values = {
+            "rate_prv_min_duration_s": self.rate_prv_min_duration_s,
+            "time_prv_min_duration_s": self.time_prv_min_duration_s,
+            "spectral_prv_min_duration_s": self.spectral_prv_min_duration_s,
+            "tachogram_fs_hz": self.tachogram_fs_hz,
+            "sample_entropy_r_sd_fraction": self.sample_entropy_r_sd_fraction,
+        }
+        for name, raw in positive_values.items():
+            value = float(raw)
+            if not np.isfinite(value) or value <= 0.0:
+                raise ValueError(f"{name} must be finite and positive")
+        for name, raw, minimum in (
+            ("rate_prv_min_peaks", self.rate_prv_min_peaks, 2),
+            ("time_prv_min_intervals", self.time_prv_min_intervals, 2),
+            ("spectral_prv_min_intervals", self.spectral_prv_min_intervals, 2),
+            ("sample_entropy_m", self.sample_entropy_m, 1),
+            ("sample_entropy_min_intervals", self.sample_entropy_min_intervals, 1),
+        ):
+            if isinstance(raw, bool) or not isinstance(raw, (int, np.integer)):
+                raise ValueError(f"{name} must be an integer")
+            if int(raw) < minimum:
+                raise ValueError(f"{name} must be at least {minimum}")
+        if self.sample_entropy_min_intervals < self.sample_entropy_m + 2:
+            raise ValueError(
+                "sample_entropy_min_intervals must be at least sample_entropy_m + 2"
+            )
+        for name, raw in (
+            ("time_prv_min_coverage", self.time_prv_min_coverage),
+            ("spectral_prv_min_coverage", self.spectral_prv_min_coverage),
+        ):
+            value = float(raw)
+            if not np.isfinite(value) or not 0.0 < value <= 1.0:
+                raise ValueError(f"{name} must be finite in (0,1]")
+        nyquist = self.tachogram_fs_hz / 2.0
+        named_bands = (
+            ("vlf", self.vlf_band_hz),
+            ("lf", self.lf_band_hz),
+            ("hf", self.hf_band_hz),
+        )
+        for name, band_edges in named_bands:
+            low, high = map(float, band_edges)
+            if (
+                not np.isfinite([low, high]).all()
+                or low < 0.0
+                or low >= high
+                or high > nyquist
+            ):
+                raise ValueError(
+                    f"{name} spectral band must be finite, ordered, and within tachogram Nyquist"
+                )
+        if self.vlf_band_hz[1] > self.lf_band_hz[0] or self.lf_band_hz[1] > self.hf_band_hz[0]:
+            raise ValueError("VLF/LF/HF bands must be ordered and non-overlapping")
+        return self
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the exact runtime payload used by ``compute_prv``."""
+
+        return {
+            "rate_prv_min_duration_s": float(self.rate_prv_min_duration_s),
+            "rate_prv_min_peaks": int(self.rate_prv_min_peaks),
+            "time_prv_min_duration_s": float(self.time_prv_min_duration_s),
+            "time_prv_min_coverage": float(self.time_prv_min_coverage),
+            "time_prv_min_intervals": int(self.time_prv_min_intervals),
+            "spectral_prv_min_duration_s": float(self.spectral_prv_min_duration_s),
+            "spectral_prv_min_coverage": float(self.spectral_prv_min_coverage),
+            "spectral_prv_min_intervals": int(self.spectral_prv_min_intervals),
+            "tachogram_fs_hz": float(self.tachogram_fs_hz),
+            "spectral_bands_hz": {
+                "vlf": list(map(float, self.vlf_band_hz)),
+                "lf": list(map(float, self.lf_band_hz)),
+                "hf": list(map(float, self.hf_band_hz)),
+            },
+            "sample_entropy": {
+                "m": int(self.sample_entropy_m),
+                "r_sd_fraction": float(self.sample_entropy_r_sd_fraction),
+                "min_intervals": int(self.sample_entropy_min_intervals),
+            },
+        }
 
 
 TIME_METRICS = (
@@ -39,6 +274,7 @@ class PrvResult:
     interval_timestamps_s: np.ndarray
     source_route: SignalRoute
     detection_run_id: str
+    configuration: dict[str, Any]
 
 
 def _nan_payload() -> tuple[dict[str, float], dict[str, bool]]:
@@ -93,7 +329,7 @@ def _band_integral(frequencies: np.ndarray, power: np.ndarray, low: float, high:
     mask = (frequencies >= low) & (frequencies <= high)
     if np.count_nonzero(mask) < 2:
         return float("nan")
-    return float(np.trapz(power[mask], frequencies[mask]))
+    return float(np.trapezoid(power[mask], frequencies[mask]))
 
 
 def _true_runs(mask: np.ndarray) -> list[tuple[int, int]]:
@@ -116,6 +352,7 @@ def compute_prv(
     role: str,
     route: SignalRoute = SignalRoute.DIRECT,
     q_rate_qualified: bool,
+    config: PrvConfig | None = None,
 ) -> PrvResult:
     """计算完整 rate/time/spectral PRV / Compute complete rate/time/spectral PRV.
 
@@ -123,6 +360,7 @@ def compute_prv(
     RMSSD/SDSD/NN50 use only originally adjacent pairs with both intervals valid.
     """
 
+    resolved = (config or PrvConfig()).validated()
     pulse.validate_identity()
     pulse_route = (
         pulse.source_route
@@ -158,12 +396,12 @@ def compute_prv(
     validity.update({"accepted_interval_count": True, "accepted_duration_s": True, "coverage": True})
     reasons: list[str] = []
     rate_eligible = (
-        observation_duration_s >= 8.0
-        and times.size >= MIN_BASIC_RATE_PEAKS
-        and accepted_count >= MIN_BASIC_RATE_PEAKS - 1
+        observation_duration_s >= resolved.rate_prv_min_duration_s
+        and times.size >= resolved.rate_prv_min_peaks
+        and accepted_count >= resolved.rate_prv_min_peaks - 1
     )
     if not rate_eligible:
-        reasons.append("rate_requires_8s_5peaks")
+        reasons.append("rate_prv_configured_duration_or_peak_requirement_not_met")
     elif accepted_count:
         hr = 60.0 / accepted
         basic = {
@@ -181,12 +419,12 @@ def compute_prv(
         validity.update({name: True for name in basic})
 
     time_eligible = bool(
-        observation_duration_s >= 60.0
-        and coverage >= 0.80
-        and accepted_count >= MIN_TIME_DOMAIN_PRV_INTERVALS
+        observation_duration_s >= resolved.time_prv_min_duration_s
+        and coverage >= resolved.time_prv_min_coverage
+        and accepted_count >= resolved.time_prv_min_intervals
     )
     if not time_eligible:
-        reasons.append("time_prv_requires_60s_and_0p80_coverage")
+        reasons.append("time_prv_configured_requirements_not_met")
     else:
         values["sdnn_s"] = float(np.std(accepted, ddof=1))
         validity["sdnn_s"] = True
@@ -230,9 +468,18 @@ def compute_prv(
     )
     run_start, run_stop = longest_run
     contiguous_ppi = ppi_all[run_start:run_stop]
-    entropy_eligible = contiguous_ppi.size >= 200
+    entropy_eligible = (
+        contiguous_ppi.size >= resolved.sample_entropy_min_intervals
+    )
     if entropy_eligible:
-        entropy = _sample_entropy(contiguous_ppi)
+        entropy = _sample_entropy(
+            contiguous_ppi,
+            m=resolved.sample_entropy_m,
+            tolerance=(
+                resolved.sample_entropy_r_sd_fraction
+                * np.std(contiguous_ppi, ddof=1)
+            ),
+        )
         values["sample_entropy"] = entropy
         validity["sample_entropy"] = bool(np.isfinite(entropy))
         if not np.isfinite(entropy):
@@ -240,7 +487,7 @@ def compute_prv(
         if contiguous_ppi.size != accepted_count:
             reasons.append("sample_entropy_uses_longest_contiguous_run")
     else:
-        reasons.append("sample_entropy_requires_200_intervals")
+        reasons.append("sample_entropy_configured_min_intervals_not_met")
 
     # English: V2 callers must pass the canonical role family. B/R can support long
     # static PRV; numeric file suffixes and free-text aliases are not roles here.
@@ -257,20 +504,23 @@ def compute_prv(
         route_eligible
         and q_rate_qualified
         and role.strip().upper() in allowed_roles
-        and observation_duration_s >= 300.0
-        and contiguous_duration >= 300.0
-        and contiguous_ppi.size >= 200
-        and coverage >= 0.80
+        and observation_duration_s >= resolved.spectral_prv_min_duration_s
+        and contiguous_duration >= resolved.spectral_prv_min_duration_s
+        and contiguous_ppi.size >= resolved.spectral_prv_min_intervals
+        and coverage >= resolved.spectral_prv_min_coverage
     )
     if not frequency_eligible:
-        reasons.append(
-            "frequency_prv_requires_qrate_static_contiguous300s_200intervals"
-        )
+        reasons.append("frequency_prv_configured_requirements_not_met")
     else:
         valid_times = interval_times[run_start:run_stop]
-        # 中文：使用真实 endpoint time 插值 4 Hz tachogram，再线性去趋势。
-        # English: Interpolate true endpoint time to 4 Hz, then linearly detrend.
-        grid = np.arange(valid_times[0], valid_times[-1], 0.25, dtype=np.float64)
+        # 中文：使用真实 endpoint time 按配置采样 tachogram，再线性去趋势。
+        # English: Interpolate true endpoint time at the configured tachogram rate.
+        grid = np.arange(
+            valid_times[0],
+            valid_times[-1],
+            1.0 / resolved.tachogram_fs_hz,
+            dtype=np.float64,
+        )
         if grid.size >= 256 and np.all(np.diff(valid_times) > 0.0):
             tachogram = interpolate.interp1d(
                 valid_times,
@@ -280,11 +530,14 @@ def compute_prv(
             )(grid)
             tachogram = signal.detrend(tachogram, type="linear")
             frequencies, power = signal.welch(
-                tachogram, fs=4.0, nperseg=min(1024, tachogram.size), detrend=False
+                tachogram,
+                fs=resolved.tachogram_fs_hz,
+                nperseg=min(1024, tachogram.size),
+                detrend=False,
             )
-            vlf = _band_integral(frequencies, power, 0.003, 0.04)
-            lf = _band_integral(frequencies, power, 0.04, 0.15)
-            hf = _band_integral(frequencies, power, 0.15, 0.40)
+            vlf = _band_integral(frequencies, power, *resolved.vlf_band_hz)
+            lf = _band_integral(frequencies, power, *resolved.lf_band_hz)
+            hf = _band_integral(frequencies, power, *resolved.hf_band_hz)
             denominator = lf + hf
             spectral = {
                 "vlf_power_s2": vlf, "lf_power_s2": lf, "hf_power_s2": hf,
@@ -307,4 +560,5 @@ def compute_prv(
         interval_timestamps_s=interval_times,
         source_route=resolved_route,
         detection_run_id=pulse.detection_run_id,
+        configuration=resolved.to_dict(),
     )

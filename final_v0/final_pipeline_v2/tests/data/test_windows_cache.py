@@ -92,6 +92,62 @@ class WindowPlanTests(unittest.TestCase):
         ]
         self.assertEqual(starts, [0, 40, 80])
 
+    def test_right_aligned_window_is_appended_to_the_start_anchored_grid(self) -> None:
+        plan = WindowPlan(
+            source_record_id="legacy-grid",
+            window_seconds=3.0,
+            hop_seconds=3.0,
+            end_alignment="include_right_aligned_if_distinct",
+            short_record_action="reject",
+            include_padded_tail=False,
+            max_windows=None,
+            cap_policy="not_applicable",
+        )
+        starts = [
+            window.start_sample
+            for window in plan.plan(n_samples=100, fs=10.0)
+        ]
+        self.assertEqual(starts, [0, 30, 60, 70])
+
+        exact_endpoint = [
+            window.start_sample
+            for window in plan.plan(n_samples=90, fs=10.0)
+        ]
+        self.assertEqual(exact_endpoint, [0, 30, 60])
+
+    def test_fractional_cap_reuses_uniform_progress_planner(self) -> None:
+        fractional = WindowPlan(
+            source_record_id="long",
+            window_seconds=2.0,
+            hop_seconds=1.0,
+            end_alignment="start",
+            short_record_action="reject",
+            include_padded_tail=False,
+            max_windows=None,
+            cap_policy="uniform_progress",
+            max_window_fraction=0.5,
+        )
+        # Nine complete candidates -> ceil(9 * .5) == 5, preserving the
+        # migrated classifier's positive fractional-cap semantics and using the same
+        # endpoint-preserving selector as the absolute cap.
+        starts = [
+            window.start_sample
+            for window in fractional.plan(n_samples=100, fs=10.0)
+        ]
+        self.assertEqual(starts, [0, 20, 40, 60, 80])
+        with self.assertRaisesRegex(ValueError, "mutually exclusive"):
+            WindowPlan(
+                source_record_id="ambiguous",
+                window_seconds=2.0,
+                hop_seconds=1.0,
+                end_alignment="start",
+                short_record_action="reject",
+                include_padded_tail=False,
+                max_windows=3,
+                cap_policy="uniform_progress",
+                max_window_fraction=0.5,
+            ).plan(n_samples=100, fs=10.0)
+
 
 class ContentAddressedCacheTests(unittest.TestCase):
     """缓存身份绑定来源/config/schema/producer/fold / Audit cache identity."""

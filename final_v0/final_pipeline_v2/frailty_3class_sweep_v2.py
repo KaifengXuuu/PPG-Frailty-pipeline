@@ -81,6 +81,24 @@ def _add_execution_arguments(parser: argparse.ArgumentParser) -> None:
         help="Case-level CPU parallelism; deep cases remain jobs=1 by default.",
     )
     parser.add_argument(
+        "--device",
+        help="Override training.device for every resolved case (for example cuda).",
+    )
+    operational_costs = parser.add_mutually_exclusive_group()
+    operational_costs.add_argument(
+        "--measure-operational-costs",
+        dest="measure_operational_costs",
+        action="store_true",
+        help="Measure per-outer-cell operational timing and memory costs.",
+    )
+    operational_costs.add_argument(
+        "--no-measure-operational-costs",
+        dest="measure_operational_costs",
+        action="store_false",
+        help="Disable operational-cost measurement from a loaded plan.",
+    )
+    parser.set_defaults(measure_operational_costs=None)
+    parser.add_argument(
         "--output-root",
         help="Parent directory for a new dated, study-specific folder.",
     )
@@ -161,6 +179,12 @@ def _execution(args: argparse.Namespace, base: ExecutionSpec | None = None) -> E
         repeats=args.repeats if args.repeats is not None else source.repeats,
         folds=args.folds if args.folds is not None else source.folds,
         jobs=args.jobs if args.jobs is not None else source.jobs,
+        device=args.device if args.device is not None else source.device,
+        measure_operational_costs=(
+            args.measure_operational_costs
+            if args.measure_operational_costs is not None
+            else source.measure_operational_costs
+        ),
     )
 
 

@@ -503,6 +503,7 @@ class TrainingIdentityProtocolTests(unittest.TestCase):
             _TinyTorchClassifier, self.dataset, changed_oof
         )
         self.assertEqual(first.provenance.state_hash, second.provenance.state_hash)
+        self.assertEqual(first.history, second.history)
         self.assertNotEqual(
             first.provenance.outer_membership_hash,
             second.provenance.outer_membership_hash,

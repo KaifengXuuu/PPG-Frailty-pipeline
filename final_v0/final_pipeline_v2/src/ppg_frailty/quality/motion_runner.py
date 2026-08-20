@@ -1,12 +1,13 @@
-"""Injected smoke/internal motion runners and private canonical execution cores.
+"""Injected smoke/internal motion runners and source-bound execution cores.
 
 Nothing in this module runs at import time. Public injected runners can never
 emit formal evidence or reach PTT. Formal internal/PTT execution is exposed only
 by the no-callback canonical entry points in quality.motion_reference, which
 load hash-bound source files and call the private cores with fixed adapters.
 
-The small ``smoke`` mode exists solely for interface/bug tests.  Its archives
-are permanently ineligible for the PTT gate.
+The small ``smoke`` mode exists solely for interface/bug tests.  Formal source,
+schema, split, roster and outer-isolation checks are data-integrity boundaries;
+they do not depend on a private authorization token or a metric threshold.
 """
 
 from __future__ import annotations
@@ -50,8 +51,8 @@ from .motion import (
     MOTION_THRESHOLD_SCORE_ORIGIN,
     PTT_SPLIT_CSV_SHA256,
     MotionFoldJob,
-    PttExternalGateDecision,
-    _evaluate_ptt_external_gate_payload,
+    PttExternalReadinessAudit,
+    _audit_ptt_external_readiness_payload,
     fit_train_only_midpoint_threshold,
     load_motion_fold_jobs,
     motion_activity_label,
@@ -67,21 +68,6 @@ MOTION_EXTERNAL_REPORT_SCHEMA = (
 )
 MOTION_INPUT_SCHEMA_STATUS = "frozen_before_training"
 _SHA256_LENGTH = 64
-_FORMAL_CANONICAL_ENTRY_TOKEN = object()
-
-
-@dataclass(frozen=True)
-class _FormalMotionRunAuthorization:
-    """Private canonical-entry marker; it performs no Git/environment checks."""
-
-    entry_id: str
-
-    def __post_init__(self) -> None:
-        if self.entry_id not in {
-            "formal_internal_motion_reference_source_bound_v2",
-            "formal_ptt_motion_reference_source_bound_v2",
-        }:
-            raise ValueError("unknown canonical motion entry")
 
 
 class FormalMotionEntryRequiredError(RuntimeError):
@@ -298,7 +284,7 @@ def _write_parquet(path: Path, rows: Sequence[Mapping[str, Any]]) -> str:
     try:
         import pyarrow as pa
         import pyarrow.parquet as pq
-    except ImportError as exc:  # pragma: no cover - formal optional-profile gate.
+    except ImportError as exc:  # pragma: no cover - optional formal dependency.
         raise RuntimeError(
             "formal motion OOF/external output requires the pyarrow benchmark profile"
         ) from exc
@@ -749,8 +735,6 @@ def _run_internal_motion_oof_impl(
     execution_mode: str,
     write_artifacts: bool = True,
     formal_source_evidence: Mapping[str, Any] | None = None,
-    formal_run_authorization: _FormalMotionRunAuthorization | None = None,
-    _canonical_entry_token: object | None = None,
 ) -> MotionInternalRunResult:
     """Train/evaluate the formal five-cell protocol without hidden splitting.
 
@@ -761,23 +745,8 @@ def _run_internal_motion_oof_impl(
     """
 
     if execution_mode == "formal":
-        if _canonical_entry_token is not _FORMAL_CANONICAL_ENTRY_TOKEN:
-            raise FormalMotionEntryRequiredError(
-                "formal internal motion is available only through the canonical source loader"
-            )
         if not isinstance(formal_source_evidence, Mapping):
             raise ValueError("formal internal motion source evidence is required")
-        if (
-            not isinstance(
-                formal_run_authorization,
-                _FormalMotionRunAuthorization,
-            )
-            or formal_run_authorization.entry_id
-            != "formal_internal_motion_reference_source_bound_v2"
-        ):
-            raise ValueError(
-                "formal internal motion canonical authorization is required"
-            )
         from .motion_reference import verify_formal_internal_source_evidence
 
         source_reasons = verify_formal_internal_source_evidence(formal_source_evidence)
@@ -786,12 +755,8 @@ def _run_internal_motion_oof_impl(
                 "formal internal motion source evidence rejected: "
                 + ";".join(source_reasons)
             )
-    elif (
-        formal_source_evidence is not None
-        or formal_run_authorization is not None
-        or _canonical_entry_token is not None
-    ):
-        raise ValueError("non-formal injected runner may not carry formal source authority")
+    elif formal_source_evidence is not None:
+        raise ValueError("non-formal injected runner may not carry formal source evidence")
 
     records = tuple(examples)
     jobs = tuple(fold_jobs)
@@ -972,7 +937,7 @@ def _run_internal_motion_oof_impl(
         "scientific_scope": (
             "frailty29_single_sgkf5_oof"
             if formal
-            else "injected_internal_not_gate_eligible"
+            else "injected_internal_nonformal"
             if execution_mode == "internal"
             else "synthetic_or_reduced_smoke"
         ),
@@ -1157,8 +1122,15 @@ def _verify_frozen_internal_assets(
     evidence: Mapping[str, Any],
     *,
     archive_root: Path,
+    require_complete_oof_archive: bool = True,
 ) -> tuple[str, ...]:
-    """Bind the formal archive to real splits, models, thresholds, and OOF data."""
+    """Bind source, split, schema, model and threshold to real frozen assets.
+
+    The read-only readiness audit additionally checks every cell and OOF
+    artifact. External execution needs only the scientific/data boundaries and
+    the final frozen inputs; report completeness is not an execution
+    prerequisite.
+    """
 
     reasons: list[str] = []
     source_evidence = evidence.get("formal_source_evidence")
@@ -1197,15 +1169,15 @@ def _verify_frozen_internal_assets(
         else:
             if evidence.get("model_input_schema_sha256") != semantic_hash:
                 reasons.append("frozen_model_input_schema_semantic_hash_drift")
-    parquet_matches = _frozen_file_matches(
+    parquet_matches = not require_complete_oof_archive or _frozen_file_matches(
         evidence.get("window_oof_parquet_path"),
         evidence.get("window_oof_parquet_sha256"),
         required_root=archive_root,
         parquet_envelope=True,
     )
-    if not parquet_matches:
+    if require_complete_oof_archive and not parquet_matches:
         reasons.append("frozen_window_oof_parquet_missing_or_hash_mismatch")
-    elif authoritative_jobs:
+    elif require_complete_oof_archive and authoritative_jobs:
         try:
             oof_rows = _read_motion_parquet(
                 Path(str(evidence["window_oof_parquet_path"])).resolve(),
@@ -1223,7 +1195,7 @@ def _verify_frozen_internal_assets(
             else:
                 reasons.extend(semantic_reasons)
 
-    cell_rows = evidence.get("cell_evidence")
+    cell_rows = evidence.get("cell_evidence") if require_complete_oof_archive else ()
     if isinstance(cell_rows, list):
         for row in cell_rows:
             if not isinstance(row, Mapping):
@@ -1345,29 +1317,33 @@ def _verify_frozen_internal_assets(
     return tuple(dict.fromkeys(reasons))
 
 
-def evaluate_ptt_external_gate(
+def audit_ptt_external_readiness(
     evidence_path: str | Path,
     *,
     expected_sha256: str,
-) -> PttExternalGateDecision:
-    """Open PTT only for a complete hash-bound archive and real frozen assets."""
+) -> PttExternalReadinessAudit:
+    """Return a read-only full-archive readiness audit.
+
+    The execution path does not consume this result, so report completeness or
+    metrics cannot authorize or block evaluation.
+    """
 
     evidence, _ = load_motion_internal_evidence(
         evidence_path,
         expected_sha256=expected_sha256,
     )
-    decision = _evaluate_ptt_external_gate_payload(evidence)
-    reasons = [] if decision.allowed else list(decision.reasons)
-    if decision.allowed:
+    audit = _audit_ptt_external_readiness_payload(evidence)
+    reasons = [] if audit.ready else list(audit.reasons)
+    if audit.ready:
         reasons.extend(
             _verify_frozen_internal_assets(
                 evidence,
                 archive_root=Path(evidence_path).resolve().parent,
             )
         )
-    return PttExternalGateDecision(
-        allowed=not reasons and decision.allowed,
-        reasons=tuple(dict.fromkeys(reasons)) if reasons else decision.reasons,
+    return PttExternalReadinessAudit(
+        ready=not reasons and audit.ready,
+        reasons=tuple(dict.fromkeys(reasons)) if reasons else audit.reasons,
     )
 
 
@@ -1381,8 +1357,6 @@ def _run_ptt_external_evaluation_impl(
     predict_probability: PredictProbability,
     output_dir: str | Path,
     formal_source_evidence: Mapping[str, Any],
-    formal_run_authorization: _FormalMotionRunAuthorization,
-    _canonical_entry_token: object | None = None,
 ) -> MotionExternalRunResult:
     """Evaluate the frozen final model on PTT; fitting/recalibration is impossible.
 
@@ -1390,16 +1364,6 @@ def _run_ptt_external_evaluation_impl(
     argument.  The PTT labels influence metrics only after predictions are made.
     """
 
-    if _canonical_entry_token is not _FORMAL_CANONICAL_ENTRY_TOKEN:
-        raise FormalMotionEntryRequiredError(
-            "formal PTT motion is available only through the canonical source loader"
-        )
-    if (
-        not isinstance(formal_run_authorization, _FormalMotionRunAuthorization)
-        or formal_run_authorization.entry_id
-        != "formal_ptt_motion_reference_source_bound_v2"
-    ):
-        raise ValueError("formal PTT canonical authorization is required")
     if (
         formal_source_evidence.get("formal_entry_id")
         != "formal_ptt_motion_reference_source_bound_v2"
@@ -1419,16 +1383,20 @@ def _run_ptt_external_evaluation_impl(
             "formal PTT source evidence rejected: " + ";".join(ptt_source_reasons)
         )
 
-    gate = evaluate_ptt_external_gate(
-        internal_evidence_path,
-        expected_sha256=expected_internal_evidence_sha256,
-    )
-    if not gate.allowed:
-        raise RuntimeError("PTT external motion gate is closed: " + ";".join(gate.reasons))
     evidence, evidence_sha256 = load_motion_internal_evidence(
         internal_evidence_path,
         expected_sha256=expected_internal_evidence_sha256,
     )
+    integrity_reasons = _verify_frozen_internal_assets(
+        evidence,
+        archive_root=Path(internal_evidence_path).resolve().parent,
+        require_complete_oof_archive=False,
+    )
+    if integrity_reasons:
+        raise ValueError(
+            "PTT frozen input authenticity/integrity rejected: "
+            + ";".join(integrity_reasons)
+        )
     ptt_csv = Path(ptt_split_csv).resolve()
     if _sha256_file(ptt_csv) != PTT_SPLIT_CSV_SHA256:
         raise ValueError("PTT formal split CSV SHA-256 drift")
@@ -1618,7 +1586,7 @@ __all__ = [
     "MotionPredictionInput",
     "MotionWindowExample",
     "PredictProbability",
-    "evaluate_ptt_external_gate",
+    "audit_ptt_external_readiness",
     "load_motion_internal_evidence",
     "run_internal_motion_oof",
     "run_ptt_external_evaluation",

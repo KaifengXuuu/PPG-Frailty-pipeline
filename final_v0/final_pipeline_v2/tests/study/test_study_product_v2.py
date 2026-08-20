@@ -23,9 +23,12 @@ from ppg_frailty.training.aggregation import (
 )
 from ppg_frailty.training.oof import OofPredictionRow
 from ppg_frailty.study import (
+    ExecutionSpec,
     NullProgressSink,
     ProgressEvent,
+    ResolvedCase,
     StudyRunner,
+    default_experiment_executor,
     parse_study_plan,
     validate_canonical_expansion,
 )
@@ -190,6 +193,73 @@ class StudyProductTests(unittest.TestCase):
         }
         self.assertEqual(controlled["model.model_id"], "LogisticRegressionL2")
 
+    def test_study_operational_measurement_flag_reaches_canonical_runners(self) -> None:
+        case = ResolvedCase(
+            case_id="case_001",
+            config={"config_id": "fixture"},
+            changed_values={},
+            config_sha256="a" * 64,
+            is_reference=True,
+        )
+        output = self.root / "executor"
+        output.mkdir()
+        passed = {
+            "status": "passed",
+            "scientific_scope": "fixture",
+            "config_id": "fixture",
+            "config_hash": "a" * 64,
+            "cell_results": [],
+        }
+
+        full_plan = replace(
+            self.plan(),
+            execution=ExecutionSpec(measure_operational_costs=True),
+        )
+        with patch(
+            "ppg_frailty.experiment.run_full_experiment",
+            return_value=passed,
+        ) as full:
+            default_experiment_executor(
+                case,
+                self.base,
+                output / "full",
+                full_plan,
+                NullProgressSink(),
+            )
+        self.assertTrue(full.call_args.kwargs["measure_operational_costs"])
+
+        cell_plan = replace(
+            self.plan(),
+            execution=ExecutionSpec(
+                repeats=(0,),
+                folds=(0,),
+                measure_operational_costs=True,
+            ),
+        )
+        with patch(
+            "ppg_frailty.experiment.run_outer_cell",
+            return_value=passed,
+        ) as cell:
+            default_experiment_executor(
+                case,
+                self.base,
+                output / "cell",
+                cell_plan,
+                NullProgressSink(),
+            )
+        self.assertTrue(cell.call_args.kwargs["measure_operational_costs"])
+
+    def test_study_execution_rejects_unknown_or_nonboolean_controls(self) -> None:
+        payload = self.plan().to_dict()
+        payload["execution"]["unknown_control"] = True
+        with self.assertRaisesRegex(ValueError, "execution key mismatch"):
+            parse_study_plan(payload)
+
+        payload = self.plan().to_dict()
+        payload["execution"]["measure_operational_costs"] = "false"
+        with self.assertRaisesRegex(TypeError, "must be boolean"):
+            parse_study_plan(payload)
+
     def test_canonical_dry_run_validation_rejects_invalid_override(self) -> None:
         pipeline_root = Path(__file__).resolve().parents[2]
         canonical = pipeline_root / "configs" / "reference_static_role_aware_v2.yaml"
@@ -214,9 +284,8 @@ class StudyProductTests(unittest.TestCase):
                 "execution": {"repeats": [0], "folds": [0], "jobs": 1},
             }
         )
-        expansion = StudyRunner(pipeline_root=pipeline_root).expand(plan)
-        with self.assertRaisesRegex(ValueError, "not a valid canonical"):
-            validate_canonical_expansion(expansion)
+        with self.assertRaisesRegex(ValueError, "fixed_epochs must be an integer"):
+            StudyRunner(pipeline_root=pipeline_root).expand(plan)
 
     def test_fixed_epoch_axis_updates_its_canonical_profile(self) -> None:
         pipeline_root = Path(__file__).resolve().parents[2]
@@ -235,7 +304,7 @@ class StudyProductTests(unittest.TestCase):
                 "axes": [
                     {
                         "path": "training.fixed_epochs",
-                        "values": [7, 10, 15],
+                        "values": [7, 10, 15, 37],
                         "reference": 10,
                     }
                 ],
@@ -257,7 +326,138 @@ class StudyProductTests(unittest.TestCase):
                 )
                 for case in expansion.cases
             },
-            {(7, "ablation_7"), (10, "default_10"), (15, "ablation_15")},
+            {
+                (7, "ablation_7"),
+                (10, "default_10"),
+                (15, "ablation_15"),
+                (37, "configured_37"),
+            },
+        )
+
+    def test_canonical_study_axis_can_target_a_materialized_default(self) -> None:
+        pipeline_root = Path(__file__).resolve().parents[2]
+        canonical = pipeline_root / "configs" / "reference_static_role_aware_v2.yaml"
+        plan = parse_study_plan(
+            {
+                "schema_version": "ppg_frailty.study_plan.v2",
+                "study": {
+                    "study_id": "replacement_epoch_size_ablation",
+                    "kind": "ablation",
+                    "purpose": "Exercise one runtime default as a normal axis.",
+                    "flow_position": "No execution.",
+                    "decision_role": "ablation",
+                },
+                "base_config": str(canonical),
+                "axes": [
+                    {
+                        "path": "training.samples_per_epoch",
+                        "values": [None, 64],
+                        "reference": None,
+                    }
+                ],
+                "execution": {"repeats": [0], "folds": [0], "jobs": 1},
+            }
+        )
+        expansion = validate_canonical_expansion(
+            StudyRunner(pipeline_root=pipeline_root).expand(plan)
+        )
+        self.assertEqual(
+            {row["parameter_path"] for row in expansion.varied_parameters},
+            {"training.samples_per_epoch"},
+        )
+        self.assertEqual(
+            {case.config["training"]["samples_per_epoch"] for case in expansion.cases},
+            {None, 64},
+        )
+
+    def test_optimizer_axis_materializes_each_module_own_defaults(self) -> None:
+        pipeline_root = Path(__file__).resolve().parents[2]
+        canonical = pipeline_root / "configs" / "reference_static_role_aware_v2.yaml"
+        plan = parse_study_plan(
+            {
+                "schema_version": "ppg_frailty.study_plan.v2",
+                "study": {
+                    "study_id": "optimizer_module_ablation",
+                    "kind": "ablation",
+                    "purpose": "Switch executable optimizer modules.",
+                    "flow_position": "No execution.",
+                    "decision_role": "ablation",
+                },
+                "base_config": str(canonical),
+                "axes": [
+                    {
+                        "path": "training.optimizer",
+                        "values": ["adam", "sgd"],
+                        "reference": "adam",
+                    }
+                ],
+                "execution": {"repeats": [0], "folds": [0], "jobs": 1},
+            }
+        )
+        expansion = validate_canonical_expansion(
+            StudyRunner(pipeline_root=pipeline_root).expand(plan)
+        )
+        by_optimizer = {
+            case.config["training"]["optimizer"]: case.config["training"][
+                "optimizer_parameters"
+            ]
+            for case in expansion.cases
+        }
+        self.assertEqual(set(by_optimizer["adam"]), {"betas", "eps", "amsgrad", "maximize"})
+        self.assertEqual(
+            set(by_optimizer["sgd"]),
+            {"momentum", "dampening", "nesterov", "maximize"},
+        )
+        self.assertEqual(
+            {row["parameter_path"] for row in expansion.varied_parameters},
+            {"training.optimizer"},
+        )
+
+    def test_aggregation_axis_derives_line_specific_hierarchy(self) -> None:
+        pipeline_root = Path(__file__).resolve().parents[2]
+        canonical = pipeline_root / "configs" / "reference_static_role_aware_v2.yaml"
+        plan = parse_study_plan(
+            {
+                "schema_version": "ppg_frailty.study_plan.v2",
+                "study": {
+                    "study_id": "aggregation_module_ablation",
+                    "kind": "ablation",
+                    "purpose": "Switch the reporting aggregation module.",
+                    "flow_position": "No execution.",
+                    "decision_role": "ablation",
+                },
+                "base_config": str(canonical),
+                "axes": [
+                    {
+                        "path": "aggregation.balance_line",
+                        "values": [
+                            "line_b_equal_role_families",
+                            "line_a_equal_files",
+                        ],
+                        "reference": "line_b_equal_role_families",
+                    }
+                ],
+                "execution": {"repeats": [0], "folds": [0], "jobs": 1},
+            }
+        )
+        expansion = validate_canonical_expansion(
+            StudyRunner(pipeline_root=pipeline_root).expand(plan)
+        )
+        by_line = {
+            case.config["aggregation"]["balance_line"]: case.config["aggregation"]
+            for case in expansion.cases
+        }
+        self.assertEqual(
+            by_line["line_a_equal_files"]["hierarchy"],
+            ["window", "file", "participant"],
+        )
+        self.assertEqual(
+            by_line["line_b_equal_role_families"]["hierarchy"],
+            ["window", "file", "role", "participant"],
+        )
+        self.assertEqual(
+            {row["parameter_path"] for row in expansion.varied_parameters},
+            {"aggregation.balance_line"},
         )
 
     def test_fake_parallel_run_report_and_resume(self) -> None:
@@ -764,10 +964,20 @@ class StudyProductTests(unittest.TestCase):
                         rejection_reason="synthetic_all_files_dropped",
                     )
                 )
-        retained_subject_rows = aggregate_hierarchy(
+        window_rows = tuple(
+            replace(
+                row,
+                level="window",
+                window_id=f"{row.file_id}::window_{window_index}",
+            )
+            for row in file_rows
+            for window_index in range(2)
+        )
+        line_b_hierarchy = aggregate_hierarchy(
             file_rows,
             balance_line=LINE_B_EQUAL_ROLE_FAMILIES,
-        ).participant_rows
+        )
+        retained_subject_rows = line_b_hierarchy.participant_rows
         dropped_subject_rows = tuple(
             replace(
                 next(
@@ -810,6 +1020,10 @@ class StudyProductTests(unittest.TestCase):
                 },
             ),
             history_rows=(),
+            window_oof_rows=tuple(
+                {"case_id": "case_001", **asdict(row)}
+                for row in window_rows
+            ),
             file_oof_rows=tuple(
                 {"case_id": "case_001", **asdict(row)}
                 for row in file_rows
@@ -818,10 +1032,24 @@ class StudyProductTests(unittest.TestCase):
                 {"case_id": "case_001", **asdict(row)}
                 for row in subject_rows
             ),
-            role_oof_rows=(),
+            role_oof_rows=tuple(
+                {"case_id": "case_001", **asdict(row)}
+                for row in line_b_hierarchy.role_rows
+            ),
             quality_rows=(),
             trusted_config_metrics=(),
             limitations=(),
+            resolved_aggregation_configs=(
+                {
+                    "case_id": "case_001",
+                    "resolved_config_path": "synthetic/resolved_config.yaml",
+                    "aggregation": {
+                        "balance_line": LINE_B_EQUAL_ROLE_FAMILIES,
+                        "quality_weighting": False,
+                        "quality_weight_source": "none",
+                    },
+                },
+            ),
         )
         analysis = analyze_study(bundle)
         by_line = {
@@ -886,6 +1114,34 @@ class StudyProductTests(unittest.TestCase):
         ]
         self.assertEqual(len(analysis.aggregation_line_repeat_metrics), 4)
         self.assertEqual(len(analysis.aggregation_line_per_class_metrics), 12)
+        self.assertEqual(
+            {
+                row["aggregation_view"]
+                for row in analysis.aggregation_view_comparison
+            },
+            {
+                "window_balanced_to_participant",
+                LINE_A_EQUAL_FILES,
+                LINE_B_EQUAL_ROLE_FAMILIES,
+            },
+        )
+        self.assertEqual(len(analysis.aggregation_view_confusion_matrices), 3)
+        self.assertEqual(len(analysis.aggregation_view_per_class_metrics), 18)
+        hierarchy_counts = {
+            (row["aggregation_level"], row["group_label"]): row[
+                "participant_count"
+            ]
+            for row in analysis.aggregation_hierarchy_coverage
+            if row["repeat"] == 0
+        }
+        self.assertEqual(
+            {hierarchy_counts[("window", role)] for role in ("B", "R1", "R2", "R3", "R4")},
+            {3},
+        )
+        self.assertEqual(
+            {hierarchy_counts[("role", role)] for role in ("B", "R")},
+            {3},
+        )
         self.assertAlmostEqual(
             float(
                 by_line[LINE_B_EQUAL_ROLE_FAMILIES][

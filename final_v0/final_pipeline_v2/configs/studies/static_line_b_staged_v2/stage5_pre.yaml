@@ -1,0 +1,72 @@
+schema_version: ppg_frailty.stage5_pre_motion_ptt.v1
+study_type: stage5_pre_motion_ptt
+study_id: staged-static-05-pre-motion-ptt-v1
+purpose: >-
+  Train and evaluate the existing motion detector on the frozen 29-participant
+  grouped folds, apply only the frozen final model to PTT, and compare current
+  executable artifact reducers on PTT using ECG-referenced beat and interval
+  metrics before any downstream motion-route frailty study.
+
+ptt_dataset:
+  dataset_id: ptt_ppg_1_1_0_local
+  root: physionet.org/files/pulse-transit-time-ppg/1.1.0
+  participant_count: 22
+  record_count: 66
+  activities: [sit, walk, run]
+  distal_channels: {RED: pleth_1, IR: pleth_2}
+  ecg_peak_annotation_column: peaks
+  source_fs_hz: 500.0
+  pipeline_fs_hz: 400.0
+  independence_claim: none_same_ptt_cohort_used_for_external_characterization
+
+motion_detector:
+  internal_entry: formal_internal_motion_reference_source_bound_v2
+  internal_dataset: frailty29
+  split: {method: StratifiedGroupKFold, groups: participant_id, folds: 5, repeats: 1, seed: 42}
+  internal_participant_count: 29
+  external_entry: formal_ptt_motion_reference_source_bound_v2
+  external_fit_or_recalibration: false
+  external_labels: {sit: static, walk: motion, run: motion}
+
+denoiser_benchmark:
+  activities: [sit, walk, run]
+  segment_s: 30.0
+  channels: [RED, IR]
+  reducer_fit_scope: within_record_signal_only
+  reducers:
+    - identity
+    - nlms_imu_anc
+    - ssa_decomposition
+    - spectral_mask
+    - pca_bss
+    - fastica_bss
+    - nmf_bss
+  excluded_registered_reducers:
+    learned_denoiser: unsupported_without_audited_model_artifact
+    legacy_rate_only_reducers: reserved_for_separate_historical_ablation
+  scoring_peak_detector: aboy_project_v1
+  validation:
+    alignment: constant_lag_grid_search_per_segment
+    max_lag_s: 10.0
+    lag_step_s: 0.02
+    beat_tolerance_s: 0.2
+    primary_metric: participant_macro_ibi_ppi_rmse_ms_dynamic
+    secondary_metrics: [participant_macro_f1, positive_predictive_value, sensitivity, runtime_s]
+    interval_pairing: consecutive_one_to_one_matched_ecg_ppg_beats
+    interval_delay_property: ppi_minus_ibi_cancels_constant_ecg_ppg_transit_delay
+
+report:
+  formats: [markdown, html, json, csv, png]
+  required_figures:
+    - motion_internal_confusion_matrix
+    - motion_ptt_confusion_matrix
+    - motion_training_learning_curves
+    - denoiser_interval_rmse
+    - denoiser_beat_f1
+    - denoiser_runtime
+  aggregation: participant_macro_with_separate_activity_group_and_wavelength
+
+result_backup:
+  enabled: true
+  include: [resolved_plan, study_manifest, reports, tables, figures, outputs_index]
+  exclude: [source_dataset, duplicate_model_files, duplicate_prediction_parquet]

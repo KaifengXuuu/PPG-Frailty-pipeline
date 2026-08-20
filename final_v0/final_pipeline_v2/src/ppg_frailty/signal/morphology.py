@@ -131,7 +131,7 @@ def extract_morphology(
         )
         rise = (peak - left_valley) / fs_hz
         decay = (right_valley - peak) / fs_hz
-        area = float(np.trapz(np.maximum(detrended, 0.0), dx=1.0 / fs_hz))
+        area = float(np.trapezoid(np.maximum(detrended, 0.0), dx=1.0 / fs_hz))
         current = {
             "amplitude": amplitude,
             "width_half_s": (

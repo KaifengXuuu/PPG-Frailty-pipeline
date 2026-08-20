@@ -139,33 +139,13 @@ windows:
   shared_planner_version: window_plan_v1
 quality:
   mode: "off"
-  supervised_route_ready: false
-  calibrator: deferred_supervised_design
-  fit_scope: not_applied_mode_off
-  rate_threshold: null
-  morph_threshold: null
-  cardiac_band_hz:
-  - 0.5
-  - 3.0
-  peak_density_bpm_range:
-  - 30.0
-  - 200.0
-  ppi_range_s:
-  - 0.3
-  - 2.0
   long_gap_max_samples: 100
-  flatline_duration_s: 1.0
-  components:
-  - cardiac_band_concentration
-  - periodicity_peak_density
-  - ppi_stability
-  - red_ir_agreement
-  - imu_motion_energy
-  - flatline_exclusion
-  - clipping_saturation_exclusion
-  - long_gap_exclusion
-  high_quality_rule: not_applied_mode_off
   failure_action: fail_closed
+  window_selection:
+    policy: none
+    keep_fraction: 1.0
+    score_algorithm: legacy_cardiac_motion_window_sqi_v1
+    application_scope: outer_train_only
 artifact:
   reducer: identity
   reducer_version: identity_v1
@@ -176,12 +156,13 @@ artifact:
   failure_action: no_result_no_fallback
   parameters: {}
 features:
-  registry_id: feature_vector_thesis_115_v2
+  enabled_groups: [ppi_basic_rate, hrv_time_domain, hrv_spectral, hrv_nonlinear, morphology, dual_optical, engineering_summary]
+  registry_id: feature_vector_282_v3
   prv_primary_backend: local_manual
   prv_library_comparison_scope: fixed_ppi_vectors_only_no_classifier
-  file_vector_schema: feature_vector_thesis_115_v2
+  file_vector_schema: feature_vector_282_v3
   engineering_sequence_schema: engineering_10s_hop5s_thesis_115_v2
-  matrix_schema: ordered_feature_matrix_thesis_115_d_by_32_v2
+  matrix_schema: ordered_feature_matrix_d794_by_32_registry-0bea68a2058d_v3
   matrix_k: 32
   technical_metadata_allowed: false
   missing_physiology_encoding: nan_and_validity_false
@@ -250,7 +231,7 @@ training:
   deterministic_algorithms: true
   num_workers: 0
   device: cpu
-  cache_policy: content_addressed_strict
+  cache_policy: disabled
 aggregation:
   balance_line: line_b_equal_role_families
   hierarchy:
@@ -263,6 +244,7 @@ aggregation:
   role_to_participant: ordinary_mean
   missing_role_policy: mean_available_roles
   quality_weighting: false
+  quality_weight_source: none
   direct_all_window_participant_mean: false
 evaluation:
   unit: participant

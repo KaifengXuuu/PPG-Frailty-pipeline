@@ -4,7 +4,7 @@
 
 本文只列出当前 `final_pipeline_v2` 中尚未完成、尚未执行或仍需人工决定的事项。
 它不是功能宣传页，也不会把“代码已存在”写成“科学证据已完成”。状态以
-2026-08-17 的代码、配置、测试和人工确认内容为准。
+2026-08-20 的代码、配置、测试和人工确认内容为准。
 
 权威输入按以下优先级解释：
 
@@ -17,11 +17,12 @@
 
 - **软件已实现，科学未运行**：模块和测试存在，但没有真实 5×5 或外部实验结果；
 - **已实现但默认关闭**：具名 ablation 或 diagnostic，不属于 reference；
-- **搁置待证据**：缺少监督证据、设备信息或实际比较结果，不能启用；
+- **搁置待证据**：模块可以运行，但尚不能据此作出科学优越性或部署结论；
 - **搁置待人工决定**：代码不能替代人确定阈值、硬件或研究范围。
 
-普通的参数校验、未知字段拒绝、缺依赖报错和原子写入不是本文件所说的“复杂门禁”，
-而是正常的软件错误处理。
+V2 pipeline 不使用 readiness、Phase-0、C0、source-lock 或 evidence gate 决定普通训练能否
+执行。参数范围、模块兼容性、未知字段、缺依赖和 outer-fold 隔离仍会 fail-fast；这些是
+防止配置被接受却不执行的输入合同，不是算法授权门禁。
 
 ## 2. 已经解决、不能再列为 pending 的事项
 
@@ -30,10 +31,10 @@
 | Frailty raw 输入 | `RED, IR, A_dyn_X, A_dyn_Y, A_dyn_Z, GX, GY, GZ`，严格 8 通道 |
 | Motion 输入 | 8 通道为 thesis reference；增加 `A_mag, Omega_mag, J_mag` 的 11 通道仅是 augmentation ablation |
 | Outer split seeds | `[42, 10042, 20042, 30042, 40042]`，只控制 participant fold generation |
-| Ensemble member seeds | `[50042, 60042, 70042, 80042, 90042]`，每个 repeat/fold 复用同一五成员身份 |
-| Single-network comparator | 使用 member 0，即 seed `50042` |
-| Ensemble 概率 | 每个 outer fold 内对五个 member probability 做算术平均；不挑最佳 member，不平均 member metrics |
-| Final ensemble refit | 在全部 29 人上从头训练五个新模型，仍使用上述五个 member seeds |
+| Named five-member preset | `[50042, 60042, 70042, 80042, 90042]` 只冻结具名历史 comparison；普通 V2 ensemble 接受任意非空、唯一的显式 uint32 seed roster |
+| Named member-0 comparator | 具名 comparison 使用 seed `50042`；普通 single model 使用所选配置的 seed policy |
+| Ensemble 概率 | 每个 outer fold 内对全部已配置成员 probability 做算术平均；不挑最佳 member，不平均 member metrics |
+| Final ensemble refit | 在全部 29 人上从头训练，并继承人工选中配置的 single seed 或 ensemble roster |
 | PTT acceleration 单位 | V2-036：external sit acceleration 按源 `m/s²` identity 使用；禁止再乘 `9.80665` |
 | Aura 版本 | `hrv-analysis==1.0.2`，只在隔离可选环境做固定 PPI 函数比较 |
 | 旧发布门禁 | tracked-clean/source gate、attestation/prepublish、ONNX winner、exact-lock/acceptance dead tools 已按人工授权移除；V3 保留历史版本 |
@@ -51,30 +52,31 @@
 - **关闭条件**：人工启动正式 study，保存完整 25 cells、OOF、learning curves、confusion、
   配置快照和报告；不允许把 dry-run 或单 fold smoke 当正式结果。
 
-### 3.2 SQI 监督阈值、权重与 route 激活
+### 3.2 SQI 阈值、权重与 route 的科学证据
 
-- **状态**：搁置待监督证据。
+- **状态**：软件已实现、可配置执行；科学比较尚未运行。
 - **已有内容**：`off`、`diagnostics_only`、七状态 A1/A2 route state machine、原始 SQI
   components、route/role 报告。
 - **reference**：SQI `off`；`diagnostics_only` 不能改变 retained data、aggregation 或 prediction。
-- **尚缺内容**：在严格 outer-training 范围内学习并冻结的 `Q_rate/Q_morph/Q_shape` 阈值、
-  组合权重、calibration protocol、artifact ID/version/hash，以及不会泄漏 outer holdout 的训练方法。
-- **禁止事项**：仅把 YAML boolean 改成 true；依据完整 29 人或 outer holdout 调阈值；
-  将 diagnostics 当监督 route 结果。
-- **关闭条件**：单独提交监督设计、训练数据范围、阈值学习代码、嵌套验证证据和具名 artifact。
+- **执行合同**：`quality.mode=route` 直接选择 outer-train-only calibrator 与七状态 route；不存在
+  `supervised_route_ready`、artifact hash 或 YAML authorization boolean。
+- **尚缺内容**：在相同 frozen folds 上预注册并运行阈值、组合权重、coverage 与 downstream
+  OOF 的匹配比较，证明它们是否有益。
+- **禁止事项**：依据 outer holdout 调阈值；将 diagnostics 当监督 route 结果；把“代码可运行”
+  写成“科学性能已验证”。
+- **关闭条件**：保存训练范围、阈值 provenance、完整 repeated grouped OOF 与 coverage 报告。
 
 ### 3.2.1 A1/A2 segment 接线与 morphology eligibility
 
-- **状态**：低层七状态机已实现，但正式 runtime 接线不完整；在启用 supervised route 前属于 P0。
+- **状态**：七状态机与普通 runtime 已接线；heterogeneous segment planner 尚未实现。
 - **当前差距**：`experiment.py::_route_records` 仍把整条 recording 当成一个 segment，尚未按
   heterogeneous segment 保存 start/end/run identity；`rate_only_direct` 又会被折叠成
-  `SignalRoute.DIRECT`，因此可能进入只应允许 `full_direct` 使用的 morphology、amplitude 和
-  dual-wavelength optical predictors。
-- **当前影响**：reference 的 `quality=off` 不受影响；但不得把现有接线称为完整 A1/A2 实现，
-  也不得仅通过打开配置启用 supervised route。
-- **关闭条件**：实现 segment planner、逐 segment route/run identity、合法 run 内 pulse/PPI
-  adjacency，并把 `RouteState` 或 `morphology_eligible` 传到 feature facade；增加端到端负例证明
-  `rate_only_direct` 不产生 morphology/optical predictors。
+  `SignalRoute.DIRECT`。当前 runtime 另行持久化 `shape_features_eligible`，因此
+  `rate_only_direct` 不会产生 morphology、amplitude 或 dual-wavelength optical predictors。
+- **当前影响**：route 可以按 recording 粒度执行，但不能把结果描述为 heterogeneous
+  segment-level routing。
+- **关闭条件**：如研究问题需要 segment 粒度，再实现 segment planner、逐 segment
+  start/end/run identity 与合法 run 内 pulse/PPI adjacency；保留现有 shape-eligibility 负例。
 
 ### 3.2.2 A3/A4 endpoint runner 与 sampling-grid 决定
 
@@ -102,11 +104,12 @@
 
 ### 3.4 Motion override / SQI+motion 路线
 
-- **状态**：实现为可检查模块，但 activation 搁置待证据。
+- **状态**：外部 motion-evidence 路径可检查；不作为 core classifier 的授权开关。
 - **reference input**：8 通道 axes；11 通道 derived augmentation 只作为匹配 ablation。
 - **尚缺内容**：internal 29-person participant-grouped motion evidence、external PTT motion
   benchmark、阈值/校准和 override 对 retained coverage 与 frailty OOF 的影响。
-- **影响**：motion score 可以作为 diagnostic；不能在 reference 中静默覆盖 SQI、波形或预测。
+- **影响**：motion score 可以作为 diagnostic 或显式配置的恢复依据；不能在 reference 中静默
+  覆盖 SQI、波形或预测，也不能在没有结果时声称有益。
 - **关闭条件**：先分别完成 internal 与 PTT 证据，再运行 `SQI-only`、`motion-only`、
   `SQI+motion` 匹配比较；activation 必须是新的人工决定。
 
@@ -148,8 +151,8 @@
 - **已有保护**：manual selection record、OOF/config/dataset/model/file hashes、all-29 roster、
   nonoverwrite atomic write、save/reload golden parity。
 - **尚缺内容**：实际 5×5 comparison archive、人工 purpose-specific selection、全 29 人 refit 和 bundle。
-- **规则**：不能自动选 winner；不能用 all-29 refit 产生新的内部性能指标；single final seed 是 `42`，
-  final ensemble 使用 `[50042, 60042, 70042, 80042, 90042]`。
+- **规则**：不能自动选 winner；不能用 all-29 refit 产生新的内部性能指标；final refit 继承
+  被选配置的 single seed 或 ensemble roster。`42` 与五成员 roster 只是 reference/具名比较默认。
 
 ### 3.10 高计算量模型和时间尺度 ablation 尚未运行
 
@@ -183,7 +186,9 @@
 ## 4. 明确不是“未完成缺陷”的边界
 
 - 11 通道不能进入 frailty raw branch；这是科学边界，不是缺功能。
-- Equal-files Line A 不是默认；它是与 role-aware Line B 匹配的 aggregation ablation。
+- Equal-files Line A 与 role-aware Line B 都是普通可选聚合模块；Line B 只是 reference 默认。
+- Training balance 与 reporting aggregation 独立配置；报告可以从同一 held-out file OOF 并行
+  重放 window-balanced、Line A 和 Line B 三种 participant 视图。
 - Reference SQI 为 off、artifact reducer 为 identity，是在监督证据不足时的正式 control。
 - 不自动选择 winner 是研究流程要求。
 - 没有 independent test 时诚实标为 OOF validation 是正确行为。
@@ -199,7 +204,8 @@
    endpoint grid，并完成 identity-control A3/A4 runner。
 5. 运行 artifact-reducer 与 motion 8/11-channel matched ablation；只有 A3/A4 证据完整后才人工
    选择 reducer 或评估 motion override。
-6. 仅在获得 outer-train supervision design 后评估 SQI route/motion override。
+6. 可运行 SQI route/motion 方案，但只有保存 outer-train-only calibration 与完整 OOF 证据后，
+   才能作出性能结论。
 7. 人工选择 purpose-specific candidate，执行 all-29 final refit。
 8. CPU CI、目标硬件、device QC 和 independent cohort 分别作为后续工程/证据阶段处理。
 

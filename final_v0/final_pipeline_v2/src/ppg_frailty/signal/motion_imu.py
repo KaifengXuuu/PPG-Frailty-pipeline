@@ -111,20 +111,36 @@ class RollPitchEkfConfig:
             raise ValueError("roll-pitch EKF covariances must be finite")
         if np.any(q <= 0.0) or np.any(r <= 0.0) or np.any(p <= 0.0):
             raise ValueError("roll-pitch EKF covariance diagonals must be positive")
-        if self.dynamic_observation_scale < 0.0:
-            raise ValueError("dynamic observation scale cannot be negative")
         if (
-            self.sensor_filter_order != 3
-            or self.gravity_filter_order != 4
-            or self.accelerometer_lowpass_hz != 20.0
-            or self.gyroscope_lowpass_hz != 40.0
-            or self.gravity_lowpass_hz != 0.3
-            or not 0.0 < self.accelerometer_lowpass_hz < fs_hz / 2.0
-            or not 0.0 < self.gyroscope_lowpass_hz < fs_hz / 2.0
-            or not 0.0 < self.gravity_lowpass_hz < fs_hz / 2.0
+            not np.isfinite(self.dynamic_observation_scale)
+            or self.dynamic_observation_scale < 0.0
+        ):
+            raise ValueError("dynamic observation scale cannot be negative")
+        if not np.isfinite(fs_hz) or fs_hz <= 0.0:
+            raise ValueError("motion IMU sampling frequency must be finite and positive")
+        for name, order in (
+            ("sensor_filter_order", self.sensor_filter_order),
+            ("gravity_filter_order", self.gravity_filter_order),
+        ):
+            if (
+                isinstance(order, bool)
+                or not isinstance(order, (int, np.integer))
+                or not 1 <= int(order) <= 20
+            ):
+                raise ValueError(f"{name} must be an integer in [1,20]")
+        if any(
+            not np.isfinite(value) or not 0.0 < float(value) < fs_hz / 2.0
+            for value in (
+                self.accelerometer_lowpass_hz,
+                self.gyroscope_lowpass_hz,
+                self.gravity_lowpass_hz,
+            )
         ):
             raise ValueError("motion IMU filter configuration is invalid")
-        if not 0.0 <= self.calibration_start_s < self.calibration_stop_s:
+        if (
+            not np.isfinite([self.calibration_start_s, self.calibration_stop_s]).all()
+            or not 0.0 <= self.calibration_start_s < self.calibration_stop_s
+        ):
             raise ValueError("motion calibration interval is invalid")
 
 

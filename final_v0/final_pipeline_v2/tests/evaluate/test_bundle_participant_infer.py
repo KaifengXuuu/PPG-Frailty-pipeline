@@ -28,7 +28,11 @@ class _ProbabilityEstimator:
 
 
 class BundleParticipantInferenceTests(unittest.TestCase):
-    def _bundle(self, line: str) -> LoadedBundle:
+    def _bundle(
+        self,
+        line: str,
+        roles: tuple[str, ...] = ("B", "R"),
+    ) -> LoadedBundle:
         directory = Path(tempfile.gettempdir())
         spec = ModelInputSpec(
             "feature_vector",
@@ -39,6 +43,7 @@ class BundleParticipantInferenceTests(unittest.TestCase):
         adapter = build_model_input_adapter(
             "feature_vector",
             input_schema_hash=input_hash,
+            allowed_role_families=roles,
         )
         return LoadedBundle(
             model=_ProbabilityEstimator(),
@@ -57,7 +62,7 @@ class BundleParticipantInferenceTests(unittest.TestCase):
                     "status": "bundled",
                     "representation_mode": "feature_vector",
                     "input_schema_hash": input_hash,
-                    "allowed_role_families": ["B", "R"],
+                    "allowed_role_families": list(roles),
                     "boundary": adapter.boundary,
                 },
                 "metadata": {
@@ -107,12 +112,30 @@ class BundleParticipantInferenceTests(unittest.TestCase):
     def test_s_and_w_roles_are_rejected_outside_current_training_scope(self) -> None:
         for role in ("S", "W2"):
             with self.subTest(role=role), self.assertRaisesRegex(
-                ValueError, "outside this bundle training scope B/R"
+                ValueError, "outside this bundle training scope B,R"
             ):
                 infer_participant(
                     self._bundle("line_a_equal_files"),
                     [ParticipantFileInput("outside", role, {"x": np.asarray([0.5, 0.0])})],
                 )
+
+    def test_auxiliary_roles_are_allowed_when_bundle_was_trained_for_them(self) -> None:
+        loaded = self._bundle(
+            "line_b_equal_role_families",
+            roles=("B", "S", "W"),
+        )
+        result = infer_participant(
+            loaded,
+            [
+                ParticipantFileInput("B1", "B", {"x": np.asarray([0.9, 0.0])}),
+                ParticipantFileInput("S1", "S1", {"x": np.asarray([0.2, 0.0])}),
+                ParticipantFileInput("W1", "W2", {"x": np.asarray([0.4, 0.0])}),
+            ],
+        )
+        self.assertEqual(
+            set(result["role_family_probabilities"]),
+            {"B", "S", "W"},
+        )
 
     def test_swapped_schema_adapter_is_rejected_before_transform(self) -> None:
         loaded = self._bundle("line_a_equal_files")

@@ -37,17 +37,7 @@ from .schema import StudyPlan
 CaseExecutor = Callable[
     [ResolvedCase, Path, Path, StudyPlan, ProgressSink], Mapping[str, Any] | Any
 ]
-
-_DEEP_MODEL_TOKENS = (
-    "compactcnn",
-    "compact_cnn",
-    "inception",
-    "shapeformer",
-    "fusioncompact",
-    "fusioninception",
-    "fusion_compact",
-    "fusion_inception",
-)
+Phase0Runner = Callable[..., Mapping[str, Any] | Any]
 
 _OUTPUT_GROUPS = frozenset(
     {"raw", "fusion", "feature_vector", "feature_matrix"}
@@ -82,6 +72,10 @@ _COMPACT_CELL_FIELDS = (
     "fold_index",
     "split_seed",
     "training_seed",
+    "config_hash",
+    "preprocessing_hash",
+    "code_commit",
+    "source_version",
     "model_machine_id",
     "model_id",
     "representation_mode",
@@ -197,6 +191,10 @@ def _resume_contract(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     contract["execution"] = {
         "repeats": execution.get("repeats"),
         "folds": execution.get("folds"),
+        "device": execution.get("device"),
+        "measure_operational_costs": execution.get(
+            "measure_operational_costs", False
+        ),
     }
     return contract
 
@@ -214,13 +212,17 @@ def _safe_slug(value: str) -> str:
 
 
 def _contains_deep_case(expansion: StudyExpansion) -> bool:
+    from ..module_registry import model_factory_contract
+
     for case in expansion.cases:
         model = case.config.get("model", {})
         if isinstance(model, Mapping):
-            identity = " ".join(
-                str(model.get(key, "")) for key in ("model_id", "variant")
-            ).lower()
-            if any(token in identity for token in _DEEP_MODEL_TOKENS):
+            model_id = model.get("model_id")
+            if model_id is None:
+                raise ValueError(
+                    f"study case {case.case_id} has no model.model_id"
+                )
+            if model_factory_contract(str(model_id))["execution_backend"] == "torch":
                 return True
     return False
 
@@ -316,7 +318,7 @@ def default_experiment_executor(
     plan: StudyPlan,
     progress_sink: ProgressSink,
 ) -> Mapping[str, Any]:
-    """Delayed adapter to the canonical full runner; importing does not train."""
+    """Delayed adapter to the canonical or isolated Legacy Bridge runner."""
 
     emit = _executor_progress_adapter(
         progress_sink,
@@ -333,13 +335,18 @@ def default_experiment_executor(
     from ppg_frailty import experiment as experiment_module
 
     experiment_output = case_directory / "experiment"
+    bridge = plan.legacy_bridge
     full_runner = getattr(experiment_module, "run_full_experiment", None)
-    cell_runner = getattr(experiment_module, "run_outer_cell", None)
+    cell_runner = getattr(
+        experiment_module,
+        "run_legacy_bridge_outer_cell" if bridge is not None else "run_outer_cell",
+        None,
+    )
     complete_5x5 = (
         tuple(plan.execution.repeats) == tuple(range(5))
         and tuple(plan.execution.folds) == tuple(range(5))
     )
-    if callable(full_runner) and complete_5x5:
+    if bridge is None and callable(full_runner) and complete_5x5:
         result = _invoke_with_supported_kwargs(
             full_runner,
             config_path=config_path,
@@ -347,33 +354,62 @@ def default_experiment_executor(
             repeats=plan.execution.repeats,
             folds=plan.execution.folds,
             progress_callback=emit,
+            measure_operational_costs=plan.execution.measure_operational_costs,
         )
         compact = _compact_experiment_result(result)
         del result
         gc.collect()
         return compact
     if not callable(cell_runner):
-        if callable(full_runner) and not complete_5x5:
+        if bridge is None and callable(full_runner) and not complete_5x5:
             raise RuntimeError(
                 "partial repeat/fold selection requires run_outer_cell; refusing "
                 "to delegate it to a full-only runner"
             )
-        raise RuntimeError(
-            "canonical experiment adapter exposes neither run_full_experiment "
-            "nor run_outer_cell"
+        required = (
+            "run_legacy_bridge_outer_cell"
+            if bridge is not None
+            else "run_full_experiment or run_outer_cell"
         )
+        raise RuntimeError(f"experiment adapter does not expose {required}")
     cells: list[Any] = []
     failed_cells: list[str] = []
+    bridge_profile_id = (
+        None
+        if bridge is None
+        else str(case.changed_values.get("study.legacy_bridge_profile", ""))
+    )
+    if bridge is not None and bridge_profile_id not in {
+        f"L{level}" for level in range(8)
+    }:
+        raise ValueError(
+            f"{case.case_id} lacks one frozen Legacy Bridge L0..L7 profile"
+        )
     for repeat in plan.execution.repeats:
         for fold in plan.execution.folds:
-            raw_result = _invoke_with_supported_kwargs(
-                cell_runner,
-                config_path=config_path,
-                output_dir=experiment_output / f"repeat_{repeat:02d}_fold_{fold:02d}",
-                repeat_index=repeat,
-                fold_index=fold,
-                progress_callback=emit,
-            )
+            call_kwargs: dict[str, Any] = {
+                "config_path": config_path,
+                "output_dir": (
+                    experiment_output / f"repeat_{repeat:02d}_fold_{fold:02d}"
+                ),
+                "repeat_index": repeat,
+                "fold_index": fold,
+                "progress_callback": emit,
+                "measure_operational_costs": (
+                    plan.execution.measure_operational_costs
+                ),
+            }
+            if bridge is not None:
+                call_kwargs.update(
+                    {
+                        "profile_id": bridge_profile_id,
+                        "source_specification": bridge.source_specification,
+                        "source_specification_sha256": (
+                            bridge.source_specification_sha256
+                        ),
+                    }
+                )
+            raw_result = _invoke_with_supported_kwargs(cell_runner, **call_kwargs)
             cell_result = _compact_experiment_result(raw_result)
             del raw_result
             gc.collect()
@@ -537,14 +573,74 @@ class StudyRunner:
         *,
         pipeline_root: str | Path,
         executor: CaseExecutor | None = None,
+        phase0_runner: Phase0Runner | None = None,
         progress_sink: ProgressSink | None = None,
     ) -> None:
         self.pipeline_root = Path(pipeline_root).resolve()
         self.executor = executor
+        self.phase0_runner = phase0_runner
         self.progress_sink = progress_sink or NullProgressSink()
 
     def expand(self, plan: StudyPlan) -> StudyExpansion:
         return expand_study(plan, pipeline_root=self.pipeline_root)
+
+    def _run_phase0_audit(self, plan: StudyPlan) -> Mapping[str, Any] | None:
+        """Run Phase 0 as advisory evidence; never authorize or block training."""
+
+        bridge = plan.legacy_bridge
+        if bridge is None or not bool(bridge.phase0.get("enabled", False)):
+            return None
+        base: dict[str, Any] = {
+            "schema_version": "ppg_frailty.legacy_v2_phase0_advisory.v1",
+            "advisory_only": True,
+            "affects_training_execution": False,
+            "training_blocked": False,
+            "recorded_utc": _utc_now(),
+            "source_specification": bridge.source_specification,
+            "declared_source_specification_sha256": (
+                bridge.source_specification_sha256
+            ),
+        }
+        try:
+            repository_root = self.pipeline_root.parents[1]
+            source = (repository_root / bridge.source_specification).resolve()
+            source.relative_to(repository_root)
+            if not source.is_file():
+                raise FileNotFoundError(source)
+            phase0_runner = self.phase0_runner
+            if phase0_runner is None:
+                from ppg_frailty.audit.legacy_v2_bridge import (
+                    run_legacy_v2_phase0,
+                )
+
+                phase0_runner = run_legacy_v2_phase0
+            result = _invoke_with_supported_kwargs(
+                phase0_runner,
+                repository_root=repository_root,
+                pipeline_root=self.pipeline_root,
+                phase0_spec=bridge.phase0,
+                source_specification=bridge.source_specification,
+                source_specification_sha256=bridge.source_specification_sha256,
+            )
+            payload = _jsonable(result)
+            if not isinstance(payload, Mapping):
+                raise TypeError("legacy bridge Phase 0 result must be a mapping")
+            json.dumps(payload, allow_nan=False)
+            return {
+                **base,
+                "audit_status": "completed",
+                "audit_decision": payload.get("decision"),
+                "audit_result": dict(payload),
+            }
+        except Exception as error:  # noqa: BLE001 - advisory evidence only.
+            return {
+                **base,
+                "audit_status": "error",
+                "audit_decision": None,
+                "error_type": type(error).__name__,
+                "error": str(error),
+                "traceback": traceback.format_exc(),
+            }
 
     def _new_output(self, plan: StudyPlan, output_root: str | Path | None) -> Path:
         raw = Path(output_root or plan.output.root)
@@ -618,8 +714,8 @@ class StudyRunner:
             ) != _resume_contract(expansion.plan.to_dict()):
                 raise ValueError(
                     "resume study-plan drift: scientific case definitions and "
-                    "repeats/folds must match; jobs, output root, and report "
-                    "presentation may be changed"
+                    "repeats/folds/device must match; jobs, output root, and "
+                    "report presentation may be changed"
                 )
         else:
             plan_path.write_text(
@@ -788,6 +884,9 @@ class StudyRunner:
         )
         if resumed_run and not output.is_dir():
             raise FileNotFoundError(output)
+        phase0_audit = self._run_phase0_audit(plan)
+        if phase0_audit is not None:
+            _atomic_json(output / "phase0_audit.json", phase0_audit)
         self._materialize(expansion, output, resumed=resumed_run)
         jsonl = JsonlProgressSink(output / "progress_events.jsonl")
         original_sink = self.progress_sink

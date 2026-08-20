@@ -90,6 +90,12 @@ def _detect_pulses_dual_polarity_ablation(
     legal rate signal, so a failed reducer can never silently reach this function.
     """
 
+    from ..peaks.resolver import validate_peak_detection_parameters
+
+    min_observation_sec, min_peaks = validate_peak_detection_parameters(
+        min_observation_sec,
+        min_peaks,
+    )
     if float(fs_hz) != CANONICAL_FS_HZ:
         raise ValueError("pulse detection requires the exact 400 Hz time grid")
     if isinstance(values, CanonicalSignalViews):
@@ -131,7 +137,10 @@ def _detect_pulses_dual_polarity_ablation(
     if not resolved_run_id:
         raise ValueError("pulse detection run_id cannot be empty")
     if matrix.shape[0] / fs_hz < min_observation_sec:
-        raise ValueError("HR/PPI requires at least eight seconds of observation")
+        raise ValueError(
+            "HR/PPI requires at least "
+            f"{min_observation_sec:g} seconds of observation"
+        )
     sample_offset = 0
     if not np.all(valid_samples):
         # 中文：选择最长连续 artifact-valid run，绝不把 invalid gap 两侧拼接。
@@ -143,7 +152,10 @@ def _detect_pulses_dual_polarity_ablation(
             raise ValueError("rate waveform has no artifact-valid samples")
         start, stop = max(runs, key=lambda bounds: bounds[1] - bounds[0])
         if (stop - start) / fs_hz < min_observation_sec:
-            raise ValueError("longest artifact-valid run is shorter than eight seconds")
+            raise ValueError(
+                "longest artifact-valid run is shorter than configured "
+                f"{min_observation_sec:g} seconds"
+            )
         matrix = matrix[start:stop]
         sample_offset = int(start)
     labels = ("RED", "IR")[: matrix.shape[1]]
@@ -192,6 +204,8 @@ def _detect_pulses_dual_polarity_ablation(
             "polarity": int(best.polarity),
             "score": float(best.score),
             "valid_run_offset": int(sample_offset),
+            "min_observation_sec": float(min_observation_sec),
+            "min_peaks": int(min_peaks),
         },
     )
     provenance_hash = hashlib.sha256(

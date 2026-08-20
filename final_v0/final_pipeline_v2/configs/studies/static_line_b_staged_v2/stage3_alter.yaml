@@ -1,0 +1,399 @@
+# Stage 3 executable Legacy Bridge protocol. Phase 0 is an optional advisory
+# audit and never gates, changes, or stops training. Historical controls remain
+# isolated from canonical V2 overrides.
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: staged_static_03_legacy_v2_bridge_v2
+  kind: catalog_sweep
+  purpose: "Diagnose the historical-to-V2 result gap with an advisory data-integrity audit and a frozen adjacent-profile ablation chain."
+  flow_position: "Stage 3 after ordinary route screening and before ensemble, SQI/motion, sequential finalist ablations, and stage-last ShapeFormer."
+  decision_role: ablation
+  reference_case_id: compact_cnn__l0_legacy64_w15_fixed10
+  thesis_sections:
+    - "Legacy-to-V2 data and source integrity audit"
+    - "Raw-model preprocessing and balance-policy bridge"
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: "The catalog supplies architecture provenance only. Legacy bridge profiles are declared below and are not canonical V2 overrides."
+  controlled_factors:
+    - "Repeat 0 and frozen folds 0-4"
+    - "Training seed 42"
+    - "Ten fixed epochs without early stopping or outer-label checkpoint selection"
+    - "Fresh current CSV bytes independent of Phase 0 status; historical caches are audit evidence only"
+  notes:
+    - "L5 to L6 jointly changes the sampler hierarchy and the class-weight population; it is not sampler-only evidence."
+    - "Inception L0 is a historical-input plausibility check and does not support an Inception ablation conclusion."
+    - "CompactCNN execution order differs from numeric reporting order; the L7 to L5 execution jump is not causal evidence."
+cases:
+  - case_id: inception_full__l0_legacy64_w15_fixed10
+    catalog_entry: inception_full
+    screen_profile_id: legacy_bridge_l0
+    output_group: raw
+    overrides: {}
+    rationale: "InceptionTimeFull single-network architecture under the complete L0 historical-approximate input and training contract."
+    formal_profile: null
+  - case_id: compact_cnn__l7_v2_training_bundle_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_l7
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN L7; execute first but compare only with numeric predecessor L6."
+    formal_profile: null
+  - case_id: compact_cnn__l5_uniform_replacement_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_l5
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN L5; uniform replacement mechanics with historical window-count class weights."
+    formal_profile: null
+  - case_id: compact_cnn__l6_v2_line_b_balance_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_l6
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN L6; Line-B hierarchy sampling plus V2 participant-count class weights as one named balance-policy bundle."
+    formal_profile: null
+  - case_id: compact_cnn__l4_v2_imu_fold_scaled_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_l4
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN L4; change IMU normalization from per-window to outer-training-participant-only scaling."
+    formal_profile: null
+  - case_id: compact_cnn__l3_v2_imu_window_scaled_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_l3
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN L3; V2 IMU units, B calibration, EKF and dynamic-acceleration semantics while retaining per-window scaling."
+    formal_profile: null
+  - case_id: compact_cnn__l2_legacy400_w5_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_l2
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN L2; change only the deep-learning sample rate from 64 Hz to 400 Hz."
+    formal_profile: null
+  - case_id: compact_cnn__l1_legacy64_w5_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_l1
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN L1; change only the window plan from historical 15/3/90-percent to complete 5/2.5/cap-128."
+    formal_profile: null
+  - case_id: compact_cnn__l0_legacy64_w15_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_l0
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN complete L0 historical-approximate input and training baseline."
+    formal_profile: null
+legacy_bridge:
+  schema_version: ppg_frailty.legacy_v2_bridge_protocol.v1
+  protocol_id: revised_9_case_legacy_v2_bridge_advisory_audit
+  source_specification: AA_TODO/old_version_compare_V2/CODEX_LEGACY_V2_BRIDGE_REVISED_9_CASES_WITH_PHASE0.md
+  source_specification_sha256: 7ad847a630f81e76304c8d7a38924a8c2b0ca9b16f9344488ade750cbee3c49b
+  runtime_status: implemented_advisory_audit_v1
+  phase0:
+    enabled: true
+    advisory_only: true
+    mandatory: false
+    affects_training_execution: false
+    manifest_path: manifests/internal_records_v2.csv
+    manifest_expected_rows: 261
+    split_path: splits/sgkf5_repeated_grouped_5x5_v2.csv
+    static_discovery_globs:
+      - StudyData/*.csv
+      - TestDataYoungers/*.csv
+    historical_label_mapping:
+      StudyData/FRAILTY-STATUS=2: Pre-Frail
+      StudyData/FRAILTY-STATUS=3: Robust/Non-Frail
+      TestDataYoungers: Young
+    static_expected_record_count: 145
+    static_expected_participant_count: 29
+    static_expected_class_counts:
+      Pre-Frail: 9
+      Robust/Non-Frail: 12
+      Young: 8
+    static_required_roles: [B, R1, R2, R3, R4]
+    required_channel_order: [RED, IR, AX, AY, AZ, GX, GY, GZ]
+    manifest_audit_checks:
+      - recompute_each_raw_file_SHA256_and_compare_row_source_hash
+      - independently_read_CSV_and_verify_required_channel_set_and_order
+      - compare_n_samples_duration_participant_class_role_sampling_rate_and_channel_schema
+      - count_nonfinite_all_missing_internal_edge_gaps_flat_constant_runs
+      - detect_duplicate_source_hashes_and_duplicate_record_identities
+      - recompute_complete_manifest_file_hash_and_record_manifest_version
+    historical_discovery_checks:
+      - independently_reconstruct_discovery_without_using_manifest_as_proof
+      - build_explicit_suffix_removal_participant_alias_table
+      - require_one_to_one_alias_mapping
+      - compare_exact_source_path_and_source_hash_without_fuzzy_filename_matching
+      - compare_record_id_participant_role_class_samples_and_channel_schema
+    imu_audit_checks:
+      - report_raw_B_acceleration_norm_median_IQR_P01_P99
+      - report_raw_B_gyro_axis_median_RMS_P01_P99_and_nonfinite_constant_runs
+      - report_declared_conversion_acceleration_m_per_s2_and_gyro_rad_per_s
+      - report_B_calibration_identity_biases_initial_roll_pitch_and_EKF_status
+      - report_gravity_norm_and_dynamic_acceleration_mean_RMS_P99
+      - flag_observed_scale_unit_conversion_static_offset_residual_motion_and_EKF_failures
+    unit_correction_policy: report_only_no_automatic_correction
+    cache_audit_checks:
+      - search_historical_window_caches_and_hash_each_cache
+      - inspect_arrays_dtypes_shapes_paths_labels_participants_roles_file_indices_and_provenance
+      - freshly_regenerate_legacy_windows_from_current_CSV_bytes
+      - compare_row_identity_shape_hash_max_and_mean_absolute_difference
+      - compare_selected_B_and_R4_windows_for_at_least_one_participant_per_class
+      - declare_byte_equivalence_unproven_if_source_preprocess_or_schema_hashes_are_absent
+      - write_historical_cache_not_available_when_no_cache_exists
+    split_audit_checks:
+      - read_repeat0_directly_from_frozen_registry
+      - verify_folds_0_to_4_and_each_of_29_participants_held_out_exactly_once
+      - verify_outer_train_and_held_out_participant_disjointness
+      - verify_all_files_and_windows_inherit_participant_fold
+      - verify_class_consistency_and_declared_registry_file_and_payload_hashes
+    split_runtime_recompute: false
+    audit_decisions: [PASS, STOP, PASS_WITH_DECLARED_LIMITATIONS]
+    training_input_source: fresh_current_raw_csv_bytes_independent_of_phase0
+    historical_cache_use: audit_only_never_training
+    historical_cache_mismatch_training_effect: none
+    audit_outputs:
+      - artifacts/audit/legacy_v2_manifest_record_diff.csv
+      - artifacts/audit/legacy_v2_source_hash_audit.csv
+      - artifacts/audit/legacy_v2_source_hash_audit.json
+      - artifacts/audit/legacy_v2_channel_qc.csv
+      - artifacts/audit/legacy_v2_participant_alias_map.csv
+      - artifacts/audit/legacy_v2_imu_unit_ekf_audit.csv
+      - artifacts/audit/legacy_v2_cache_audit.json
+      - artifacts/audit/legacy_v2_split_audit.json
+      - artifacts/audit/LEGACY_V2_PHASE0_DATA_AUDIT.md
+    advisory_findings:
+      - source_hash_mismatch_unresolved
+      - historical_static_set_differs_from_v2
+      - role_class_or_participant_identity_conflict
+      - participant_alias_not_one_to_one
+      - required_channel_missing_or_semantics_ambiguous
+      - duplicate_records_unresolved
+      - participant_leakage_or_split_registry_mismatch
+  budget:
+    case_count: 9
+    repeat_indices: [0]
+    fold_indices: [0, 1, 2, 3, 4]
+    training_seed: 42
+    fixed_epochs: 10
+    early_stopping: false
+    outer_label_checkpoint_selection: false
+    fit_count: 45
+    model_epoch_count: 450
+    phase0_fit_count: 0
+    phase0_model_epoch_count: 0
+  execution_order:
+    - inception_full__L0_legacy64_w15_fixed10
+    - compact_cnn__L7_v2_training_bundle_fixed10
+    - compact_cnn__L5_uniform_replacement_fixed10
+    - compact_cnn__L6_v2_line_b_balance_fixed10
+    - compact_cnn__L4_v2_imu_fold_scaled_fixed10
+    - compact_cnn__L3_v2_imu_window_scaled_fixed10
+    - compact_cnn__L2_legacy400_w5_fixed10
+    - compact_cnn__L1_legacy64_w5_fixed10
+    - compact_cnn__L0_legacy64_w15_fixed10
+  numeric_profile_order:
+    - inception_full__L0_legacy64_w15_fixed10
+    - compact_cnn__L0_legacy64_w15_fixed10
+    - compact_cnn__L1_legacy64_w5_fixed10
+    - compact_cnn__L2_legacy400_w5_fixed10
+    - compact_cnn__L3_v2_imu_window_scaled_fixed10
+    - compact_cnn__L4_v2_imu_fold_scaled_fixed10
+    - compact_cnn__L5_uniform_replacement_fixed10
+    - compact_cnn__L6_v2_line_b_balance_fixed10
+    - compact_cnn__L7_v2_training_bundle_fixed10
+  adjacent_comparisons:
+    - compact_cnn__L0_legacy64_w15_fixed10->compact_cnn__L1_legacy64_w5_fixed10
+    - compact_cnn__L1_legacy64_w5_fixed10->compact_cnn__L2_legacy400_w5_fixed10
+    - compact_cnn__L2_legacy400_w5_fixed10->compact_cnn__L3_v2_imu_window_scaled_fixed10
+    - compact_cnn__L3_v2_imu_window_scaled_fixed10->compact_cnn__L4_v2_imu_fold_scaled_fixed10
+    - compact_cnn__L4_v2_imu_fold_scaled_fixed10->compact_cnn__L5_uniform_replacement_fixed10
+    - compact_cnn__L5_uniform_replacement_fixed10->compact_cnn__L6_v2_line_b_balance_fixed10
+    - compact_cnn__L6_v2_line_b_balance_fixed10->compact_cnn__L7_v2_training_bundle_fixed10
+  profiles:
+    - case_id: inception_full__L0_legacy64_w15_fixed10
+      catalog_case_id: inception_full__l0_legacy64_w15_fixed10
+      model_id: InceptionTimeFull
+      profile_id: L0
+      predecessor_case_id: null
+      contract:
+        - current_InceptionTimeFull_single_network_not_ensemble
+        - same_complete_L0_input_and_training_contract_as_compact_baseline
+        - no_Inception_ablation_inference
+      interpretation: historical_input_plausibility_check_only
+    - case_id: compact_cnn__L7_v2_training_bundle_fixed10
+      catalog_case_id: compact_cnn__l7_v2_training_bundle_fixed10
+      model_id: CompactCNN1D
+      profile_id: L7
+      predecessor_case_id: compact_cnn__L6_v2_line_b_balance_fixed10
+      contract:
+        - inherit_L6
+        - optimizer_adam
+        - batch_size_64
+        - current_registered_model_dropout
+        - learning_rate_0p001
+        - weight_decay_0p0001
+        - fixed_epochs_10
+        - record_resolved_dropout_diff_without_claiming_change_if_identical
+      interpretation: optimizer_batch_and_current_dropout_bundle_only
+    - case_id: compact_cnn__L5_uniform_replacement_fixed10
+      catalog_case_id: compact_cnn__l5_uniform_replacement_fixed10
+      model_id: CompactCNN1D
+      profile_id: L5
+      predecessor_case_id: compact_cnn__L4_v2_imu_fold_scaled_fixed10
+      contract:
+        - inherit_L4
+        - uniform_WeightedRandomSampler_with_replacement
+        - all_one_row_weights
+        - num_samples_equals_training_dataset_rows
+        - historical_inverse_training_window_count_class_weights
+      interpretation: replacement_mechanics_only
+    - case_id: compact_cnn__L6_v2_line_b_balance_fixed10
+      catalog_case_id: compact_cnn__l6_v2_line_b_balance_fixed10
+      model_id: CompactCNN1D
+      profile_id: L6
+      predecessor_case_id: compact_cnn__L5_uniform_replacement_fixed10
+      contract:
+        - inherit_L5_except_balance_policy
+        - balance_line_weighted_v2_equal_B_R_role_family_mass
+        - v2_unique_outer_training_participant_count_class_weights
+        - adamw_batch32_fixed10_retained
+      interpretation: v2_sampler_and_class_weight_balance_policy_bundle_not_sampler_only
+    - case_id: compact_cnn__L4_v2_imu_fold_scaled_fixed10
+      catalog_case_id: compact_cnn__l4_v2_imu_fold_scaled_fixed10
+      model_id: CompactCNN1D
+      profile_id: L4
+      predecessor_case_id: compact_cnn__L3_v2_imu_window_scaled_fixed10
+      contract:
+        - inherit_L3
+        - RED_IR_per_window_robust_normalization_retained
+        - IMU_outer_training_participant_only_median_IQR_over_1p349_scaler
+      interpretation: imu_normalization_change_only
+    - case_id: compact_cnn__L3_v2_imu_window_scaled_fixed10
+      catalog_case_id: compact_cnn__l3_v2_imu_window_scaled_fixed10
+      model_id: CompactCNN1D
+      profile_id: L3
+      predecessor_case_id: compact_cnn__L2_legacy400_w5_fixed10
+      contract:
+        - inherit_L2
+        - accelerometer_g_to_m_per_s2
+        - gyroscope_deg_per_s_to_rad_per_s
+        - same_participant_B_calibration
+        - calibrated_roll_pitch_EKF
+        - channels_RED_IR_A_dyn_x_A_dyn_y_A_dyn_z_GX_GY_GZ
+        - per_window_robust_normalization_all_eight_channels_retained
+      interpretation: v2_imu_semantics_bundle_only
+    - case_id: compact_cnn__L2_legacy400_w5_fixed10
+      catalog_case_id: compact_cnn__l2_legacy400_w5_fixed10
+      model_id: CompactCNN1D
+      profile_id: L2
+      predecessor_case_id: compact_cnn__L1_legacy64_w5_fixed10
+      contract:
+        - inherit_L1
+        - deep_learning_target_fs_400_hz
+        - no_resampling_at_native_400_hz
+      interpretation: sampling_rate_and_physical_receptive_field_change_only
+    - case_id: compact_cnn__L1_legacy64_w5_fixed10
+      catalog_case_id: compact_cnn__l1_legacy64_w5_fixed10
+      model_id: CompactCNN1D
+      profile_id: L1
+      predecessor_case_id: compact_cnn__L0_legacy64_w15_fixed10
+      contract:
+        - inherit_L0
+        - window_length_5_s
+        - window_hop_2p5_s
+        - complete_windows_with_cap_128_per_file
+        - deep_learning_target_fs_64_hz_retained
+      interpretation: window_plan_change_only
+    - case_id: compact_cnn__L0_legacy64_w15_fixed10
+      catalog_case_id: compact_cnn__l0_legacy64_w15_fixed10
+      model_id: CompactCNN1D
+      profile_id: L0
+      predecessor_case_id: null
+      contract:
+        - fresh_current_CSV_bytes_never_historical_NPZ_training_input
+        - roles_B_R1_R2_R3_R4
+        - PPG_detrend_butterworth_order3_zero_phase_0p2_to_8_hz
+        - IMU_order3_acceleration_LPF_20_hz_and_gyro_LPF_40_hz
+        - no_SI_conversion_no_B_calibration_no_EKF_no_gravity_removal
+        - anti_aliased_eight_channel_resampling_400_to_64_hz
+        - window_length_15_s_hop_3_s_historical_90_percent_evenly_retained
+        - all_eight_channels_per_window_median_IQR_over_1p349_SD_fallback_clip_minus8_plus8
+        - exhaustive_epoch_shuffle_without_replacement
+        - historical_inverse_training_window_count_weighted_cross_entropy
+        - adamw_learning_rate_0p001_weight_decay_0p0001_batch32
+        - fixed_epochs_10
+      interpretation: historical_approximate_baseline
+  aggregation_views:
+    - legacy_window_balanced_direct_participant_mean
+    - line_a_file_balanced_window_file_participant_mean
+    - v2_role_balanced_window_file_role_family_participant_mean
+  primary_table_columns:
+    - model
+    - profile
+    - BA_legacy_aggregation
+    - BA_line_a_aggregation
+    - BA_v2_aggregation
+    - macroF1_legacy_aggregation
+    - macroF1_line_a_aggregation
+    - macroF1_v2_aggregation
+    - worst_class_F1
+    - delta_from_previous_numeric_profile
+  sampling_diagnostics:
+    - dataset_row_count
+    - draw_count
+    - unique_row_draw_count
+    - duplicate_draw_fraction
+    - never_drawn_row_fraction
+    - draw_counts_by_participant
+    - draw_counts_by_class
+    - draw_counts_by_B_R_family
+    - draw_counts_by_file
+    - class_weight_vector
+    - sampler_identity
+  restrictions:
+    - no_historical_cache_as_training_input
+    - no_additional_cases_repeats_models_or_hyperparameter_search
+    - no_early_stopping
+    - no_outer_label_checkpoint_selection
+    - no_cross_window_chronology_claim
+    - numeric_ablation_report_uses_only_L0_to_L7_adjacent_contrasts
+    - execution_order_report_uses_absolute_metrics_and_marks_jumps_non_causal
+    - all_aggregation_views_from_same_OOF_window_probabilities
+    - sampling_diagnostics_saved_for_every_fold_and_epoch
+  required_runtime_capabilities:
+    - optional_phase0_manifest_source_channel_imu_cache_and_split_advisory_auditor
+    - phase0_status_never_changes_or_blocks_training
+    - fresh_legacy_window_materialization_including_historical_90_percent_retention
+    - legacy_and_v2_imu_preprocessing_profiles_with_fold_local_scaling
+    - exhaustive_shuffle_uniform_replacement_and_line_b_sampler_profiles
+    - training_window_count_and_unique_participant_count_class_weight_profiles
+    - adamw_and_adam_optimizer_profiles_with_per_epoch_sampling_diagnostics
+    - legacy_line_a_and_v2_posthoc_oof_aggregation_report_contract
+execution:
+  repeats: [0]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 1
+  device: cuda
+  parallel_level: cases
+  continue_on_error: false
+  allow_parallel_deep: false
+  measure_operational_costs: false
+output:
+  root: artifacts/studies/static_line_b_staged_v2
+report:
+  top_k: 9
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10

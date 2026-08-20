@@ -10,7 +10,14 @@ import numpy as np
 from ..contracts import ArtifactReductionResult, SignalRoute
 from ..signal.views import CANONICAL_FS_HZ, CanonicalSignalViews
 from .base import ArtifactReducer, failure_result, validate_result
-from .bss import BssConfig, FastIcaBssReducer, NmfBssReducer, PcaBssReducer
+from .bss import (
+    FastIcaBssConfig,
+    FastIcaBssReducer,
+    NmfBssConfig,
+    NmfBssReducer,
+    PcaBssConfig,
+    PcaBssReducer,
+)
 from .decomposition import SsaConfig, SsaReducer
 from .identity import IdentityReducer
 from .legacy import (
@@ -87,11 +94,11 @@ def get_reducer(name: str, parameters: Mapping[str, Any] | None = None) -> Artif
     if normalized in {"spectral_mask", "spectral", "stft", "stft_imu_mask"}:
         return SpectralMaskReducer(_config(SpectralMaskConfig, parameters))
     if normalized in {"pca", "pca_bss"}:
-        return PcaBssReducer(_config(BssConfig, parameters))
+        return PcaBssReducer(_config(PcaBssConfig, parameters))
     if normalized in {"ica", "fastica", "fastica_bss"}:
-        return FastIcaBssReducer(_config(BssConfig, parameters))
+        return FastIcaBssReducer(_config(FastIcaBssConfig, parameters))
     if normalized in {"nmf", "nmf_bss"}:
-        return NmfBssReducer(_config(BssConfig, parameters))
+        return NmfBssReducer(_config(NmfBssConfig, parameters))
     if normalized == "emd_sifting_rate_only":
         return EmdSiftingRateOnlyReducer(_config(EmdSiftingConfig, parameters))
     if normalized == "ceemd_lite_nlms_legacy":

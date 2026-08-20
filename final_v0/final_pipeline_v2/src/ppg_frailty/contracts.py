@@ -269,7 +269,7 @@ class EngineeringFeatureSequence:
 
 @dataclass(frozen=True)
 class OrderedFeatureMatrixV1:
-    """每 recording 一个 D×32 矩阵 / One D-by-32 matrix per recording."""
+    """每 recording 一个 D×K 矩阵 / One D-by-K matrix per recording."""
 
     values: np.ndarray
     row_mask: np.ndarray

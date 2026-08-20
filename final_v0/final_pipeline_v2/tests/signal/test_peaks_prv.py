@@ -11,6 +11,7 @@ from ppg_frailty.peaks import CANONICAL_DETECTOR_ID
 from ppg_frailty.signal import (
     MIN_BASIC_RATE_PEAKS,
     MIN_TIME_DOMAIN_PRV_INTERVALS,
+    PrvConfig,
     compute_prv,
     detect_pulses,
 )
@@ -73,6 +74,99 @@ class PeakPrvTest(unittest.TestCase):
         self.assertAlmostEqual(result.values["hr_mean_bpm"], 60.0, places=8)
         self.assertAlmostEqual(result.values["rmssd_s"], 0.0, places=8)
         self.assertFalse(result.frequency_domain_eligible)
+
+    def test_nondefault_prv_config_changes_real_eligibility_and_is_persisted(self) -> None:
+        """Configured thresholds/bands must reach computation, not only YAML."""
+
+        pulse = regular_pulse_result(60)
+        default = compute_prv(
+            pulse,
+            observation_duration_s=60.0,
+            role="B",
+            route=SignalRoute.DIRECT,
+            q_rate_qualified=True,
+        )
+        configured = PrvConfig.from_mapping(
+            {
+                "time_prv_min_duration_s": 30.0,
+                "time_prv_min_coverage": 0.5,
+                "time_prv_min_intervals": 20,
+                "spectral_prv_min_duration_s": 45.0,
+                "spectral_prv_min_coverage": 0.5,
+                "spectral_prv_min_intervals": 40,
+                "tachogram_fs_hz": 8.0,
+                "spectral_bands_hz": {
+                    "vlf": [0.01, 0.10],
+                    "lf": [0.10, 0.30],
+                    "hf": [0.30, 0.80],
+                },
+                "sample_entropy": {
+                    "m": 3,
+                    "r_sd_fraction": 0.3,
+                    "min_intervals": 40,
+                },
+            }
+        )
+        changed = compute_prv(
+            pulse,
+            observation_duration_s=60.0,
+            role="B",
+            route=SignalRoute.DIRECT,
+            q_rate_qualified=True,
+            config=configured,
+        )
+        self.assertFalse(default.frequency_domain_eligible)
+        self.assertTrue(changed.frequency_domain_eligible, changed.reasons)
+        self.assertTrue(changed.sample_entropy_eligible)
+        self.assertEqual(changed.configuration, configured.to_dict())
+        self.assertEqual(changed.configuration["tachogram_fs_hz"], 8.0)
+        self.assertEqual(changed.configuration["sample_entropy"]["m"], 3)
+
+    def test_prv_config_defaults_missing_fields_and_rejects_bad_ranges(self) -> None:
+        defaults = PrvConfig.from_mapping({})
+        self.assertEqual(defaults, PrvConfig())
+        self.assertEqual(
+            PrvConfig.from_mapping({"time_prv_min_duration_s": 45.0}).time_prv_min_intervals,
+            MIN_TIME_DOMAIN_PRV_INTERVALS,
+        )
+        invalid = (
+            {"time_prv_min_coverage": 1.1},
+            {"time_prv_min_intervals": 1},
+            {"tachogram_fs_hz": 0.0},
+            {
+                "tachogram_fs_hz": 1.0,
+                "spectral_bands_hz": {"hf": [0.15, 0.6]},
+            },
+            {"sample_entropy": {"m": 4, "min_intervals": 5}},
+        )
+        for payload in invalid:
+            with self.subTest(payload=payload):
+                with self.assertRaises(ValueError):
+                    PrvConfig.from_mapping(payload)
+
+    def test_prv_parameters_are_independent_and_alias_conflicts_fail(self) -> None:
+        configured = PrvConfig.from_mapping({"time_prv_min_coverage": 0.5})
+        self.assertEqual(configured.time_prv_min_coverage, 0.5)
+        self.assertEqual(
+            configured.spectral_prv_min_coverage,
+            PrvConfig().spectral_prv_min_coverage,
+        )
+        with self.assertRaisesRegex(ValueError, "conflicts with its deprecated"):
+            PrvConfig.from_mapping(
+                {
+                    "rate_prv_min_peaks": 6,
+                    "time_prv_min_accepted_peaks": 5,
+                }
+            )
+        self.assertEqual(
+            PrvConfig.from_mapping(
+                {
+                    "rate_prv_min_peaks": 6,
+                    "time_prv_min_accepted_peaks": 6,
+                }
+            ).rate_prv_min_peaks,
+            6,
+        )
 
     def test_basic_and_time_prv_use_distinct_frozen_count_boundaries(self) -> None:
         self.assertEqual(MIN_BASIC_RATE_PEAKS, 5)
@@ -235,7 +329,7 @@ class PeakPrvTest(unittest.TestCase):
         )
         self.assertFalse(result.frequency_domain_eligible)
         self.assertIn(
-            "frequency_prv_requires_qrate_static_contiguous300s_200intervals",
+            "frequency_prv_configured_requirements_not_met",
             result.reasons,
         )
         # 所有保留PPI相同；如果错误跨gap，RMSSD数值仍可能为0，因此检查pair数派生pNN。

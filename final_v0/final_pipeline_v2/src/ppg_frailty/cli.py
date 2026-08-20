@@ -164,16 +164,7 @@ def build_parser() -> argparse.ArgumentParser:
     modules = subcommands.add_parser("list-modules", help="list canonical modules")
     modules.add_argument(
         "--family",
-        choices=[
-            "all",
-            "representation",
-            "artifact",
-            "prv_backend",
-            "peak_detector",
-            "motion_option",
-            "comparison_profile",
-            "model",
-        ],
+        choices=sorted({"all", *(row["family"] for row in list_modules())}),
         default="all",
     )
 
@@ -315,9 +306,33 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="new archive parent below final_pipeline_v2; final ID/run paths cannot exist",
     )
-    comparison_archive.add_argument("--bootstrap-resamples", type=int, default=10_000)
-    comparison_archive.add_argument("--permutation-resamples", type=int, default=100_000)
-    comparison_archive.add_argument("--statistics-seed", type=int, default=42)
+    comparison_archive.add_argument(
+        "--bootstrap-resamples",
+        type=int,
+        default=None,
+        help=(
+            "optional exact override; otherwise inherit the persisted evaluation "
+            "policy (legacy artifacts fall back to 10000)"
+        ),
+    )
+    comparison_archive.add_argument(
+        "--permutation-resamples",
+        type=int,
+        default=None,
+        help=(
+            "optional exact override; otherwise inherit the persisted evaluation "
+            "policy (legacy artifacts fall back to 100000)"
+        ),
+    )
+    comparison_archive.add_argument(
+        "--statistics-seed",
+        type=int,
+        default=None,
+        help=(
+            "optional exact override; otherwise inherit the persisted evaluation "
+            "policy (legacy artifacts fall back to 42)"
+        ),
+    )
     comparison_archive.add_argument(
         "--allowed-authority-difference",
         action="append",
@@ -341,12 +356,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     final_refit = subcommands.add_parser(
         "final-refit",
-        help="validate complete-run OOF and a human selection for full-29 refit",
+        help=(
+            "validate complete-run OOF and a human selection; providing "
+            "--bundle-directory executes the full-29 refit"
+        ),
     )
     final_refit.add_argument("--run-directory", required=True)
     final_refit.add_argument("--selection-record", required=True)
     final_refit.add_argument("--comparison-archive", required=True)
     final_refit.add_argument("--config", required=True, type=_registered_config)
+    final_refit.add_argument(
+        "--bundle-directory",
+        help=(
+            "new output directory for the executed all-29 bundle; omit for "
+            "preflight only"
+        ),
+    )
 
     materialize_ablation = subcommands.add_parser(
         "materialize-ablation-config",
@@ -358,7 +383,7 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         choices=(
             "deep_fixed_epoch", "direct_filter", "imu_gravity",
-            "fixed_kernel_samples",
+            "fixed_kernel_samples", "aggregation_balance", "peak_detector",
         ),
     )
     materialize_ablation.add_argument("--profile-id", required=True)
@@ -378,6 +403,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="canonical artifact module IDs; legacy short aliases are explicitly labelled",
     )
     artifacts.add_argument("--duration-s", type=float, default=10.0)
+    artifacts.add_argument("--min-observation-sec", type=float, default=8.0)
+    artifacts.add_argument("--min-peaks", type=int, default=5)
     artifacts.add_argument("--seed", type=int, default=42)
     artifacts.add_argument("--output")
     models = compare_commands.add_parser("models")
@@ -391,9 +418,18 @@ def build_parser() -> argparse.ArgumentParser:
             "ShapeFormerChannelSpecificOSD", "ShapeFormerEffectSizeFixedV1",
             "FileBagFusionCompact", "FileBagFusionInception",
         ],
-        help="13 non-ensemble V2 candidate identities; ensemble remains explicit comparison",
+        help=(
+            "registered model identities; defaults are the 13 catalog smoke "
+            "candidates, while optional and ensemble identities are explicit"
+        ),
     )
     models.add_argument("--seed", type=int, default=42)
+    models.add_argument(
+        "--ensemble-size",
+        type=int,
+        default=5,
+        help="synthetic member count when an ensemble identity is requested",
+    )
     models.add_argument("--output")
     gravity = compare_commands.add_parser("imu-gravity")
     gravity.add_argument("--duration-s", type=float, default=12.0)
@@ -564,7 +600,7 @@ def _validate_profiles() -> dict[str, Any]:
         "pipeline_generation": decision["pipeline_generation"],
         "decision_profile_id": decision["profile_id"],
         "runtime_dependencies": dependency_availability_report(reference),
-        "deferred_gate_ids": sorted(decision["deferred_gates"]),
+        "deferred_evidence_ids": sorted(decision["deferred_evidence"]),
     }
 
 
@@ -595,8 +631,9 @@ def _validate_motion_contract() -> dict[str, Any]:
     internal_jobs = load_motion_fold_jobs(
         paths.pipeline_root / str(source["internal_training_and_oof"]["split_csv"])
     )
+    readiness = source["ptt_external_readiness_audit"]
     ptt_rows = load_formal_ptt_repeated_folds(
-        paths.pipeline_root / str(source["ptt_external_gate"]["split_csv"])
+        paths.pipeline_root / str(readiness["split_csv"])
     )
     return {
         "schema_version": "ppg_frailty.motion_contract_validation.v2",
@@ -608,7 +645,10 @@ def _validate_motion_contract() -> dict[str, Any]:
         "option_count": len(runtime_options),
         "internal_fold_job_count": len(internal_jobs),
         "ptt_assignment_row_count": len(ptt_rows),
-        "ptt_gate_status": str(source["ptt_external_gate"]["status"]),
+        "ptt_readiness_audit_status": str(readiness["status"]),
+        "ptt_readiness_execution_authority": str(
+            readiness["execution_authority"]
+        ),
         "network_tensor_status": str(
             source["formal_model"]["network_tensor_schema"]["status"]
         ),
@@ -910,15 +950,34 @@ def main(argv: Sequence[str] | None = None) -> int:
             _print(payload)
             return 0
         if arguments.command == "final-refit":
-            from .experiment import final_refit_preflight_from_verified_artifacts
+            from .experiment import (
+                execute_final_refit_from_verified_artifacts,
+                final_refit_preflight_from_verified_artifacts,
+            )
 
             paths = PipelinePaths.discover()
-            payload = final_refit_preflight_from_verified_artifacts(
-                paths.output_path(arguments.run_directory),
-                paths.output_path(arguments.selection_record),
-                comparison_archive=paths.output_path(arguments.comparison_archive),
-                config_path=_resolve_formal_config_path(arguments.config),
-            )
+            inputs = {
+                "run_directory": paths.output_path(arguments.run_directory),
+                "selection_record": paths.output_path(arguments.selection_record),
+                "comparison_archive": paths.output_path(
+                    arguments.comparison_archive
+                ),
+                "config_path": _resolve_formal_config_path(arguments.config),
+            }
+            if arguments.bundle_directory is None:
+                payload = final_refit_preflight_from_verified_artifacts(**inputs)
+            else:
+                bundle = execute_final_refit_from_verified_artifacts(
+                    **inputs,
+                    bundle_directory=arguments.bundle_directory,
+                )
+                payload = {
+                    "schema_version": "ppg_frailty.final_refit_cli.v2",
+                    "pipeline_generation": "final_pipeline_v2",
+                    "status": "final_refit_bundle_saved",
+                    "bundle_directory": str(bundle),
+                    "training_executed": True,
+                }
             _print(payload)
             return 0
         if arguments.command == "materialize-ablation-config":
@@ -951,9 +1010,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                     arguments.reducers,
                     duration_s=arguments.duration_s,
                     seed=arguments.seed,
+                    min_observation_sec=arguments.min_observation_sec,
+                    min_peaks=arguments.min_peaks,
                 )
             elif arguments.comparison == "models":
-                payload = run_model_comparison(arguments.models, seed=arguments.seed)
+                payload = run_model_comparison(
+                    arguments.models,
+                    seed=arguments.seed,
+                    ensemble_size=arguments.ensemble_size,
+                )
             elif arguments.comparison == "prv-backends":
                 from importlib.metadata import PackageNotFoundError, version
                 from .features.prv_backend_compare import run_prv_backend_comparison

@@ -8,6 +8,7 @@ import unittest
 import numpy as np
 
 from ppg_frailty.contracts import SignalRoute
+from ppg_frailty.normalization import RawNormalizationConfig
 from ppg_frailty.representations import (
     RawWindows,
     build_raw_windows,
@@ -23,6 +24,60 @@ from ppg_frailty.signal.views import CanonicalSignalViews, WindowPlan
 
 class RawImuTransformTests(unittest.TestCase):
     """PPG window scaling and train-only IMU scaling / 两阶段缩放。"""
+
+    def test_normalization_numeric_parameters_reject_booleans(self) -> None:
+        with self.assertRaisesRegex(ValueError, "scale parameters must be numeric"):
+            RawNormalizationConfig.from_mapping({"scale_epsilon": True})
+        with self.assertRaisesRegex(ValueError, "clip_after_scale bounds must be numeric"):
+            RawNormalizationConfig.from_mapping(
+                {"clip_after_scale": [False, 8.0]}
+            )
+
+    def test_inactive_nondefault_normalization_parameters_fail_closed(self) -> None:
+        inactive_cases = (
+            {"raw_ppg": "none", "clip_after_scale": [-1.0, 1.0]},
+            {
+                "raw_ppg": "none",
+                "raw_imu": "none",
+                "robust_iqr_divisor": 2.0,
+            },
+            {
+                "raw_ppg": "none",
+                "raw_imu": "none",
+                "iqr_fallback": "median_absolute_deviation_then_finite_one",
+            },
+            {
+                "raw_ppg": "none",
+                "raw_imu": "none",
+                "scale_epsilon": 1e-6,
+            },
+            {
+                "raw_ppg": "none",
+                "raw_imu": "none",
+                "standard_ddof": 1,
+            },
+            {
+                "mad_consistency_divisor": 0.7,
+                "iqr_fallback": "standard_deviation_then_finite_one",
+            },
+        )
+        for mapping in inactive_cases:
+            with self.subTest(mapping=mapping):
+                with self.assertRaisesRegex(ValueError, "no runtime consumer"):
+                    RawNormalizationConfig.from_mapping(mapping)
+
+        active = RawNormalizationConfig.from_mapping(
+            {
+                "raw_ppg": "none",
+                "raw_imu": "outer_train_robust",
+                "iqr_fallback": "median_absolute_deviation_then_finite_one",
+                "robust_iqr_divisor": 1.5,
+                "mad_consistency_divisor": 0.7,
+                "scale_epsilon": 1e-6,
+            }
+        )
+        self.assertEqual(active.robust_iqr_divisor, 1.5)
+        self.assertEqual(active.mad_consistency_divisor, 0.7)
 
     def test_raw_builder_scales_only_red_ir(self) -> None:
         samples = 800
@@ -106,6 +161,85 @@ class RawImuTransformTests(unittest.TestCase):
         routed_raw = build_raw_windows(routed, plan)
         np.testing.assert_array_equal(routed_raw.values, raw.values)
         self.assertEqual(routed_raw.provenance["ppg_source_view"], "x_filter")
+
+        padded_plan = replace(
+            plan,
+            window_seconds=3.0,
+            short_record_action="pad_right",
+            min_valid_fraction=0.5,
+        )
+        padded = build_raw_windows(views, padded_plan)
+        self.assertEqual(padded.values.shape, (1, 8, 1200))
+        self.assertTrue(padded.valid_mask[0, :800].all())
+        self.assertFalse(padded.valid_mask[0, 800:].any())
+        np.testing.assert_array_equal(padded.values[0, :, 800:], 0.0)
+        self.assertEqual(
+            padded.provenance["padding_policy"],
+            "valid_prefix_neutral_zero_with_explicit_mask",
+        )
+
+        clipped = build_raw_windows(
+            views,
+            plan,
+            normalization={"clip_after_scale": [-0.5, 0.75]},
+        )
+        self.assertGreaterEqual(float(clipped.values[:, :2].min()), -0.5)
+        self.assertLessEqual(float(clipped.values[:, :2].max()), 0.75)
+        self.assertEqual(clipped.provenance["ppg_clip_after_scale"], [-0.5, 0.75])
+
+        standard = build_raw_windows(
+            views,
+            plan,
+            normalization={
+                "raw_ppg": "standard_zscore",
+                "clip_after_scale": None,
+            },
+        )
+        np.testing.assert_allclose(
+            np.mean(standard.values[:, :2], axis=2),
+            0.0,
+            atol=1e-6,
+        )
+        np.testing.assert_allclose(
+            np.std(standard.values[:, :2], axis=2),
+            1.0,
+            atol=1e-6,
+        )
+        self.assertEqual(
+            standard.provenance["ppg_normalization"],
+            "per_window_standard_zscore",
+        )
+
+        identity = build_raw_windows(
+            views,
+            plan,
+            normalization={"raw_ppg": "none"},
+        )
+        np.testing.assert_array_equal(
+            identity.values[0, :2],
+            ppg[:400].T.astype(np.float32),
+        )
+        self.assertEqual(identity.provenance["ppg_normalized_channels"], [])
+        self.assertIsNone(identity.provenance["ppg_clip_after_scale"])
+
+        legacy_aliases = build_raw_windows(
+            views,
+            plan,
+            normalization={
+                "raw_ppg": "per_window_median_iqr",
+                "raw_imu": "outer_train_fold_robust_scaler",
+                "iqr_fallback": "median_absolute_deviation_then_one",
+                "clip_after_scale": None,
+            },
+        )
+        self.assertEqual(
+            legacy_aliases.provenance["normalization_config"]["raw_ppg"],
+            "per_window_robust",
+        )
+        self.assertEqual(
+            legacy_aliases.provenance["normalization_config"]["raw_imu"],
+            "outer_train_robust",
+        )
 
     def test_fold_transform_is_train_only_hash_bound_and_preserves_ppg(self) -> None:
         values = np.zeros((3, 8, 20), dtype=np.float32)
@@ -194,8 +328,61 @@ class RawImuTransformTests(unittest.TestCase):
         transformed = transform_raw_windows_imu(raw, artifact)
         self.assertEqual(
             transformed.provenance["imu_normalization"],
-            "outer_train_median_iqr_over_1p349_population_sd_then_one",
+            "outer_train_robust",
         )
+
+    def test_fold_imu_mean_std_and_none_are_real_hash_bound_strategies(self) -> None:
+        values = np.zeros((3, 8, 10), dtype=np.float32)
+        for channel in range(6):
+            values[0, channel + 2] = np.arange(10, dtype=np.float32) + channel
+            values[1, channel + 2] = np.arange(10, dtype=np.float32) + channel + 10
+            values[2, channel + 2] = 1000.0 + channel
+        common = {
+            "participant_ids": ["train_a", "train_b", "heldout"],
+            "fitted_on_participant_ids": ["train_a", "train_b"],
+            "outer_train_participant_ids": ["train_a", "train_b"],
+            "outer_oof_participant_ids": ["heldout"],
+        }
+        mean_std = fit_fold_imu_channel_transform(
+            values,
+            normalization={"raw_imu": "outer_train_mean_std"},
+            **common,
+        )
+        train_first = values[:2, 2].reshape(-1).astype(np.float64)
+        self.assertAlmostEqual(mean_std.center[0], float(np.mean(train_first)))
+        self.assertAlmostEqual(mean_std.scale[0], float(np.std(train_first)))
+        self.assertEqual(mean_std.strategy, "outer_train_mean_std")
+
+        none = fit_fold_imu_channel_transform(
+            values,
+            normalization={"raw_imu": "none"},
+            **common,
+        )
+        np.testing.assert_array_equal(none.center, np.zeros(6))
+        np.testing.assert_array_equal(none.scale, np.ones(6))
+        np.testing.assert_array_equal(
+            transform_raw_windows_imu(
+                RawWindows(
+                    values=values,
+                    valid_mask=np.ones((3, 10), dtype=bool),
+                    start_samples=np.arange(3),
+                    candidate_count=3,
+                    dropped_invalid_count=0,
+                ),
+                none,
+            ).values,
+            values,
+        )
+        self.assertNotEqual(mean_std.artifact_sha256, none.artifact_sha256)
+        changed_ddof = fit_fold_imu_channel_transform(
+            values,
+            normalization={
+                "raw_imu": "outer_train_mean_std",
+                "standard_ddof": 1,
+            },
+            **common,
+        )
+        self.assertNotEqual(mean_std.artifact_sha256, changed_ddof.artifact_sha256)
 
 
 if __name__ == "__main__":

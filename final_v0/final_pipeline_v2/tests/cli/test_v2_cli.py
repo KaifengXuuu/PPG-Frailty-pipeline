@@ -31,6 +31,8 @@ class V2CliTests(unittest.TestCase):
             "ordinary_import_availability_no_version_or_origin_lock",
         )
         self.assertIn("ready", payload["runtime_dependencies"])
+        self.assertIn("sqi_supervised_route", payload["deferred_evidence_ids"])
+        self.assertNotIn("deferred_gate_ids", payload)
 
     def test_default_smoke_is_v2_preflight_without_training_or_ablation(self) -> None:
         """smoke 只做合同预检 / Smoke performs preflight only."""
@@ -71,6 +73,12 @@ class V2CliTests(unittest.TestCase):
         )
         self.assertEqual(payload["internal_fold_job_count"], 5)
         self.assertEqual(payload["ptt_assignment_row_count"], 110)
+        self.assertIn("ptt_readiness_audit_status", payload)
+        self.assertEqual(
+            payload["ptt_readiness_execution_authority"],
+            "none_audit_does_not_control_evaluation",
+        )
+        self.assertNotIn("ptt_gate_status", payload)
         self.assertIs(payload["training_executed"], False)
         self.assertIs(payload["ptt_evaluation_executed"], False)
 
@@ -195,6 +203,33 @@ class V2CliTests(unittest.TestCase):
         self.assertEqual(statuses["local"], "formal_primary")
         self.assertEqual(statuses["aura_hrv_analysis"], "function_comparison_only")
         self.assertEqual(statuses["rhenan_hrv"], "legacy_function_comparison_only")
+
+    def test_training_strategy_families_are_cli_selectable(self) -> None:
+        for family in (
+            "optimizer",
+            "sampler",
+            "loss",
+            "class_weighting",
+            "class_count_basis",
+            "training_balance",
+            "epoch_selection",
+            "quality_mode",
+            "window_quality_selection",
+            "quality_weight_source",
+            "shapeformer_discovery_balance",
+            "aggregation",
+            "feature_group",
+        ):
+            with self.subTest(family=family):
+                code, payload = self._call(
+                    ["list-modules", "--family", family]
+                )
+                self.assertEqual(code, 0)
+                self.assertTrue(payload["modules"])
+                self.assertEqual(
+                    {row["family"] for row in payload["modules"]},
+                    {family},
+                )
 
 
 if __name__ == "__main__":

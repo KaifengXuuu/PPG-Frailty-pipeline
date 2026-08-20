@@ -66,7 +66,7 @@ CARDS = (
         "InceptionTimeMatrix", "inception_matrix", ("feature_matrix",),
         ("direct_x_filter", "identity_direct"), "reference_single_network_mask_aware",
         "Uses the reviewed Inception body on OrderedFeatureMatrixV1 with mask-aware pooling.",
-        COMMON_LIMITS + ("Requires a complete fold-local D×32 matrix schema and validity mask.",),
+        COMMON_LIMITS + ("Requires a complete fold-local registry-derived D×K matrix schema and validity mask.",),
     ),
     CardDefinition(
         "InceptionTimeFullFiveMemberEnsemble", "inception_full_five_member_ensemble",
@@ -161,14 +161,37 @@ CARDS = (
         "ShapeFormerEffectSizeFixedV1", "shapeformer_effect_size_fixed_v1", ("raw",),
         ("direct_x_filter", "identity_direct"), "experimental_ineligible_for_parity_claim",
         (
-            "Fixed 128-sample/stride-64 outer-fold effect-size discovery plus non-overlapping "
-            "patch embedding before mask-aware generic self-attention and trainable "
-            "shapelet distances; not PISD/original parity."
+            "Outer-fold fixed-length effect-size discovery defaults to 128 samples and "
+            "stride 64; both controls are runtime-selectable and provenance-bound. It "
+            "uses non-overlapping patch embedding before mask-aware generic self-attention "
+            "and trainable shapelet distances; not PISD/original parity."
         ),
         COMMON_LIMITS + (
             "Discovery method is effect_size_fixed_v1 and never substitutes for channel_specific_osd.",
             "Input sampling rate and shapelet length in samples/seconds are mandatory provenance.",
             "Patch size is at least two samples; raw sample-token attention is structurally rejected.",
+        ),
+    ),
+    CardDefinition(
+        "ShapeFormerLegacyEffectSizePort",
+        "shapeformer_legacy_effect_size_port",
+        ("raw",),
+        ("direct_x_filter", "identity_direct"),
+        "legacy_parallel_ablation_not_osd_parity",
+        (
+            "Preserves the historical channel-wise class-v-rest effect-map "
+            "discovery and its functional local-convolution plus source-position "
+            "shape-token downstream. Defaults map to three shapelets per class, "
+            "128-sample shapelets, stride 64, a 180-window class-balanced cap, "
+            "eight candidates per class/channel, 48/128 embeddings, 256 FFN, "
+            "four heads, dropout 0.30, and a 64-sample shapelet search span."
+        ),
+        COMMON_LIMITS + (
+            "This is an isolated historical comparison module, not channel-specific OSD/PISD parity.",
+            "Discovery is fitted only on the exact verified outer-training dataset and repeated on the exact all-29 final-refit scope.",
+            "Complete unpadded windows are required by the historical downstream.",
+            "The historical len_w=64 bookkeeping did not affect forward; the real local convolution width is 8 and no dead len_w option is exposed.",
+            "Historical processes/verbose controls affected execution or console output only and are deliberately not model inputs or hash-only fields.",
         ),
     ),
     CardDefinition(
@@ -182,6 +205,23 @@ CARDS = (
         ("direct_x_filter", "identity_direct"), "reference_file_level_fusion",
         "Uses an Inception file encoder and concatenates the file vector only after pooling.",
         COMMON_LIMITS + ("The signal member remains a project single-network port.",),
+    ),
+    CardDefinition(
+        "FileBagFusion", "file_bag_fusion", ("fusion",),
+        ("direct_x_filter", "identity_direct"),
+        "optional_composable_signal_encoder",
+        (
+            "Composes one registered raw forward_features encoder with a file-level "
+            "feature vector after window pooling. Compact, Inception, faithful "
+            "channel-specific OSD ShapeFormer, its scalar-distance ablation, the "
+            "newer effect-size model, and the isolated legacy effect-size port "
+            "are selectable signal modules."
+        ),
+        COMMON_LIMITS + (
+            "Shapelet discovery is derived only from verified outer-training file bags.",
+            "File features are never repeated per window and never enter shapelet discovery.",
+            "This optional composer is not an additional default catalogue candidate.",
+        ),
     ),
 )
 

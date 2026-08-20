@@ -27,26 +27,31 @@ class FeatureVectorBaseline:
         *,
         seed: int = 42,
         class_weight: str | dict[int, float] | None = None,
-        logistic_c: float | None = None,
-        logistic_max_iter: int | None = None,
-        logistic_solver: str | None = None,
-        svm_kernel: str | None = None,
-        svm_probability: bool | None = None,
-        svm_c: float | None = None,
-        svm_gamma: str | float | None = None,
-        extra_trees_n_estimators: int | None = None,
-        extra_trees_n_jobs: int | None = None,
-        extra_trees_max_features: str | float | None = None,
-        extra_trees_min_samples_leaf: int | None = None,
+        logistic_c: float = 1.0,
+        logistic_max_iter: int = 5000,
+        logistic_solver: str = "lbfgs",
+        svm_kernel: str = "rbf",
+        svm_probability: bool = True,
+        svm_c: float = 1.0,
+        svm_gamma: str | float = "scale",
+        extra_trees_n_estimators: int = 500,
+        extra_trees_n_jobs: int = 1,
+        extra_trees_max_features: str | int | float | None = "sqrt",
+        extra_trees_min_samples_leaf: int | float = 1,
     ) -> None:
         if model_id not in self._MODEL_IDS:
             raise ValueError(f"unsupported feature baseline: {model_id}")
         if not feature_names or len(feature_names) != len(set(feature_names)):
             raise ValueError("feature_names must be non-empty and unique")
+        if class_weight is not None:
+            raise ValueError(
+                "model.class_weight is not an independent weighting capability; "
+                "configure the single training.class_weighting strategy"
+            )
         self.model_id = model_id
         self.feature_names = tuple(feature_names)
         self.seed = int(seed)
-        self.class_weight = class_weight
+        self.class_weight = None
         self.logistic_c = logistic_c
         self.logistic_max_iter = logistic_max_iter
         self.logistic_solver = logistic_solver
@@ -58,57 +63,85 @@ class FeatureVectorBaseline:
         self.extra_trees_n_jobs = extra_trees_n_jobs
         self.extra_trees_max_features = extra_trees_max_features
         self.extra_trees_min_samples_leaf = extra_trees_min_samples_leaf
-        required = {
-            "logistic_regression": (logistic_c, logistic_max_iter, logistic_solver),
-            "rbf_svm": (svm_kernel, svm_probability, svm_c, svm_gamma),
-            "extra_trees": (
-                extra_trees_n_estimators,
-                extra_trees_n_jobs,
-                extra_trees_max_features,
-                extra_trees_min_samples_leaf,
-            ),
-        }[model_id]
-        if any(value is None for value in required):
-            raise ValueError(f"{model_id} requires every estimator architecture option explicitly")
-        if model_id == "logistic_regression" and (
-            isinstance(logistic_c, bool)
-            or not np.isfinite(float(logistic_c))
-            or float(logistic_c) not in {0.1, 1.0, 10.0}
-            or int(logistic_max_iter) <= 0
-        ):
-            raise ValueError(
-                "logistic_c must be 0.1, 1.0, or 10.0 and logistic_max_iter "
-                "must be positive"
-            )
+        if model_id == "logistic_regression":
+            if (
+                isinstance(logistic_c, (bool, np.bool_))
+                or not isinstance(logistic_c, (int, float, np.integer, np.floating))
+                or not np.isfinite(float(logistic_c))
+                or float(logistic_c) <= 0.0
+            ):
+                raise ValueError("logistic_c must be finite and positive")
+            if (
+                isinstance(logistic_max_iter, (bool, np.bool_))
+                or not isinstance(logistic_max_iter, (int, np.integer))
+                or int(logistic_max_iter) <= 0
+            ):
+                raise ValueError("logistic_max_iter must be a positive integer")
+            supported_solvers = {
+                "lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga",
+            }
+            if str(logistic_solver) not in supported_solvers:
+                raise ValueError(
+                    f"logistic_solver must be one of {sorted(supported_solvers)}"
+                )
+            self.logistic_c = float(logistic_c)
+            self.logistic_max_iter = int(logistic_max_iter)
+            self.logistic_solver = str(logistic_solver)
         if model_id == "rbf_svm" and (
             svm_kernel != "rbf" or svm_probability is not True or float(svm_c) <= 0.0
         ):
             raise ValueError("rbf_svm requires kernel=rbf, probability=true and positive C")
         if model_id == "extra_trees":
-            max_features_valid = (
-                extra_trees_max_features == "sqrt"
-                or (
-                    not isinstance(extra_trees_max_features, (str, bool))
-                    and float(extra_trees_max_features) in {0.5, 1.0}
+            if isinstance(extra_trees_n_estimators, (bool, np.bool_)) or not isinstance(
+                extra_trees_n_estimators, (int, np.integer)
+            ) or int(extra_trees_n_estimators) <= 0:
+                raise ValueError("extra_trees_n_estimators must be a positive integer")
+            if isinstance(extra_trees_n_jobs, (bool, np.bool_)) or not isinstance(
+                extra_trees_n_jobs, (int, np.integer)
+            ) or int(extra_trees_n_jobs) == 0:
+                raise ValueError("extra_trees_n_jobs must be a non-zero integer")
+            if extra_trees_max_features is None:
+                normalized_max_features: str | int | float | None = None
+            elif isinstance(extra_trees_max_features, str):
+                if extra_trees_max_features not in {"sqrt", "log2"}:
+                    raise ValueError("extra_trees_max_features string must be 'sqrt' or 'log2'")
+                normalized_max_features = extra_trees_max_features
+            elif isinstance(extra_trees_max_features, (bool, np.bool_)):
+                raise ValueError("extra_trees_max_features cannot be boolean")
+            elif isinstance(extra_trees_max_features, (int, np.integer)):
+                if int(extra_trees_max_features) <= 0:
+                    raise ValueError("integer extra_trees_max_features must be positive")
+                normalized_max_features = int(extra_trees_max_features)
+            elif isinstance(extra_trees_max_features, (float, np.floating)):
+                if (
+                    not np.isfinite(float(extra_trees_max_features))
+                    or not 0.0 < float(extra_trees_max_features) <= 1.0
+                ):
+                    raise ValueError("float extra_trees_max_features must be in (0,1]")
+                normalized_max_features = float(extra_trees_max_features)
+            else:
+                raise ValueError("unsupported extra_trees_max_features value")
+            if isinstance(extra_trees_min_samples_leaf, (bool, np.bool_)):
+                raise ValueError("extra_trees_min_samples_leaf cannot be boolean")
+            if isinstance(extra_trees_min_samples_leaf, (int, np.integer)):
+                if int(extra_trees_min_samples_leaf) <= 0:
+                    raise ValueError("integer extra_trees_min_samples_leaf must be positive")
+                normalized_min_samples_leaf: int | float = int(
+                    extra_trees_min_samples_leaf
                 )
-            )
-            if (
-                int(extra_trees_n_estimators) <= 0
-                or int(extra_trees_n_jobs) == 0
-                or not max_features_valid
-                or isinstance(extra_trees_min_samples_leaf, bool)
-                or int(extra_trees_min_samples_leaf) not in {1, 2, 5}
-            ):
-                raise ValueError(
-                    "ExtraTrees requires positive estimators, non-zero n_jobs, "
-                    "max_features in {sqrt,0.5,1.0}, and min_samples_leaf in {1,2,5}"
-                )
-            self.extra_trees_max_features = (
-                "sqrt"
-                if extra_trees_max_features == "sqrt"
-                else float(extra_trees_max_features)
-            )
-            self.extra_trees_min_samples_leaf = int(extra_trees_min_samples_leaf)
+            elif isinstance(extra_trees_min_samples_leaf, (float, np.floating)):
+                if (
+                    not np.isfinite(float(extra_trees_min_samples_leaf))
+                    or not 0.0 < float(extra_trees_min_samples_leaf) <= 0.5
+                ):
+                    raise ValueError("float extra_trees_min_samples_leaf must be in (0,0.5]")
+                normalized_min_samples_leaf = float(extra_trees_min_samples_leaf)
+            else:
+                raise ValueError("unsupported extra_trees_min_samples_leaf value")
+            self.extra_trees_n_estimators = int(extra_trees_n_estimators)
+            self.extra_trees_n_jobs = int(extra_trees_n_jobs)
+            self.extra_trees_max_features = normalized_max_features
+            self.extra_trees_min_samples_leaf = normalized_min_samples_leaf
         self.pipeline = self._make_pipeline()
         self.fitted_participant_ids_: tuple[str, ...] = ()
         self.fitted_object_provenance_: dict[str, dict[str, object]] = {}
@@ -153,7 +186,7 @@ class FeatureVectorBaseline:
         estimator = ExtraTreesClassifier(
             n_estimators=int(self.extra_trees_n_estimators),
             max_features=self.extra_trees_max_features,
-            min_samples_leaf=int(self.extra_trees_min_samples_leaf),
+            min_samples_leaf=self.extra_trees_min_samples_leaf,
             class_weight=self.class_weight,
             random_state=self.seed,
             n_jobs=int(self.extra_trees_n_jobs),

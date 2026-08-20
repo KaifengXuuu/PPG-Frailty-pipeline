@@ -6,21 +6,25 @@
 R1–R4 are four relax files, not four physiological roles. The real role
 families are B, R, S and W, and no temporal operation crosses file boundaries.
 
-Two mutually exclusive comparison lines are retained:
+Two independently selectable aggregation modules are retained:
 
-- Line B canonical: train with `equal_role_families`; aggregate
+- Line B reference default: aggregate
   `window -> file -> role -> participant`, equal across available
   B/R/S/W roles and equal within a role.
-- Line A named ablation: train with `equal_files`; aggregate
+- Line A alternative: aggregate
   `window -> file -> participant` using
   `equal_files_no_role_layer`.
 
-Training and aggregation must use the same line; A/B hybrids are invalid.
-Current formal inputs are B and R because SQI routing is off. Missing files or
+Training balance (`equal_files` or `equal_role_families`) is a separate input
+used by the sampler and train/inner BA; it is not bound to reporting
+aggregation, so either training balance can be paired with either reporting
+line. The same held-out file OOF can be replayed as window-balanced,
+Line A and Line B without retraining. Current reference inputs are B and R.
+Missing files or
 families are reported as coverage and weights are renormalized over available
 inputs. Diagnostics-only SQI cannot change weights, retention or probabilities.
 
 Deployment role distribution is unknown. Line A estimates an equal-file
 mixture and can give a multi-file R family greater influence. Line B estimates
-an equal-role mixture and is the thesis reference. Neither
+an equal-role mixture and is the reference default. Neither
 can be declared deployment-optimal without a frozen deployment input contract.

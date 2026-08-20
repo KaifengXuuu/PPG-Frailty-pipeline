@@ -5,6 +5,7 @@ OOF 层级、消融与可部署 bundle 测试。
 
 from __future__ import annotations
 
+from dataclasses import replace
 import importlib.util
 import tempfile
 import unittest
@@ -17,6 +18,7 @@ from ppg_frailty.models import (
     create_model,
     materialize_architecture_parameters,
 )
+from ppg_frailty.models.factory import FRAILTY_RAW_CHANNEL_SCHEMA
 from ppg_frailty.training import (
     AblationCase,
     OofPredictionRow,
@@ -40,6 +42,8 @@ def _row(
     role: str,
     window: str,
     probability: tuple[float, float, float],
+    *,
+    quality_score: float = 1.0,
 ) -> OofPredictionRow:
     """English: Construct a fully provenance-bound OOF row.
 
@@ -64,7 +68,7 @@ def _row(
         model_hash="model",
         representation_mode="raw",
         signal_route="direct",
-        quality_score=1.0,
+        quality_score=quality_score,
         retained=True,
         level="window",
         window_id=window,
@@ -99,6 +103,152 @@ class OofAggregationTests(unittest.TestCase):
         self.assertEqual(len(result.participant_rows), 1)
         np.testing.assert_allclose(result.file_rows[0].probabilities, (0.7, 0.15, 0.15))
         np.testing.assert_allclose(result.participant_rows[0].probabilities, (0.5, 0.25, 0.25))
+
+    def test_quality_weighting_changes_each_selected_hierarchy(self) -> None:
+        """SQI weighting is an executable modifier, not a hash-only switch."""
+
+        rows = (
+            _row(
+                "P1", "F1", "B", "W1", (0.9, 0.05, 0.05),
+                quality_score=0.9,
+            ),
+            _row(
+                "P1", "F2", "R", "W2", (0.1, 0.45, 0.45),
+                quality_score=0.1,
+            ),
+        )
+        for line in ("line_a_equal_files", "line_b_equal_role_families"):
+            with self.subTest(balance_line=line):
+                ordinary = aggregate_hierarchy(rows, balance_line=line)
+                weighted = aggregate_hierarchy(
+                    rows,
+                    balance_line=line,
+                    quality_weighted=True,
+                )
+                np.testing.assert_allclose(
+                    ordinary.participant_rows[0].probabilities,
+                    (0.5, 0.25, 0.25),
+                )
+                np.testing.assert_allclose(
+                    weighted.participant_rows[0].probabilities,
+                    (0.82, 0.09, 0.09),
+                )
+
+    def test_explicit_weight_sources_apply_at_their_real_prediction_level(self) -> None:
+        """Route Q_rate is file-level; migrated legacy SQI is window-level."""
+
+        route_rows = (
+            _row(
+                "P1", "F1", "B", "W1", (1.0, 0.0, 0.0),
+                quality_score=0.4,
+            ),
+            _row(
+                "P1", "F1", "B", "W2", (0.0, 1.0, 0.0),
+                quality_score=0.4,
+            ),
+        )
+        route = aggregate_hierarchy(
+            route_rows,
+            balance_line="line_a_equal_files",
+            quality_weighted=True,
+            quality_weight_source="route_file_q_rate",
+        )
+        np.testing.assert_allclose(
+            route.file_rows[0].probabilities,
+            (0.5, 0.5, 0.0),
+        )
+        direct_files = (
+            replace(
+                _row(
+                    "P1", "F1", "B", "W1", (0.9, 0.05, 0.05),
+                    quality_score=0.9,
+                ),
+                level="file",
+                window_id=None,
+                representation_mode="fusion",
+            ),
+            replace(
+                _row(
+                    "P1", "F2", "R", "W2", (0.1, 0.45, 0.45),
+                    quality_score=0.1,
+                ),
+                level="file",
+                window_id=None,
+                representation_mode="fusion",
+            ),
+        )
+        fusion_route = aggregate_hierarchy(
+            direct_files,
+            balance_line="line_a_equal_files",
+            quality_weighted=True,
+            quality_weight_source="route_file_q_rate",
+        )
+        np.testing.assert_allclose(
+            fusion_route.participant_rows[0].probabilities,
+            (0.82, 0.09, 0.09),
+        )
+
+        legacy_rows = (
+            _row(
+                "P1", "F1", "B", "W1", (1.0, 0.0, 0.0),
+                quality_score=0.9,
+            ),
+            _row(
+                "P1", "F1", "B", "W2", (0.0, 1.0, 0.0),
+                quality_score=0.1,
+            ),
+        )
+        legacy = aggregate_hierarchy(
+            legacy_rows,
+            balance_line="line_a_equal_files",
+            quality_weighted=True,
+            quality_weight_source="legacy_window_sqi",
+        )
+        np.testing.assert_allclose(
+            legacy.file_rows[0].probabilities,
+            (0.9, 0.1, 0.0),
+        )
+
+        inconsistent_route = (
+            route_rows[0],
+            _row(
+                "P1", "F1", "B", "W2", (0.0, 1.0, 0.0),
+                quality_score=0.8,
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "constant across windows"):
+            aggregate_hierarchy(
+                inconsistent_route,
+                balance_line="line_a_equal_files",
+                quality_weighted=True,
+                quality_weight_source="route_file_q_rate",
+            )
+
+    def test_legacy_all_zero_weights_match_historical_mean_fallback(self) -> None:
+        rows = (
+            _row(
+                "P1", "F1", "B", "W1", (0.8, 0.1, 0.1),
+                quality_score=0.0,
+            ),
+            _row(
+                "P1", "F1", "B", "W2", (0.2, 0.4, 0.4),
+                quality_score=0.0,
+            ),
+        )
+        result = aggregate_hierarchy(
+            rows,
+            balance_line="line_a_equal_files",
+            quality_weighted=True,
+            quality_weight_source="legacy_window_sqi",
+        )
+        np.testing.assert_allclose(
+            result.file_rows[0].probabilities,
+            (0.5, 0.25, 0.25),
+        )
+        np.testing.assert_allclose(
+            result.participant_rows[0].probabilities,
+            (0.5, 0.25, 0.25),
+        )
 
     @unittest.skipUnless(importlib.util.find_spec("pyarrow"), "optional pyarrow is unavailable")
     def test_oof_writer_emits_parquet(self) -> None:
@@ -170,12 +320,21 @@ class AblationAndBundleTests(unittest.TestCase):
             "dilations": [1, 1, 1],
             "pool_sizes": [4, 4],
         }
-        input_spec = ModelInputSpec("raw", n_channels=2, n_classes=3, channel_schema=("red", "ir"))
+        input_spec = ModelInputSpec(
+            "raw",
+            n_channels=8,
+            n_classes=3,
+            channel_schema=FRAILTY_RAW_CHANNEL_SCHEMA,
+        )
         model_config["architecture_parameters"] = materialize_architecture_parameters(
             model_config, input_spec
         )
         model = create_model(model_config, input_spec).eval()
-        inputs = {"x": np.random.default_rng(3).normal(size=(2, 2, 64)).astype(np.float32)}
+        inputs = {
+            "x": np.random.default_rng(3)
+            .normal(size=(2, 8, 64))
+            .astype(np.float32)
+        }
         metadata = {
             "model_identity": {
                 "name": "CompactCNN1D",
@@ -185,7 +344,7 @@ class AblationAndBundleTests(unittest.TestCase):
             "representation_mode": "raw",
             "signal_route": "direct",
             "class_order": [0, 1, 2],
-            "channel_schema": ["red", "ir"],
+            "channel_schema": list(FRAILTY_RAW_CHANNEL_SCHEMA),
             "preprocessing": {"name": "test_preprocessing", "version": "test"},
             "preprocessing_hash": "preprocessing",
             "resampling": {"method": "not_applied", "status": "not_applicable"},

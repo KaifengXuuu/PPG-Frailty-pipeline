@@ -1,5 +1,78 @@
 # Decision Log
 
+## 2026-08-19：V2 报告重聚合、源码闭包与归档采用 fail-closed 边界
+
+- 状态：confirmed
+- 来源：用户明确“确认录入”；实现、恢复 bundle、源码可达性和测试复核。
+- 背景：同一 held-out OOF 需要同时展示 window-balanced、file-balanced 和 role-balanced
+  的 participant 结果；旧 OOF 的 source version 可能是 placeholder；逐搏 diagnostics
+  在多层 artifact 中造成大量重复；表面冗余文件不等于可安全删除。
+- 决策：
+  1. `W`（window equal-weight）、Line A（equal-file）和 Line B（equal-role）仅作为
+     同一 held-out OOF 的报告重聚合视角；不把 post-hoc aggregation 描述成另一条训练线。
+  2. 只有 case 保存了相应 source evidence 才生成视角。缺少 window OOF 的
+     feature/matrix/fusion case 标为 N/A，不从 participant OOF 反推 window 结果。
+  3. final-refit 对 OOF source version fail closed：必须是小写 SHA-256 且等于当前完整
+     `ppg_frailty` 源码树 hash；旧 placeholder/mismatch OOF 必须重新运行而不能豁免。
+  4. diagnostics 默认只持久化聚合摘要、参数、计数、原因和错误；逐搏 pairing rows 与
+     `beat_audit` 不落盘。摘要构建失败不得改变 retention、route、predictor 或 prediction。
+  5. 源码归档必须有 registry、tests、tools、顶层入口和动态 import 的可达性证据；本轮
+     仅归档已证明不可达的 `train/sampling.py` facade，不继续按表面重复删除公共模块。
+- 决策原因：同时满足报告完整性、无外层标签泄漏、final-refit 可复现性和 artifact 体积
+  控制，并避免为缩短测试时间破坏活动 registry/facade。
+- 影响范围：V2 experiment/final-refit、study reporting/recovery、diagnostics persistence、
+  historical V1 transition archive。
+- 后续追踪：代码稳定后重跑 fresh formal 5×5；另行对齐陈旧协议文档；如需测试提速，
+  优先评估 lazy import 与 fixture 复用。
+
+## 2026-08-19：Stage 2 保留 Logistic/CompactCNN，Stage 3 ShapeFormer 分级止损
+
+- 状态：confirmed
+- 来源：用户明确“确认录入”；Stage 1/Stage 2 study report、file/participant OOF、
+  fold/per-class metrics 和历史 canonical InceptionFull repeat-0 证据只读复核。
+- 背景：Stage 2 三个补跑 case 共 15/15 outer cells 全部通过，均覆盖 29 名
+  participant 和 145 条 file OOF，canonical Line B 重放与保存的 participant OOF
+  一致。Stage 1/2 的 repeat-0 Line B BA/Macro-F1 分别为 Logistic
+  `0.4583/0.4504`、Raw CompactCNN `0.4444/0.4328`、Extra Trees
+  `0.3565/0.3761`、RBF-SVM `0.3194/0.3369`、Raw InceptionSmall
+  `0.3009/0.2877`；历史可比 Raw InceptionFull 400 Hz repeat-0 为
+  `0.3565/0.3687`。当前证据均只有一个 repeat，没有 CI/LCB，不能声明最终胜者。
+- 决策：
+  1. 保留 Logistic 作为当前跨 representation static incumbent，保留
+     CompactCNN 作为 Raw matched incumbent。CompactCNN 虽略低于 Logistic，
+     但 worst-class F1 `0.3636` 明显高于 Logistic 的 `0.1905`，Raw 路线不淘汰。
+  2. Extra Trees、RBF-SVM 和 InceptionSmall 不继续普通模型扩展；InceptionFull
+     也不作为当前 Raw 主基线。Extra Trees 的 post-hoc Line A
+     `0.4630/0.4733` 只表示 aggregation sensitivity，不是 Line A 重训练结果，
+     不进入晋级或 selection。
+  3. Stage 3 仅运行 canonical channel-specific OSD/PISD ShapeFormer，并保持与
+     其他模型隔离，按 one-cell implementation test → repeat 0 全五折 diagnostic →
+     条件式 full 5×5 的顺序人工放量。
+  4. One-cell 只验收无 OOM/NaN/Inf/fallback、9 个 shapelets（每类 3 个）、
+     outer-train-only discovery、有限归一概率以及完整 OOF/config/model/provenance；
+     单 fold 指标不得用于排名。
+  5. One-repeat 必须 5/5 folds 通过、覆盖 29 participants/145 files、Line B source
+     replay 通过且无类别整体塌缩。省算力筛选带暂定为 Line B BA 约不低于
+     `0.404`、Macro-F1 约不低于 `0.393`，即不同时落后 CompactCNN 超过约
+     `0.04`；该带只用于探索止损，不是统计显著性阈值。Line A 仅作敏感性展示。
+  6. 只有 repeat-0 通过上述门槛，才运行 ShapeFormer full 5×5。若要正式声称
+     ShapeFormer 优于普通 Raw 模型，必须给 CompactCNN 补同协议 full 5×5；
+     否则只能报告 ShapeFormer 自身重复稳定性。
+  7. 当前 Stage 4 Inception ensemble 不自动启动，因为 InceptionSmall/Full 均未
+     成为 Raw winner。ShapeFormer 即使晋级，也不得套用 Inception ensemble 配置；
+     需要另行登记 matched ShapeFormer ensemble 才能比较。
+- 备选方案：直接运行 ShapeFormer full 5×5，或凭 Extra Trees 的 post-hoc Line A
+  数值改变 incumbent，均因算力风险或科学语义不成立而未采用。
+- 决策原因：Stage 2 已足以停止明显落后的普通模型，但单 repeat 不足以支持最终排名；
+  分级稳定性门槛可以用最低预算验证 ShapeFormer fidelity，同时保护 participant split、
+  Line B 主协议和后续正式比较的可解释性。
+- 影响范围：
+  `final_v0/final_pipeline_v2/configs/studies/static_line_b_staged_v2/03_shapeformer_stability_v2.yaml`、
+  Stage 3/Stage 4 人工晋级流程、study 双线报告及后续 full 5×5 matched benchmark。
+- 后续追踪：执行 ShapeFormer one-cell；通过后运行 repeat 0 全五折并人工裁决。
+  报告的 route-role coverage 目前实际 role OOF 为 `B=29, R=29`，但表格按
+  `B/R1/R2/R3/R4` 展开而漏显聚合 `R`，该显示问题不影响 BA/F1，但需单独修复。
+
 ## 2026-08-18：Static Line B 模型筛选采用六阶段人工晋级流程
 
 - 状态：confirmed

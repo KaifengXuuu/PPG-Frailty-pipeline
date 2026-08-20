@@ -36,6 +36,7 @@ def validate_oof_contract(
     expected_oof_participants: Mapping[tuple[int, int, int, str], set[str]],
     *,
     ensemble_size: int = 1,
+    ensemble: bool | None = None,
 ) -> OofContractAudit:
     """转换含 config 的旧 roster 键并调用唯一 validator / Adapt and delegate."""
 
@@ -52,16 +53,18 @@ def validate_oof_contract(
         if previous != values:
             raise ValueError("held-out roster differs across configurations for one split")
         configurations.add(str(config_hash))
+    ensemble_expected = ensemble_size != 1 if ensemble is None else bool(ensemble)
     validate_expected_oof_roster(
         frozen,
         roster,
         expected_config_hashes=configurations,
         expected_level="participant",
         expected_member_count=ensemble_size,
+        expect_ensemble=ensemble_expected,
         require_trace=True,
     )
     selected = tuple(row for row in frozen if row.level == "participant")
-    rows_per_subject = 1 if ensemble_size == 1 else ensemble_size + 1
+    rows_per_subject = ensemble_size + 1 if ensemble_expected else 1
     expected_count = sum(len(values) for values in roster.values()) * len(configurations) * rows_per_subject
     return OofContractAudit(
         subject_rows=len(selected),

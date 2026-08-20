@@ -123,6 +123,47 @@ class SignalViewsTest(unittest.TestCase):
         self.assertEqual((ablation.low_hz, ablation.high_hz), (0.5, 5.0))
         self.assertEqual(ablation.registry_role, "ablation")
 
+    def test_nondefault_ppg_filter_is_executed_and_recorded(self) -> None:
+        default = build_signal_views(synthetic_record(), signal_config())
+        configured = copy.deepcopy(signal_config())
+        configured["signal"]["ppg_filter"].update(
+            {"order": 4, "low_hz": 0.4, "high_hz": 12.0}
+        )
+        configured["signal"]["analysis_view"]["direct_source"] = "x_filter"
+        changed = build_signal_views(synthetic_record(), configured)
+        self.assertFalse(np.array_equal(default.x_filter, changed.x_filter))
+        self.assertEqual(
+            changed.metadata["ppg_filter"],
+            {
+                "family": "butterworth_sos",
+                "phase": "zero_phase",
+                "order": 4,
+                "low_hz": 0.4,
+                "high_hz": 12.0,
+                "short_signal_policy": "reject",
+                "notch_enabled": False,
+            },
+        )
+        self.assertEqual(
+            changed.metadata["analysis_view"]["direct_source"],
+            "x_filter_0p4_to_12hz",
+        )
+        for order, low_hz, high_hz in (
+            (0, 0.2, 8.0),
+            (True, 0.2, 8.0),
+            (3, 0.0, 8.0),
+            (3, 8.0, 8.0),
+            (3, 0.2, 200.0),
+        ):
+            invalid = copy.deepcopy(signal_config())
+            invalid["signal"]["ppg_filter"].update(
+                {"order": order, "low_hz": low_hz, "high_hz": high_hz}
+            )
+            invalid["signal"]["analysis_view"]["direct_source"] = "x_filter"
+            with self.subTest(order=order, low=low_hz, high=high_hz):
+                with self.assertRaises(ValueError):
+                    build_signal_views(synthetic_record(), invalid)
+
     def test_v2_dl_only_targets_leave_canonical_views_at_400_hz(self) -> None:
         for target in (100.0, 160.0, 200.0):
             config = signal_config()
@@ -136,7 +177,7 @@ class SignalViewsTest(unittest.TestCase):
             self.assertEqual(views.metadata["fs_hz"], 400.0)
             self.assertEqual(views.metadata["dl_resampling"]["target_fs_hz"], target)
 
-    def test_v2_dl_only_rejects_unregistered_target(self) -> None:
+    def test_v2_dl_only_accepts_configured_target_and_rejects_out_of_grid(self) -> None:
         config = signal_config()
         config["signal"]["dl_resampling"] = {
             "enabled": True,
@@ -144,7 +185,11 @@ class SignalViewsTest(unittest.TestCase):
             "method": "polyphase_anti_alias",
             "preserve_feature_grid_hz": 400.0,
         }
-        with self.assertRaisesRegex(ValueError, "100, 160, or 200"):
+        views = build_signal_views(synthetic_record(), config)
+        self.assertEqual(views.metadata["dl_resampling"]["target_fs_hz"], 128.0)
+
+        config["signal"]["dl_resampling"]["target_fs_hz"] = 401.0
+        with self.assertRaisesRegex(ValueError, "no higher"):
             build_signal_views(synthetic_record(), config)
         with self.assertRaises(KeyError):
             get_ppg_filter_profile("automatic_band")
@@ -175,10 +220,10 @@ class SignalViewsTest(unittest.TestCase):
 
         config = copy.deepcopy(signal_config())
         config["signal"]["silent_new_knob"] = 1
-        with self.assertRaisesRegex(ValueError, "signal key mismatch"):
+        with self.assertRaisesRegex(ValueError, "signal contains unknown"):
             build_signal_views(synthetic_record(), config)
 
-    def test_normalization_identity_rejects_legacy_and_shared_motion9(self) -> None:
+    def test_normalization_accepts_legacy_aliases_but_rejects_motion9(self) -> None:
         legacy = copy.deepcopy(signal_config())
         legacy["signal"]["normalization"] = {
             "raw_ppg": "per_window_median_iqr",
@@ -186,14 +231,25 @@ class SignalViewsTest(unittest.TestCase):
             "iqr_fallback": "median_absolute_deviation_then_one",
             "clip_after_scale": None,
         }
-        with self.assertRaisesRegex(ValueError, "canonical axes6.*motion9"):
-            build_signal_views(synthetic_record(), legacy)
+        resolved = build_signal_views(synthetic_record(), legacy)
+        self.assertEqual(
+            resolved.metadata["raw_normalization"]["raw_ppg"],
+            "per_window_robust",
+        )
+        self.assertEqual(
+            resolved.metadata["raw_normalization"]["raw_imu"],
+            "outer_train_robust",
+        )
+        self.assertEqual(
+            resolved.metadata["raw_normalization"]["iqr_fallback"],
+            "median_absolute_deviation_then_finite_one",
+        )
 
         motion9 = copy.deepcopy(signal_config())
         motion9["signal"]["normalization"]["raw_imu"] = (
             "outer_training_participant_only_robust_scaler_motion9_augmentation"
         )
-        with self.assertRaisesRegex(ValueError, "separate motion augmentation"):
+        with self.assertRaisesRegex(ValueError, "separate model input module"):
             build_signal_views(synthetic_record(), motion9)
 
     def test_window_plan_masks_padding_and_complete_windows(self) -> None:
@@ -230,6 +286,66 @@ class ImuTest(unittest.TestCase):
         self.assertLess(float(np.max(np.abs(ekf[tracking] - acc[tracking]))), 1e-8)
         self.assertLess(float(np.max(np.abs(lpf - acc))), 1e-8)
         self.assertAlmostEqual(diagnostics["gravity_norm_mean_mps2"], 9.80665, places=5)
+
+    def test_nondefault_imu_filter_parameters_change_runtime_output(self) -> None:
+        samples = 2400
+        time = np.arange(samples, dtype=np.float64) / CANONICAL_FS_HZ
+        acc = np.column_stack(
+            (
+                0.4 * np.sin(2.0 * np.pi * 6.0 * time),
+                0.2 * np.sin(2.0 * np.pi * 25.0 * time),
+                9.80665 + 0.3 * np.sin(2.0 * np.pi * 1.0 * time),
+            )
+        )
+        gyro = np.column_stack(
+            (
+                0.05 * np.sin(2.0 * np.pi * 12.0 * time),
+                np.zeros(samples),
+                np.zeros(samples),
+            )
+        )
+        default = preprocess_imu(
+            acc,
+            gyro,
+            fs_hz=CANONICAL_FS_HZ,
+            acc_unit="m/s2",
+            gyro_unit="rad/s",
+            gravity_method="lpf_0p3",
+        )
+        changed = preprocess_imu(
+            acc,
+            gyro,
+            fs_hz=CANONICAL_FS_HZ,
+            acc_unit="m/s2",
+            gyro_unit="rad/s",
+            gravity_method="lpf_0p3",
+            acceleration_lowpass_hz=10.0,
+            gyroscope_lowpass_hz=18.0,
+            sensor_filter_order=4,
+            gravity_lowpass_hz=0.8,
+            gravity_filter_order=3,
+        )
+        self.assertFalse(
+            np.array_equal(
+                default.processed["dynamic_acc_mps2"],
+                changed.processed["dynamic_acc_mps2"],
+            )
+        )
+        self.assertEqual(changed.diagnostics["acceleration_lowpass_hz"], 10.0)
+        self.assertEqual(changed.diagnostics["gyroscope_lowpass_hz"], 18.0)
+        self.assertEqual(changed.diagnostics["sensor_filter_order"], 4)
+        self.assertEqual(changed.diagnostics["gravity_lowpass_hz"], 0.8)
+        self.assertEqual(changed.diagnostics["gravity_filter_order"], 3)
+        with self.assertRaises(ValueError):
+            preprocess_imu(
+                acc,
+                gyro,
+                fs_hz=CANONICAL_FS_HZ,
+                acc_unit="m/s2",
+                gyro_unit="rad/s",
+                gravity_method="lpf_0p3",
+                acceleration_lowpass_hz=CANONICAL_FS_HZ / 2.0,
+            )
 
     def test_ekf_lpf_comparison_is_paired_and_descriptive(self) -> None:
         record = synthetic_record(5.0)

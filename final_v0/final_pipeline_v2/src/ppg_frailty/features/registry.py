@@ -1,11 +1,12 @@
 """冻结十字段注册表与显式有效性模型编码 / Frozen registry and mask encoding.
 
-English: The public builders implement only the formal FeatureVectorV1 allowlist
-and K=32 matrix contract. Experimental schemas require a separately named registry;
-technical or unknown predictor fields are rejected rather than silently appended.
+English: The public builders implement a content-addressed FeatureVectorV1
+allowlist composed from complete registered feature groups and a runtime-configurable
+positive K matrix contract. Technical or unknown predictor fields are rejected
+rather than silently appended.
 
-中文：公共构建器仅实现正式 FeatureVectorV1 allowlist 与 K=32 合同。实验 schema
-必须使用单独命名的注册表；技术字段或未知 predictor 会被拒绝，而非静默追加。
+中文：公共构建器以完整注册 feature groups 组合内容寻址的 FeatureVectorV1 allowlist，
+并实现运行时可配置的正整数 K；技术字段或未知 predictor 会被拒绝，而非静默追加。
 """
 
 from __future__ import annotations
@@ -35,9 +36,117 @@ from .engineering import (
 
 DIRECT_ROUTES = (SignalRoute.DIRECT.value, SignalRoute.IDENTITY.value)
 RATE_ROUTES = DIRECT_ROUTES + (SignalRoute.ARTIFACT_RATE_ONLY.value,)
-FORMAL_REGISTRY_VERSION = "feature_vector_thesis_115_v2"
-ORDERED_MATRIX_SCHEMA_VERSION = "ordered_feature_matrix_thesis_115_d_by_32_v2"
+
+# ``115`` is the width of one engineering *window* row.  It was incorrectly
+# reused in the historical file-vector and ordered-matrix identifiers.  The
+# complete file vector has 282 fields and the complete matrix has
+# 2 * (115 + 282) = 794 value/validity channels.
+FEATURE_GROUP_ORDER = (
+    "ppi_basic_rate",
+    "hrv_time_domain",
+    "hrv_spectral",
+    "hrv_nonlinear",
+    "morphology",
+    "dual_optical",
+    "engineering_summary",
+)
+FORMAL_REGISTRY_VERSION = "feature_vector_282_v3"
+ORDERED_MATRIX_SCHEMA_VERSION = (
+    "ordered_feature_matrix_d794_by_32_registry-0bea68a2058d_v3"
+)
+ENGINEERING_FEATURE_COUNT = 115
+MAX_ORDERED_MATRIX_K = 4096
 MISSING_POLICY = "NaN_internal/null_JSON_with_parallel_validity_false"
+
+# These are migration documentation/profiles, not a second pair of executable
+# switches.  Callers select the resulting groups through ``enabled_groups``.
+LEGACY_FEATURE_GROUP_PROFILES = {
+    "PPI": ("ppi_basic_rate",),
+    "HRV": (
+        "ppi_basic_rate",
+        "hrv_time_domain",
+        "hrv_spectral",
+        "hrv_nonlinear",
+    ),
+    "morphology": ("morphology", "dual_optical"),
+    "morphology_ppi_hrv": (
+        "ppi_basic_rate",
+        "hrv_time_domain",
+        "hrv_spectral",
+        "hrv_nonlinear",
+        "morphology",
+        "dual_optical",
+    ),
+}
+
+
+def canonicalize_feature_groups(groups: Sequence[str] | None) -> tuple[str, ...]:
+    """Validate and canonicalize a non-empty feature-group selection.
+
+    Input ordering does not create a scientifically different schema: aliases,
+    duplicates, and arbitrary ordering resolve to the one frozen group order.
+    """
+
+    if groups is None:
+        return FEATURE_GROUP_ORDER
+    if isinstance(groups, (str, bytes)) or not isinstance(groups, Sequence):
+        raise ValueError("features.enabled_groups must be a non-empty sequence")
+    aliases = {
+        "ppi": "ppi_basic_rate",
+        "basic_rate": "ppi_basic_rate",
+        "hrv_time": "hrv_time_domain",
+        "time_hrv": "hrv_time_domain",
+        "spectral_hrv": "hrv_spectral",
+        "nonlinear_hrv": "hrv_nonlinear",
+        "optical": "dual_optical",
+        "engineering": "engineering_summary",
+    }
+    selected: set[str] = set()
+    for raw in groups:
+        name = str(raw).strip().lower().replace("-", "_")
+        name = aliases.get(name, name)
+        if name not in FEATURE_GROUP_ORDER:
+            raise ValueError(f"unknown feature group: {raw!r}")
+        selected.add(name)
+    if not selected:
+        raise ValueError("features.enabled_groups must not be empty")
+    return tuple(name for name in FEATURE_GROUP_ORDER if name in selected)
+
+
+def legacy_feature_groups(profile: str) -> tuple[str, ...]:
+    """Return the unified-group migration for one old classifier profile."""
+
+    key = str(profile).strip()
+    aliases = {
+        "ppi": "PPI",
+        "hrv": "HRV",
+        "morphology": "morphology",
+        "morphology_ppi_hrv": "morphology_ppi_hrv",
+        "morphology_ppi_hrv_filelevel": "morphology_ppi_hrv",
+    }
+    key = aliases.get(key.lower(), key)
+    if key not in LEGACY_FEATURE_GROUP_PROFILES:
+        raise ValueError(f"unknown legacy feature profile: {profile!r}")
+    return LEGACY_FEATURE_GROUP_PROFILES[key]
+
+
+def _prv_group(name: str) -> str:
+    """Assign each PRV field to exactly one independently selectable group."""
+
+    if name in {
+        "accepted_interval_count", "accepted_duration_s",
+        "ppi_mean_s", "ppi_median_s", "ppi_sd_s", "ppi_iqr_s",
+        "ppi_mad_s", "ppi_cv", "hr_mean_bpm", "hr_median_bpm",
+        "hr_sd_bpm",
+    }:
+        return "ppi_basic_rate"
+    if name in {"sdnn_s", "rmssd_s", "sdsd_s", "nn50_count", "pnn50"}:
+        return "hrv_time_domain"
+    if name in set(SPECTRAL_METRICS):
+        return "hrv_spectral"
+    if name in {"sd1_s", "sd2_s", "sd1_sd2_ratio", "sample_entropy"}:
+        return "hrv_nonlinear"
+    raise RuntimeError(f"PRV registry group is undefined for {name!r}")
 
 
 @dataclass(frozen=True)
@@ -171,7 +280,7 @@ def _prv_unit(name: str) -> str:
 
 
 def default_registry() -> FeatureRegistry:
-    """构建 V1 完整固定 allowlist / Build the complete fixed V1 allowlist."""
+    """构建默认全量 282-field allowlist / Build the default complete allowlist."""
 
     definitions: list[FeatureDefinition] = []
     for name in TIME_METRICS + SPECTRAL_METRICS:
@@ -184,7 +293,7 @@ def default_registry() -> FeatureRegistry:
                 eligibility="Q_rate; duration/coverage/role gates declared by metric",
                 level="file", aggregation="accepted_interval_statistic",
                 validity="metric-specific minimum count, continuity, duration and finite result",
-                routes=RATE_ROUTES, group="rate_prv",
+                routes=RATE_ROUTES, group=_prv_group(name),
             )
         )
     for name in MORPHOLOGY_NAMES:
@@ -284,6 +393,43 @@ def default_registry() -> FeatureRegistry:
     return registry
 
 
+def registry_for_groups(groups: Sequence[str] | None = None) -> FeatureRegistry:
+    """Return the content-addressed registry for selected complete groups."""
+
+    selected_groups = canonicalize_feature_groups(groups)
+    full = default_registry()
+    if selected_groups == FEATURE_GROUP_ORDER:
+        return full
+    selected = tuple(
+        definition
+        for definition in full.definitions
+        if definition.group in selected_groups
+    )
+    digest = _hash_definitions(selected)
+    group_slug = "-".join(selected_groups)
+    schema = f"feature_vector_{len(selected)}_{group_slug}_{digest[:12]}_v3"
+    registry = FeatureRegistry(selected, schema, digest)
+    registry.validate()
+    return registry
+
+
+def registry_for_feature_names(names: Sequence[str]) -> FeatureRegistry:
+    """Resolve a legal whole-group registry from its exact ordered names."""
+
+    observed = tuple(str(name) for name in names)
+    full = default_registry()
+    definitions = {item.canonical_name: item for item in full.definitions}
+    if not observed or any(name not in definitions for name in observed):
+        raise ValueError("feature names do not identify a registered feature-group selection")
+    groups = canonicalize_feature_groups(
+        tuple(definitions[name].group for name in observed)
+    )
+    registry = registry_for_groups(groups)
+    if observed != registry.names:
+        raise ValueError("feature names must contain complete groups in canonical order")
+    return registry
+
+
 def summarize_engineering(
     extraction: EngineeringExtraction,
 ) -> tuple[dict[str, float], dict[str, bool]]:
@@ -311,7 +457,7 @@ def build_feature_vector(
     provenance: Mapping[str, Any],
     registry: FeatureRegistry | None = None,
 ) -> FeatureVectorV1:
-    """按完整冻结顺序构建 predictor / Build the complete ordered predictor.
+    """按 selected registry 顺序构建 predictor / Build the selected predictor.
 
     中文：缺失 slot 始终保留 NaN/false；未知 predictor（含技术字段）失败闭合。
     English: Missing slots remain NaN/false; unknown/technical predictors fail closed.
@@ -319,10 +465,12 @@ def build_feature_vector(
 
     selected = registry or default_registry()
     selected.validate()
-    if selected.schema_version != FORMAL_REGISTRY_VERSION and not selected.schema_version.startswith(
-        "named_ablation_"
+    expected = registry_for_feature_names(selected.names)
+    if (
+        selected.schema_version != expected.schema_version
+        or selected.sha256 != expected.sha256
     ):
-        raise ValueError("non-formal registry must use a named_ablation_ schema_version")
+        raise ValueError("feature registry is not a registered whole-group selection")
     names = selected.names
     unknown_values = sorted(set(feature_values) - set(names))
     unknown_validity = sorted(set(feature_validity) - set(names))
@@ -349,6 +497,12 @@ def build_feature_vector(
         {
             "registry_sha256": selected.sha256,
             "registry_schema_version": selected.schema_version,
+            "enabled_groups": list(
+                canonicalize_feature_groups(
+                    tuple(item.group for item in selected.definitions)
+                )
+            ),
+            "feature_count": len(selected.names),
             "missing_value_contract": MISSING_POLICY,
             "technical_fields_excluded": True,
             "sqi_and_coverage_predictors_excluded": True,
@@ -368,6 +522,29 @@ def _uniform_indices(count: int, target: int) -> np.ndarray:
     return indices
 
 
+def ordered_matrix_schema_version(
+    k: int,
+    registry: FeatureRegistry | None = None,
+) -> str:
+    """Return a shape-explicit schema identity for one validated K."""
+
+    if isinstance(k, bool) or not isinstance(k, (int, np.integer)):
+        raise ValueError("matrix K must be an integer")
+    resolved = int(k)
+    if not 1 <= resolved <= MAX_ORDERED_MATRIX_K:
+        raise ValueError(
+            f"matrix K must lie in [1,{MAX_ORDERED_MATRIX_K}]"
+        )
+    selected = registry or default_registry()
+    selected.validate()
+    feature_count = len(selected.names)
+    channel_count = 2 * (ENGINEERING_FEATURE_COUNT + feature_count)
+    return (
+        f"ordered_feature_matrix_d{channel_count}_by_{resolved}_"
+        f"registry-{selected.sha256[:12]}_v3"
+    )
+
+
 def build_ordered_matrix(
     sequence: EngineeringExtraction,
     *,
@@ -375,7 +552,7 @@ def build_ordered_matrix(
     provenance: Mapping[str, Any],
     k: int = 32,
 ) -> OrderedFeatureMatrixV1:
-    """构建带显式 validity channels 的唯一 D×32 合同 / Build formal D×32.
+    """构建带显式 validity channels 的 D×K 合同 / Build formal D×K.
 
     English: Values and their 0/1 validity channels both enter the model tensor.
     Padding remains neutral zero with ``row_mask=false``. Mapping contexts and raw
@@ -389,13 +566,13 @@ def build_ordered_matrix(
         raise TypeError("canonical matrix builder requires EngineeringExtraction")
     if not isinstance(context, FeatureVectorV1):
         raise TypeError("canonical matrix builder requires a complete FeatureVectorV1 context")
-    if k != 32:
-        raise ValueError("formal OrderedFeatureMatrixV1 requires exactly K=32")
+    registry = registry_for_feature_names(context.feature_names)
+    matrix_schema_version = ordered_matrix_schema_version(k, registry)
+    k = int(k)
     base = sequence.sequence
     validate_engineering_extraction(sequence, fold_transformed=True)
-    registry = default_registry()
     if tuple(context.feature_names) != registry.names:
-        raise ValueError("context must be the complete formal FeatureVectorV1 registry order")
+        raise ValueError("context must follow a complete selected feature-group registry")
     if context.provenance.get("registry_sha256") != registry.sha256:
         raise ValueError("context registry hash differs from the frozen formal registry")
     if context.provenance.get("fold_standardized") is not True:
@@ -454,6 +631,8 @@ def build_ordered_matrix(
     metadata.update(
         {
             "selected_source_rows": selected_rows[:observed].tolist(),
+            "matrix_k": k,
+            "matrix_schema_version": matrix_schema_version,
             "physiological_value_validity": physical_mask.tolist(),
             "validity_encoding": "paired_explicit_0_1_channels_v1",
             "validity_channel_map": {
@@ -465,6 +644,12 @@ def build_ordered_matrix(
                 "\n".join(context_schema).encode("utf-8")
             ).hexdigest(),
             "context_registry_sha256": registry.sha256,
+            "context_registry_schema_version": registry.schema_version,
+            "context_enabled_groups": list(
+                canonicalize_feature_groups(
+                    tuple(item.group for item in registry.definitions)
+                )
+            ),
             "matrix_channel_schema_sha256": schema_sha,
             "engineering_transform_version": base.schema_version,
         }
@@ -474,6 +659,6 @@ def build_ordered_matrix(
         row_mask=row_mask,
         channel_schema=channel_schema,
         context_schema=context_schema,
-        schema_version=ORDERED_MATRIX_SCHEMA_VERSION,
+        schema_version=matrix_schema_version,
         provenance=metadata,
     )

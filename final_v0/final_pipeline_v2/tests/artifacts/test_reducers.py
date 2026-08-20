@@ -19,7 +19,11 @@ from ppg_frailty.artifacts import (
     SsaReducer,
     get_reducer,
 )
-from ppg_frailty.artifacts.bss import BssConfig
+from ppg_frailty.artifacts.bss import (
+    FastIcaBssConfig,
+    NmfBssConfig,
+    PcaBssConfig,
+)
 from ppg_frailty.artifacts.base import (
     IMU_REFERENCE_AXES6_PROFILE_ID,
     IMU_REFERENCE_DERIVED9_AUGMENTATION_PROFILE_ID,
@@ -134,8 +138,11 @@ class ReducerTest(unittest.TestCase):
 
     def test_all_bss_require_two_channels(self) -> None:
         ppg, imu = contaminated_fixture()
-        config = BssConfig(nperseg=128, max_iter=2000)
-        reducers = (PcaBssReducer(config), FastIcaBssReducer(config), NmfBssReducer(config))
+        reducers = (
+            PcaBssReducer(PcaBssConfig()),
+            FastIcaBssReducer(FastIcaBssConfig(max_iter=2000)),
+            NmfBssReducer(NmfBssConfig(nperseg=128, max_iter=2000)),
+        )
         for reducer in reducers:
             with self.subTest(reducer=reducer.reducer_id):
                 result = reducer.reduce(ppg, imu)
@@ -149,6 +156,14 @@ class ReducerTest(unittest.TestCase):
                 single = reducer.reduce(ppg[:, :1], imu)
                 self.assertEqual(single.status, "failed")
                 self.assertIsNone(single.x_ar)
+
+    def test_bss_router_rejects_parameters_unused_by_selected_algorithm(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unknown reducer parameters"):
+            get_reducer("pca_bss", {"max_iter": 10})
+        with self.assertRaisesRegex(ValueError, "unknown reducer parameters"):
+            get_reducer("fastica_bss", {"nmf_rank": 3})
+        with self.assertRaisesRegex(ValueError, "unknown reducer parameters"):
+            get_reducer("nmf_bss", {"imu_reference_profile": "axes6_si_v1"})
 
     def test_learned_route_is_registered_unsupported(self) -> None:
         ppg, imu = contaminated_fixture()

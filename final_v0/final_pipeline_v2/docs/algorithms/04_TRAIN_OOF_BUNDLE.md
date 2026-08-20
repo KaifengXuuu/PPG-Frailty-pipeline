@@ -1,11 +1,12 @@
 # V2 training, OOF, operational cost and final refit
 
-Outer CV uses frozen split seeds for membership while every single-model cell
-uses training seed 42. OOF rows preserve distinct `split_seed` and
-`training_seed` fields plus the source-snapshot hash.
-Five-member ensembles emit five member rows and one exact arithmetic-mean row
-per subject/cell with member seeds
-`[42,10042,20042,30042,40042]`.
+Outer CV uses frozen split seeds for membership while the effective training
+config supplies the model seed or explicit ensemble member roster. OOF rows
+preserve distinct `split_seed` and `training_seed` fields plus the
+source-snapshot hash. Ensembles accept one or more unique uint32 member seeds,
+emit one row per member and one exact arithmetic-mean row per subject/cell.
+The named historical comparison preset remains
+`[50042,60042,70042,80042,90042]`.
 
 Each completed cell publishes typed OOF tables, metrics, confusion matrices,
 resolved architecture/training provenance and a hash/byte artifact index.
@@ -16,9 +17,9 @@ null, never zero. Operational measurement is explicit opt-in.
 
 Final refit is a separate operation after human selection. It must resolve a
 plan from one complete indexed run plus a hash-bound purpose-specific selection
-record; caller-authored hashes are untrusted. Full-cohort single-model refit
-uses seed42, or the exact five ensemble seeds. It is not invoked by the
-benchmark, comparison archive or acceptance gate.
+record; caller-authored hashes are untrusted. Full-cohort refit inherits the
+selected config's single seed or ensemble roster. It is not invoked by
+validation, the benchmark or comparison archive.
 
-The eventual winner must pass the ONNX gate. Other ablations do not need ONNX
-export.
+ONNX is not a V2 winner requirement. A later deployment project may add an
+export/latency protocol without changing the scientific OOF pipeline.

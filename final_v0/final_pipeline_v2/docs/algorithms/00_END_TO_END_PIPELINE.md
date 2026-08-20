@@ -8,9 +8,10 @@ flowchart TD
     D --> E{"SQI mode"}
     E -->|"off (default)"| F["B/R direct inputs unchanged"]
     E -->|"diagnostics_only"| G["Save raw diagnostics; same inputs/weights/predictions"]
-    E -->|"route (disabled)"| H["Fail closed pending supervised design"]
+    E -->|"route"| H["Outer-train SQI calibration + typed route/recovery"]
     F --> I{"representation"}
     G --> I
+    H --> I
     I --> J["raw"]
     I --> K["feature vector"]
     I --> L["feature matrix"]
@@ -20,7 +21,7 @@ flowchart TD
     L --> N
     M --> N
     N --> O["typed window/file/member/participant OOF"]
-    O --> P["Line A or matched Line B aggregation"]
+    O --> P["Configured source aggregation + parallel window/Line A/Line B report replay"]
     P --> Q["25-cell trusted metrics + hashes"]
     Q --> R["explicit comparison archive; no auto-selection"]
 ```
@@ -30,8 +31,8 @@ Source bytes are checked before and after numeric parsing. Outputs are staged
 and published without overwrite. Reduced execution cannot be promoted to a
 complete 5×5 result.
 
-The safe gate exercises build-data identity and representation construction,
-not training or scientific metrics. Formal ShapeFormer, motion, ablation,
-comparison, final-refit and ONNX routes have explicit gates and are never
-triggered by validation.
-
+The safe suite exercises build-data identity and representation construction,
+not training or scientific metrics. Validation never triggers ShapeFormer,
+motion, ablation, comparison or final-refit execution. Runtime modules are
+selected by effective config; missing scientific evidence limits claims rather
+than authorizing execution.

@@ -9,8 +9,10 @@ member exchange format and comparison input.
 Other confirmed changes include:
 
 - R1–R4 are files within R, not roles.
-- Line A and Line B are matched training/aggregation lines.
-- SQI defaults off; diagnostics-only is non-causal; route is deferred.
+- Line B is the reference default; Line A/Line B reporting aggregation and
+  equal-files/equal-role-families training balance are independently selectable.
+- SQI defaults off; diagnostics-only is non-causal; route is an executable
+  optional module whose scientific evidence remains not run.
 - PTT distal mapping is pleth_1 RED and pleth_2 IR.
 - ShapeFormer canonical discovery is channel-specific OSD/PISD with a derived
   PIP count and variable length bounded by three consecutive PIPs; effect-size

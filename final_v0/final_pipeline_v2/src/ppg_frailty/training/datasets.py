@@ -49,12 +49,17 @@ class SampleIdentity:
     quality_score: float = 1.0
     retained: bool = True
     window_id: str | None = None
+    aggregation_retained: bool = True
 
     def __post_init__(self) -> None:
         if not self.participant_id or not self.file_id or not self.role:
             raise ValueError("participant_id, file_id and role are required")
         if not np.isfinite(self.quality_score) or not 0.0 <= self.quality_score <= 1.0:
             raise ValueError("quality_score must be finite in [0,1]")
+        if not isinstance(self.retained, (bool, np.bool_)) or not isinstance(
+            self.aggregation_retained, (bool, np.bool_)
+        ):
+            raise ValueError("retained flags must be boolean")
 
 
 class _IdentityDataset(Dataset):

@@ -12,6 +12,7 @@ extract_window reads values without mutating the amplitude-preserving source vie
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 
 import numpy as np
 
@@ -45,6 +46,15 @@ class WindowPlan:
     include_padded_tail: bool
     max_windows: int | None
     cap_policy: str
+    # Zero preserves the historical direct ``WindowPlan`` API (all explicitly
+    # requested padded rows are kept). Config-resolved plans always materialize
+    # an explicit value, with the pipeline default remaining 1.0/complete-only.
+    min_valid_fraction: float = 0.0
+    # Fractional caps migrate the legacy ``cnn_max_windows_fraction`` control
+    # without inventing a second window planner.  It is mutually exclusive
+    # with ``max_windows`` and is resolved against this recording's candidate
+    # count immediately before uniform-progress selection.
+    max_window_fraction: float | None = None
 
     @staticmethod
     def _sample_count(seconds: float, fs: float, *, field_name: str) -> int:
@@ -61,22 +71,49 @@ class WindowPlan:
 
         if not self.source_record_id:
             raise ValueError("source_record_id must be non-empty")
-        if self.window_seconds <= 0.0 or self.hop_seconds <= 0.0:
-            raise ValueError("window/hop seconds must be positive")
-        if self.end_alignment not in {"start", "end"}:
-            raise ValueError("end_alignment must be start or end")
+        if (
+            not np.isfinite(float(self.window_seconds))
+            or not np.isfinite(float(self.hop_seconds))
+            or self.window_seconds <= 0.0
+            or self.hop_seconds <= 0.0
+        ):
+            raise ValueError("window/hop seconds must be finite and positive")
+        if self.end_alignment not in {
+            "start",
+            "end",
+            "include_right_aligned_if_distinct",
+        }:
+            raise ValueError(
+                "end_alignment must be start, end, or "
+                "include_right_aligned_if_distinct"
+            )
         if self.short_record_action not in {"reject", "pad_right"}:
             raise ValueError("short_record_action must be reject or pad_right")
         if self.include_padded_tail and self.end_alignment != "start":
             raise ValueError("padded tail is only defined for start alignment")
         if self.max_windows is not None and self.max_windows <= 0:
             raise ValueError("max_windows must be positive or null")
+        if self.max_window_fraction is not None and (
+            isinstance(self.max_window_fraction, bool)
+            or not np.isfinite(float(self.max_window_fraction))
+            or not 0.0 < float(self.max_window_fraction) <= 1.0
+        ):
+            raise ValueError("max_window_fraction must be null or finite in (0,1]")
+        if self.max_windows is not None and self.max_window_fraction is not None:
+            raise ValueError("max_windows and max_window_fraction are mutually exclusive")
         if self.cap_policy not in {"uniform_progress", "not_applicable"}:
             raise ValueError("unsupported cap_policy")
-        if self.max_windows is not None and self.cap_policy != "uniform_progress":
+        has_cap = self.max_windows is not None or self.max_window_fraction is not None
+        if has_cap and self.cap_policy != "uniform_progress":
             raise ValueError("a finite cap requires uniform_progress")
-        if self.max_windows is None and self.cap_policy != "not_applicable":
+        if not has_cap and self.cap_policy != "not_applicable":
             raise ValueError("uncapped plans require cap_policy=not_applicable")
+        if (
+            isinstance(self.min_valid_fraction, bool)
+            or not np.isfinite(float(self.min_valid_fraction))
+            or not 0.0 <= float(self.min_valid_fraction) <= 1.0
+        ):
+            raise ValueError("min_valid_fraction must be finite in [0,1]")
 
     def plan(self, n_samples: int, fs: float) -> tuple[WindowSlice, ...]:
         """生成确定性索引和 mask / Generate deterministic indices and masks."""
@@ -93,18 +130,32 @@ class WindowPlan:
                 raise ShortRecordError(
                     f"{self.source_record_id}: {n_samples} < {window} samples"
                 )
+            candidate = self._slice(
+                start=0,
+                valid_length=n_samples,
+                window_length=window,
+                fs=fs,
+            )
             return (
-                self._slice(
-                    start=0,
-                    valid_length=n_samples,
-                    window_length=window,
-                    fs=fs,
-                ),
+                (candidate,)
+                if candidate.valid_length / candidate.window_length
+                >= float(self.min_valid_fraction)
+                else ()
             )
 
-        if self.end_alignment == "start":
+        if self.end_alignment in {
+            "start",
+            "include_right_aligned_if_distinct",
+        }:
             starts = list(range(0, n_samples - window + 1, hop))
-            if self.include_padded_tail:
+            if self.end_alignment == "include_right_aligned_if_distinct":
+                # Match the historical classifier exactly: retain the regular
+                # complete-window grid anchored at sample zero, then append the
+                # last complete right-aligned window only when it is distinct.
+                right_aligned_start = n_samples - window
+                if starts[-1] != right_aligned_start:
+                    starts.append(right_aligned_start)
+            elif self.include_padded_tail:
                 next_start = starts[-1] + hop
                 if next_start < n_samples:
                     starts.append(next_start)
@@ -113,9 +164,7 @@ class WindowPlan:
             # English: Align backward from the last complete window, then sort.
             starts = sorted(range(n_samples - window, -1, -hop))
 
-        if self.max_windows is not None and len(starts) > self.max_windows:
-            starts = [starts[index] for index in _uniform_indices(len(starts), self.max_windows)]
-        return tuple(
+        slices = tuple(
             self._slice(
                 start=start,
                 valid_length=min(window, n_samples - start),
@@ -123,7 +172,19 @@ class WindowPlan:
                 fs=fs,
             )
             for start in starts
+            if min(window, n_samples - start) / window
+            >= float(self.min_valid_fraction)
         )
+        effective_cap = self.max_windows
+        if self.max_window_fraction is not None:
+            effective_cap = max(
+                1,
+                int(math.ceil(len(slices) * float(self.max_window_fraction))),
+            )
+        if effective_cap is not None and len(slices) > effective_cap:
+            selected = _uniform_indices(len(slices), effective_cap)
+            slices = tuple(slices[index] for index in selected)
+        return slices
 
     def _slice(
         self,

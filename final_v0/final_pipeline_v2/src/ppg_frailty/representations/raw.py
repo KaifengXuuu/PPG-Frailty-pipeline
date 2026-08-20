@@ -3,9 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Mapping, Any
 
 import numpy as np
 
+from ..normalization import (
+    FALLBACK_MAD,
+    FALLBACK_ONE,
+    IMU_NONE,
+    PPG_NONE,
+    PPG_ROBUST,
+    PPG_STANDARD_ZSCORE,
+    RawNormalizationConfig,
+)
 from ..signal.views import CANONICAL_FS_HZ, CanonicalSignalViews, WindowPlan
 
 
@@ -19,37 +29,120 @@ class RawWindows:
     candidate_count: int
     dropped_invalid_count: int
     provenance: dict[str, object] = field(default_factory=dict)
+    window_quality_scores: np.ndarray | None = None
+    window_aggregation_mask: np.ndarray | None = None
+
+    def __post_init__(self) -> None:
+        """Validate optional row-aligned score and aggregation-selection vectors.
+
+        The vectors are deliberately separate from ``provenance``: downstream
+        prediction identities need their actual values, while persisted
+        provenance stores only content hashes and counts.
+        """
+
+        if self.window_quality_scores is not None:
+            scores = np.asarray(self.window_quality_scores, dtype=np.float32)
+            if scores.shape != (int(np.asarray(self.values).shape[0]),):
+                raise ValueError(
+                    "window_quality_scores must contain one value per raw window"
+                )
+            if (
+                not np.isfinite(scores).all()
+                or np.any(scores < 0.0)
+                or np.any(scores > 1.0)
+            ):
+                raise ValueError("window_quality_scores must be finite in [0,1]")
+            object.__setattr__(self, "window_quality_scores", scores)
+        if self.window_aggregation_mask is None:
+            return
+        aggregation_mask = np.asarray(self.window_aggregation_mask, dtype=bool)
+        if aggregation_mask.shape != (int(np.asarray(self.values).shape[0]),):
+            raise ValueError(
+                "window_aggregation_mask must contain one flag per raw window"
+            )
+        object.__setattr__(self, "window_aggregation_mask", aggregation_mask)
 
 
-def _robust_scale_ppg(values: np.ndarray) -> np.ndarray:
-    """Workflow PPG scaling: median, IQR/1.349, SD, finite fallback, clip."""
+def _fallback_ppg_scale(
+    values: np.ndarray,
+    *,
+    config: RawNormalizationConfig,
+) -> np.ndarray:
+    """Return the configured fallback scale for two optical channels."""
 
-    center = np.median(values, axis=0)
-    q25, q75 = np.percentile(values, [25.0, 75.0], axis=0)
-    scale = (q75 - q25) / 1.349
-    standard_deviation = np.std(values, axis=0, ddof=0)
+    if config.iqr_fallback == FALLBACK_ONE:
+        return np.ones(values.shape[1], dtype=np.float64)
+    if config.iqr_fallback == FALLBACK_MAD:
+        median = np.median(values, axis=0)
+        return np.median(np.abs(values - median), axis=0) / float(
+            config.mad_consistency_divisor
+        )
+    if values.shape[0] <= config.standard_ddof:
+        return np.full(values.shape[1], np.nan, dtype=np.float64)
+    return np.std(values, axis=0, ddof=config.standard_ddof)
+
+
+def _normalize_ppg(
+    values: np.ndarray,
+    *,
+    config: RawNormalizationConfig,
+) -> np.ndarray:
+    """Execute the selected per-window optical normalization strategy."""
+
+    source = np.asarray(values, dtype=np.float64)
+    if config.raw_ppg == PPG_NONE:
+        return source.copy()
+    if config.raw_ppg == PPG_STANDARD_ZSCORE:
+        center = np.mean(source, axis=0)
+        scale = (
+            np.std(source, axis=0, ddof=config.standard_ddof)
+            if source.shape[0] > config.standard_ddof
+            else np.full(source.shape[1], np.nan, dtype=np.float64)
+        )
+    elif config.raw_ppg == PPG_ROBUST:
+        center = np.median(source, axis=0)
+        q25, q75 = np.percentile(source, [25.0, 75.0], axis=0)
+        scale = (q75 - q25) / float(config.robust_iqr_divisor)
+        fallback = _fallback_ppg_scale(source, config=config)
+        scale = np.where(
+            np.isfinite(scale) & (scale > config.scale_epsilon),
+            scale,
+            fallback,
+        )
+    else:  # defensive: RawNormalizationConfig owns strategy registration.
+        raise ValueError(f"unsupported raw PPG normalization: {config.raw_ppg}")
+
     scale = np.where(
-        np.isfinite(scale) & (scale > 1e-8),
+        np.isfinite(scale) & (scale > config.scale_epsilon),
         scale,
-        standard_deviation,
+        1.0,
     )
-    scale = np.where(np.isfinite(scale) & (scale > 1e-8), scale, 1.0)
-    normalized = (values - center) / scale
+    normalized = (source - center) / scale
     normalized = np.where(np.isfinite(normalized), normalized, 0.0)
-    return np.clip(normalized, -8.0, 8.0)
+    if config.clip_after_scale is not None:
+        normalized = np.clip(normalized, *config.clip_after_scale)
+    return normalized
 
 
-def build_raw_windows(views: CanonicalSignalViews, plan: WindowPlan) -> RawWindows:
+def build_raw_windows(
+    views: CanonicalSignalViews,
+    plan: WindowPlan,
+    *,
+    normalization: Mapping[str, Any] | None = None,
+) -> RawWindows:
     """按唯一计划生成 8 通道窗口 / Build 8-channel windows from the sole plan.
 
     中文：PPG 始终从 amplitude-preserving x_filter 取值；非恒等 x_ar 仅可进入
     rate/PPI/PRV 路径。IMU 取 dynamic acceleration 与 gyro。
-    所有参考窗口必须完整，避免 padding 被解释为生理零值。
+    完整窗口是默认；显式启用 padding 时只在有效前缀上计算 PPG 归一化，
+    padded 后缀保持中性零值并由 valid_mask 从模型池化和 fold 变换中排除。
     English: PPG comes from the legal analysis route; IMU uses dynamic acceleration
-    and gyro. Reference windows must be complete.
+    and gyro. Complete windows are the default; explicitly padded samples are
+    neutral zeros accompanied by a false validity mask.
     """
 
     views.validate()
+    normalization_config = RawNormalizationConfig.from_mapping(normalization)
     if plan.source_record_id != str(views.metadata.get("record_id", "")):
         raise ValueError("WindowPlan source_record_id must match signal metadata")
     windows = plan.plan(views.x_filter.shape[0], CANONICAL_FS_HZ)
@@ -78,8 +171,6 @@ def build_raw_windows(views: CanonicalSignalViews, plan: WindowPlan) -> RawWindo
     starts: list[int] = []
     dropped_invalid = 0
     for item in windows:
-        if item.valid_length != item.window_length or bool(np.any(item.padding_mask)):
-            raise ValueError("reference raw route does not accept padded windows")
         segment = matrix[item.start_sample:item.end_sample]
         valid_rows = imu_valid[item.start_sample:item.end_sample]
         # 中文：EKF 在线初始化的无估计样本只能导致该窗口 drop，不能填零或让整条
@@ -89,16 +180,20 @@ def build_raw_windows(views: CanonicalSignalViews, plan: WindowPlan) -> RawWindo
         if not np.all(valid_rows) or not np.isfinite(segment).all():
             dropped_invalid += 1
             continue
-        # 中文：只允许 RED/IR 做每窗口归一化；六个 IMU SI 通道保持原值，
-        # 等待 outer-train-only fold transform。English: Scale only RED/IR here;
-        # keep all six SI-unit IMU axes untouched for the outer-train transform.
-        normalized = segment.copy()
-        normalized[:, :2] = _robust_scale_ppg(segment[:, :2])
+        # 中文：所选每窗口策略只作用于 RED/IR；六个 IMU SI 通道保持原值，
+        # 等待所选 outer-train-only fold 策略。English: Apply the selected
+        # per-window strategy only to RED/IR; keep all six SI-unit IMU axes
+        # untouched for the selected outer-train transform.
+        normalized = np.zeros((item.window_length, matrix.shape[1]), dtype=np.float64)
+        normalized[:item.valid_length] = segment
+        normalized[:item.valid_length, :2] = _normalize_ppg(
+            segment[:, :2], config=normalization_config
+        )
         rows.append(normalized.T.astype(np.float32))
         masks.append(~np.asarray(item.padding_mask, dtype=bool))
         starts.append(item.start_sample)
     if not rows:
-        raise ValueError("window plan produced no complete raw windows")
+        raise ValueError("window plan produced no valid raw windows")
     return RawWindows(
         values=np.stack(rows),
         valid_mask=np.stack(masks),
@@ -108,12 +203,23 @@ def build_raw_windows(views: CanonicalSignalViews, plan: WindowPlan) -> RawWindo
         provenance={
             "ppg_source_view": "x_filter",
             "non_identity_x_ar_eligible_for_raw_predictor": False,
-            "ppg_normalization": (
-                "per_window_median_iqr_over_1p349_sd_finite_then_clip_minus8_plus8"
+            "normalization_config": normalization_config.to_mapping(),
+            "ppg_normalization": normalization_config.raw_ppg,
+            "ppg_normalized_channels": (
+                [] if normalization_config.raw_ppg == PPG_NONE else ["RED", "IR"]
             ),
-            "ppg_normalized_channels": ["RED", "IR"],
-            "ppg_clip_after_scale": [-8.0, 8.0],
-            "imu_normalization": "unscaled_si_requires_outer_train_transform",
+            "ppg_clip_after_scale": (
+                None
+                if normalization_config.raw_ppg == PPG_NONE
+                or normalization_config.clip_after_scale is None
+                else list(normalization_config.clip_after_scale)
+            ),
+            "imu_normalization": (
+                "unscaled_si_pending_outer_train_identity_artifact"
+                if normalization_config.raw_imu == IMU_NONE
+                else "unscaled_si_requires_outer_train_transform"
+            ),
+            "imu_normalization_requested": normalization_config.raw_imu,
             "imu_channel_schema": [
                 "A_dyn_x", "A_dyn_y", "A_dyn_z", "GX", "GY", "GZ",
             ],
@@ -121,6 +227,12 @@ def build_raw_windows(views: CanonicalSignalViews, plan: WindowPlan) -> RawWindo
                 "m/s^2", "m/s^2", "m/s^2", "rad/s", "rad/s", "rad/s",
             ],
             "derived_motion_channels_in_frailty_tensor": False,
+            "padding_policy": (
+                "valid_prefix_neutral_zero_with_explicit_mask"
+                if any(not bool(mask.all()) for mask in masks)
+                else "complete_windows"
+            ),
+            "minimum_valid_fraction": float(plan.min_valid_fraction),
         },
     )
 

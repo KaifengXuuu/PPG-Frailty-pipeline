@@ -39,7 +39,9 @@ from .data.manifest import (
     load_internal_manifest,
 )
 from .module_registry import (
+    derived_model_variant,
     list_modules,
+    model_factory_contract,
     registry_sha256,
     resolve_artifact_config,
     resolve_peak_detector_config,
@@ -555,7 +557,11 @@ def _run_real_smoke(
         source_record_id=row.record_id,
         **report.window_profiles["engineering"],
     )
-    raw_smoke = build_raw_windows(resolved_views, raw_plan)
+    raw_smoke = build_raw_windows(
+        resolved_views,
+        raw_plan,
+        normalization=config.section("signal")["normalization"],
+    )
     engineering_smoke = extract_engineering_features(
         resolved_views,
         plan=engineering_plan,
@@ -566,6 +572,8 @@ def _run_real_smoke(
     pulses_per_wavelength = detect_pulses_per_wavelength(
         resolved_views,
         detector_id=report.peak_detector["detector_id"],
+        min_observation_sec=report.peak_detector["min_observation_sec"],
+        min_peaks=report.peak_detector["min_peaks"],
     )
     pulse = pulses_per_wavelength[
         select_reference_wavelength(pulses_per_wavelength)
@@ -599,6 +607,8 @@ def _run_real_smoke(
         "median_ppi_s": float(np.median(pulse.ppi_s[pulse.valid_interval_mask])),
         "pulse_detector": {
             "detector_id": report.peak_detector["detector_id"],
+            "min_observation_sec": report.peak_detector["min_observation_sec"],
+            "min_peaks": report.peak_detector["min_peaks"],
             "reference_wavelength": pulse.wavelength,
             "per_wavelength": {
                 wavelength: {
@@ -617,6 +627,8 @@ def _run_real_smoke(
         },
         "canonical_parity_smoke": {
             "detector_id": report.peak_detector["detector_id"],
+            "min_observation_sec": report.peak_detector["min_observation_sec"],
+            "min_peaks": report.peak_detector["min_peaks"],
             "old_detector_invoked": any(
                 str(result.detector_id) == ABLATION_DETECTOR_ID
                 or str(result.detector_version) != CANONICAL_DETECTOR_VERSION
@@ -813,6 +825,8 @@ def run_artifact_comparison(
     *,
     duration_s: float = 10.0,
     seed: int = 42,
+    min_observation_sec: float = 8.0,
+    min_peaks: int = 5,
 ) -> dict[str, Any]:
     """同一 synthetic fixture 量化各 reducer / Quantify reducers on one fixture."""
 
@@ -829,6 +843,8 @@ def run_artifact_comparison(
             pulse = detect_pulses(
                 values,
                 detector_id=CANONICAL_DETECTOR_ID,
+                min_observation_sec=min_observation_sec,
+                min_peaks=min_peaks,
             )
             match = match_events(reference_times, pulse.peak_timestamps_s, tolerance_s=0.15)
             valid_ppi = pulse.ppi_s[pulse.valid_interval_mask]
@@ -874,6 +890,8 @@ def run_artifact_comparison(
         fs_hz=400.0,
         config=SqiConfig(),
         detector_id=CANONICAL_DETECTOR_ID,
+        min_observation_sec=min_observation_sec,
+        min_peaks=min_peaks,
     )
     quality_pass = quality.q_rate.state.value == "pass"
     quality_row: dict[str, Any] = {
@@ -920,6 +938,11 @@ def run_artifact_comparison(
         "status": "passed",
         "seed": seed,
         "duration_s": duration_s,
+        "peak_detector": {
+            "detector_id": CANONICAL_DETECTOR_ID,
+            "min_observation_sec": float(min_observation_sec),
+            "min_peaks": int(min_peaks),
+        },
         "reference_hr_bpm": 60.0 / reference_period,
         "control_count": 2,
         "reducer_count": len(reducers),
@@ -1039,8 +1062,15 @@ def run_model_comparison(
     ),
     *,
     seed: int = 42,
+    ensemble_size: int = 5,
 ) -> dict[str, Any]:
-    """实际构造/拟合 reduced synthetic 模型 / Exercise real models quantitatively."""
+    """Exercise registered models in a reduced synthetic contract smoke.
+
+    ``ensemble_size`` is a real smoke input used to construct the explicit
+    member roster whenever an ensemble identity is requested. Representation,
+    semantic status, and reported member count are derived from the registries
+    and constructed object rather than a second model-ID table.
+    """
 
     from sklearn.metrics import balanced_accuracy_score
 
@@ -1049,6 +1079,7 @@ def run_model_comparison(
         create_model,
         materialize_architecture_parameters,
         normalize_model_id,
+        resolved_architecture_parameters,
     )
 
     def explicit(
@@ -1062,6 +1093,21 @@ def run_model_comparison(
         )
         return payload
 
+    if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= 0xFFFF_FFFF:
+        raise ValueError("seed must be an executable uint32 integer")
+    if (
+        isinstance(ensemble_size, bool)
+        or not isinstance(ensemble_size, int)
+        or ensemble_size <= 0
+    ):
+        raise ValueError("ensemble_size must be a positive integer")
+    if ensemble_size > 0xFFFF_FFFF:
+        raise ValueError("ensemble_size exceeds the unique uint32 seed space")
+    synthetic_member_seeds = tuple(
+        (seed + member_index + 1) & 0xFFFF_FFFF
+        for member_index in range(ensemble_size)
+    )
+
     rng = np.random.default_rng(seed)
     rows: list[dict[str, Any]] = []
     feature_names = tuple(f"feature_{index}" for index in range(8))
@@ -1071,42 +1117,15 @@ def run_model_comparison(
     participants = tuple(f"synthetic_{index:03d}" for index in range(36))
     for name in models:
         canonical_model_id, machine_model_id = normalize_model_id(name)
+        model_contract = model_factory_contract(canonical_model_id)
+        representation_modes = tuple(model_contract["representation_modes"])
+        if len(representation_modes) != 1:
+            raise RuntimeError(
+                f"synthetic comparison requires one registered representation: "
+                f"{canonical_model_id}={representation_modes}"
+            )
+        representation_mode = str(representation_modes[0])
         started = time.perf_counter()
-        if machine_model_id in {"logistic_regression", "rbf_svm", "extra_trees"}:
-            representation_mode = "feature_vector"
-        elif machine_model_id in {
-            "rocket_numpy",
-            "minirocket_ablation",
-            "inception_matrix",
-            "inception_matrix_five_member_ensemble",
-        }:
-            representation_mode = "feature_matrix"
-        elif machine_model_id in {"fusion_compact", "fusion_inception"}:
-            representation_mode = "fusion"
-        else:
-            representation_mode = "raw"
-        # English: Variant metadata makes reduced synthetic execution explicit. In
-        # particular, the matrix/ensemble routes use the reviewed small Inception
-        # encoder and ROCKET routes use 64 kernels only for this contract test.
-        # 中文：variant 元数据明确 synthetic reduced 执行条件；matrix/ensemble
-        # 使用已审核 small Inception，ROCKET 的 64 kernels 仅用于合同测试。
-        variant_by_model = {
-            "CompactCNN1D": "reviewed_compact",
-            "InceptionTimeFull": "full",
-            "InceptionTimeSmall": "small",
-            "InceptionTimeMatrix": "small",
-            "InceptionTimeFullFiveMemberEnsemble": "full_comparison_only",
-            "InceptionTimeMatrixFiveMemberEnsemble": "full_comparison_only",
-            "ROCKET": "numpy_reference_reduced_contract",
-            "MiniROCKET": "engineering_ablation_reduced_contract",
-            "LogisticRegressionL2": "l2",
-            "RBFSVM": "rbf",
-            "ExtraTrees": "500_tree",
-            "ShapeFormerChannelSpecificOSD": "channel_specific_osd_reference",
-            "ShapeFormerEffectSizeFixedV1": "effect_size_fixed_v1_ablation",
-            "FileBagFusionCompact": "compact_raw_encoder",
-            "FileBagFusionInception": "inception_raw_encoder",
-        }
         if machine_model_id in {"logistic_regression", "rbf_svm", "extra_trees"}:
             spec = ModelInputSpec("feature_vector", n_classes=3, n_file_features=8, feature_names=feature_names)
             baseline_options: dict[str, Any] = {
@@ -1207,14 +1226,7 @@ def run_model_comparison(
                     explicit(
                         {
                             "model_id": machine_model_id,
-                            "member_seeds": [
-                                50042,
-                                60042,
-                                70042,
-                                80042,
-                                90042,
-                            ],
-                            "comparison_only": True,
+                            "member_seeds": synthetic_member_seeds,
                             "dropout": 0.2,
                             "kernel_sizes": [39, 19, 9],
                             "dilation": 1,
@@ -1232,7 +1244,9 @@ def run_model_comparison(
                     logits = model(inputs, torch.ones((2, 64), dtype=torch.bool))
             elif machine_model_id in {
                 "shapeformer_channel_specific_osd",
+                "shapeformer_channel_specific_scalar_distance_ablation",
                 "shapeformer_effect_size_fixed_v1",
+                "shapeformer_legacy_effect_size_port",
             }:
                 channel_schema = (
                     "RED", "IR", "A_dyn_x", "A_dyn_y",
@@ -1244,19 +1258,26 @@ def run_model_comparison(
                     n_classes=3,
                     channel_schema=channel_schema,
                 )
-                # English: Both discovery implementations fit the same explicit
-                # synthetic outer-train roster. The tiny bank is a callable contract
-                # check only; it is never reported as a scientific comparison.
-                # 中文：两种 discovery 都只拟合同一份显式 synthetic outer-train
-                # 名单；小型 bank 只验证可调用合同，不作为科学比较结果。
+                # English: All discovery implementations fit the same explicit
+                # synthetic outer-train roster. The channel-specific bank can feed
+                # either registered downstream module. This tiny run is only a
+                # callable contract check, never a scientific comparison.
+                # 中文：各 discovery 都只拟合同一份显式 synthetic outer-train
+                # 名单；channel-specific bank 可接入两个已注册下游模块。小型运行
+                # 只验证可调用合同，不作为科学比较结果。
                 input_fs_hz = 64.0
                 outer_repeat_index = 0
                 outer_fold_index = 0
                 shapelet_y = np.asarray((0, 0, 1, 1, 2, 2), dtype=np.int64)
+                channel_specific = machine_model_id in {
+                    "shapeformer_channel_specific_osd",
+                    "shapeformer_channel_specific_scalar_distance_ablation",
+                }
+                legacy_effect_size = (
+                    machine_model_id == "shapeformer_legacy_effect_size_port"
+                )
                 discovery_length = (
-                    64
-                    if machine_model_id == "shapeformer_channel_specific_osd"
-                    else 256
+                    64 if channel_specific or legacy_effect_size else 256
                 )
                 shapelet_x = rng.normal(
                     size=(6, 8, discovery_length)
@@ -1269,7 +1290,7 @@ def run_model_comparison(
                 shapelet_windows = tuple(
                     f"synthetic_window_{index:03d}" for index in range(6)
                 )
-                if machine_model_id == "shapeformer_channel_specific_osd":
+                if channel_specific:
                     from .models.pisd_port import (
                         DISCOVERY_BALANCE,
                         DISCOVERY_POSITION_SEARCH_BOUNDARY_RULE,
@@ -1308,6 +1329,31 @@ def run_model_comparison(
                             POSITION_SEARCH_NEIGHBOURHOOD_SAMPLES
                         ),
                         distance_position_chunk_size=16,
+                        seed=seed,
+                    )
+                elif legacy_effect_size:
+                    from .models.shapeformer_legacy import (
+                        LEGACY_EFFECT_SIZE_DISCOVERY_METHOD,
+                        discover_legacy_effect_size_shapelets,
+                    )
+
+                    discovery_method = LEGACY_EFFECT_SIZE_DISCOVERY_METHOD
+                    shapelets = discover_legacy_effect_size_shapelets(
+                        shapelet_x,
+                        shapelet_y,
+                        shapelet_participants,
+                        shapelet_files,
+                        shapelet_windows,
+                        discovery_method=discovery_method,
+                        input_fs_hz=input_fs_hz,
+                        sequence_length_samples=discovery_length,
+                        shapelet_length_samples=16,
+                        discovery_stride_samples=8,
+                        shapelets_per_class=1,
+                        max_discovery_windows=6,
+                        candidates_per_class_channel=2,
+                        outer_repeat_index=outer_repeat_index,
+                        outer_fold_index=outer_fold_index,
                         seed=seed,
                     )
                 else:
@@ -1368,6 +1414,51 @@ def run_model_comparison(
                         "position_search_neighbourhood_samples":
                             POSITION_SEARCH_NEIGHBOURHOOD_SAMPLES,
                     }
+                elif machine_model_id == (
+                    "shapeformer_channel_specific_scalar_distance_ablation"
+                ):
+                    shapeformer_config = {
+                        **shared_shapeformer,
+                        "information_gain_split_rule":
+                            INFORMATION_GAIN_SPLIT_RULE,
+                        "pip_rounding_rule": PIP_ROUNDING_RULE,
+                        "pip_selection_rule": PIP_SELECTION_RULE,
+                        "candidate_generation_rule":
+                            CANDIDATE_GENERATION_RULE,
+                        "candidate_enumeration_rule": CANDIDATE_ENUMERATION_RULE,
+                        "candidate_ranking_rule": CANDIDATE_RANKING_RULE,
+                        "selected_bank_order_rule": SELECTED_BANK_ORDER_RULE,
+                        "discovery_position_search_boundary_rule":
+                            DISCOVERY_POSITION_SEARCH_BOUNDARY_RULE,
+                        "position_search_neighbourhood_samples":
+                            POSITION_SEARCH_NEIGHBOURHOOD_SAMPLES,
+                        "hidden_channels": 16,
+                        "patch_size_samples": 16,
+                        "attention_heads": 4,
+                        "attention_layers": 1,
+                        "dropout": 0.0,
+                        "distance_position_chunk_size": 16,
+                    }
+                elif legacy_effect_size:
+                    shapeformer_config = {
+                        **shared_shapeformer,
+                        "discovery_balance": shapelets.discovery_balance,
+                        "sequence_length_samples": discovery_length,
+                        "shapelet_length_samples": 16,
+                        "discovery_stride_samples": 8,
+                        "shapelets_per_class": 1,
+                        "max_discovery_windows": 6,
+                        "candidates_per_class_channel": 2,
+                        "local_kernel_width_samples": 8,
+                        "local_embedding_channels": 8,
+                        "shape_embedding_channels": 8,
+                        "attention_feedforward_channels": 16,
+                        "attention_heads": 2,
+                        "dropout": 0.0,
+                        "shapelet_search_window_samples": 8,
+                        "complexity_norm": 1000.0,
+                        "max_complexity_ratio": 3.0,
+                    }
                 else:
                     shapeformer_config = {
                         **shared_shapeformer,
@@ -1392,7 +1483,9 @@ def run_model_comparison(
                         inputs,
                         torch.ones((2, discovery_length), dtype=torch.bool),
                     )
-            elif machine_model_id in {"fusion_compact", "fusion_inception"}:
+            elif machine_model_id in {
+                "fusion_compact", "fusion_inception", "file_bag_fusion",
+            }:
                 spec = ModelInputSpec("fusion", n_channels=8, n_classes=3, n_file_features=8)
                 if machine_model_id == "fusion_compact":
                     fusion_options = {
@@ -1401,12 +1494,16 @@ def run_model_comparison(
                         "signal_dilations": [1, 1, 1],
                         "signal_pool_sizes": [4, 4],
                     }
-                else:
+                elif machine_model_id == "fusion_inception":
                     fusion_options = {
                         "signal_variant": "small",
                         "signal_dropout": 0.0,
                         "signal_kernel_sizes": [39, 19, 9],
                         "signal_dilation": 1,
+                    }
+                else:
+                    fusion_options = {
+                        "signal_encoder": {"model_id": "compact_cnn"},
                     }
                 model = create_model(
                     explicit(
@@ -1466,67 +1563,31 @@ def run_model_comparison(
             metric = float(np.max(np.abs(probability.sum(axis=1) - 1.0)))
             kind = "forward_contract_probability_sum_error"
             parameters = int(sum(item.numel() for item in model.parameters() if item.requires_grad))
+        resolved_architecture = resolved_architecture_parameters(model, spec)
         rows.append(
             {
                 "model_id": canonical_model_id,
                 "canonical_model_id": canonical_model_id,
                 "machine_model_id": machine_model_id,
-                "representation_mode": representation_mode,
-                "variant": variant_by_model[canonical_model_id],
-                "ensemble_size": (
-                    5
-                    if machine_model_id in {
-                        "inception_full_five_member_ensemble",
-                        "inception_matrix_five_member_ensemble",
-                    }
-                    else 1
+                "representation_mode": spec.mode.value,
+                "variant": derived_model_variant(
+                    {"model_id": canonical_model_id}
                 ),
-                "comparison_only": machine_model_id in {
-                    "inception_full_five_member_ensemble",
-                    "inception_matrix_five_member_ensemble",
-                },
-                "n_kernels": (
-                    64
-                    if machine_model_id in {
-                        "rocket_numpy",
-                        "minirocket_ablation",
-                    }
-                    else None
+                "ensemble_size": int(
+                    resolved_architecture.get("member_count", 1)
                 ),
-                "discovery_method": (
-                    "channel_specific_osd"
-                    if machine_model_id == "shapeformer_channel_specific_osd"
-                    else (
-                        "effect_size_fixed_v1"
-                        if machine_model_id == "shapeformer_effect_size_fixed_v1"
-                        else "not_applicable"
-                    )
+                "synthetic_contract_only": True,
+                "n_kernels": resolved_architecture.get("n_kernels"),
+                "discovery_method": resolved_architecture.get(
+                    "discovery_method", "not_applicable"
                 ),
-                "shapelet_length_samples": (
-                    128
-                    if machine_model_id == "shapeformer_effect_size_fixed_v1"
-                    else None
+                "shapelet_length_samples": resolved_architecture.get(
+                    "shapelet_length_samples"
                 ),
-                "candidate_stride_samples": (
-                    64
-                    if machine_model_id == "shapeformer_effect_size_fixed_v1"
-                    else None
+                "candidate_stride_samples": resolved_architecture.get(
+                    "candidate_stride_samples"
                 ),
-                "model_status": (
-                    "ablation"
-                    if machine_model_id in {
-                        "minirocket_ablation",
-                        "shapeformer_effect_size_fixed_v1",
-                    }
-                    else (
-                        "comparison"
-                        if machine_model_id in {
-                            "inception_full_five_member_ensemble",
-                            "inception_matrix_five_member_ensemble",
-                        }
-                        else "reference"
-                    )
-                ),
+                "model_status": str(model_contract["registry_role"]),
                 "status": "passed",
                 "quantitation_kind": kind,
                 "quantitation_value": metric,

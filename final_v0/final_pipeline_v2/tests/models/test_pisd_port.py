@@ -226,6 +226,45 @@ def test_faithful_shapeformer_fuses_shape_tokens_with_full_multivariate_branch()
     assert provenance["position_search_neighbourhood_samples"] == 128
 
 
+def test_shapeformer_numeric_controls_are_runtime_selectable() -> None:
+    bank = replace(
+        _bank(),
+        num_pip_ratio=0.35,
+        max_discovery_windows=12,
+        position_search_neighbourhood_samples=4,
+    )
+    model = LiteratureShapeFormerChannelSpecificOSD(
+        n_channels=2,
+        n_classes=3,
+        sequence_length=8,
+        shapelets=bank,
+        local_kernel_width_samples=1,
+        local_embedding_channels=6,
+        shape_embedding_channels=10,
+        attention_feedforward_channels=14,
+        attention_heads=2,
+        attention_query_chunk_size=3,
+        distance_position_chunk_size=2,
+        dropout=0.15,
+        complexity_norm=700.0,
+        max_complexity_ratio=2.5,
+        position_search_neighbourhood_samples=4,
+        input_fs_hz=1.0,
+    ).eval()
+    assert model.num_pip_ratio == 0.35
+    assert model.max_discovery_windows == 12
+    assert model.position_search_neighbourhood_samples == 4
+    assert model.local_kernel_width_samples == 1
+    assert model.local_embedding_channels == 6
+    assert model.shape_embedding_channels == 10
+    assert model.attention_feedforward_channels == 14
+    assert model.dropout_probability == 0.15
+    x = torch.randn((1, 2, 8), generator=torch.Generator().manual_seed(7))
+    with torch.no_grad():
+        output = model(x, torch.ones((1, 8), dtype=torch.bool))
+    assert tuple(output.shape) == (1, 3)
+
+
 def test_channel_specific_search_uses_nontrivial_global_time_mask() -> None:
     bank = _bank()
     model = ExperimentalShapeFormer(

@@ -16,15 +16,19 @@ import numpy as np
 from scipy import signal
 
 
+# Historical named comparison targets.  This tuple is retained as catalog
+# metadata; it is not a runtime allow-list.
 V2_DL_RESAMPLING_TARGETS_HZ = (100.0, 160.0, 200.0)
 
 
 def validate_dl_resampling_config(config: object) -> dict[str, object]:
     """Validate the V2 DL-only sampling switch without touching canonical views.
 
-    The reference line is disabled on the 400-Hz grid. Explicit enabled cases
-    may target 100, 160, or 200 Hz only. In every case feature, peak-timing,
-    morphology, and audit views remain on the independent 400-Hz grid.
+    The reference line is disabled on the 400-Hz grid. An enabled raw or fusion
+    model branch may select any finite positive rate no higher than that source
+    grid. The named 100/160/200-Hz fixed-kernel cases remain raw-only
+    reproducible presets, not an algorithm gate. Feature, peak-timing,
+    morphology, and audit views stay on the independent 400-Hz grid.
     """
 
     if not isinstance(config, Mapping):
@@ -40,19 +44,42 @@ def validate_dl_resampling_config(config: object) -> dict[str, object]:
     }:
         raise ValueError("resolved signal.dl_resampling key mismatch")
     enabled = config["enabled"]
-    target = float(config["target_fs_hz"])
     if not isinstance(enabled, bool):
         raise ValueError("signal.dl_resampling.enabled must be boolean")
+    target_raw = config["target_fs_hz"]
+    source_raw = config["preserve_feature_grid_hz"]
+    if isinstance(target_raw, bool) or isinstance(source_raw, bool):
+        raise ValueError("DL sampling rates must be numeric rather than boolean")
+    try:
+        target = float(target_raw)
+        source_grid = float(source_raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("DL sampling rates must be numeric") from exc
     if config["method"] != "polyphase_anti_alias":
         raise ValueError("V2 DL resampling requires polyphase anti-alias filtering")
-    if float(config["preserve_feature_grid_hz"]) != 400.0:
+    if source_grid != 400.0:
         raise ValueError("V2 DL resampling must preserve the 400-Hz feature grid")
-    if enabled and target not in V2_DL_RESAMPLING_TARGETS_HZ:
-        raise ValueError("enabled V2 DL target must be one of 100, 160, or 200 Hz")
-    if not enabled and target != 400.0:
+    if enabled and (
+        not np.isfinite(target) or target <= 0.0 or target > source_grid
+    ):
+        raise ValueError(
+            "enabled V2 DL target must be finite, positive, and no higher "
+            "than the preserved source grid"
+        )
+    if not enabled and target != source_grid:
         raise ValueError("disabled V2 DL resampling must retain the 400-Hz target")
+    ratio = Fraction(str(target / source_grid)).limit_denominator(10_000)
+    if not np.isclose(
+        source_grid * ratio.numerator / ratio.denominator,
+        target,
+        atol=1e-12,
+        rtol=0.0,
+    ):
+        raise ValueError("target_fs_hz cannot be represented by the audited ratio")
     case_id = config.get("case_id")
     if case_id is not None:
+        if not isinstance(case_id, str) or not case_id.strip():
+            raise ValueError("DL resampling case_id must be a non-empty string")
         from ..models.time_scale import fixed_kernel_case
 
         case = fixed_kernel_case(str(case_id))
@@ -69,6 +96,105 @@ def validate_dl_resampling_config(config: object) -> dict[str, object]:
     if case_id is not None:
         resolved["case_id"] = str(case_id)
     return resolved
+
+
+def prepare_configured_dl_input(
+    values: np.ndarray,
+    sample_mask: np.ndarray,
+    *,
+    target_fs_hz: float,
+    source_fs_hz: float = 400.0,
+) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
+    """Resample a batch of masked raw windows on a configured DL-only grid.
+
+    The input is ``[window, channel, sample]`` and each mask row must describe
+    one contiguous valid prefix.  Padding is never filtered as if it were
+    signal: only the valid prefix is resampled and the output suffix remains a
+    neutral zero with an explicit false mask.
+    """
+
+    array = np.asarray(values, dtype=np.float32)
+    mask = np.asarray(sample_mask, dtype=bool)
+    source = float(source_fs_hz)
+    target = float(target_fs_hz)
+    if (
+        array.ndim != 3
+        or array.shape[0] == 0
+        or array.shape[2] == 0
+        or mask.shape != (array.shape[0], array.shape[2])
+        or not np.isfinite(array).all()
+    ):
+        raise ValueError(
+            "configured DL input requires finite [sample,channel,T] windows "
+            "and a matching [sample,T] mask"
+        )
+    if (
+        not np.isfinite(source)
+        or not np.isfinite(target)
+        or source <= 0.0
+        or target <= 0.0
+        or target > source
+    ):
+        raise ValueError(
+            "configured DL source/target rates must be finite and satisfy "
+            "0 < target <= source"
+        )
+    ratio = Fraction(str(target / source)).limit_denominator(10_000)
+    realized = source * ratio.numerator / ratio.denominator
+    if not np.isclose(realized, target, atol=1e-12, rtol=0.0):
+        raise ValueError("target_fs_hz cannot be represented by the audited ratio")
+
+    valid_lengths = mask.sum(axis=1).astype(np.int64)
+    expected_mask = (
+        np.arange(mask.shape[1], dtype=np.int64)[None, :]
+        < valid_lengths[:, None]
+    )
+    if not np.array_equal(mask, expected_mask):
+        raise ValueError("configured DL resampling requires valid-prefix masks")
+    if np.any(valid_lengths < 2):
+        raise ValueError("each configured DL input needs at least two valid samples")
+
+    target_length = int(round(array.shape[2] * target / source))
+    if target_length < 2:
+        raise ValueError("configured DL rate/window combination yields fewer than 2 samples")
+    output = np.zeros(
+        (array.shape[0], array.shape[1], target_length), dtype=np.float32
+    )
+    output_mask = np.zeros((array.shape[0], target_length), dtype=bool)
+    for sample_index, valid_length in enumerate(valid_lengths.tolist()):
+        valid = array[sample_index, :, :valid_length]
+        if ratio.numerator == ratio.denominator:
+            transformed = valid
+        else:
+            transformed = signal.resample_poly(
+                valid,
+                up=ratio.numerator,
+                down=ratio.denominator,
+                axis=-1,
+                window=("kaiser", 5.0),
+                padtype="constant",
+            ).astype(np.float32, copy=False)
+        expected_valid = min(
+            target_length,
+            int(round(valid_length * target / source)),
+        )
+        copied = min(expected_valid, transformed.shape[-1], target_length)
+        if copied < 1 or abs(transformed.shape[-1] - expected_valid) > 1:
+            raise RuntimeError("polyphase resampler produced an unexpected valid length")
+        output[sample_index, :, :copied] = transformed[:, :copied]
+        output_mask[sample_index, :copied] = True
+
+    return output, output_mask, {
+        "profile_kind": "configured_dl_resampling",
+        "source_fs_hz": source,
+        "target_fs_hz": target,
+        "source_sequence_length_samples": int(array.shape[2]),
+        "output_sequence_length_samples": target_length,
+        "resample_up": int(ratio.numerator),
+        "resample_down": int(ratio.denominator),
+        "method": "scipy_signal_resample_poly_kaiser_beta5_constant_pad",
+        "mask_transform": "contiguous_valid_prefix_scaled_with_dl_sampling_rate",
+    }
 
 
 @dataclass(frozen=True)
@@ -222,6 +348,7 @@ __all__ = [
     "DlResampleResult",
     "SynchronizedResampleResult",
     "V2_DL_RESAMPLING_TARGETS_HZ",
+    "prepare_configured_dl_input",
     "resample_dl_view",
     "resample_synchronized_channels",
     "validate_dl_resampling_config",

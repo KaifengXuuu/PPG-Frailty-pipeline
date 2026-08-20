@@ -8,8 +8,11 @@ shortening the roster, relaxing SQI, or emitting fabricated metrics.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -51,6 +54,7 @@ class _RuntimeRecord:
     final_quality: Any = None
     route: Any = None
     intended_route: Any = None
+    shape_features_eligible: bool = True
     retained: bool = False
     reason: str | None = None
     route_status: str = 'pending'
@@ -74,16 +78,26 @@ class _ExperimentProtocolError(RuntimeError):
     '''关闭失败异常 / Fail-closed protocol exception.'''
 
 
-_ESTIMATOR_MODEL_IDS = frozenset(
-    {
-        'logistic_regression',
-        'rbf_svm',
-        'extra_trees',
-        'rocket_numpy',
-        'minirocket_ablation',
-    }
-)
 _ESTIMATOR_NOT_APPLICABLE = 'not_applicable_estimator_native'
+
+
+@lru_cache(maxsize=None)
+def _model_capability_contract(model_id: str) -> Mapping[str, Any]:
+    '''Resolve backend/ensemble behavior from the single model registry.'''
+
+    from .module_registry import model_factory_contract
+
+    return model_factory_contract(str(model_id))
+
+
+def _model_uses_estimator(model_id: str) -> bool:
+    return _model_capability_contract(model_id)['execution_backend'] == 'estimator'
+
+
+def _model_is_ensemble(model_id: str) -> bool:
+    return 'member_seeds' in set(
+        _model_capability_contract(model_id)['factory_fields']
+    )
 
 
 def _model_input_sampling_rate_hz(config: Any) -> float:
@@ -91,17 +105,17 @@ def _model_input_sampling_rate_hz(config: Any) -> float:
 
     signal = config.section('signal')
     dl = signal['dl_resampling']
-    case_id = dl.get('case_id')
-    if case_id is None:
+    if not bool(dl['enabled']) and dl.get('case_id') is None:
         return float(signal['internal_fs_hz'])
-    if config.representation_mode != 'raw':
+    if dl.get('case_id') is not None and config.representation_mode != 'raw':
         raise _ExperimentProtocolError(
-            'fixed_kernel_samples_sampling_rate_requires_raw_representation'
+            'named_fixed_kernel_dl_resampling_requires_raw_representation'
         )
-    target = float(dl['target_fs_hz'])
-    if target not in {100.0, 160.0, 200.0, 400.0}:
-        raise _ExperimentProtocolError('fixed_kernel_samples_sampling_rate_invalid')
-    return target
+    if config.representation_mode not in {'raw', 'fusion'}:
+        raise _ExperimentProtocolError(
+            'generic_dl_resampling_requires_raw_or_fusion_representation'
+        )
+    return float(dl['target_fs_hz'])
 
 
 def _training_algorithm_provenance(
@@ -113,13 +127,34 @@ def _training_algorithm_provenance(
 ) -> dict[str, Any]:
     '''Describe only training controls that the selected implementation consumes.'''
 
-    if model_id in _ESTIMATOR_MODEL_IDS:
+    class_weighting = str(training_section['class_weighting'])
+    class_count_basis = str(training_section['class_count_basis'])
+    class_weight_count_basis = (
+        class_count_basis
+        if class_weighting != 'none'
+        else 'not_applicable_uniform'
+    )
+
+    if _model_uses_estimator(model_id):
         return {
             'loss': _ESTIMATOR_NOT_APPLICABLE,
-            'class_weighting': training_section['class_weighting'],
+            'class_weighting': {
+                'strategy': class_weighting,
+                'class_weight_beta': float(
+                    training_section.get('class_weight_beta', 0.999)
+                ),
+                'count_basis': class_weight_count_basis,
+            },
             'sampler': training_section['sampler'],
+            'sampler_parameters': {
+                'samples_per_epoch': training_section.get('samples_per_epoch'),
+                'participant_window_quota': training_section.get(
+                    'participant_window_quota', 'all'
+                ),
+            },
             'epoch_rule': {'rule': 'not_applicable', 'fixed_epochs': None},
             'optimizer': _ESTIMATOR_NOT_APPLICABLE,
+            'optimizer_parameters': _ESTIMATOR_NOT_APPLICABLE,
             'learning_rate': _ESTIMATOR_NOT_APPLICABLE,
             'weight_decay': _ESTIMATOR_NOT_APPLICABLE,
             'dropout': _ESTIMATOR_NOT_APPLICABLE,
@@ -132,15 +167,50 @@ def _training_algorithm_provenance(
         }
     gradient_clip_norm = training_section.get('gradient_clip_norm')
     return {
-        'loss': training_section['loss'],
-        'class_weighting': training_section['class_weighting'],
+        'loss': {
+            'strategy': training_section['loss'],
+            'focal_gamma': float(training_section.get('focal_gamma', 2.0)),
+            'balanced_softmax_count_basis': (
+                class_count_basis
+                if training_section['loss'] == 'balanced_softmax'
+                else 'not_applicable'
+            ),
+        },
+        'class_weighting': {
+            'strategy': class_weighting,
+            'class_weight_beta': float(
+                training_section.get('class_weight_beta', 0.999)
+            ),
+            'count_basis': class_weight_count_basis,
+        },
         'sampler': training_section['sampler'],
+        'sampler_parameters': {
+            'samples_per_epoch': training_section.get('samples_per_epoch'),
+            'participant_window_quota': training_section.get(
+                'participant_window_quota', 'all'
+            ),
+        },
         'epoch_rule': {
             'rule': training_section['epoch_rule'],
             'profile': training_section['epoch_profile'],
-            'fixed_epochs': int(fixed_epochs),
+            'fixed_epochs': (
+                int(fixed_epochs)
+                if training_section['epoch_rule'] == 'fixed_epoch'
+                else None
+            ),
+            'maximum_inner_epochs': int(
+                training_section.get('maximum_inner_epochs', 0)
+            ),
+            'inner_patience': int(training_section.get('inner_patience', 0)),
+            'inner_grouped_folds': int(
+                training_section.get('inner_grouped_folds', 0)
+            ),
+            'refit_on_all_outer_training': bool(
+                training_section.get('refit_on_all_outer_training', True)
+            ),
         },
         'optimizer': training_section['optimizer'],
+        'optimizer_parameters': dict(training_section['optimizer_parameters']),
         'learning_rate': float(training_section['learning_rate']),
         'weight_decay': float(training_section['weight_decay']),
         'dropout': (
@@ -156,6 +226,41 @@ def _training_algorithm_provenance(
     }
 
 
+def _resolved_legacy_bridge_dropout_comparison(
+    profile: Any,
+    model_section: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    '''Resolve the L7 dropout clause without inventing a parameter change.'''
+
+    if profile is None or profile.profile_id != 'L7':
+        return None
+    architecture = model_section['architecture_parameters']
+    legacy_stage = (0.10, 0.15)
+    legacy_head = 0.20
+    current_stage = tuple(float(value) for value in architecture['stage_dropouts'])
+    current_head = float(architecture['classifier_dropout'])
+    changed = current_stage != legacy_stage or abs(current_head - legacy_head) > 1e-12
+    return {
+        'legacy_resolved': {
+            'cnn_dropout_input': -1,
+            'encoder_stage_dropouts': list(legacy_stage),
+            'classifier_head_dropout': legacy_head,
+            'source': 'frailty_3class_classifier.py:Cnn1DClassifier',
+        },
+        'current_registered': {
+            'encoder_stage_dropouts': list(current_stage),
+            'classifier_head_dropout': current_head,
+            'source': 'catalog_model.architecture_parameters',
+        },
+        'changed': changed,
+        'interpretation': (
+            'resolved_values_changed'
+            if changed
+            else 'no_change_resolved_values_identical'
+        ),
+    }
+
+
 @dataclass(frozen=True)
 class _CellResult:
     '''单折摘要与 OOF / One cell summary and OOF tables.'''
@@ -166,6 +271,29 @@ class _CellResult:
     window_rows: tuple[Any, ...] = ()
     role_rows: tuple[Any, ...] = ()
     member_rows: tuple[Any, ...] = ()
+
+
+@dataclass(frozen=True)
+class _LegacyBridgeExecution:
+    '''Reviewed, source-bound inputs for one isolated L0--L7 execution.'''
+
+    profile: Any
+    source_specification: str
+    source_specification_sha256: str
+    manifest_sha256: str
+    split_sha256: str
+    effective_config_hash: str
+
+
+@dataclass(frozen=True)
+class _LegacyBridgePreparedFactory:
+    '''Expose actual bridge semantics while delegating model construction safely.'''
+
+    canonical_factory: Any
+    provenance: Mapping[str, Any]
+
+    def __call__(self) -> Any:
+        return self.canonical_factory()
 
 
 def _runtime_imports() -> dict[str, Any]:
@@ -186,6 +314,7 @@ def _runtime_imports() -> dict[str, Any]:
         build_feature_vector,
         build_ordered_matrix,
         default_registry,
+        registry_for_groups,
         summarize_engineering,
     )
     from ppg_frailty.features.vector_transform import (
@@ -199,7 +328,11 @@ def _runtime_imports() -> dict[str, Any]:
         validate_frozen_model_run_provenance,
     )
     from ppg_frailty.pipeline import PipelinePaths, _load_record, preflight_pipeline
-    from ppg_frailty.module_registry import resolve_peak_detector_config
+    from ppg_frailty.module_registry import (
+        materialize_model_architecture,
+        model_factory_contract,
+        resolve_peak_detector_config,
+    )
     from ppg_frailty.peaks import (
         detect_pulses,
         detect_pulses_per_wavelength,
@@ -211,7 +344,7 @@ def _runtime_imports() -> dict[str, Any]:
     from ppg_frailty.signal.preprocess import build_signal_views
     from ppg_frailty.signal.motion_imu import fit_motion_imu_calibration
     from ppg_frailty.signal.preprocess import roll_pitch_ekf_config_from_resolved
-    from ppg_frailty.signal.prv import compute_prv
+    from ppg_frailty.signal.prv import PrvConfig, compute_prv
     from ppg_frailty.signal.sqi import (
         SqiConfig,
         SqiDiagnosticConfig,
@@ -223,6 +356,7 @@ def _runtime_imports() -> dict[str, Any]:
     from ppg_frailty.quality.routing import (
         SegmentIntegrity,
         finalize_rate_recovery,
+        resolve_quality_mode,
         route_segment_pre_reduction,
         run_quality_mode,
     )
@@ -240,6 +374,7 @@ def _runtime_imports() -> dict[str, Any]:
         OofPredictionRow,
         OofWriter,
         RawWindowDataset,
+        build_inner_grouped_split,
         build_config_metrics_from_predictions_and_fold_summaries,
         measure_cpu_batch1_operational_metrics,
     )
@@ -269,6 +404,23 @@ def _choose_records(rows: Iterable[Any], participant_ids: Iterable[str], roles: 
     if {row.participant_id for row in output} != participants:
         raise _ExperimentProtocolError('selected_records_do_not_cover_frozen_roster')
     return output
+
+
+def _classifier_role_ids(config: Any) -> tuple[str, ...]:
+    """Resolve concrete manifest roles from the configured classifier families."""
+
+    from .training.aggregation import canonical_role_family
+
+    families = set(config.section('training')['classifier_role_families'])
+    roles = tuple(str(value) for value in config.to_dict()['roles'])
+    selected = tuple(
+        role for role in roles if canonical_role_family(role) in families
+    )
+    if not selected or {canonical_role_family(role) for role in selected} != families:
+        raise _ExperimentProtocolError(
+            'classifier_role_families_not_represented_by_concrete_roles'
+        )
+    return selected
 
 
 def _preprocess_records(
@@ -395,14 +547,114 @@ def _preprocess_records(
             state.route_status = 'dropped_preprocess'
 
 
-def _fit_quality_calibrator(states: list[_RuntimeRecord], config: Any, train_ids: tuple[str, ...], oof_ids: tuple[str, ...]) -> tuple[Any, Any]:
-    '''先 direct fixed-formula，再仅 train 拟合 empirical SQI / Fit SQI train-only.'''
+def _preprocess_legacy_bridge_records(
+    states: list[_RuntimeRecord],
+    profile: Any,
+    maximum_seconds: float | None,
+    loader: Any,
+) -> dict[str, Any]:
+    '''Build L0--L2 windows directly from freshly audited raw CSV bytes.'''
 
     api = _runtime_imports()
-    formal = api['SqiConfig'].from_resolved(config.to_dict())
-    detector_id = api['resolve_peak_detector_config'](
+    from .legacy_bridge import build_legacy_bridge_raw_windows
+
+    for state in states:
+        maximum = None if maximum_seconds is None else min(
+            int(state.row.n_samples),
+            int(round(maximum_seconds * float(state.row.fs))),
+        )
+        try:
+            loaded = dict(loader(state.row, maximum))
+            state.physical_qc_evidence = to_strict_json_value(
+                loaded.get(
+                    'recording_qc',
+                    {
+                        'status': 'not_supplied_by_injected_test_loader',
+                        'record_id': state.row.record_id,
+                    },
+                )
+            )
+            state.physical_qc_profile = to_strict_json_value(
+                loaded.get(
+                    'recording_qc_profile',
+                    {'profile_id': 'not_supplied_by_injected_test_loader'},
+                )
+            )
+            state.raw_windows = build_legacy_bridge_raw_windows(loaded, profile)
+            state.final_quality = None
+            state.route = api['SignalRoute'].DIRECT
+            state.intended_route = api['SignalRoute'].DIRECT
+            state.retained = True
+            state.route_status = 'retained_legacy_bridge_fresh_raw_quality_off'
+            state.artifact_name = 'identity'
+            state.artifact_version = 'identity_v1'
+            state.route_artifact = {
+                'schema_version': 'ppg_frailty.legacy_bridge_route.v1',
+                'state': 'direct_fresh_raw_csv',
+                'quality_mode': 'off',
+                'classification_action': 'keep_unchanged',
+                'affects_retention': False,
+                'affects_aggregation': False,
+                'affects_prediction': False,
+                'profile_id': profile.profile_id,
+            }
+        except Exception as exc:
+            state.retained = False
+            state.reason = (
+                f'legacy_bridge_preprocess_failed:{type(exc).__name__}:{exc}'
+            )
+            state.route_status = 'dropped_legacy_bridge_preprocess'
+    return {
+        'method': 'legacy_bridge_quality_off_fresh_raw_csv',
+        'fitted_on_participant_ids': (),
+        'outer_oof_ids_absent': True,
+        'classification_effect': 'none',
+        'historical_cache_used_for_training': False,
+    }
+
+
+def _extract_l3_bridge_raw(state: _RuntimeRecord, profile: Any) -> None:
+    '''Materialise L3 V2-semantic channels with legacy all-8 window scaling.'''
+
+    if not state.retained:
+        return
+    from .legacy_bridge import build_v2_window_scaled_bridge_raw_windows
+
+    try:
+        state.raw_windows = build_v2_window_scaled_bridge_raw_windows(
+            state.views,
+            profile,
+        )
+    except Exception as exc:
+        state.retained = False
+        state.reason = f'legacy_bridge_l3_windows_failed:{type(exc).__name__}:{exc}'
+        state.route_status = 'dropped_legacy_bridge_l3_window_failure'
+
+
+def _peak_detection_runtime_kwargs(
+    detector: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Select the fully materialized detector arguments used at runtime."""
+
+    return {
+        'detector_id': str(detector['detector_id']),
+        'min_observation_sec': float(detector['min_observation_sec']),
+        'min_peaks': int(detector['min_peaks']),
+    }
+
+
+def _fit_quality_calibrator(states: list[_RuntimeRecord], config: Any, train_ids: tuple[str, ...], oof_ids: tuple[str, ...]) -> tuple[Any, Any]:
+    '''Resolve fixed SQI or fit its empirical map from outer-train rows only.'''
+
+    api = _runtime_imports()
+    sqi_payload = config.to_dict()
+    sqi_payload['quality'].pop('window_selection', None)
+    formal = api['SqiConfig'].from_resolved(sqi_payload)
+    if formal.calibrator == 'fixed_formula_thresholds_v1':
+        return formal, None
+    detector = api['resolve_peak_detector_config'](
         config.section('signal')
-    )['detector_id']
+    )
     base = api['replace'](formal, calibrator='fixed_formula_thresholds_v1')
     component_rows: list[dict[str, float]] = []
     participant_rows: list[str] = []
@@ -413,7 +665,7 @@ def _fit_quality_calibrator(states: list[_RuntimeRecord], config: Any, train_ids
             quality = api['evaluate_quality'](
                 state.views,
                 config=base,
-                detector_id=detector_id,
+                **_peak_detection_runtime_kwargs(detector),
             )
             component_rows.append(api['quality_component_scores'](quality))
             participant_rows.append(str(state.row.participant_id))
@@ -430,6 +682,8 @@ def _fit_quality_calibrator(states: list[_RuntimeRecord], config: Any, train_ids
         fitted_on_participant_ids=fitted_ids,
         outer_train_participant_ids=train_ids,
         outer_oof_participant_ids=oof_ids,
+        lower_quantile=formal.calibrator_lower_quantile,
+        upper_quantile=formal.calibrator_upper_quantile,
     )
     if set(calibrator.fitted_on_participant_ids) & set(oof_ids):
         raise _ExperimentProtocolError('heldout_subject_in_sqi_calibrator')
@@ -437,18 +691,15 @@ def _fit_quality_calibrator(states: list[_RuntimeRecord], config: Any, train_ids
 
 
 def _quality_mode(config: Any) -> str:
-    '''Resolve explicit V2 quality mode; route remains disabled / V2 quality gate.'''
+    '''Resolve the selected optional quality module without a readiness gate.'''
 
-    mode = str(config.section('quality').get('mode', 'off'))
-    if mode not in {'off', 'diagnostics_only', 'route'}:
-        raise _ExperimentProtocolError(f'unsupported_quality_mode:{mode}')
-    # A user-editable readiness boolean is not scientific evidence. V2 has no
-    # frozen supervised SQI artifact ID/hash, so YAML alone cannot enable routing.
-    if mode == 'route':
-        raise _ExperimentProtocolError(
-            'quality_route_disabled_no_frozen_supervised_artifact'
-        )
-    return mode
+    api = _runtime_imports()
+    try:
+        return api['resolve_quality_mode'](
+            config.section('quality').get('mode', 'off')
+        ).value
+    except (TypeError, ValueError) as exc:
+        raise _ExperimentProtocolError(f'unsupported_quality_mode:{exc}') from exc
 
 
 def _retain_without_quality_routing(
@@ -470,9 +721,9 @@ def _retain_without_quality_routing(
         if diagnostics_only else None
     )
     artifact = config.section('artifact')
-    detector_id = api['resolve_peak_detector_config'](
+    detector = api['resolve_peak_detector_config'](
         config.section('signal')
-    )['detector_id']
+    )
     for state in states:
         if state.views is None:
             continue
@@ -484,7 +735,7 @@ def _retain_without_quality_routing(
                 **(
                     {
                         'config': diagnostic_config,
-                        'detector_id': detector_id,
+                        **_peak_detection_runtime_kwargs(detector),
                     }
                     if diagnostic_config is not None else {}
                 ),
@@ -499,7 +750,7 @@ def _retain_without_quality_routing(
                 'segment_id': str(state.row.record_id),
                 'start_sample': 0,
                 'end_sample': int(state.views.x_filter.shape[0]),
-                'state': 'reference_direct_no_supervised_route',
+                'state': 'reference_direct_quality_nonrouting',
                 'source_signal': 'x_filter',
                 'quality_mode': outcome.mode.value,
                 'classification_action': outcome.classification_action,
@@ -550,6 +801,163 @@ def _retain_without_quality_routing(
         'outer_oof_ids_absent': True,
         'classification_effect': 'none',
         'configured_reducer_not_executed': str(artifact['reducer']),
+        'runtime_parameters': (
+            asdict(diagnostic_config)
+            if diagnostic_config is not None and is_dataclass(diagnostic_config)
+            else vars(diagnostic_config)
+            if diagnostic_config is not None and hasattr(diagnostic_config, '__dict__')
+            else None
+        ),
+    }
+
+
+def _quality_route_provenance(
+    sqi_config: Any,
+    calibrator: Any | None,
+    oof_ids: Iterable[str],
+) -> dict[str, Any]:
+    '''Describe the exact route policy and prove its fitted-state boundary.'''
+
+    fitted_ids = (
+        tuple(calibrator.fitted_on_participant_ids)
+        if calibrator is not None
+        else ()
+    )
+    return {
+        'method': (
+            calibrator.method
+            if calibrator is not None
+            else sqi_config.calibrator
+        ),
+        'fitted_on_participant_ids': fitted_ids,
+        'outer_oof_ids_absent': not bool(set(fitted_ids) & set(oof_ids)),
+        'classification_effect': 'routing',
+        'runtime_parameters': sqi_config.to_dict(),
+    }
+
+
+def _reason_counts(rows: Iterable[Any]) -> dict[str, int]:
+    '''Count diagnostic reason codes without retaining one row per beat.'''
+
+    counts: dict[str, int] = {}
+    for row in rows:
+        reasons = (
+            row.get('reason_codes', ())
+            if isinstance(row, Mapping)
+            else getattr(row, 'reason_codes', ())
+        )
+        for raw_reason in reasons:
+            reason = str(raw_reason)
+            counts[reason] = counts.get(reason, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _compact_dual_optical_diagnostics(
+    optical: Any,
+) -> dict[str, Any]:
+    '''Persist bounded optical audit evidence, never full per-beat payloads.
+
+    The complete pairing and beat-audit objects remain available in memory while
+    optical predictors are calculated.  Default experiment artifacts retain only
+    algorithm parameters, counts, reason summaries, and aggregates.  It does not
+    materialize or hash the omitted rows and has no effect on features, validity,
+    or routing.
+    '''
+
+    policy = 'per_beat_rows_omitted_from_default_artifacts'
+    try:
+        pairing = optical.pairing
+        pairing_rows = pairing.rows
+        beat_rows = optical.beat_audit
+        valid_pair_count = sum(
+            bool(row.pair_valid) for row in pairing_rows
+        )
+        optical_valid_count = sum(
+            bool(row.optical_valid) for row in beat_rows
+        )
+        return to_strict_json_value(
+            {
+                'schema_version': optical.schema_version,
+                'detail_policy': policy,
+                'status': 'summary_available',
+                'pairing_summary': {
+                    'schema_version': pairing.schema_version,
+                    'detector_id': pairing.detector_id,
+                    'reference_wavelength': pairing.reference_wavelength,
+                    'secondary_wavelength': pairing.secondary_wavelength,
+                    'reference_score': pairing.reference_score,
+                    'reference_coverage': pairing.reference_coverage,
+                    'secondary_score': pairing.secondary_score,
+                    'secondary_coverage': pairing.secondary_coverage,
+                    'red_detection_run_id': pairing.red_detection_run_id,
+                    'ir_detection_run_id': pairing.ir_detection_run_id,
+                    'red_detector_version': pairing.red_detector_version,
+                    'ir_detector_version': pairing.ir_detector_version,
+                    'red_selected_polarity': pairing.red_selected_polarity,
+                    'ir_selected_polarity': pairing.ir_selected_polarity,
+                    'red_block_hri_provenance_hash': (
+                        pairing.red_block_hri_provenance_hash
+                    ),
+                    'ir_block_hri_provenance_hash': (
+                        pairing.ir_block_hri_provenance_hash
+                    ),
+                    'reference_selection_rule': (
+                        pairing.reference_selection_rule
+                    ),
+                    'cycle_interval_policy': pairing.cycle_interval_policy,
+                    'ambiguity_tie_break': pairing.ambiguity_tie_break,
+                    'row_count': len(pairing_rows),
+                    'valid_pair_count': valid_pair_count,
+                    'invalid_pair_count': len(pairing_rows) - valid_pair_count,
+                    'reason_counts': _reason_counts(pairing_rows),
+                },
+                'beat_audit_summary': {
+                    'row_count': len(beat_rows),
+                    'optical_valid_count': optical_valid_count,
+                    'optical_invalid_count': len(beat_rows) - optical_valid_count,
+                    'reason_counts': _reason_counts(beat_rows),
+                },
+                'aggregate_values': optical.aggregate_values,
+                'aggregate_validity': optical.aggregate_validity,
+                'diagnostics': optical.diagnostics,
+                'reasons': tuple(getattr(optical, 'reasons', ())),
+            }
+        )
+    except Exception as exc:  # Diagnostics must never alter model eligibility.
+        return {
+            'schema_version': str(
+                getattr(optical, 'schema_version', 'dual_optical_unknown')
+            ),
+            'detail_policy': policy,
+            'status': 'summary_unavailable_noncausal',
+            'error_type': type(exc).__name__,
+            'error': str(exc),
+        }
+
+
+def _motion_recovery_decision(
+    quality: Any,
+    *,
+    detector_enabled: bool,
+    degraded_policy: str,
+) -> tuple[bool, dict[str, Any]]:
+    '''Resolve motion-assisted recovery from signal evidence, never role labels.'''
+
+    component = getattr(quality, 'components', {}).get('rate.motion_energy_rms')
+    component_state = getattr(getattr(component, 'state', None), 'value', None)
+    detected = bool(detector_enabled and component_state == 'fail')
+    reducer_requested = degraded_policy == 'denoise_then_extract_rate_features'
+    recoverable = bool(
+        reducer_requested and (detected if detector_enabled else True)
+    )
+    return recoverable, {
+        'enabled': bool(detector_enabled),
+        'source': 'rate.motion_energy_rms_component',
+        'component_state': component_state,
+        'raw_value': getattr(component, 'raw_value', None),
+        'normalized_value': getattr(component, 'normalized_value', None),
+        'motion_detected': detected,
+        'recovery_candidate': recoverable,
     }
 
 
@@ -561,30 +969,34 @@ def _route_records(states: list[_RuntimeRecord], config: Any, report: Any, sqi_c
     RouteState = api['RouteState']
     SignalRoute = api['SignalRoute']
     artifact = config.section('artifact')
-    detector_id = api['resolve_peak_detector_config'](
+    detector = api['resolve_peak_detector_config'](
         config.section('signal')
-    )['detector_id']
+    )
     policy = str(artifact['degraded_policy'])
     if policy not in {'drop', 'denoise_then_extract_rate_features'}:
         raise _ExperimentProtocolError(f'unsupported_degraded_policy:{policy}')
     for state in states:
-        motion_override = bool(
-            artifact['motion_detector_enabled']
-            and str(state.row.role).startswith(('S', 'W'))
-        )
-        state.intended_route = SignalRoute.ARTIFACT_RATE_ONLY if (
-            motion_override or policy == 'denoise_then_extract_rate_features'
-        ) else SignalRoute.DIRECT
+        state.intended_route = SignalRoute.DIRECT
         if state.views is None:
             continue
         try:
-            direct = api['evaluate_quality'](
+            direct_outcome = api['run_quality_mode'](
                 state.views,
+                mode='route',
+                evaluator=api['evaluate_quality'],
                 config=sqi_config,
                 calibrator=calibrator,
-                detector_id=detector_id,
+                **_peak_detection_runtime_kwargs(detector),
             )
+            direct = direct_outcome.result
             state.direct_quality = direct
+            recoverable_motion, motion_evidence = _motion_recovery_decision(
+                direct,
+                detector_enabled=bool(artifact['motion_detector_enabled']),
+                degraded_policy=policy,
+            )
+            if recoverable_motion:
+                state.intended_route = SignalRoute.ARTIFACT_RATE_ONLY
             integrity = api['SegmentIntegrity'](
                 pass_=True,
                 segment_id=str(state.row.record_id),
@@ -594,15 +1006,15 @@ def _route_records(states: list[_RuntimeRecord], config: Any, report: Any, sqi_c
             decision = api['route_segment_pre_reduction'](
                 integrity,
                 q_pre=direct,
-                recoverable_motion=bool(
-                    motion_override
-                    or policy == 'denoise_then_extract_rate_features'
-                ),
+                recoverable_motion=recoverable_motion,
                 reducer_enabled=bool(
                     policy == 'denoise_then_extract_rate_features'
                 ),
             )
             state.route_artifact = to_strict_json_value(asdict(decision))
+            state.route_artifact['motion_recovery'] = to_strict_json_value(
+                motion_evidence
+            )
             if decision.state in {
                 RouteState.FULL_DIRECT,
                 RouteState.RATE_ONLY_DIRECT,
@@ -610,10 +1022,16 @@ def _route_records(states: list[_RuntimeRecord], config: Any, report: Any, sqi_c
                 state.final_quality = direct
                 state.route = SignalRoute.DIRECT
                 state.intended_route = SignalRoute.DIRECT
+                state.shape_features_eligible = (
+                    decision.state is RouteState.FULL_DIRECT
+                )
                 state.retained = True
                 state.route_status = str(decision.state.value)
-                state.artifact_name = str(artifact['reducer'])
-                state.artifact_version = str(artifact['reducer_version'])
+                state.artifact_name = 'identity'
+                state.artifact_version = 'identity_v1'
+                state.route_artifact['configured_reducer_not_executed'] = str(
+                    artifact['reducer']
+                )
                 continue
             if decision.state is RouteState.DEGRADED_DROP:
                 state.reason = ';'.join(decision.reasons)
@@ -645,15 +1063,21 @@ def _route_records(states: list[_RuntimeRecord], config: Any, report: Any, sqi_c
                     q_rate_post=None,
                 )
                 state.route_artifact = to_strict_json_value(asdict(final_route))
+                state.route_artifact['motion_recovery'] = to_strict_json_value(
+                    motion_evidence
+                )
                 state.reason = ';'.join(final_route.reasons)
                 state.route_status = str(final_route.state.value)
                 continue
-            post = api['evaluate_quality'](
+            post_outcome = api['run_quality_mode'](
                 outcome.views,
+                mode='route',
+                evaluator=api['evaluate_quality'],
                 config=sqi_config,
                 calibrator=calibrator,
-                detector_id=detector_id,
+                **_peak_detection_runtime_kwargs(detector),
             )
+            post = post_outcome.result
             if post.q_morph.state is not QualityState.NOT_APPLICABLE or post.q_morph.score is not None:
                 raise _ExperimentProtocolError('nonidentity_post_q_morph_contract_failed')
             final_route = api['finalize_rate_recovery'](
@@ -662,9 +1086,13 @@ def _route_records(states: list[_RuntimeRecord], config: Any, report: Any, sqi_c
                 q_rate_post=post.q_rate,
             )
             state.route_artifact = to_strict_json_value(asdict(final_route))
+            state.route_artifact['motion_recovery'] = to_strict_json_value(
+                motion_evidence
+            )
             state.views = outcome.views
             state.final_quality = post
             state.route = SignalRoute.ARTIFACT_RATE_ONLY
+            state.shape_features_eligible = False
             state.route_status = str(final_route.state.value)
             if final_route.state is RouteState.RATE_ONLY_PROCESSED:
                 state.retained = True
@@ -677,7 +1105,11 @@ def _route_records(states: list[_RuntimeRecord], config: Any, report: Any, sqi_c
             state.route_status = 'dropped_quality_route_failure'
 
 
-def _extract_vector(state: _RuntimeRecord, report: Any) -> None:
+def _extract_vector(
+    state: _RuntimeRecord,
+    report: Any,
+    features_config: Mapping[str, Any] | None = None,
+) -> None:
     '''构建完整 FeatureVectorV1 / Build one complete FeatureVectorV1.'''
 
     if not state.retained:
@@ -686,9 +1118,13 @@ def _extract_vector(state: _RuntimeRecord, report: Any) -> None:
     SignalRoute = api['SignalRoute']
     QualityState = api['QualityState']
     try:
+        prv_config_type = api.get('PrvConfig')
+        if prv_config_type is None:  # Supports lightweight injected test APIs.
+            from .signal.prv import PrvConfig as prv_config_type
+        prv_config = prv_config_type.from_mapping(features_config)
         pulses_per_wavelength = api['detect_pulses_per_wavelength'](
             state.views,
-            detector_id=report.peak_detector['detector_id'],
+            **_peak_detection_runtime_kwargs(report.peak_detector),
         )
         pulse = pulses_per_wavelength[
             api['select_reference_wavelength'](pulses_per_wavelength)
@@ -703,6 +1139,7 @@ def _extract_vector(state: _RuntimeRecord, report: Any) -> None:
                 if state.final_quality is None
                 else state.final_quality.q_rate.state is QualityState.PASS
             ),
+            config=prv_config,
         )
         plan = api['WindowPlan'](
             source_record_id=state.row.record_id,
@@ -722,7 +1159,10 @@ def _extract_vector(state: _RuntimeRecord, report: Any) -> None:
         for name, value in prv.values.items():
             values[f'prv.{name}'] = value
             validity[f'prv.{name}'] = bool(prv.validity[name])
-        if state.route in {SignalRoute.DIRECT, SignalRoute.IDENTITY}:
+        if (
+            state.shape_features_eligible
+            and state.route in {SignalRoute.DIRECT, SignalRoute.IDENTITY}
+        ):
             morphology = api['extract_morphology'](state.views.x_filter, pulse, route=state.route)
             for name, value in morphology.aggregate_values.items():
                 values[f'morphology.{name}'] = value
@@ -737,28 +1177,28 @@ def _extract_vector(state: _RuntimeRecord, report: Any) -> None:
                 values[f'optical.{name}'] = value
                 validity[f'optical.{name}'] = bool(optical.aggregate_validity[name])
             state.diagnostic_components['dual_optical_pairing'] = (
-                to_strict_json_value(
-                    {
-                        'schema_version': optical.schema_version,
-                        'pairing': asdict(optical.pairing),
-                        'beat_audit': [
-                            asdict(row) for row in optical.beat_audit
-                        ],
-                        'aggregate_validity': optical.aggregate_validity,
-                        'diagnostics': optical.diagnostics,
-                    }
-                )
+                _compact_dual_optical_diagnostics(optical)
             )
-        registry = api['default_registry']()
-        predictor_names = set(registry.names)
-        excluded_names = sorted(set(values) - predictor_names)
+        enabled_groups = (
+            None
+            if features_config is None
+            else features_config.get('enabled_groups')
+        )
+        registry = api['registry_for_groups'](enabled_groups)
+        complete_registry = api['default_registry']()
+        non_predictor_names = sorted(set(values) - set(complete_registry.names))
+        disabled_registered_names = sorted(
+            set(complete_registry.names) - set(registry.names)
+        )
         allowed_metadata_names = {
             'prv.coverage',
             'sqi.coverage',
             'sqi.q_morph',
             'sqi.q_rate',
         }
-        unexpected = sorted(set(excluded_names) - allowed_metadata_names)
+        unexpected = sorted(
+            set(values) - set(complete_registry.names) - allowed_metadata_names
+        )
         if unexpected:
             raise _ExperimentProtocolError(
                 'unregistered_feature_fields:' + ','.join(unexpected)
@@ -768,7 +1208,13 @@ def _extract_vector(state: _RuntimeRecord, report: Any) -> None:
                 'value': values.get(name),
                 'valid': bool(validity.get(name, False)),
             }
-            for name in excluded_names
+            for name in non_predictor_names
+        }
+        state.diagnostic_components['disabled_feature_groups'] = {
+            'disabled_predictor_count': len(disabled_registered_names),
+            'enabled_groups': list(
+                dict.fromkeys(item.group for item in registry.definitions)
+            ),
         }
         predictor_values = {
             name: values[name] for name in registry.names if name in values
@@ -784,6 +1230,9 @@ def _extract_vector(state: _RuntimeRecord, report: Any) -> None:
         state.diagnostic_components['predictor_availability'] = {
             'schema_version': registry.schema_version,
             'registry_sha256': registry.sha256,
+            'enabled_groups': list(
+                dict.fromkeys(item.group for item in registry.definitions)
+            ),
             'predictor_count': len(registry.names),
             'available_predictor_count':
                 len(registry.names) - len(unavailable_predictors),
@@ -797,8 +1246,9 @@ def _extract_vector(state: _RuntimeRecord, report: Any) -> None:
             provenance={
                 'route': state.route.value,
                 'record_id': state.row.record_id,
-                'non_predictor_metadata_fields': excluded_names,
+                'non_predictor_metadata_fields': non_predictor_names,
                 'sqi_and_coverage_predictors_excluded': True,
+                'prv_config': prv_config.to_dict(),
             },
         )
     except Exception as exc:
@@ -842,8 +1292,12 @@ def _dataset(states: Iterable[_RuntimeRecord]) -> Any:
     )
 
 
-def _extract_raw(state: _RuntimeRecord, report: Any) -> None:
-    '''Build the sole fixed raw-window contract / 构建唯一的定长 raw 窗口合同。'''
+def _extract_raw(
+    state: _RuntimeRecord,
+    report: Any,
+    signal_config: Mapping[str, Any] | None = None,
+) -> None:
+    '''Build configured mask-aware raw windows / 构建配置化 raw 窗口。'''
 
     if not state.retained:
         return
@@ -853,11 +1307,197 @@ def _extract_raw(state: _RuntimeRecord, report: Any) -> None:
             source_record_id=state.row.record_id,
             **report.window_profiles['raw_dl'],
         )
-        state.raw_windows = api['build_raw_windows'](state.views, plan)
+        normalization = None
+        if signal_config is not None:
+            raw_normalization = signal_config.get('normalization', {})
+            if not isinstance(raw_normalization, Mapping):
+                raise TypeError('signal.normalization must be a mapping')
+            normalization = dict(raw_normalization)
+        state.raw_windows = api['build_raw_windows'](
+            state.views,
+            plan,
+            normalization=normalization,
+        )
     except Exception as exc:
         state.retained = False
         state.reason = f'raw_windows_failed:{type(exc).__name__}:{exc}'
         state.route_status = 'dropped_raw_window_failure'
+
+
+def _apply_window_quality_selection(
+    states: list[_RuntimeRecord],
+    config: Any,
+    *,
+    train_ids: tuple[str, ...],
+    oof_ids: tuple[str, ...],
+) -> dict[str, Any]:
+    '''Apply the configured label-free selector independently inside each file.'''
+
+    from .quality.window_selection import (
+        WindowSelectionConfig,
+        mark_raw_windows_for_aggregation,
+        score_raw_windows,
+        select_raw_windows,
+    )
+
+    selection = WindowSelectionConfig.from_mapping(
+        config.section('quality').get('window_selection')
+    )
+    train = set(map(str, train_ids))
+    oof = set(map(str, oof_ids))
+    aggregation = config.section('aggregation')
+    score_oof_for_aggregation = (
+        bool(aggregation.get('quality_weighting', False))
+        and aggregation.get('quality_weight_source') == 'legacy_window_sqi'
+    )
+    summaries: list[dict[str, Any]] = []
+    for state in states:
+        if state.raw_windows is None:
+            continue
+        participant = str(state.row.participant_id)
+        if participant not in train | oof:
+            raise _ExperimentProtocolError(
+                'window_quality_selection_participant_outside_fold'
+            )
+        apply_selection = (
+            selection.policy != 'none'
+            and (
+                participant in train
+                or selection.application_scope == 'all_partitions'
+            )
+        )
+        apply_aggregation_selection = (
+            selection.policy != 'none'
+            and participant in oof
+            and selection.application_scope == 'legacy_train_and_aggregation'
+        )
+        if apply_selection:
+            selected, summary = select_raw_windows(state.raw_windows, selection)
+            state.raw_windows = selected
+        elif apply_aggregation_selection:
+            marked, summary = mark_raw_windows_for_aggregation(
+                state.raw_windows,
+                selection,
+            )
+            state.raw_windows = marked
+        elif selection.policy != 'none' and score_oof_for_aggregation:
+            scored, summary = score_raw_windows(state.raw_windows, selection)
+            state.raw_windows = scored
+        else:
+            count = int(state.raw_windows.values.shape[0])
+            summary = {
+                'input_window_count': count,
+                'retained_window_count': count,
+                'aggregation_window_count': count,
+                'score_vector_sha256': None,
+                'aggregation_mask_sha256': None,
+            }
+        summaries.append(
+            {
+                'record_id': str(state.row.record_id),
+                'partition': 'outer_train' if participant in train else 'outer_oof',
+                'input_window_count': int(summary['input_window_count']),
+                'retained_window_count': int(summary['retained_window_count']),
+                'selection_applied': bool(apply_selection),
+                'aggregation_selection_applied': bool(
+                    apply_aggregation_selection
+                ),
+                'aggregation_window_count': int(
+                    summary.get(
+                        'aggregation_window_count',
+                        summary['retained_window_count'],
+                    )
+                ),
+                'score_computed': summary.get('score_vector_sha256') is not None,
+                'score_vector_sha256': summary.get('score_vector_sha256'),
+                'aggregation_mask_sha256': summary.get(
+                    'aggregation_mask_sha256'
+                ),
+            }
+        )
+    score_hash_rows = [
+        {
+            'record_id': row['record_id'],
+            'partition': row['partition'],
+            'score_vector_sha256': row['score_vector_sha256'],
+            'aggregation_mask_sha256': row['aggregation_mask_sha256'],
+        }
+        for row in sorted(summaries, key=lambda item: item['record_id'])
+        if row['score_vector_sha256'] is not None
+    ]
+    return {
+        **selection.to_mapping(),
+        'scope': 'independent_within_each_file',
+        'application_scope': selection.application_scope,
+        'uses_labels': False,
+        'fitted_on_participant_ids': [],
+        'cross_file_statistics': False,
+        'outer_oof_used_for_training_fit': False,
+        'file_count': len(summaries),
+        'input_window_count': sum(row['input_window_count'] for row in summaries),
+        'retained_window_count': sum(
+            row['retained_window_count'] for row in summaries
+        ),
+        'selection_applied_file_count': sum(
+            row['selection_applied'] for row in summaries
+        ),
+        'aggregation_selection_applied_file_count': sum(
+            row['aggregation_selection_applied'] for row in summaries
+        ),
+        'aggregation_window_count': sum(
+            row['aggregation_window_count'] for row in summaries
+        ),
+        'score_computed_file_count': sum(
+            row['score_computed'] for row in summaries
+        ),
+        'score_vector_bundle_sha256': (
+            hashlib.sha256(
+                json.dumps(
+                    score_hash_rows,
+                    sort_keys=True,
+                    separators=(',', ':'),
+                ).encode('utf-8')
+            ).hexdigest()
+            if score_hash_rows
+            else None
+        ),
+        'partition_counts': {
+            partition: {
+                'files': sum(row['partition'] == partition for row in summaries),
+                'input_windows': sum(
+                    row['input_window_count']
+                    for row in summaries
+                    if row['partition'] == partition
+                ),
+                'retained_windows': sum(
+                    row['retained_window_count']
+                    for row in summaries
+                    if row['partition'] == partition
+                ),
+                'selection_applied_files': sum(
+                    row['selection_applied']
+                    for row in summaries
+                    if row['partition'] == partition
+                ),
+                'aggregation_selection_applied_files': sum(
+                    row['aggregation_selection_applied']
+                    for row in summaries
+                    if row['partition'] == partition
+                ),
+                'aggregation_windows': sum(
+                    row['aggregation_window_count']
+                    for row in summaries
+                    if row['partition'] == partition
+                ),
+                'scored_files': sum(
+                    row['score_computed']
+                    for row in summaries
+                    if row['partition'] == partition
+                ),
+            }
+            for partition in ('outer_train', 'outer_oof')
+        },
+    }
 
 
 def _retained_states(
@@ -905,6 +1545,7 @@ def _fit_representation_artifacts(
     oof_ids: tuple[str, ...],
     *,
     fitted_objects: dict[str, Any] | None = None,
+    matrix_k: int = 32,
 ) -> dict[str, Any]:
     '''Fit and apply only the transforms required by one representation mode.
 
@@ -932,6 +1573,20 @@ def _fit_representation_artifacts(
             for state in raw_states
             for _ in range(state.raw_windows.values.shape[0])
         )
+        normalization_payloads = [
+            state.raw_windows.provenance.get('normalization_config')
+            for state in raw_states
+            if state.raw_windows.provenance.get('normalization_config') is not None
+        ]
+        normalization = (
+            dict(normalization_payloads[0])
+            if normalization_payloads
+            else None
+        )
+        if any(dict(value) != normalization for value in normalization_payloads):
+            raise _ExperimentProtocolError(
+                'raw_normalization_config_differs_across_outer_fold_records'
+            )
         imu_transform = api['fit_fold_imu_channel_transform'](
             raw_values,
             raw_participants,
@@ -939,6 +1594,7 @@ def _fit_representation_artifacts(
             outer_train_participant_ids=train_ids,
             outer_oof_participant_ids=oof_ids,
             valid_mask=raw_masks,
+            normalization=normalization,
         )
         if fitted_objects is not None:
             fitted_objects['raw_imu'] = imu_transform
@@ -953,6 +1609,14 @@ def _fit_representation_artifacts(
             'fitted_on_participant_ids': imu_transform.fitted_on_participant_ids,
             'channel_schema': imu_transform.channel_schema,
             'valid_count': imu_transform.valid_count.tolist(),
+            'strategy': imu_transform.strategy,
+            'parameters': {
+                'iqr_fallback': imu_transform.iqr_fallback,
+                'robust_iqr_divisor': imu_transform.robust_iqr_divisor,
+                'mad_consistency_divisor': imu_transform.mad_consistency_divisor,
+                'scale_epsilon': imu_transform.scale_epsilon,
+                'standard_ddof': imu_transform.standard_ddof,
+            },
         }
 
     if mode in {'feature_matrix', 'fusion'}:
@@ -1031,7 +1695,7 @@ def _fit_representation_artifacts(
                             'engineering_transform_sha256': engineering_hash,
                             'feature_vector_transform_sha256': vector_transform.artifact_sha256,
                         },
-                        k=32,
+                        k=matrix_k,
                     )
                 except Exception as exc:
                     state.retained = False
@@ -1041,6 +1705,7 @@ def _fit_representation_artifacts(
                 **engineering_payload,
                 'artifact_sha256': engineering_hash,
                 'schema_version': 'engineering_outer_train_robust_v2',
+                'matrix_k': int(matrix_k),
             }
             _assert_train_payload_roster(states, train_ids, required=('matrix',))
 
@@ -1053,15 +1718,83 @@ def _fit_representation_artifacts(
     return provenance
 
 
-def _sample_identity(state: _RuntimeRecord, *, window_id: str | None = None) -> Any:
+def _legacy_bridge_representation_artifacts(
+    states: list[_RuntimeRecord],
+    profile: Any,
+    train_ids: tuple[str, ...],
+    oof_ids: tuple[str, ...],
+) -> dict[str, Any]:
+    '''Apply only the normalization stage named by the reviewed bridge profile.'''
+
+    _assert_train_payload_roster(states, train_ids, required=('raw_windows',))
+    if profile.uses_fold_imu_transform:
+        provenance = _fit_representation_artifacts(
+            states,
+            'raw',
+            train_ids,
+            oof_ids,
+        )
+        provenance['legacy_bridge_normalization_stage'] = {
+            'profile_id': profile.profile_id,
+            'ppg': 'per_window_all_eight_builder_scales_red_ir_only_for_L4_plus',
+            'imu': 'outer_train_axes6_fold_robust',
+        }
+        provenance['legacy_bridge_window_materialization'] = {
+            'end_alignment': 'include_right_aligned_if_distinct',
+            'padding': 'none_complete_windows_only',
+            'source_rows_required_valid': True,
+            'cap_per_file': profile.max_windows_per_file,
+        }
+        return provenance
+    complete_windows_only = profile.profile_id != 'L0'
+    window_materialization = {
+        'end_alignment': 'include_right_aligned_if_distinct',
+        'padding': (
+            'none_complete_windows_only'
+            if complete_windows_only
+            else 'zero_right_only_if_source_shorter_than_one_window'
+        ),
+        'source_rows_required_valid': True,
+        'historical_retained_fraction': profile.historical_retained_fraction,
+        'cap_per_file': profile.max_windows_per_file,
+    }
+    if not complete_windows_only:
+        window_materialization.update(
+            {
+                'padding_occurs_after_scaling_available_source_rows': True,
+                'padded_values': 0.0,
+            }
+        )
+    return {
+        'legacy_bridge_normalization_stage': {
+            'profile_id': profile.profile_id,
+            'all_eight_channels': (
+                'per_window_median_iqr_over_1p349_sd_fallback_clip_-8_8'
+            ),
+            'outer_train_fitted_transform': False,
+            'outer_oof_used_for_fitting': False,
+        },
+        'legacy_bridge_window_materialization': window_materialization,
+    }
+
+
+def _sample_identity(
+    state: _RuntimeRecord,
+    *,
+    window_id: str | None = None,
+    quality_score: float | None = None,
+    aggregation_retained: bool = True,
+) -> Any:
     '''Create one canonical physiological identity / 创建规范生理 role 身份。'''
 
     api = _runtime_imports()
-    quality = (
-        1.0
-        if state.final_quality is None or state.final_quality.q_rate.score is None
-        else float(state.final_quality.q_rate.score)
-    )
+    quality = quality_score
+    if quality is None:
+        quality = (
+            1.0
+            if state.final_quality is None or state.final_quality.q_rate.score is None
+            else float(state.final_quality.q_rate.score)
+        )
     return api['SampleIdentity'](
         participant_id=str(state.row.participant_id),
         file_id=str(state.row.record_id),
@@ -1070,6 +1803,7 @@ def _sample_identity(state: _RuntimeRecord, *, window_id: str | None = None) -> 
         signal_route=state.route.value,
         quality_score=quality,
         window_id=window_id,
+        aggregation_retained=bool(aggregation_retained),
     )
 
 
@@ -1077,6 +1811,8 @@ def _materialize_representation_dataset(
     states: Iterable[_RuntimeRecord],
     participant_ids: Iterable[str],
     mode: str,
+    *,
+    quality_weight_source: str = 'none',
 ) -> Any:
     '''Materialise exactly one typed dataset / 物化严格类型化的数据集。'''
 
@@ -1102,6 +1838,12 @@ def _materialize_representation_dataset(
         masks = []
         identities = []
         for state in selected:
+            window_scores = state.raw_windows.window_quality_scores
+            aggregation_mask = state.raw_windows.window_aggregation_mask
+            if quality_weight_source == 'legacy_window_sqi' and window_scores is None:
+                raise _ExperimentProtocolError(
+                    'legacy_window_sqi_scores_missing_from_raw_windows'
+                )
             for index, start_sample in enumerate(state.raw_windows.start_samples):
                 values.append(state.raw_windows.values[index])
                 masks.append(state.raw_windows.valid_mask[index])
@@ -1110,6 +1852,16 @@ def _materialize_representation_dataset(
                         state,
                         window_id=(
                             f'{state.row.record_id}::start_{int(start_sample):012d}'
+                        ),
+                        quality_score=(
+                            float(window_scores[index])
+                            if window_scores is not None
+                            else None
+                        ),
+                        aggregation_retained=(
+                            True
+                            if aggregation_mask is None
+                            else bool(aggregation_mask[index])
                         ),
                     )
                 )
@@ -1143,6 +1895,125 @@ def _materialize_representation_dataset(
     raise _ExperimentProtocolError(f'unsupported_representation_mode:{mode}')
 
 
+def _prepare_dl_input_dataset(
+    dataset: Any,
+    mode: str,
+    dl_config: Mapping[str, Any],
+) -> tuple[Any, str | None, dict[str, object] | None]:
+    '''Apply one configured model-input sampling transform to raw or fusion.
+
+    Canonical 400-Hz windows and engineered features remain unchanged. For a
+    fusion dataset only the raw window bags and their sample masks are
+    transformed; file features and identities are carried through verbatim.
+    '''
+
+    enabled = bool(dl_config['enabled'])
+    case_id = dl_config.get('case_id')
+    if not enabled and case_id is None:
+        return dataset, None, None
+    if case_id is not None and mode != 'raw':
+        raise _ExperimentProtocolError(
+            'named_fixed_kernel_dl_resampling_requires_raw_representation'
+        )
+    if case_id is None and mode not in {'raw', 'fusion'}:
+        raise _ExperimentProtocolError(
+            'generic_dl_resampling_requires_raw_or_fusion_representation'
+        )
+
+    source_fs_hz = float(dl_config['preserve_feature_grid_hz'])
+    if case_id is not None:
+        from .models.time_scale import prepare_fixed_kernel_dl_input
+
+        values, mask, profile = prepare_fixed_kernel_dl_input(
+            dataset.values,
+            dataset.sample_mask,
+            str(case_id),
+            source_fs_hz=source_fs_hz,
+        )
+        from .training.datasets import RawWindowDataset
+
+        return (
+            RawWindowDataset(values, dataset.identities, mask),
+            'fixed_kernel_samples',
+            profile,
+        )
+
+    from .signal.resample import prepare_configured_dl_input
+
+    target_fs_hz = float(dl_config['target_fs_hz'])
+    if mode == 'raw':
+        values, mask, profile = prepare_configured_dl_input(
+            dataset.values,
+            dataset.sample_mask,
+            target_fs_hz=target_fs_hz,
+            source_fs_hz=source_fs_hz,
+        )
+        from .training.datasets import RawWindowDataset
+
+        return (
+            RawWindowDataset(values, dataset.identities, mask),
+            'dl_input_resampling',
+            profile,
+        )
+
+    import numpy as np
+
+    counts = tuple(int(bag.shape[0]) for bag in dataset.window_bags)
+    values = np.concatenate(dataset.window_bags, axis=0)
+    masks = np.concatenate(dataset.sample_masks, axis=0)
+    transformed, transformed_masks, profile = prepare_configured_dl_input(
+        values,
+        masks,
+        target_fs_hz=target_fs_hz,
+        source_fs_hz=source_fs_hz,
+    )
+    offsets = np.cumsum((0,) + counts)
+    bags = tuple(
+        transformed[offsets[index]:offsets[index + 1]]
+        for index in range(len(counts))
+    )
+    bag_masks = tuple(
+        transformed_masks[offsets[index]:offsets[index + 1]]
+        for index in range(len(counts))
+    )
+    from .training.datasets import FileBagDataset
+
+    return (
+        FileBagDataset(
+            bags,
+            dataset.file_features,
+            dataset.identities,
+            bag_masks,
+        ),
+        'dl_input_resampling',
+        profile,
+    )
+
+
+_ENSEMBLE_BASE_MODEL_IDS = {
+    'inception_full_five_member_ensemble': 'inception_full',
+    'inception_matrix_five_member_ensemble': 'inception_matrix',
+}
+
+
+def _ensemble_member_seed_roster(model_section: Mapping[str, Any]) -> tuple[int, ...]:
+    '''Resolve the member roster as the single source of ensemble cardinality.'''
+
+    from .models import resolve_seed_policy
+
+    policy = str(model_section.get('seed_policy', 'member_roster'))
+    try:
+        seeds = resolve_seed_policy(
+            policy,
+            member_seeds=model_section.get('member_seeds'),
+        )
+    except ValueError as exc:
+        raise _ExperimentProtocolError(f'ensemble_seed_roster_invalid:{exc}') from exc
+    if any(seed < 0 or seed > 0xFFFF_FFFF for seed in seeds):
+        raise _ExperimentProtocolError('ensemble_member_seed_out_of_executable_uint32_range')
+    return seeds
+
+
 def _resolved_model_config(
     config: Any,
     *,
@@ -1153,90 +2024,24 @@ def _resolved_model_config(
 
     api = _runtime_imports()
     section = config.section('model')
-    _, machine_id = api['normalize_model_id'](str(section['model_id']))
-    ensemble_ids = {
-        'inception_full_five_member_ensemble',
-        'inception_matrix_five_member_ensemble',
-    }
-    factory_fields = {
-        'compact_cnn': {
-            'dropout', 'kernel_sizes', 'dilations', 'pool_sizes', 'seed',
-        },
-        'inception_full': {
-            'dropout', 'kernel_sizes', 'dilation', 'seed',
-        },
-        'inception_small': {
-            'dropout', 'kernel_sizes', 'dilation', 'seed',
-        },
-        'inception_matrix': {
-            'variant', 'dropout', 'kernel_sizes', 'dilation', 'seed',
-        },
-        'inception_full_five_member_ensemble': {
-            'comparison_only', 'member_seeds', 'dropout', 'kernel_sizes',
-            'dilation',
-        },
-        'inception_matrix_five_member_ensemble': {
-            'comparison_only', 'member_seeds', 'dropout', 'kernel_sizes',
-            'dilation',
-        },
-        'rocket_numpy': {'n_kernels', 'alpha', 'seed'},
-        'minirocket_ablation': {'n_kernels', 'alpha', 'seed'},
-        'logistic_regression': {
-            'class_weight', 'logistic_c', 'logistic_max_iter',
-            'logistic_solver', 'seed',
-        },
-        'rbf_svm': {
-            'class_weight', 'svm_kernel', 'svm_probability', 'svm_c',
-            'svm_gamma', 'seed',
-        },
-        'extra_trees': {
-            'class_weight', 'extra_trees_n_estimators',
-            'extra_trees_n_jobs', 'extra_trees_max_features',
-            'extra_trees_min_samples_leaf', 'seed',
-        },
-        'fusion_compact': {
-            'signal_dropout', 'signal_kernel_sizes', 'signal_dilations',
-            'signal_pool_sizes', 'feature_hidden_dim', 'fusion_hidden_dim',
-            'pooling', 'dropout', 'seed',
-        },
-        'fusion_inception': {
-            'signal_variant', 'signal_dropout', 'signal_kernel_sizes',
-            'signal_dilation', 'feature_hidden_dim', 'fusion_hidden_dim',
-            'pooling', 'dropout', 'seed',
-        },
-        'shapeformer_channel_specific_osd': {
-            'discovery_method', 'input_fs_hz',
-            'num_pip_ratio',
-            'shapelets_per_class', 'max_discovery_windows',
-            'discovery_balance', 'position_search_neighbourhood_samples',
-            'pip_rounding_rule', 'pip_selection_rule',
-            'candidate_generation_rule', 'candidate_enumeration_rule',
-            'candidate_ranking_rule', 'selected_bank_order_rule',
-            'discovery_position_search_boundary_rule',
-            'information_gain_split_rule', 'sequence_length_samples',
-            'local_kernel_width_samples', 'local_embedding_channels',
-            'shape_embedding_channels', 'attention_feedforward_channels',
-            'attention_heads', 'attention_query_chunk_size',
-            'distance_position_chunk_size', 'dropout', 'complexity_norm',
-            'max_complexity_ratio', 'seed',
-        },
-        'shapeformer_effect_size_fixed_v1': {
-            'discovery_method', 'input_fs_hz',
-            'shapelet_length_samples',
-            'shapelets_per_class', 'discovery_stride_samples',
-            'max_candidates_per_class', 'hidden_channels', 'dropout',
-            'patch_size_samples', 'attention_heads', 'attention_layers',
-            'distance_position_chunk_size', 'seed',
-        },
-    }
-    if machine_id not in factory_fields:
-        raise _ExperimentProtocolError(
-            f'formal_runner_has_no_explicit_model_mapping:{machine_id}'
-        )
-    declared_fields = set(factory_fields[machine_id])
-    if machine_id not in ensemble_ids:
+    canonical_name, machine_id = api['normalize_model_id'](
+        str(section['model_id'])
+    )
+    factory_contract = api['model_factory_contract'](canonical_name)
+    if factory_contract['machine_model_id'] != machine_id:
+        raise _ExperimentProtocolError('model_factory_contract_identity_drift')
+    factory_fields = set(factory_contract['factory_fields'])
+    optional_factory_fields = set(
+        factory_contract['optional_factory_fields']
+    )
+    declared_fields = set(factory_fields)
+    is_ensemble = 'member_seeds' in factory_fields
+    if not is_ensemble:
         declared_fields.remove('seed')
-    missing = sorted(declared_fields - set(section))
+        required_fields = declared_fields - optional_factory_fields
+    else:
+        required_fields = {'member_seeds'}
+    missing = sorted(required_fields - set(section))
     if missing:
         raise _ExperimentProtocolError(
             'model_config_missing_explicit_factory_fields:' + ','.join(missing)
@@ -1244,21 +2049,12 @@ def _resolved_model_config(
     seed_policy = str(section.get('seed_policy', ''))
     if seed_scope not in {'outer_cv', 'final_refit'}:
         raise _ExperimentProtocolError('unsupported_model_seed_scope')
-    if machine_id in ensemble_ids:
-        if (
-            seed_policy != 'cv_fixed_five_member_seed_roster'
-            or section.get('member_seed_roster_id')
-            != 'cv_fixed_five_member_seed_roster'
-            or tuple(int(value) for value in section.get('member_seeds', ()))
-            != (50042, 60042, 70042, 80042, 90042)
-        ):
-            raise _ExperimentProtocolError(
-                'ensemble_cv_seed_policy_or_roster_identity_invalid'
-            )
-    elif seed_scope == 'final_refit':
-        if int(training_seed) != 42:
-            raise _ExperimentProtocolError('single_model_final_refit_seed_must_be_42')
-    elif seed_policy == 'cv_fixed_member0_seed_50042_comparator':
+    if is_ensemble:
+        member_seeds = _ensemble_member_seed_roster(section)
+    elif (
+        seed_scope == 'outer_cv'
+        and seed_policy == 'cv_fixed_member0_seed_50042_comparator'
+    ):
         if (
             machine_id not in {'inception_full', 'inception_matrix'}
             or int(training_seed) != 50042
@@ -1266,58 +2062,69 @@ def _resolved_model_config(
             raise _ExperimentProtocolError(
                 'ensemble_member0_comparator_seed_identity_invalid'
             )
-    elif seed_policy == 'outer_cv_repeat_seed_equals_split_seed':
-        if int(training_seed) not in {42, 10042, 20042, 30042, 40042}:
-            raise _ExperimentProtocolError(
-                'single_model_training_seed_not_in_frozen_repeat_seed_registry'
-            )
-    else:
+    elif seed_policy not in {
+        'outer_repeat', 'outer_cv_repeat_seed_equals_split_seed',
+        'fixed', 'fixed_explicit', 'final_refit_single_seed_42',
+        'cv_fixed_member0_seed_50042_comparator',
+    }:
         raise _ExperimentProtocolError('unsupported_outer_cv_seed_policy')
     resolved: dict[str, Any] = {'model_id': machine_id}
-    for field in sorted(factory_fields[machine_id]):
+    for field in sorted(factory_fields):
+        if field not in section and field != 'seed':
+            continue
         value = (
             int(training_seed)
-            if field == 'seed' and machine_id not in ensemble_ids
+            if field == 'seed' and not is_ensemble
             else section[field]
         )
-        if field in {'member_seeds', 'kernel_sizes', 'dilations', 'pool_sizes',
-                     'signal_kernel_sizes', 'signal_dilations',
-                     'signal_pool_sizes'}:
+        if field in {
+            'member_seeds', 'kernel_sizes', 'dilations', 'pool_sizes',
+            'stage_channels', 'stage_dropouts', 'signal_kernel_sizes',
+            'signal_dilations', 'signal_pool_sizes', 'signal_stage_channels',
+            'signal_stage_dropouts',
+        }:
             value = tuple(value)
         resolved[field] = value
-    architecture = section.get('architecture_parameters')
-    if not isinstance(architecture, Mapping) or not architecture:
-        raise _ExperimentProtocolError(
-            'model_config_missing_explicit_architecture_parameters'
+    if is_ensemble:
+        resolved['member_seeds'] = member_seeds
+        resolved['seed_policy'] = seed_policy or 'member_roster'
+        member_variant = section.get('member_variant')
+        resolved['variant'] = str(
+            member_variant
+            if member_variant is not None
+            else 'full'
         )
-    resolved['architecture_parameters'] = dict(architecture)
+        resolved.pop('member_variant', None)
+    else:
+        resolved['seed_policy'] = (
+            'fixed_explicit' if seed_scope == 'final_refit' else seed_policy
+        )
+    resolved['architecture_parameters'] = api['materialize_model_architecture'](
+        section
+    )
     return resolved, machine_id
 
 
 def _outer_cv_model_training_seed(config: Any, split: Mapping[str, Any]) -> int:
-    """Resolve model RNG without allowing the split seed to leak across seed axes."""
+    """Resolve the configurable orchestration seed independently of member RNGs."""
 
     model = config.section('model')
     policy = str(model.get('seed_policy', ''))
-    if policy in {
-        'cv_fixed_member0_seed_50042_comparator',
-        'cv_fixed_five_member_seed_roster',
-    }:
+    if policy == 'cv_fixed_member0_seed_50042_comparator':
         return 50042
-    if policy == 'outer_cv_repeat_seed_equals_split_seed':
+    if policy in {'outer_repeat', 'outer_cv_repeat_seed_equals_split_seed'}:
         return int(split['training_seed'])
+    if policy in {
+        'member_roster', 'cv_fixed_five_member_seed_roster',
+        'fixed', 'fixed_explicit', 'final_refit_single_seed_42',
+    }:
+        return int(config.section('training')['seed'])
     raise _ExperimentProtocolError('unsupported_outer_cv_seed_policy')
 
 
 _CANONICAL_RAW_CHANNEL_SCHEMA = (
     'RED', 'IR', 'A_dyn_x', 'A_dyn_y', 'A_dyn_z', 'GX', 'GY', 'GZ',
 )
-_SHAPEFORMER_MODEL_IDS = frozenset({
-    'shapeformer_channel_specific_osd',
-    'shapeformer_effect_size_fixed_v1',
-})
-
-
 def _bind_raw_dataset_for_model(
     dataset: Any,
     model_id: str,
@@ -1396,6 +2203,52 @@ def _model_input_spec(dataset: Any, mode: str) -> Any:
             channel_schema=_CANONICAL_RAW_CHANNEL_SCHEMA,
         )
     raise _ExperimentProtocolError(f'unsupported_representation_mode:{mode}')
+
+
+def _prepare_legacy_bridge_model_factory(
+    api: Mapping[str, Any],
+    model_config: Mapping[str, Any],
+    input_spec: Any,
+    train_dataset: Any,
+    frozen: Any,
+    *,
+    profile: Any,
+) -> _LegacyBridgePreparedFactory:
+    '''Use a transport-only canonical alias without falsifying bridge semantics.
+
+    The canonical model validator remains unchanged.  L0--L2 have the audited
+    ordered semantics ``AX/AY/AZ`` rather than ``A_dyn_*``; neural constructors
+    consume positions, not channel names.  A separate canonical-name transport
+    spec is therefore used only at the unmodified factory boundary while every
+    scientific contract and hash retains the actual bridge schema.
+    '''
+
+    if tuple(input_spec.channel_schema) != tuple(profile.channel_schema):
+        raise _ExperimentProtocolError('legacy_bridge_input_schema_drift')
+    transport_spec = api['ModelInputSpec'](
+        'raw',
+        n_channels=8,
+        n_classes=3,
+        channel_schema=_CANONICAL_RAW_CHANNEL_SCHEMA,
+    )
+    canonical = api['prepare_model_factory'](
+        model_config,
+        transport_spec,
+        train_dataset,
+        frozen,
+    )
+    provenance = {
+        **dict(canonical.provenance),
+        'legacy_bridge_profile_id': profile.profile_id,
+        'actual_ordered_channel_schema': tuple(profile.channel_schema),
+        'factory_transport_channel_schema': _CANONICAL_RAW_CHANNEL_SCHEMA,
+        'factory_transport_alias_only': (
+            tuple(profile.channel_schema) != _CANONICAL_RAW_CHANNEL_SCHEMA
+        ),
+        'tensor_channel_order_changed_by_alias': False,
+        'canonical_model_validator_modified_or_relaxed': False,
+    }
+    return _LegacyBridgePreparedFactory(canonical, provenance)
 
 
 @dataclass(frozen=True)
@@ -1502,14 +2355,17 @@ def _materialize_trusted_full29(
     selected = _choose_records(
         row_values,
         participant_ids,
-        config.to_dict()['roles'],
+        _classifier_role_ids(config),
         None,
     )
+    classifier_families = set(
+        config.section('training')['classifier_role_families']
+    )
     if any(
-        api['canonicalize_role_family'](str(row.role)) not in {'B', 'R'}
+        api['canonicalize_role_family'](str(row.role)) not in classifier_families
         for row in selected
     ):
-        raise _ExperimentProtocolError('final_refit_classifier_scope_must_be_b_r_only')
+        raise _ExperimentProtocolError('final_refit_classifier_role_scope_drift')
     states = [_RuntimeRecord(row=row) for row in selected]
     _preprocess_records(
         states,
@@ -1520,17 +2376,51 @@ def _materialize_trusted_full29(
     )
     quality_mode = _quality_mode(config)
     if quality_mode == 'route':
-        raise _ExperimentProtocolError('final_refit_sqi_route_is_not_frozen')
-    quality_provenance = _retain_without_quality_routing(
-        states,
-        config,
-        diagnostics_only=quality_mode == 'diagnostics_only',
-    )
+        sqi_config, calibrator = _fit_quality_calibrator(
+            states,
+            config,
+            participant_ids,
+            (),
+        )
+        _route_records(states, config, report, sqi_config, calibrator)
+        quality_provenance = _quality_route_provenance(
+            sqi_config,
+            calibrator,
+            (),
+        )
+    else:
+        quality_provenance = _retain_without_quality_routing(
+            states,
+            config,
+            diagnostics_only=quality_mode == 'diagnostics_only',
+        )
     for state in states:
         if mode in {'feature_vector', 'feature_matrix', 'fusion'}:
-            _extract_vector(state, report)
+            _extract_vector(state, report, config.section('features'))
         if mode in {'raw', 'fusion'}:
-            _extract_raw(state, report)
+            _extract_raw(state, report, config.section('signal'))
+    window_selection_provenance = (
+        _apply_window_quality_selection(
+            states,
+            config,
+            train_ids=participant_ids,
+            oof_ids=(),
+        )
+        if mode in {'raw', 'fusion'}
+        else None
+    )
+    if (
+        window_selection_provenance is not None
+        and window_selection_provenance['policy'] != 'none'
+    ):
+        quality_provenance = {
+            **quality_provenance,
+            'classification_effect': (
+                str(quality_provenance['classification_effect'])
+                + '+legacy_per_file_window_selection'
+            ),
+            'window_selection': window_selection_provenance,
+        }
     required_by_mode = {
         'raw': ('raw_windows',),
         'feature_vector': ('vector',),
@@ -1551,7 +2441,12 @@ def _materialize_trusted_full29(
         participant_ids,
         (),
         fitted_objects=fitted_objects,
+        matrix_k=config.section('features').get('matrix_k', 32),
     )
+    if window_selection_provenance is not None:
+        representation_provenance['window_quality_selection'] = (
+            window_selection_provenance
+        )
     if mode == 'feature_vector':
         representation_provenance = {
             'feature_vector_estimator_pipeline': {
@@ -1560,27 +2455,28 @@ def _materialize_trusted_full29(
                 'fitted_on_participant_ids': participant_ids,
             }
         }
-    dataset = _materialize_representation_dataset(states, participant_ids, mode)
+    dataset = _materialize_representation_dataset(
+        states,
+        participant_ids,
+        mode,
+        quality_weight_source=config.section('aggregation').get(
+            'quality_weight_source', 'none'
+        ),
+    )
     if dataset is None:
         raise _ExperimentProtocolError('final_refit_all29_dataset_empty')
-    dl_case_id = config.section('signal')['dl_resampling'].get('case_id')
-    if dl_case_id is not None:
-        if mode != 'raw':
-            raise _ExperimentProtocolError(
-                'fixed_kernel_samples_profile_requires_raw_representation'
-            )
-        from .models.time_scale import prepare_fixed_kernel_dl_input
-
-        values, mask, profile = prepare_fixed_kernel_dl_input(
-            dataset.values,
-            dataset.sample_mask,
-            str(dl_case_id),
-            source_fs_hz=400.0,
-        )
-        dataset = api['RawWindowDataset'](values, dataset.identities, mask)
+    dl_config = config.section('signal')['dl_resampling']
+    dataset, provenance_key, profile = _prepare_dl_input_dataset(
+        dataset,
+        mode,
+        dl_config,
+    )
+    if provenance_key is not None:
+        if profile is None:
+            raise _ExperimentProtocolError('dl_resampling_profile_missing')
         representation_provenance = {
             **dict(representation_provenance),
-            'fixed_kernel_samples': {
+            provenance_key: {
                 **profile,
                 'application_scope': 'dl_input_only_after_canonical_400hz_windows',
                 'canonical_features_and_peaks_unchanged': True,
@@ -1639,7 +2535,9 @@ def _materialize_trusted_full29(
     source_records_tuple = tuple(source_records)
     source_records_hash = api['stable_payload_sha256'](source_records_tuple)
 
-    registry = api['default_registry']()
+    registry = api['registry_for_groups'](
+        config.section('features')['enabled_groups']
+    )
     input_spec = _model_input_spec(dataset, mode)
     if mode == 'feature_vector':
         feature_schema_id = registry.schema_version
@@ -1668,12 +2566,17 @@ def _materialize_trusted_full29(
             'matrix_k': int(dataset.values.shape[2]),
         }
     else:
-        feature_schema_id = 'fusion_raw8_bag_plus_vector_validity_v2'
+        feature_schema_id = (
+            f'fusion_raw8_bag_plus_vector_{2 * len(registry.names)}_'
+            f'registry-{registry.sha256[:12]}_v3'
+        )
         feature_contract = {
             'channel_schema': tuple(input_spec.channel_schema),
             'file_feature_width': int(input_spec.n_file_features),
             'transforms': representation_provenance,
         }
+    if mode != 'raw':
+        feature_contract['runtime_features_config'] = config.section('features')
     feature_hash = api['stable_payload_sha256'](feature_contract)
     preprocessing_hash = api['stable_payload_sha256'](
         {
@@ -1712,22 +2615,17 @@ def _resolved_architecture_parameters(
     model_id: str,
     model_section: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Return the exact declaration already checked by the strict model factory."""
+    """Rematerialize architecture provenance from top-level factory inputs."""
 
-    declared = model_section.get('architecture_parameters')
-    if not isinstance(declared, Mapping) or not declared:
-        raise _ExperimentProtocolError(
-            'model_config_missing_explicit_architecture_parameters'
-        )
-    if str(declared.get('model_id')) != model_id:
+    resolved = _runtime_imports()['materialize_model_architecture'](model_section)
+    if str(resolved.get('model_id')) != model_id:
         raise _ExperimentProtocolError(
             'architecture_parameters_model_id_mismatch'
         )
-    return dict(declared)
+    return resolved
 
 
 _UNBOUND_CODE_VERSION = "not_git_bound"
-_UNBOUND_SOURCE_VERSION = "not_source_hash_bound"
 
 
 def _code_version() -> str:
@@ -1736,10 +2634,34 @@ def _code_version() -> str:
     return _UNBOUND_CODE_VERSION
 
 
-def _source_version() -> str:
-    """Return a schema-compatibility label; V2 no longer rechecks live source."""
+def _source_tree_sha256(source_root: str | Path) -> str:
+    """Hash the complete importable package source with path/length framing."""
 
-    return _UNBOUND_SOURCE_VERSION
+    root = Path(source_root).resolve()
+    sources = tuple(
+        sorted(
+            (path for path in root.rglob("*.py") if path.is_file()),
+            key=lambda path: path.relative_to(root).as_posix(),
+        )
+    )
+    if not sources:
+        raise _ExperimentProtocolError("source_snapshot_contains_no_python_sources")
+    digest = hashlib.sha256(b"ppg_frailty.source_snapshot.v2\0")
+    for source in sources:
+        relative = source.relative_to(root).as_posix().encode("utf-8")
+        content = source.read_bytes()
+        digest.update(len(relative).to_bytes(8, byteorder="big"))
+        digest.update(relative)
+        digest.update(len(content).to_bytes(8, byteorder="big"))
+        digest.update(content)
+    return digest.hexdigest()
+
+
+@lru_cache(maxsize=1)
+def _source_version() -> str:
+    """Return a deterministic SHA-256 of all importable ``ppg_frailty`` sources."""
+
+    return _source_tree_sha256(Path(__file__).resolve().parent)
 
 
 def _make_oof(
@@ -1750,6 +2672,8 @@ def _make_oof(
     common: dict[str, Any],
     *,
     balance_line: str,
+    quality_weighting: bool = False,
+    quality_weight_source: str = 'none',
 ) -> tuple[
     tuple[Any, ...],
     tuple[Any, ...],
@@ -1773,6 +2697,7 @@ def _make_oof(
         raise _ExperimentProtocolError('outer_oof_has_no_selected_records')
 
     prediction_rows = []
+    hierarchy_prediction_rows = []
     for identity, probability in zip(identities, values):
         if str(identity.participant_id) not in heldout:
             raise _ExperimentProtocolError('non_oof_prediction_reached_oof_writer')
@@ -1782,29 +2707,34 @@ def _make_oof(
                 f'prediction_file_not_in_selected_oof:{identity.file_id}'
             )
         level = 'window' if identity.window_id is not None else 'file'
-        prediction_rows.append(
-            api['OofPredictionRow'](
-                participant_id=str(identity.participant_id),
-                file_id=str(identity.file_id),
-                role=api['canonicalize_role_family'](str(identity.role)),
-                label=int(identity.label),
-                probabilities=tuple(float(value) for value in probability),
-                signal_route=str(identity.signal_route),
-                quality_score=float(identity.quality_score),
-                retained=True,
-                level=level,
-                window_id=identity.window_id,
-                artifact_reducer_name=state.artifact_name,
-                artifact_reducer_version=state.artifact_version,
-                route_status=state.route_status,
-                rejection_reason=None,
-                **common,
-            )
+        prediction_row = api['OofPredictionRow'](
+            participant_id=str(identity.participant_id),
+            file_id=str(identity.file_id),
+            role=api['canonicalize_role_family'](str(identity.role)),
+            label=int(identity.label),
+            probabilities=tuple(float(value) for value in probability),
+            signal_route=str(identity.signal_route),
+            quality_score=float(identity.quality_score),
+            retained=True,
+            level=level,
+            window_id=identity.window_id,
+            artifact_reducer_name=state.artifact_name,
+            artifact_reducer_version=state.artifact_version,
+            route_status=state.route_status,
+            rejection_reason=None,
+            **common,
         )
+        prediction_rows.append(prediction_row)
+        if bool(getattr(identity, 'aggregation_retained', True)):
+            hierarchy_prediction_rows.append(prediction_row)
     source_levels = {row.level for row in prediction_rows}
     if len(source_levels) > 1:
         raise _ExperimentProtocolError('mixed_window_and_file_prediction_levels')
     window_mode = source_levels == {'window'}
+    if not window_mode and len(hierarchy_prediction_rows) != len(prediction_rows):
+        raise _ExperimentProtocolError(
+            'aggregation_window_selection_requires_window_predictions'
+        )
 
     predicted_files = {row.file_id for row in prediction_rows}
     dropped_file_rows = []
@@ -1838,10 +2768,12 @@ def _make_oof(
             )
         )
 
-    source_rows = tuple((*prediction_rows, *dropped_file_rows))
+    source_rows = tuple((*hierarchy_prediction_rows, *dropped_file_rows))
     hierarchy = api['aggregate_hierarchy'](
         source_rows,
         balance_line=balance_line,
+        quality_weighted=quality_weighting,
+        quality_weight_source=quality_weight_source,
     )
     if window_mode:
         retained_file_rows = {row.file_id: row for row in hierarchy.file_rows}
@@ -1973,6 +2905,52 @@ def _batch1_operational_model_input(
     return output
 
 
+def _reserved_legacy_bridge_profile_id(config: Any) -> str | None:
+    '''Return the profile encoded by a Stage-3-only resolved config identity.'''
+
+    config_id = str(getattr(config, 'config_id', '')).lower()
+    marker = '__legacy_bridge_'
+    if marker not in config_id:
+        return None
+    if config_id.count(marker) != 1:
+        raise _ExperimentProtocolError(
+            'legacy_bridge_reserved_config_identity_malformed'
+        )
+    suffix = config_id.split(marker, 1)[1]
+    if suffix not in {f'l{level}' for level in range(8)}:
+        raise _ExperimentProtocolError(
+            'legacy_bridge_reserved_config_identity_malformed'
+        )
+    return suffix.upper()
+
+
+def _assert_legacy_bridge_entrypoint_contract(
+    config: Any,
+    legacy_bridge: _LegacyBridgeExecution | None,
+    *,
+    dedicated_entrypoint: bool,
+) -> None:
+    '''Prevent a bridge-resolved config from entering canonical execution.'''
+
+    reserved_profile_id = _reserved_legacy_bridge_profile_id(config)
+    if reserved_profile_id is not None and legacy_bridge is None:
+        raise _ExperimentProtocolError(
+            'legacy_bridge_reserved_config_requires_dedicated_entrypoint'
+        )
+    if legacy_bridge is not None and reserved_profile_id is not None:
+        if legacy_bridge.profile.profile_id != reserved_profile_id:
+            raise _ExperimentProtocolError(
+                'legacy_bridge_reserved_config_profile_mismatch:'
+                f'config={reserved_profile_id}:requested='
+                f'{legacy_bridge.profile.profile_id}'
+            )
+    if dedicated_entrypoint and legacy_bridge is not None:
+        if reserved_profile_id is None:
+            raise _ExperimentProtocolError(
+                'legacy_bridge_dedicated_entrypoint_requires_reserved_config'
+            )
+
+
 def _execute_cell_unchecked(
     report: Any,
     config: Any,
@@ -1987,14 +2965,23 @@ def _execute_cell_unchecked(
     epoch_override: int | None,
     measure_operational_costs: bool = False,
     loader: Any = None,
+    legacy_bridge: _LegacyBridgeExecution | None = None,
 ) -> _CellResult:
     '''Execute one representation-aware frozen outer cell.'''
 
+    _assert_legacy_bridge_entrypoint_contract(
+        config,
+        legacy_bridge,
+        dedicated_entrypoint=False,
+    )
     api = _runtime_imports()
     started = time.perf_counter()
     mode = str(config.representation_mode)
     if mode not in {'raw', 'feature_vector', 'feature_matrix', 'fusion'}:
         raise _ExperimentProtocolError(f'unsupported_representation_mode:{mode}')
+    bridge_profile = None if legacy_bridge is None else legacy_bridge.profile
+    if bridge_profile is not None and mode != 'raw':
+        raise _ExperimentProtocolError('legacy_bridge_requires_raw_representation')
     split = registry.get_split(repeat_index, fold_index)
     train_ids = tuple(str(value) for value in split['train_participant_ids'])
     oof_ids = tuple(str(value) for value in split['oof_participant_ids'])
@@ -2002,22 +2989,44 @@ def _execute_cell_unchecked(
     selected = _choose_records(
         row_values,
         (*train_ids, *oof_ids),
-        config.to_dict()['roles'],
+        _classifier_role_ids(config),
         record_cap,
     )
     states = [_RuntimeRecord(row=row) for row in selected]
     actual_loader = loader or (
         lambda row, maximum: api['_load_record'](row, paths, max_samples=maximum)
     )
-    _preprocess_records(
-        states,
-        config,
-        maximum_seconds,
-        actual_loader,
-        calibration_rows=row_values,
-    )
-    quality_mode = _quality_mode(config)
-    if quality_mode == 'route':
+    if bridge_profile is not None:
+        quality_mode = _quality_mode(config)
+        if quality_mode != 'off':
+            raise _ExperimentProtocolError('legacy_bridge_requires_quality_mode_off')
+        if bridge_profile.uses_legacy_preprocessing:
+            quality_provenance = _preprocess_legacy_bridge_records(
+                states,
+                bridge_profile,
+                maximum_seconds,
+                actual_loader,
+            )
+        else:
+            _preprocess_records(
+                states,
+                config,
+                maximum_seconds,
+                actual_loader,
+                calibration_rows=row_values,
+            )
+    else:
+        _preprocess_records(
+            states,
+            config,
+            maximum_seconds,
+            actual_loader,
+            calibration_rows=row_values,
+        )
+        quality_mode = _quality_mode(config)
+    if bridge_profile is not None and bridge_profile.uses_legacy_preprocessing:
+        pass
+    elif quality_mode == 'route':
         sqi_config, calibrator = _fit_quality_calibrator(
             states,
             config,
@@ -2025,14 +3034,11 @@ def _execute_cell_unchecked(
             oof_ids,
         )
         _route_records(states, config, report, sqi_config, calibrator)
-        quality_provenance = {
-            'method': calibrator.method,
-            'fitted_on_participant_ids': calibrator.fitted_on_participant_ids,
-            'outer_oof_ids_absent': not bool(
-                set(calibrator.fitted_on_participant_ids) & set(oof_ids)
-            ),
-            'classification_effect': 'routing',
-        }
+        quality_provenance = _quality_route_provenance(
+            sqi_config,
+            calibrator,
+            oof_ids,
+        )
     else:
         quality_provenance = _retain_without_quality_routing(
             states,
@@ -2042,9 +3048,37 @@ def _execute_cell_unchecked(
 
     for state in states:
         if mode in {'feature_vector', 'feature_matrix', 'fusion'}:
-            _extract_vector(state, report)
+            _extract_vector(state, report, config.section('features'))
         if mode in {'raw', 'fusion'}:
-            _extract_raw(state, report)
+            if bridge_profile is not None and bridge_profile.uses_legacy_preprocessing:
+                continue
+            if bridge_profile is not None and bridge_profile.profile_id == 'L3':
+                _extract_l3_bridge_raw(state, bridge_profile)
+            else:
+                _extract_raw(state, report, config.section('signal'))
+
+    window_selection_provenance = (
+        _apply_window_quality_selection(
+            states,
+            config,
+            train_ids=train_ids,
+            oof_ids=oof_ids,
+        )
+        if bridge_profile is None and mode in {'raw', 'fusion'}
+        else None
+    )
+    if (
+        window_selection_provenance is not None
+        and window_selection_provenance['policy'] != 'none'
+    ):
+        quality_provenance = {
+            **quality_provenance,
+            'classification_effect': (
+                str(quality_provenance['classification_effect'])
+                + '+legacy_per_file_window_selection'
+            ),
+            'window_selection': window_selection_provenance,
+        }
 
     required_by_mode = {
         'raw': ('raw_windows',),
@@ -2057,49 +3091,71 @@ def _execute_cell_unchecked(
         train_ids,
         required=required_by_mode[mode],
     )
-    representation_provenance = _fit_representation_artifacts(
-        states,
-        mode,
-        train_ids,
-        oof_ids,
+    representation_provenance = (
+        _legacy_bridge_representation_artifacts(
+            states,
+            bridge_profile,
+            train_ids,
+            oof_ids,
+        )
+        if bridge_profile is not None
+        else _fit_representation_artifacts(
+            states,
+            mode,
+            train_ids,
+            oof_ids,
+            matrix_k=config.section('features').get('matrix_k', 32),
+        )
     )
-    train_dataset = _materialize_representation_dataset(states, train_ids, mode)
-    oof_dataset = _materialize_representation_dataset(states, oof_ids, mode)
+    if window_selection_provenance is not None:
+        representation_provenance['window_quality_selection'] = (
+            window_selection_provenance
+        )
+    quality_weight_source = config.section('aggregation').get(
+        'quality_weight_source', 'none'
+    )
+    train_dataset = _materialize_representation_dataset(
+        states,
+        train_ids,
+        mode,
+        quality_weight_source=quality_weight_source,
+    )
+    oof_dataset = _materialize_representation_dataset(
+        states,
+        oof_ids,
+        mode,
+        quality_weight_source=quality_weight_source,
+    )
     if train_dataset is None:
         raise _ExperimentProtocolError('outer_train_dataset_empty')
-    dl_case_id = config.section('signal')['dl_resampling'].get('case_id')
-    if dl_case_id is not None:
-        if mode != 'raw' or oof_dataset is None:
+    dl_config = (
+        {'enabled': False, 'case_id': None, 'target_fs_hz': 400.0}
+        if bridge_profile is not None
+        else config.section('signal')['dl_resampling']
+    )
+    dl_case_id = dl_config.get('case_id')
+    if bool(dl_config['enabled']) or dl_case_id is not None:
+        if oof_dataset is None:
             raise _ExperimentProtocolError(
-                'fixed_kernel_samples_profile_requires_nonempty_raw_train_and_oof'
+                'dl_resampling_requires_nonempty_train_and_oof_datasets'
             )
-        from .models.time_scale import prepare_fixed_kernel_dl_input
-
-        train_values, train_mask, train_profile = prepare_fixed_kernel_dl_input(
-            train_dataset.values,
-            train_dataset.sample_mask,
-            str(dl_case_id),
-            source_fs_hz=400.0,
+        train_dataset, provenance_key, train_profile = _prepare_dl_input_dataset(
+            train_dataset,
+            mode,
+            dl_config,
         )
-        oof_values, oof_mask, oof_profile = prepare_fixed_kernel_dl_input(
-            oof_dataset.values,
-            oof_dataset.sample_mask,
-            str(dl_case_id),
-            source_fs_hz=400.0,
+        oof_dataset, oof_provenance_key, oof_profile = _prepare_dl_input_dataset(
+            oof_dataset,
+            mode,
+            dl_config,
         )
+        if provenance_key != oof_provenance_key:
+            raise _ExperimentProtocolError('dl_resampling_train_oof_kind_drift')
         if train_profile != oof_profile:
-            raise _ExperimentProtocolError('fixed_kernel_train_oof_profile_drift')
-        train_dataset = api['RawWindowDataset'](
-            train_values,
-            train_dataset.identities,
-            train_mask,
-        )
-        oof_dataset = api['RawWindowDataset'](
-            oof_values,
-            oof_dataset.identities,
-            oof_mask,
-        )
-        representation_provenance['fixed_kernel_samples'] = {
+            raise _ExperimentProtocolError('dl_resampling_train_oof_profile_drift')
+        if provenance_key is None or train_profile is None:
+            raise _ExperimentProtocolError('dl_resampling_profile_missing')
+        representation_provenance[provenance_key] = {
             **train_profile,
             'application_scope': 'dl_input_only_after_canonical_400hz_windows',
             'canonical_features_and_peaks_unchanged': True,
@@ -2131,27 +3187,44 @@ def _execute_cell_unchecked(
         ),
         fold_hash=report.fold_hash,
     )
-    effective_training_seed = _outer_cv_model_training_seed(config, split)
-    training_config = api['TrainingConfig'].from_mapping(
-        config.section('training')
+    effective_training_seed = (
+        42
+        if bridge_profile is not None
+        else _outer_cv_model_training_seed(config, split)
     )
-    training_config = api['replace'](
-        training_config,
-        seed=effective_training_seed,
-    )
-    if epoch_override is not None:
-        if training_config.epoch_rule != 'fixed_epoch' or epoch_override <= 0:
-            raise _ExperimentProtocolError('invalid_fixed_epoch_override')
+    if bridge_profile is not None:
+        training_config = bridge_profile.training_config(
+            device=str(config.section('training')['device'])
+        )
+    else:
+        training_config = api['TrainingConfig'].from_mapping(
+            config.section('training')
+        )
         training_config = api['replace'](
             training_config,
-            execution_mode='smoke',
-            epoch_profile='smoke',
-            fixed_epochs=int(epoch_override),
+            seed=effective_training_seed,
         )
-    balance_line = str(config.section('aggregation')['balance_line'])
-    if training_config.expected_aggregation_rule != balance_line:
+    if epoch_override is not None:
+        if bridge_profile is not None:
+            raise _ExperimentProtocolError(
+                'legacy_bridge_fixed10_does_not_accept_epoch_override'
+            )
+        if training_config.epoch_rule != 'fixed_epoch' or epoch_override <= 0:
+            raise _ExperimentProtocolError('invalid_fixed_epoch_override')
+        training_config = training_config._with_epoch_override(
+            int(epoch_override)
+        )
+    balance_line = (
+        str(bridge_profile.expected_aggregation_rule)
+        if bridge_profile is not None
+        else str(config.section('aggregation')['balance_line'])
+    )
+    if (
+        bridge_profile is not None
+        and training_config.expected_aggregation_rule != balance_line
+    ):
         raise _ExperimentProtocolError(
-            'training_and_aggregation_balance_line_mismatch'
+            'legacy_bridge_training_and_aggregation_balance_line_mismatch'
         )
 
     model_config, model_id = _resolved_model_config(
@@ -2159,7 +3232,30 @@ def _execute_cell_unchecked(
         training_seed=effective_training_seed,
     )
     model_section = config.section('model')
-    if mode == 'raw':
+    if bridge_profile is not None:
+        allowed_bridge_models = (
+            {'compact_cnn', 'inception_full'}
+            if bridge_profile.profile_id == 'L0'
+            else {'compact_cnn'}
+        )
+        if model_id not in allowed_bridge_models:
+            raise _ExperimentProtocolError(
+                f'legacy_bridge_profile_model_mismatch:{bridge_profile.profile_id}:'
+                f'{model_id}'
+            )
+        input_binding = {
+            'status': 'legacy_bridge_ordered_raw_8_identity',
+            'model_id': model_id,
+            'source_channel_schema': tuple(bridge_profile.channel_schema),
+            'target_channel_schema': tuple(bridge_profile.channel_schema),
+            'source_indices': tuple(range(8)),
+            'silent_channel_slicing': False,
+        }
+        input_binding['binding_sha256'] = api['stable_payload_sha256'](
+            input_binding
+        )
+        representation_provenance['model_input_binding'] = input_binding
+    elif mode == 'raw':
         train_dataset, input_binding = _bind_raw_dataset_for_model(
             train_dataset,
             model_id,
@@ -2176,7 +3272,16 @@ def _execute_cell_unchecked(
                     'frailty_train_oof_input_binding_identity_drift'
                 )
         representation_provenance['model_input_binding'] = input_binding
-    input_spec = _model_input_spec(train_dataset, mode)
+    input_spec = (
+        api['ModelInputSpec'](
+            'raw',
+            n_channels=int(train_dataset.values.shape[1]),
+            n_classes=3,
+            channel_schema=tuple(bridge_profile.channel_schema),
+        )
+        if bridge_profile is not None
+        else _model_input_spec(train_dataset, mode)
+    )
     if int(model_section.get('n_classes', 3)) != 3:
         raise _ExperimentProtocolError('model_declared_class_count_must_be_three')
     declared_channels = int(model_section.get('input_channels', 0))
@@ -2185,25 +3290,47 @@ def _execute_cell_unchecked(
             f'model_input_channel_mismatch:{declared_channels}:'
             f'{int(input_spec.n_channels)}'
         )
-    ensemble_ids = {
-        'inception_full_five_member_ensemble',
-        'inception_matrix_five_member_ensemble',
-    }
-    is_ensemble = model_id in ensemble_ids
-    expected_ensemble_size = 5 if is_ensemble else 1
-    if int(model_section.get('ensemble_size', 1)) != expected_ensemble_size:
-        raise _ExperimentProtocolError(
-            f'model_ensemble_size_mismatch:{expected_ensemble_size}'
-        )
-    prepared = api['prepare_model_factory'](
-        model_config,
-        input_spec,
-        train_dataset,
-        frozen,
+    is_ensemble = _model_is_ensemble(model_id)
+    if bridge_profile is not None and is_ensemble:
+        raise _ExperimentProtocolError('legacy_bridge_does_not_accept_ensemble_model')
+    ensemble_member_seeds = (
+        _ensemble_member_seed_roster(model_section) if is_ensemble else ()
     )
-    trainer = api['UnifiedTrainer'](training_config)
-    estimator_ids = _ESTIMATOR_MODEL_IDS
-    if model_id in estimator_ids:
+    prepared = (
+        _prepare_legacy_bridge_model_factory(
+            api,
+            model_config,
+            input_spec,
+            train_dataset,
+            frozen,
+            profile=bridge_profile,
+        )
+        if bridge_profile is not None
+        else api['prepare_model_factory'](
+            model_config,
+            input_spec,
+            train_dataset,
+            frozen,
+        )
+    )
+    if bridge_profile is not None:
+        from .training.legacy_bridge import LegacyBridgeTrainer
+
+        trainer = LegacyBridgeTrainer(training_config)
+    else:
+        trainer = api['UnifiedTrainer'](training_config)
+    inner_split = None
+    if (
+        bridge_profile is None
+        and training_config.epoch_rule == 'inner_grouped_selection'
+    ):
+        inner_split = api['build_inner_grouped_split'](
+            train_dataset,
+            frozen,
+            n_folds=int(training_config.inner_grouped_folds),
+            seed=int(training_config.seed),
+        )
+    if _model_uses_estimator(model_id):
         training = trainer.fit_estimator(
             prepared(),
             train_dataset,
@@ -2234,6 +3361,7 @@ def _execute_cell_unchecked(
             prepared,
             train_dataset,
             frozen,
+            inner_split=inner_split,
         )
         if oof_dataset is None:
             probabilities = api['np'].empty((0, 3), dtype=api['np'].float64)
@@ -2259,6 +3387,21 @@ def _execute_cell_unchecked(
             )
     if training.provenance is None:
         raise _ExperimentProtocolError('training_provenance_missing')
+    if is_ensemble:
+        trained_roster = tuple(
+            int(value) for value in getattr(training.model, 'member_seeds', ())
+        )
+        provenance_roster = tuple(training.provenance.member_training_seeds)
+        if trained_roster != ensemble_member_seeds or provenance_roster != trained_roster:
+            raise _ExperimentProtocolError(
+                'ensemble_config_model_and_training_provenance_roster_drift'
+            )
+        if member_probabilities is not None and int(member_probabilities.shape[0]) != len(
+            ensemble_member_seeds
+        ):
+            raise _ExperimentProtocolError(
+                'ensemble_member_probability_count_differs_from_roster'
+            )
 
     if measure_operational_costs:
         if oof_dataset is None or len(oof_dataset) == 0:
@@ -2291,7 +3434,9 @@ def _execute_cell_unchecked(
             },
         }
 
-    feature_registry = api['default_registry']()
+    feature_registry = api['registry_for_groups'](
+        config.section('features')['enabled_groups']
+    )
     if mode == 'feature_vector':
         feature_schema_id = feature_registry.schema_version
         feature_contract = {
@@ -2300,12 +3445,26 @@ def _execute_cell_unchecked(
             'estimator_transforms': 'fit_inside_outer_train_pipeline',
         }
     elif mode == 'raw':
-        feature_schema_id = 'raw_red_ir_imu_axes_8ch_outer_train_scaled_v2'
+        feature_schema_id = (
+            f'legacy_bridge_{bridge_profile.profile_id.lower()}_raw8_v1'
+            if bridge_profile is not None
+            else 'raw_red_ir_imu_axes_8ch_outer_train_scaled_v2'
+        )
         feature_contract = {
             'channel_schema': tuple(input_spec.channel_schema),
             'raw_imu_transform': representation_provenance.get('raw_imu'),
             'model_input_binding':
                 representation_provenance.get('model_input_binding'),
+            **(
+                {
+                    'legacy_bridge_profile': bridge_profile.to_dict(),
+                    'source_specification_sha256': (
+                        legacy_bridge.source_specification_sha256
+                    ),
+                }
+                if bridge_profile is not None
+                else {}
+            ),
         }
     elif mode == 'feature_matrix':
         feature_schema_id = str(
@@ -2317,12 +3476,17 @@ def _execute_cell_unchecked(
             'matrix_k': int(train_dataset.values.shape[2]),
         }
     else:
-        feature_schema_id = 'fusion_raw8_bag_plus_vector_validity_v2'
+        feature_schema_id = (
+            f'fusion_raw8_bag_plus_vector_{2 * len(feature_registry.names)}_'
+            f'registry-{feature_registry.sha256[:12]}_v3'
+        )
         feature_contract = {
             'channel_schema': tuple(input_spec.channel_schema),
             'file_feature_width': int(input_spec.n_file_features),
             'transforms': representation_provenance,
         }
+    if mode != 'raw':
+        feature_contract['runtime_features_config'] = config.section('features')
 
     preprocessing_hash = api['stable_payload_sha256'](
         {
@@ -2332,6 +3496,17 @@ def _execute_cell_unchecked(
             'quality_mode': quality_mode,
             'quality_provenance': quality_provenance,
             'representation_transforms': representation_provenance,
+            **(
+                {'legacy_bridge': {
+                    'profile': bridge_profile.to_dict(),
+                    'source_specification': legacy_bridge.source_specification,
+                    'source_specification_sha256': (
+                        legacy_bridge.source_specification_sha256
+                    ),
+                }}
+                if bridge_profile is not None
+                else {}
+            ),
             'physical_recording_qc_profile': tuple(
                 state.physical_qc_profile for state in states
             ),
@@ -2349,32 +3524,87 @@ def _execute_cell_unchecked(
     else:
         input_channels_order = tuple(str(value) for value in input_spec.channel_schema)
     selected_window = (
-        window_section['engineering']
-        if mode in {'feature_vector', 'feature_matrix'}
-        else window_section['raw_dl']
+        {
+            'length_s': float(bridge_profile.window_seconds),
+            'hop_s': float(bridge_profile.hop_seconds),
+            'end_alignment': 'include_right_aligned_if_distinct',
+            'padding': (
+                'none_complete_windows_only'
+                if bridge_profile.profile_id != 'L0'
+                else 'zero_right_only_if_source_shorter_than_one_window'
+            ),
+            'min_valid_fraction': (
+                1.0
+                if bridge_profile.profile_id != 'L0'
+                else 'all_available_source_rows_valid_before_optional_padding'
+            ),
+            'cap_per_file': bridge_profile.max_windows_per_file,
+            'historical_retained_fraction': (
+                bridge_profile.historical_retained_fraction
+            ),
+        }
+        if bridge_profile is not None
+        else (
+            window_section['engineering']
+            if mode in {'feature_vector', 'feature_matrix'}
+            else window_section['raw_dl']
+        )
     )
-    model_input_fs_hz = _model_input_sampling_rate_hz(config)
+    model_input_fs_hz = (
+        float(bridge_profile.target_fs_hz)
+        if bridge_profile is not None
+        else _model_input_sampling_rate_hz(config)
+    )
     canonical_signal_fs_hz = float(signal_section['internal_fs_hz'])
     if canonical_signal_fs_hz != 400.0:
         raise _ExperimentProtocolError('canonical_signal_grid_must_remain_400hz')
-    training_algorithm = _training_algorithm_provenance(
-        model_id,
-        training_section,
-        model_section,
-        fixed_epochs=int(training_config.fixed_epochs),
-    )
-    frozen_run_provenance = api['validate_frozen_model_run_provenance'](
+    training_algorithm = (
         {
-            'architecture_parameters': _resolved_architecture_parameters(
-                model_id,
-                model_section,
-            ),
+            'loss': 'cross_entropy',
+            'class_weighting': bridge_profile.class_weighting,
+            'sampler': bridge_profile.sampler,
+            'epoch_rule': {
+                'rule': 'fixed_epoch',
+                'profile': 'legacy_bridge_fixed10',
+                'fixed_epochs': 10,
+            },
+            'optimizer': bridge_profile.optimizer,
+            'learning_rate': float(bridge_profile.learning_rate),
+            'weight_decay': float(bridge_profile.weight_decay),
+            'dropout': float(model_section['dropout']),
+            'label_smoothing': 0.0,
+            'gradient_clipping': {'enabled': False, 'max_norm': None},
+            'batch_size': int(bridge_profile.batch_size),
+        }
+        if bridge_profile is not None
+        else _training_algorithm_provenance(
+            model_id,
+            training_section,
+            model_section,
+            fixed_epochs=int(training_config.fixed_epochs),
+        )
+    )
+    resolved_dropout_comparison = _resolved_legacy_bridge_dropout_comparison(
+        bridge_profile,
+        model_section,
+    )
+    architecture_for_provenance = (
+        _resolved_architecture_parameters(model_id, model_section)
+        if bridge_profile is not None
+        else dict(prepared.resolved_model_config['architecture_parameters'])
+    )
+    frozen_payload = {
+            'architecture_parameters': architecture_for_provenance,
             'input_channels_order': input_channels_order,
             'sampling_rate_hz': model_input_fs_hz,
             'window_plan': {
                 'representation_mode': mode,
                 'selected': dict(selected_window),
-                'shared_planner_version': window_section['shared_planner_version'],
+                'shared_planner_version': (
+                    'legacy_bridge_reviewed_window_plan_v1'
+                    if bridge_profile is not None
+                    else window_section['shared_planner_version']
+                ),
                 'model_input_sampling_rate_hz': model_input_fs_hz,
                 'canonical_signal_and_feature_sampling_rate_hz':
                     canonical_signal_fs_hz,
@@ -2383,7 +3613,15 @@ def _execute_cell_unchecked(
                 'hop_s': float(selected_window['hop_s']),
                 'end_alignment': selected_window['end_alignment'],
             },
-            'normalization': dict(signal_section['normalization']),
+            'normalization': (
+                {
+                    'profile_id': bridge_profile.profile_id,
+                    'imu_normalization': bridge_profile.imu_normalization,
+                    'per_window_clip': [-8.0, 8.0],
+                }
+                if bridge_profile is not None
+                else dict(signal_section['normalization'])
+            ),
             'padding_mask': {
                 'padding': selected_window['padding'],
                 'min_valid_fraction': selected_window.get('min_valid_fraction', 1.0),
@@ -2393,30 +3631,70 @@ def _execute_cell_unchecked(
                 ),
             },
             'feature_schema_hash': feature_hash,
-            'sqi_routing': {
-                'mode': quality_section['mode'],
-                'supervised_route_ready': quality_section['supervised_route_ready'],
-                'failure_action': quality_section['failure_action'],
-            },
+            'sqi_routing': (
+                {
+                    'mode': 'off',
+                    'failure_action': 'not_applicable_bridge_quality_off',
+                }
+                if bridge_profile is not None
+                else {
+                    'mode': quality_section['mode'],
+                    'failure_action': quality_section['failure_action'],
+                    'window_selection': dict(
+                        quality_section['window_selection']
+                    ),
+                }
+            ),
             **training_algorithm,
             'random_seeds': (
-                tuple(int(value) for value in model_section['member_seeds'])
+                ensemble_member_seeds
                 if is_ensemble
                 else (effective_training_seed,)
             ),
             'seed_policy': (
-                'cv_fixed_five_member_seed_roster'
+                str(model_section.get('seed_policy', 'member_roster'))
                 if is_ensemble
-                else str(model_section['seed_policy'])
+                else (
+                    'legacy_bridge_fixed_training_seed_42'
+                    if bridge_profile is not None
+                    else str(model_section['seed_policy'])
+                )
             ),
             'fold_hash': report.fold_hash,
-            'aggregation': dict(aggregation_section),
+            'aggregation': (
+                {
+                    'balance_line': balance_line,
+                    'profile_id': bridge_profile.profile_id,
+                }
+                if bridge_profile is not None
+                else dict(aggregation_section)
+            ),
             'calibration': {
                 'metrics': tuple(evaluation_section['calibration_metrics']),
                 'fit_scope': 'outer_training_participants_only',
             },
         }
-    )
+    if bridge_profile is not None:
+        frozen_run_provenance = {
+            'schema_version': 'ppg_frailty.legacy_bridge_frozen_model_run.v1',
+            'canonical_v2_validator_modified_or_relaxed': False,
+            'canonical_v2_validator_applied_to_noncanonical_profile': False,
+            'profile': bridge_profile.to_dict(),
+            'source_specification': legacy_bridge.source_specification,
+            'source_specification_sha256': (
+                legacy_bridge.source_specification_sha256
+            ),
+            'manifest_sha256': legacy_bridge.manifest_sha256,
+            'split_sha256': legacy_bridge.split_sha256,
+            'canonical_config_hash': config.sha256,
+            'effective_config_hash': legacy_bridge.effective_config_hash,
+            'resolved_dropout_comparison': resolved_dropout_comparison,
+            **frozen_payload,
+        }
+    else:
+        frozen_run_provenance = api['validate_frozen_model_run_provenance'](
+            frozen_payload
+        )
     frozen_run_provenance_hash = api['stable_payload_sha256'](
         frozen_run_provenance
     )
@@ -2427,7 +3705,11 @@ def _execute_cell_unchecked(
         'fold': int(split['fold_index']),
         'split_seed': int(split['split_seed']),
         'training_seed': effective_training_seed,
-        'config_hash': config.sha256,
+        'config_hash': (
+            legacy_bridge.effective_config_hash
+            if legacy_bridge is not None
+            else config.sha256
+        ),
         'manifest_hash': report.manifest_hash,
         'fold_hash': report.fold_hash,
         'preprocessing_hash': preprocessing_hash,
@@ -2455,12 +3737,8 @@ def _execute_cell_unchecked(
     if is_ensemble:
         if member_probabilities is None:
             raise _ExperimentProtocolError('ensemble_member_probabilities_missing')
-        member_seeds = tuple(int(value) for value in model_section['member_seeds'])
-        base_model_id = (
-            'inception_full'
-            if model_id == 'inception_full_five_member_ensemble'
-            else 'inception_matrix'
-        )
+        member_seeds = ensemble_member_seeds
+        base_model_id = _ENSEMBLE_BASE_MODEL_IDS[model_id]
         average_common = dict(common)
         average_common.update(
             {
@@ -2477,10 +3755,16 @@ def _execute_cell_unchecked(
             probabilities,
             average_common,
             balance_line=balance_line,
+            quality_weighting=bool(
+                config.section('aggregation')['quality_weighting']
+            ),
+            quality_weight_source=str(
+                config.section('aggregation')['quality_weight_source']
+            ),
         )
         member_subject_rows: list[Any] = []
         member_hashes = tuple(training.provenance.member_state_hashes)
-        if len(member_hashes) != 5 or len(member_seeds) != 5:
+        if len(member_hashes) != len(member_seeds):
             raise _ExperimentProtocolError('ensemble_member_provenance_incomplete')
         for member_index, (member_seed, member_hash) in enumerate(
             zip(member_seeds, member_hashes)
@@ -2502,6 +3786,12 @@ def _execute_cell_unchecked(
                 member_probabilities[member_index],
                 member_common,
                 balance_line=balance_line,
+                quality_weighting=bool(
+                    config.section('aggregation')['quality_weighting']
+                ),
+                quality_weight_source=str(
+                    config.section('aggregation')['quality_weight_source']
+                ),
             )
             member_subject_rows.extend(current_subject_rows)
         member_rows = tuple(member_subject_rows)
@@ -2513,6 +3803,12 @@ def _execute_cell_unchecked(
             probabilities,
             common,
             balance_line=balance_line,
+            quality_weighting=bool(
+                config.section('aggregation')['quality_weighting']
+            ),
+            quality_weight_source=str(
+                config.section('aggregation')['quality_weight_source']
+            ),
         )
     api['validate_expected_oof_roster'](
         (*member_rows, *subject_rows),
@@ -2523,11 +3819,29 @@ def _execute_cell_unchecked(
                 int(split['split_seed']),
             ): oof_ids
         },
-        expected_config_hashes=(config.sha256,),
-        expected_member_count=5 if is_ensemble else 1,
+        expected_config_hashes=(common['config_hash'],),
+        expected_member_count=len(ensemble_member_seeds) if is_ensemble else 1,
+        expect_ensemble=is_ensemble,
     )
     _require_retained_oof(subject_rows)
     metrics = _evaluate_subjects(subject_rows, len(oof_ids))
+    archived_training_history: list[dict[str, Any]] = []
+    sampling_diagnostic_rows: list[dict[str, Any]] = []
+    for raw_history_row in training.history:
+        history_row = dict(raw_history_row)
+        diagnostics = history_row.pop('sampling_diagnostics', None)
+        if diagnostics is not None:
+            sampling_diagnostic_rows.append(
+                {
+                    'epoch': int(history_row['epoch']),
+                    'member': int(history_row.get('member', 0)),
+                    'training_seed': int(
+                        history_row.get('training_seed', effective_training_seed)
+                    ),
+                    **dict(diagnostics),
+                }
+            )
+        archived_training_history.append(history_row)
     summary = {
         'schema_version': 'ppg_frailty.experiment_cell.v2',
         'pipeline_generation': 'final_pipeline_v2',
@@ -2539,15 +3853,28 @@ def _execute_cell_unchecked(
         'training_seed': (
             None if is_ensemble else effective_training_seed
         ),
+        'training_orchestration_seed': int(effective_training_seed),
+        **(
+            {
+                'config_hash': common['config_hash'],
+                'canonical_config_hash': config.sha256,
+            }
+            if bridge_profile is not None
+            else {}
+        ),
         'member_training_seeds': (
-            list(int(value) for value in model_section['member_seeds'])
+            list(ensemble_member_seeds)
             if is_ensemble
             else []
         ),
         'seed_policy': (
-            'cv_fixed_five_member_seed_roster'
+            str(model_section.get('seed_policy', 'member_roster'))
             if is_ensemble
-            else str(model_section['seed_policy'])
+            else (
+                'legacy_bridge_fixed_training_seed_42'
+                if bridge_profile is not None
+                else str(model_section['seed_policy'])
+            )
         ),
         'representation_mode': mode,
         'model_id': str(model_section['model_id']),
@@ -2575,15 +3902,61 @@ def _execute_cell_unchecked(
         ],
         'metrics': metrics,
         'operational_metrics': operational_metrics,
-        'training_history': to_strict_json_value(training.history),
+        'training_history': to_strict_json_value(archived_training_history),
+        **(
+            {
+                'sampling_diagnostics': to_strict_json_value(
+                    sampling_diagnostic_rows
+                ),
+                'legacy_bridge': {
+                    'schema_version': 'ppg_frailty.legacy_bridge_execution.v1',
+                    'profile': bridge_profile.to_dict(),
+                    'source_specification': legacy_bridge.source_specification,
+                    'source_specification_sha256': (
+                        legacy_bridge.source_specification_sha256
+                    ),
+                    'manifest_sha256': legacy_bridge.manifest_sha256,
+                    'split_sha256': legacy_bridge.split_sha256,
+                    'canonical_config_hash': config.sha256,
+                    'effective_config_hash': legacy_bridge.effective_config_hash,
+                    'fresh_current_raw_csv_training_input': True,
+                    'historical_cache_used_for_training': False,
+                    'resolved_dropout_comparison': (
+                        resolved_dropout_comparison
+                    ),
+                },
+            }
+            if bridge_profile is not None
+            else {}
+        ),
         'learning_curve_contract': {
             'status': (
                 'not_applicable_non_iterative_estimator'
                 if not training.history and model_id in estimator_ids
-                else 'outer_train_loss_only_fixed_epoch'
+                else (
+                    'outer_train_loss_and_participant_ba_fixed_epoch'
+                    if any(
+                        'training_participant_balanced_accuracy' in row
+                        for row in training.history
+                    )
+                    else 'outer_train_loss_only_fixed_epoch'
+                )
             ),
-            'training_data_scope': 'outer_train_participants_only',
+            'training_data_scope': 'full_outer_train_only',
             'outer_heldout_used_for_epoch_selection_or_curve': False,
+            'training_metric': (
+                'training_participant_balanced_accuracy'
+                if any(
+                    'training_participant_balanced_accuracy' in row
+                    for row in training.history
+                )
+                else 'not_available'
+            ),
+            'training_metric_unit': 'participant',
+            'training_metric_aggregation_rule': (
+                training.provenance.expected_aggregation_rule
+            ),
+            'training_metric_used_for_epoch_selection_or_checkpoint': False,
             'validation_metric': (
                 'inner_participant_balanced_accuracy'
                 if any(
@@ -2606,6 +3979,7 @@ def _execute_cell_unchecked(
             representation_provenance
         ),
         'quality_mode': quality_mode,
+        'evaluation_policy': to_strict_json_value(evaluation_section),
         'sqi_calibrator_provenance': quality_provenance,
         'quality_diagnostics': [
             {
@@ -2721,10 +4095,19 @@ def _write_empty_oof(path: Path, reason: str) -> None:
         raise
 
 
-def _artifact_index_cell_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
+def _artifact_index_cell_summary(
+    summary: Mapping[str, Any],
+    *,
+    artifact_prefix: str = '',
+) -> dict[str, Any]:
     """Keep large diagnostics in their dedicated artifacts, not in every index."""
 
     compact = dict(summary)
+    prefix = str(artifact_prefix).strip('/')
+
+    def artifact_path(filename: str) -> str:
+        return f'{prefix}/{filename}' if prefix else filename
+
     quality_rows = compact.pop('quality_diagnostics', ())
     history_rows = compact.pop('training_history', ())
     compact.update({
@@ -2733,13 +4116,39 @@ def _artifact_index_cell_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
         'training_history_artifact': 'training_history.json',
         'training_history_row_count': len(history_rows),
     })
+    if 'sampling_diagnostics' in compact:
+        sampling_rows = compact.pop('sampling_diagnostics')
+        compact.update(
+            {
+                'sampling_diagnostics_artifact': 'sampling_diagnostics.json',
+                'sampling_diagnostics_row_count': len(sampling_rows),
+            }
+        )
+    if 'physical_recording_qc' in compact:
+        physical_rows = compact.pop('physical_recording_qc')
+        compact.update(
+            {
+                'physical_recording_qc_artifact': artifact_path(
+                    'physical_recording_qc.json'
+                ),
+                'physical_recording_qc_row_count': len(physical_rows),
+            }
+        )
+    if 'route_artifacts' in compact:
+        route_rows = compact.pop('route_artifacts')
+        compact.update(
+            {
+                'route_artifacts_artifact': artifact_path('route_artifacts.json'),
+                'route_artifacts_row_count': len(route_rows),
+            }
+        )
     return compact
 
 
 def _write_cell_artifacts(directory: Path, cell: _CellResult) -> None:
-    '''Write the six mandatory, non-overwriting artifacts for one outer cell.
+    '''Write the mandatory, non-overwriting artifacts for one outer cell.
 
-    为单个 outer cell 写入六个强制产物；目录必须预先不存在，从而禁止覆盖。
+    为单个 outer cell 写入强制产物；目录必须预先不存在，从而禁止覆盖。
     '''
     imports = _runtime_imports()
     writer = imports['OofWriter']()
@@ -2767,13 +4176,25 @@ def _write_cell_artifacts(directory: Path, cell: _CellResult) -> None:
             directory / 'oof_member_predictions.parquet',
             'single_model_runner_ensemble_comparison_not_executed',
         )
+    window_selection_policy = (
+        cell.summary.get('representation_transform_provenance', {})
+        .get('window_quality_selection', {})
+        .get('policy', 'none')
+    )
     _strict_json(
         directory / 'quality_diagnostics.json',
         {
             'schema_version': 'ppg_frailty.quality_diagnostics.v2',
             'quality_mode': cell.summary['quality_mode'],
             'classification_effect': (
-                'routing' if cell.summary['quality_mode'] == 'route' else 'none'
+                'routing_and_window_selection'
+                if cell.summary['quality_mode'] == 'route'
+                and window_selection_policy != 'none'
+                else 'routing'
+                if cell.summary['quality_mode'] == 'route'
+                else 'window_selection'
+                if window_selection_policy != 'none'
+                else 'none'
             ),
             'rows': cell.summary['quality_diagnostics'],
         },
@@ -2795,6 +4216,41 @@ def _write_cell_artifacts(directory: Path, cell: _CellResult) -> None:
                 }
                 for row in cell.summary['training_history']
             ],
+        },
+    )
+    if 'sampling_diagnostics' in cell.summary:
+        _strict_json(
+            directory / 'sampling_diagnostics.json',
+            {
+                'schema_version': 'ppg_frailty.legacy_bridge_sampling.v1',
+                'repeat_index': cell.summary['repeat_index'],
+                'fold_index': cell.summary['fold_index'],
+                'profile_id': cell.summary['legacy_bridge']['profile'][
+                    'profile_id'
+                ],
+                'rows': cell.summary['sampling_diagnostics'],
+            },
+        )
+    _strict_json(
+        directory / 'physical_recording_qc.json',
+        {
+            'schema_version': 'ppg_frailty.physical_recording_qc.v2',
+            'repeat_index': cell.summary['repeat_index'],
+            'fold_index': cell.summary['fold_index'],
+            # Older/descriptive fixtures and non-record materializations do not
+            # necessarily carry record-level QC rows.  The dedicated artifact
+            # remains mandatory, but an absent optional diagnostic is an empty
+            # collection rather than a reason to fail an otherwise valid cell.
+            'rows': cell.summary.get('physical_recording_qc', []),
+        },
+    )
+    _strict_json(
+        directory / 'route_artifacts.json',
+        {
+            'schema_version': 'ppg_frailty.route_artifacts.v2',
+            'repeat_index': cell.summary['repeat_index'],
+            'fold_index': cell.summary['fold_index'],
+            'rows': cell.summary.get('route_artifacts', []),
         },
     )
     _strict_json(
@@ -2837,7 +4293,14 @@ def _write_cell_artifacts(directory: Path, cell: _CellResult) -> None:
                 'oof_member_predictions.parquet',
                 'quality_diagnostics.json',
                 'training_history.json',
-            ],
+                'physical_recording_qc.json',
+                'route_artifacts.json',
+            ]
+            + (
+                ['sampling_diagnostics.json']
+                if 'sampling_diagnostics' in cell.summary
+                else []
+            ),
         },
     )
 
@@ -2941,6 +4404,83 @@ def _notify_progress(callback: Any, stage: str, **payload: Any) -> None:
     callback(event)
 
 
+_LEGACY_BRIDGE_SOURCE_SPECIFICATION = (
+    'AA_TODO/old_version_compare_V2/'
+    'CODEX_LEGACY_V2_BRIDGE_REVISED_9_CASES_WITH_PHASE0.md'
+)
+
+
+def _resolve_legacy_bridge_execution(
+    paths: Any,
+    config: Any,
+    *,
+    profile_id: str,
+    source_specification: str,
+    source_specification_sha256: str,
+) -> _LegacyBridgeExecution:
+    '''Bind bridge execution only to algorithm inputs, never to audit status.'''
+
+    from .legacy_bridge import resolve_legacy_bridge_profile
+    from .provenance import stable_payload_sha256
+
+    relative = Path(str(source_specification))
+    if relative.is_absolute() or relative.as_posix() != (
+        _LEGACY_BRIDGE_SOURCE_SPECIFICATION
+    ):
+        raise _ExperimentProtocolError(
+            'legacy_bridge_source_specification_path_not_reviewed'
+        )
+    source_path = (paths.repository_root / relative).resolve()
+    try:
+        source_path.relative_to(paths.repository_root.resolve())
+    except ValueError as exc:
+        raise _ExperimentProtocolError(
+            'legacy_bridge_source_specification_escapes_repository'
+        ) from exc
+    if not source_path.is_file():
+        raise _ExperimentProtocolError(
+            f'legacy_bridge_source_specification_missing:{relative.as_posix()}'
+        )
+    declared_sha256 = str(source_specification_sha256)
+    if (
+        len(declared_sha256) != 64
+        or any(value not in '0123456789abcdef' for value in declared_sha256)
+    ):
+        raise _ExperimentProtocolError(
+            'legacy_bridge_source_specification_sha256_invalid'
+        )
+    observed_sha256 = hashlib.sha256(source_path.read_bytes()).hexdigest()
+    if observed_sha256 != declared_sha256:
+        raise _ExperimentProtocolError(
+            'legacy_bridge_source_specification_sha256_mismatch:'
+            f'expected={declared_sha256}:observed={observed_sha256}'
+        )
+    manifest_path = paths.input_path(config.section('manifest')['path'])
+    split_path = paths.input_path(config.section('splits')['path'])
+    manifest_sha256 = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    split_sha256 = hashlib.sha256(split_path.read_bytes()).hexdigest()
+    profile = resolve_legacy_bridge_profile(profile_id)
+    effective_config_hash = stable_payload_sha256(
+        {
+            'schema_version': 'ppg_frailty.legacy_bridge_effective_config.v2',
+            'canonical_config_hash': config.sha256,
+            'profile': profile.to_dict(),
+            'source_specification': relative.as_posix(),
+            'source_specification_sha256': observed_sha256,
+            'manifest_sha256': manifest_sha256,
+            'split_sha256': split_sha256,
+        }
+    )
+    return _LegacyBridgeExecution(
+        profile=profile,
+        source_specification=relative.as_posix(),
+        source_specification_sha256=observed_sha256,
+        manifest_sha256=manifest_sha256,
+        split_sha256=split_sha256,
+        effective_config_hash=effective_config_hash,
+    )
+
+
 def _run_one_outer_cell(
     config_path: str | Path,
     *,
@@ -2953,6 +4493,9 @@ def _run_one_outer_cell(
     epoch_override: int | None,
     progress_callback: Any,
     measure_operational_costs: bool,
+    legacy_bridge_profile_id: str | None = None,
+    legacy_bridge_source_specification: str | None = None,
+    legacy_bridge_source_specification_sha256: str | None = None,
 ) -> ExperimentResult:
     if repeat_index not in range(5) or fold_index not in range(5):
         raise ValueError("repeat_index and fold_index must lie in 0..4")
@@ -2962,6 +4505,33 @@ def _run_one_outer_cell(
         config_path,
         mode="full",
         paths=paths,
+    )
+    bridge_values = (
+        legacy_bridge_profile_id,
+        legacy_bridge_source_specification,
+        legacy_bridge_source_specification_sha256,
+    )
+    if any(value is not None for value in bridge_values) and not all(
+        value is not None for value in bridge_values
+    ):
+        raise ValueError('legacy bridge execution requires profile, source path and SHA')
+    legacy_bridge = (
+        _resolve_legacy_bridge_execution(
+            paths,
+            config,
+            profile_id=str(legacy_bridge_profile_id),
+            source_specification=str(legacy_bridge_source_specification),
+            source_specification_sha256=str(
+                legacy_bridge_source_specification_sha256
+            ),
+        )
+        if all(value is not None for value in bridge_values)
+        else None
+    )
+    _assert_legacy_bridge_entrypoint_contract(
+        config,
+        legacy_bridge,
+        dedicated_entrypoint=legacy_bridge is not None,
     )
     target = _resolve_output_directory(paths, output_dir, "outer_cell")
     staging = target.with_name(f".{target.name}.staging.{time.time_ns()}")
@@ -2988,13 +4558,18 @@ def _run_one_outer_cell(
                 record_cap=record_cap,
                 epoch_override=epoch_override,
                 measure_operational_costs=bool(measure_operational_costs),
+                legacy_bridge=legacy_bridge,
             )
             cell.summary["scientific_scope"] = scope
             result = ExperimentResult(
                 status="passed",
                 scientific_scope=scope,
                 config_id=config.config_id,
-                config_hash=config.sha256,
+                config_hash=(
+                    legacy_bridge.effective_config_hash
+                    if legacy_bridge is not None
+                    else config.sha256
+                ),
                 repeat_indices=(repeat_index,),
                 fold_indices=(fold_index,),
                 output_dir=str(target),
@@ -3011,6 +4586,27 @@ def _run_one_outer_cell(
                     "fixed_epochs_override": epoch_override,
                     "code_version": _code_version(),
                     "source_version": _source_version(),
+                    **(
+                        {
+                            'canonical_config_hash': config.sha256,
+                            'legacy_bridge_profile': (
+                                legacy_bridge.profile.to_dict()
+                            ),
+                            'source_specification': (
+                                legacy_bridge.source_specification
+                            ),
+                            'source_specification_sha256': (
+                                legacy_bridge.source_specification_sha256
+                            ),
+                            'effective_config_hash': (
+                                legacy_bridge.effective_config_hash
+                            ),
+                            'manifest_sha256': legacy_bridge.manifest_sha256,
+                            'split_sha256': legacy_bridge.split_sha256,
+                        }
+                        if legacy_bridge is not None
+                        else {}
+                    ),
                 },
             )
             _write_cell_artifacts(staging, cell)
@@ -3019,7 +4615,11 @@ def _run_one_outer_cell(
                 status="failed_closed",
                 scientific_scope=scope,
                 config_id=config.config_id,
-                config_hash=config.sha256,
+                config_hash=(
+                    legacy_bridge.effective_config_hash
+                    if legacy_bridge is not None
+                    else config.sha256
+                ),
                 repeat_indices=(repeat_index,),
                 fold_indices=(fold_index,),
                 output_dir=str(target),
@@ -3030,6 +4630,27 @@ def _run_one_outer_cell(
                     "frozen_outer_split": True,
                     "code_version": _code_version(),
                     "source_version": _source_version(),
+                    **(
+                        {
+                            'canonical_config_hash': config.sha256,
+                            'legacy_bridge_profile': (
+                                legacy_bridge.profile.to_dict()
+                            ),
+                            'source_specification': (
+                                legacy_bridge.source_specification
+                            ),
+                            'source_specification_sha256': (
+                                legacy_bridge.source_specification_sha256
+                            ),
+                            'effective_config_hash': (
+                                legacy_bridge.effective_config_hash
+                            ),
+                            'manifest_sha256': legacy_bridge.manifest_sha256,
+                            'split_sha256': legacy_bridge.split_sha256,
+                        }
+                        if legacy_bridge is not None
+                        else {}
+                    ),
                 },
                 failure_reasons=(str(exc),),
             )
@@ -3086,6 +4707,48 @@ def run_outer_cell(
         epoch_override=None,
         progress_callback=progress_callback,
         measure_operational_costs=measure_operational_costs,
+    )
+
+
+def run_legacy_bridge_outer_cell(
+    config_path: str | Path,
+    repeat_index: int,
+    fold_index: int,
+    output_dir: str | Path,
+    *,
+    profile_id: str,
+    source_specification: str,
+    source_specification_sha256: str,
+    progress_callback: Any = None,
+    measure_operational_costs: bool = False,
+) -> ExperimentResult:
+    '''Run one isolated L0--L7 bridge cell from fresh raw CSV bytes.
+
+    This is intentionally a separate entry point because L0--L7 are frozen
+    historical comparison profiles.  Ordinary V2 exposes the reusable sampler,
+    weighting, preprocessing, and optimizer modules through its own configurable
+    runtime rather than treating this bridge as an authorization path.  Phase 0
+    is an advisory study audit and is not an input to this algorithm entry point.
+    '''
+
+    if int(repeat_index) != 0:
+        raise ValueError('legacy bridge execution is frozen to repeat_index=0')
+    return _run_one_outer_cell(
+        config_path,
+        repeat_index=int(repeat_index),
+        fold_index=int(fold_index),
+        output_dir=output_dir,
+        scope='legacy_v2_bridge_selected_outer_cell',
+        maximum_seconds=None,
+        record_cap=None,
+        epoch_override=None,
+        progress_callback=progress_callback,
+        measure_operational_costs=measure_operational_costs,
+        legacy_bridge_profile_id=str(profile_id),
+        legacy_bridge_source_specification=str(source_specification),
+        legacy_bridge_source_specification_sha256=str(
+            source_specification_sha256
+        ),
     )
 
 
@@ -3200,7 +4863,13 @@ def _write_full_root_artifacts(
             'pipeline_generation': 'final_pipeline_v2',
             'status': result.status,
             'cells': [
-                _artifact_index_cell_summary(cell.summary)
+                _artifact_index_cell_summary(
+                    cell.summary,
+                    artifact_prefix=(
+                        f"repeat_{int(cell.summary['repeat_index']):02d}_"
+                        f"fold_{int(cell.summary['fold_index']):02d}"
+                    ),
+                )
                 for cell in cell_values
             ],
         },
@@ -3228,9 +4897,36 @@ def _write_full_root_artifacts(
         and len(cell_values) == 25
     )
     if complete_grid:
+        policies = [
+            cell.summary.get('evaluation_policy') for cell in cell_values
+        ]
+        present_policies = [policy for policy in policies if policy is not None]
+        if present_policies and len(present_policies) != len(policies):
+            raise _ExperimentProtocolError('root_cells_mix_evaluation_policy_presence')
+        if present_policies:
+            policy_keys = {
+                json.dumps(
+                    to_strict_json_value(policy),
+                    sort_keys=True,
+                    separators=(',', ':'),
+                    allow_nan=False,
+                )
+                for policy in present_policies
+            }
+            if len(policy_keys) != 1:
+                raise _ExperimentProtocolError('root_cells_mix_evaluation_policies')
+            statistics_policy = dict(present_policies[0]['statistics'])
+            bootstrap_resamples = int(statistics_policy['bootstrap_replicates'])
+            bootstrap_seed = int(statistics_policy['seed'])
+        else:
+            # Compatibility for pre-parameterization synthetic fixtures only.
+            bootstrap_resamples = 10_000
+            bootstrap_seed = 42
         config_metrics_payload = _trusted_config_metrics_payload(
             cell_values,
             result,
+            n_bootstrap_resamples=bootstrap_resamples,
+            bootstrap_seed=bootstrap_seed,
         )
     else:
         config_metrics_payload = {
@@ -3274,15 +4970,6 @@ def _write_full_root_artifacts(
 
 
 _FORMAL_SPLIT_SEEDS = (42, 10042, 20042, 30042, 40042)
-_FORMAL_ABLATION_MACHINE_IDS = frozenset(
-    {'minirocket_ablation', 'shapeformer_effect_size_fixed_v1'}
-)
-_FORMAL_COMPARISON_MACHINE_IDS = frozenset(
-    {
-        'inception_full_five_member_ensemble',
-        'inception_matrix_five_member_ensemble',
-    }
-)
 _FORMAL_MEMBER0_COMPARATOR_MACHINE_IDS = frozenset(
     {'inception_full', 'inception_matrix'}
 )
@@ -3304,34 +4991,15 @@ _FORMAL_ENSEMBLE_FACTOR_COMPARATOR_CONFIG_IDS = {
         'inception_matrix',
     ),
 }
-_FORMAL_REFERENCE_MACHINE_IDS = frozenset(
-    {
-        'compact_cnn',
-        'inception_full',
-        'inception_small',
-        'inception_matrix',
-        'rocket_numpy',
-        'logistic_regression',
-        'rbf_svm',
-        'extra_trees',
-        'shapeformer_channel_specific_osd',
-        'fusion_compact',
-        'fusion_inception',
-    }
-)
-
-
 def _registry_role_for_machine_id(machine_id: str) -> str:
-    """Map formal machine identities to immutable provenance roles."""
+    """Resolve provenance role from the complete model registry."""
 
-    value = str(machine_id)
-    if value in _FORMAL_REFERENCE_MACHINE_IDS:
-        return 'reference'
-    if value in _FORMAL_ABLATION_MACHINE_IDS:
-        return 'ablation'
-    if value in _FORMAL_COMPARISON_MACHINE_IDS:
-        return 'comparison'
-    raise _ExperimentProtocolError(f'model_not_in_formal_catalog:{value}')
+    try:
+        return str(_model_capability_contract(str(machine_id))['registry_role'])
+    except (KeyError, StopIteration, TypeError, ValueError) as exc:
+        raise _ExperimentProtocolError(
+            f'model_not_registered:{machine_id}'
+        ) from exc
 
 
 def _participant_predictions_from_subject_rows(
@@ -3527,14 +5195,51 @@ def _trusted_config_metrics_payload(
     if len(seed_policies) != 1:
         raise _ExperimentProtocolError('root_cells_mix_model_seed_policies')
     seed_policy = next(iter(seed_policies))
-    if machine_id in _FORMAL_COMPARISON_MACHINE_IDS:
-        if seed_policy != 'cv_fixed_five_member_seed_roster':
+    ensemble_training_roster: tuple[int, ...] = ()
+    if _model_is_ensemble(machine_id):
+        if seed_policy not in {'member_roster', 'cv_fixed_five_member_seed_roster'}:
             raise _ExperimentProtocolError('root_ensemble_seed_policy_drift')
+        ensemble_rosters = {
+            tuple(int(value) for value in summary.get('member_training_seeds', ()))
+            for summary in summaries
+        }
+        if (
+            len(ensemble_rosters) != 1
+            or not next(iter(ensemble_rosters), ())
+            or len(next(iter(ensemble_rosters)))
+            != len(set(next(iter(ensemble_rosters))))
+        ):
+            raise _ExperimentProtocolError('root_ensemble_member_roster_drift')
+        ensemble_training_roster = next(iter(ensemble_rosters))
     elif seed_policy == 'cv_fixed_member0_seed_50042_comparator':
-        if machine_id not in _FORMAL_MEMBER0_COMPARATOR_MACHINE_IDS:
+        if (
+            machine_id not in _FORMAL_MEMBER0_COMPARATOR_MACHINE_IDS
+            or {
+                int(summary.get('training_seed', -1)) for summary in summaries
+            } != {50042}
+        ):
             raise _ExperimentProtocolError('root_member0_comparator_identity_drift')
-    elif seed_policy != 'outer_cv_repeat_seed_equals_split_seed':
-        raise _ExperimentProtocolError('root_single_seed_policy_drift')
+    elif seed_policy in {'outer_repeat', 'outer_cv_repeat_seed_equals_split_seed'}:
+        if any(
+            int(summary.get('training_seed', -1))
+            != int(summary.get('split_seed', -2))
+            for summary in summaries
+        ):
+            raise _ExperimentProtocolError('root_repeat_seed_policy_drift')
+    elif seed_policy in {
+        'fixed', 'fixed_explicit', 'final_refit_single_seed_42',
+    }:
+        configured_seeds = {
+            int(summary.get('training_seed', -1)) for summary in summaries
+        }
+        if (
+            len(configured_seeds) != 1
+            or next(iter(configured_seeds)) < 0
+            or next(iter(configured_seeds)) > 0xFFFF_FFFF
+        ):
+            raise _ExperimentProtocolError('root_fixed_seed_policy_drift')
+    else:
+        raise _ExperimentProtocolError('root_single_seed_policy_unregistered')
     split_seed_by_repeat: dict[int, int] = {}
     for summary in summaries:
         repeat = int(summary['repeat_index'])
@@ -3595,12 +5300,17 @@ def _trusted_config_metrics_payload(
         'registry_role': metrics.registry_role,
         'seeds': list(_FORMAL_SPLIT_SEEDS),
         'training_seeds': (
-            [50042, 60042, 70042, 80042, 90042]
-            if seed_policy == 'cv_fixed_five_member_seed_roster'
+            list(ensemble_training_roster)
+            if _model_is_ensemble(machine_id)
             else (
                 [50042]
                 if seed_policy == 'cv_fixed_member0_seed_50042_comparator'
-                else list(_FORMAL_SPLIT_SEEDS)
+                else sorted(
+                    {
+                        int(summary['training_seed'])
+                        for summary in summaries
+                    }
+                )
             )
         ),
         'participant_oof_coverage': {
@@ -3672,6 +5382,11 @@ def run_full_experiment(
         mode='full',
         paths=paths,
     )
+    _assert_legacy_bridge_entrypoint_contract(
+        config,
+        None,
+        dedicated_entrypoint=False,
+    )
     target = _resolve_output_directory(paths, output_dir, 'full_experiment')
     staging = target.with_name(f'.{target.name}.staging.{time.time_ns()}')
     staging.mkdir(parents=True, exist_ok=False)
@@ -3719,7 +5434,14 @@ def run_full_experiment(
                     )
                     cell.summary['scientific_scope'] = scope
                     passed_cells.append(cell)
-                    summaries.append(_artifact_index_cell_summary(cell.summary))
+                    summaries.append(
+                        _artifact_index_cell_summary(
+                            cell.summary,
+                            artifact_prefix=(
+                                f'repeat_{repeat_index:02d}_fold_{fold_index:02d}'
+                            ),
+                        )
+                    )
                     _write_cell_artifacts(cell_directory, cell)
                     _notify_progress(
                         progress_callback,
@@ -3875,21 +5597,35 @@ def _fold_summaries_from_run(directory: Path) -> tuple[dict[str, Any], ...]:
     if len(seed_policies) != 1:
         raise ValueError('comparison_input_cell_seed_policy_drift')
     seed_policy = next(iter(seed_policies))
-    ensemble = machine_id in _FORMAL_COMPARISON_MACHINE_IDS
-    if ensemble != (seed_policy == 'cv_fixed_five_member_seed_roster'):
-        raise ValueError('comparison_input_ensemble_seed_policy_identity_drift')
+    ensemble = _model_is_ensemble(machine_id)
     if (
         seed_policy == 'cv_fixed_member0_seed_50042_comparator'
         and machine_id not in _FORMAL_MEMBER0_COMPARATOR_MACHINE_IDS
     ):
         raise ValueError('comparison_input_member0_comparator_model_identity_drift')
-    expected_members = [50042, 60042, 70042, 80042, 90042]
+    expected_members: list[int] = []
+    if ensemble:
+        if seed_policy not in {'member_roster', 'cv_fixed_five_member_seed_roster'}:
+            raise ValueError('comparison_input_ensemble_seed_policy_identity_drift')
+        rosters = {
+            tuple(int(value) for value in row.get('member_training_seeds', ()))
+            for row in summaries
+        }
+        if len(rosters) != 1:
+            raise ValueError('comparison_input_ensemble_seed_provenance_drift')
+        expected_members = list(next(iter(rosters)))
+        if (
+            not expected_members
+            or len(expected_members) != len(set(expected_members))
+            or any(value < 0 or value > 0xFFFF_FFFF for value in expected_members)
+        ):
+            raise ValueError('comparison_input_ensemble_seed_provenance_drift')
     for row in summaries:
         if ensemble:
             if (
                 row.get('training_seed') is not None
                 or row.get('member_training_seeds') != expected_members
-                or row.get('seed_policy') != 'cv_fixed_five_member_seed_roster'
+                or row.get('seed_policy') != seed_policy
             ):
                 raise ValueError('comparison_input_ensemble_seed_provenance_drift')
         elif seed_policy == 'cv_fixed_member0_seed_50042_comparator':
@@ -3902,14 +5638,99 @@ def _fold_summaries_from_run(directory: Path) -> tuple[dict[str, Any], ...]:
                 raise ValueError(
                     'comparison_input_member0_comparator_seed_provenance_drift'
                 )
-        elif (
-            int(row.get('training_seed', -1)) != int(row['split_seed'])
-            or row.get('member_training_seeds') != []
-            or row.get('seed_policy')
-            != 'outer_cv_repeat_seed_equals_split_seed'
-        ):
-            raise ValueError('comparison_input_single_repeat_seed_provenance_drift')
+        elif seed_policy in {'outer_repeat', 'outer_cv_repeat_seed_equals_split_seed'}:
+            if (
+                int(row.get('training_seed', -1)) != int(row['split_seed'])
+                or row.get('member_training_seeds') != []
+                or row.get('seed_policy') != seed_policy
+            ):
+                raise ValueError('comparison_input_single_repeat_seed_provenance_drift')
+        elif seed_policy in {
+            'fixed', 'fixed_explicit', 'final_refit_single_seed_42',
+        }:
+            if (
+                row.get('member_training_seeds') != []
+                or row.get('seed_policy') != seed_policy
+                or not 0 <= int(row.get('training_seed', -1)) <= 0xFFFF_FFFF
+            ):
+                raise ValueError('comparison_input_single_fixed_seed_provenance_drift')
+        else:
+            raise ValueError('comparison_input_single_seed_policy_unregistered')
+    if not ensemble and seed_policy in {
+        'fixed', 'fixed_explicit', 'final_refit_single_seed_42',
+    } and len({int(row['training_seed']) for row in summaries}) != 1:
+        raise ValueError('comparison_input_single_fixed_seed_provenance_drift')
     return summaries
+
+
+_EXTERNALIZED_CELL_ROW_ARTIFACTS = {
+    'physical_recording_qc': (
+        'physical_recording_qc_artifact',
+        'physical_recording_qc_row_count',
+        'physical_recording_qc.json',
+        'ppg_frailty.physical_recording_qc.v2',
+    ),
+    'route_artifacts': (
+        'route_artifacts_artifact',
+        'route_artifacts_row_count',
+        'route_artifacts.json',
+        'ppg_frailty.route_artifacts.v2',
+    ),
+}
+
+
+def _hydrate_externalized_cell_rows(
+    root: Path,
+    summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Restore externalized rows for consumers that audit the full cell payload."""
+
+    hydrated = dict(summary)
+    repeat = int(hydrated['repeat_index'])
+    fold = int(hydrated['fold_index'])
+    cell_prefix = f'repeat_{repeat:02d}_fold_{fold:02d}'
+    for field, (pointer_field, count_field, filename, schema_version) in (
+        _EXTERNALIZED_CELL_ROW_ARTIFACTS.items()
+    ):
+        if field in hydrated:
+            if pointer_field in hydrated or count_field in hydrated:
+                raise ValueError(
+                    f'comparison_cell_{field}_inline_and_externalized'
+                )
+            continue
+        if pointer_field not in hydrated and count_field not in hydrated:
+            # Pre-externalization comparison archives may legitimately omit an
+            # optional row table altogether.  Only the new pointer/count pair
+            # opts a cell into the externalized artifact contract.
+            continue
+        pointer = hydrated.get(pointer_field)
+        count = hydrated.get(count_field)
+        if (
+            pointer != f'{cell_prefix}/{filename}'
+            or isinstance(count, bool)
+            or not isinstance(count, int)
+            or count < 0
+        ):
+            raise ValueError(f'comparison_cell_{field}_pointer_contract_drift')
+        artifact_path = (root / str(pointer)).resolve()
+        try:
+            artifact_path.relative_to(root.resolve())
+        except ValueError as error:
+            raise ValueError(
+                f'comparison_cell_{field}_pointer_escapes_run'
+            ) from error
+        payload = _load_strict_json_object(artifact_path)
+        rows = payload.get('rows')
+        if (
+            payload.get('schema_version') != schema_version
+            or payload.get('repeat_index') != repeat
+            or payload.get('fold_index') != fold
+            or not isinstance(rows, list)
+            or count != len(rows)
+        ):
+            raise ValueError(f'comparison_cell_{field}_artifact_contract_drift')
+        hydrated[field] = rows
+    return hydrated
 
 
 _COMPARISON_OOF_AUTHORITY_FIELDS = (
@@ -4043,8 +5864,8 @@ def _read_trusted_comparison_run(
     config_id: str,
     directory: str | Path,
     *,
-    n_bootstrap_resamples: int,
-    bootstrap_seed: int,
+    n_bootstrap_resamples: int | None,
+    bootstrap_seed: int | None,
 ) -> dict[str, Any]:
     """Read one complete 5x5 run and rebuild every predictive metric."""
 
@@ -4122,17 +5943,81 @@ def _read_trusted_comparison_run(
     if len(config_hash) != 64:
         raise ValueError(f'comparison_run_config_hash_invalid:{config_id}')
     summaries = _fold_summaries_from_run(root)
+    policy_rows = [row.get('evaluation_policy') for row in summaries]
+    present_policies = [row for row in policy_rows if row is not None]
+    if present_policies and len(present_policies) != len(policy_rows):
+        raise ValueError(f'comparison_run_evaluation_policy_presence_drift:{config_id}')
+    statistics_policy: dict[str, Any] | None = None
+    if present_policies:
+        encoded_policies = {
+            json.dumps(
+                to_strict_json_value(row),
+                sort_keys=True,
+                separators=(',', ':'),
+                allow_nan=False,
+            )
+            for row in present_policies
+        }
+        if len(encoded_policies) != 1:
+            raise ValueError(f'comparison_run_evaluation_policy_drift:{config_id}')
+        statistics_policy = dict(present_policies[0]['statistics'])
+    resolved_bootstrap_resamples = (
+        int(statistics_policy['bootstrap_replicates'])
+        if n_bootstrap_resamples is None and statistics_policy is not None
+        else 10_000
+        if n_bootstrap_resamples is None
+        else int(n_bootstrap_resamples)
+    )
+    resolved_statistics_seed = (
+        int(statistics_policy['seed'])
+        if bootstrap_seed is None and statistics_policy is not None
+        else 42
+        if bootstrap_seed is None
+        else int(bootstrap_seed)
+    )
+    if statistics_policy is not None and (
+        resolved_bootstrap_resamples != int(statistics_policy['bootstrap_replicates'])
+        or resolved_statistics_seed != int(statistics_policy['seed'])
+    ):
+        raise ValueError(f'comparison_run_statistics_override_config_drift:{config_id}')
     summary_by_cell = {
         (int(row['repeat_index']), int(row['fold_index'])): row
         for row in summaries
     }
     for key, cell_manifest in cell_manifests.items():
-        if to_strict_json_value(cell_manifest.get('cell')) != to_strict_json_value(
-            summary_by_cell[key]
+        local_summary = cell_manifest.get('cell')
+        if not isinstance(local_summary, Mapping):
+            raise ValueError(
+                f'comparison_run_cell_manifest_summary_missing:r{key[0]}f{key[1]}'
+            )
+        normalized_root_summary = dict(summary_by_cell[key])
+        normalized_local_summary = dict(local_summary)
+        cell_prefix = f'repeat_{key[0]:02d}_fold_{key[1]:02d}'
+        for _field, (pointer_field, _count_field, filename, _schema) in (
+            _EXTERNALIZED_CELL_ROW_ARTIFACTS.items()
+        ):
+            root_pointer = normalized_root_summary.get(pointer_field)
+            local_pointer = normalized_local_summary.get(pointer_field)
+            if root_pointer is None and local_pointer is None:
+                continue
+            if (
+                root_pointer != f'{cell_prefix}/{filename}'
+                or local_pointer != filename
+            ):
+                raise ValueError(
+                    'comparison_run_cell_externalized_pointer_drift:'
+                    f'r{key[0]}f{key[1]}:{pointer_field}'
+                )
+            normalized_root_summary[pointer_field] = filename
+        if to_strict_json_value(normalized_local_summary) != to_strict_json_value(
+            normalized_root_summary
         ):
             raise ValueError(
                 f'comparison_run_cell_root_summary_drift:r{key[0]}f{key[1]}'
             )
+    summaries = tuple(
+        _hydrate_externalized_cell_rows(root, summary) for summary in summaries
+    )
     machine_ids = {str(row['model_machine_id']) for row in summaries}
     if len(machine_ids) != 1:
         raise ValueError(f'comparison_run_mixed_model_ids:{config_id}')
@@ -4152,20 +6037,28 @@ def _read_trusted_comparison_run(
         'inception_matrix_five_member_ensemble': 'inception_matrix',
     }
     if machine_id in ensemble_base_by_id:
+        summary_rosters = {
+            tuple(int(value) for value in row.get('member_training_seeds', ()))
+            for row in summaries
+        }
+        if len(summary_rosters) != 1 or not next(iter(summary_rosters), ()):
+            raise ValueError(
+                f'comparison_run_ensemble_summary_roster_drift:{config_id}'
+            )
+        expected_member_seeds = next(iter(summary_rosters))
         member_relative = 'oof_member_predictions.parquet'
         if not (root / member_relative).is_file():
             raise ValueError(f'comparison_run_missing_root_member_oof:{config_id}')
         member_rows = read_oof_parquet(root / member_relative)
-        if len(member_rows) != 725:
+        if len(member_rows) != 145 * len(expected_member_seeds):
             raise ValueError(
-                f'comparison_run_requires_725_ensemble_member_rows:{config_id}'
+                f'comparison_run_ensemble_member_row_count_drift:{config_id}'
             )
         base_model_id = ensemble_base_by_id[machine_id]
-        expected_member_seeds = (50042, 60042, 70042, 80042, 90042)
         for row in member_rows:
             if (
                 row.prediction_kind != 'ensemble_member'
-                or row.member_index not in range(5)
+                or row.member_index not in range(len(expected_member_seeds))
                 or row.training_seed != expected_member_seeds[int(row.member_index)]
                 or row.ensemble_base_model_id != base_model_id
                 or row.config_hash != config_hash
@@ -4192,7 +6085,7 @@ def _read_trusted_comparison_run(
             (*member_rows, *oof_rows),
             expected_roster,
             expected_config_hashes=(config_hash,),
-            expected_member_count=5,
+            expected_member_count=len(expected_member_seeds),
             require_trace=True,
         )
     else:
@@ -4201,12 +6094,29 @@ def _read_trusted_comparison_run(
             if seed_policy == 'cv_fixed_member0_seed_50042_comparator':
                 invalid_seed = row.training_seed != 50042
                 reason = 'comparison_run_member0_comparator_seed_identity_drift'
-            else:
+            elif seed_policy in {
+                'outer_repeat', 'outer_cv_repeat_seed_equals_split_seed',
+            }:
                 invalid_seed = (
                     row.training_seed != _FORMAL_SPLIT_SEEDS[int(row.repeat)]
                     or row.training_seed != row.split_seed
                 )
                 reason = 'comparison_run_single_repeat_seed_identity_drift'
+            elif seed_policy in {
+                'fixed', 'fixed_explicit', 'final_refit_single_seed_42',
+            }:
+                declared_seeds = {
+                    int(summary['training_seed']) for summary in summaries
+                }
+                invalid_seed = (
+                    len(declared_seeds) != 1
+                    or row.training_seed != next(iter(declared_seeds))
+                )
+                reason = 'comparison_run_single_fixed_seed_identity_drift'
+            else:
+                raise ValueError(
+                    f'comparison_run_single_seed_policy_unregistered:{config_id}'
+                )
             if (
                 row.prediction_kind != 'single_model'
                 or invalid_seed
@@ -4264,7 +6174,7 @@ def _read_trusted_comparison_run(
                     (*cell_members, *cell_subjects),
                     expected_roster,
                     expected_config_hashes=(config_hash,),
-                    expected_member_count=5,
+                    expected_member_count=len(expected_member_seeds),
                     require_trace=True,
                 )
                 root_member_by_cell[key] = cell_members
@@ -4310,13 +6220,9 @@ def _read_trusted_comparison_run(
     stored_payload = _load_strict_json_object(root / 'config_metrics_v2.json')
     stored = stored_payload.get('config_metrics')
     expected_training_seeds = (
-        [50042, 60042, 70042, 80042, 90042]
-        if seed_policy == 'cv_fixed_five_member_seed_roster'
-        else (
-            [50042]
-            if seed_policy == 'cv_fixed_member0_seed_50042_comparator'
-            else list(_FORMAL_SPLIT_SEEDS)
-        )
+        list(expected_member_seeds)
+        if machine_id in ensemble_base_by_id
+        else sorted({int(summary['training_seed']) for summary in summaries})
     )
     if (
         stored_payload.get('status') != 'passed_trusted_metrics_rebuilt_from_typed_oof'
@@ -4357,8 +6263,8 @@ def _read_trusted_comparison_run(
         fold_participant_rosters=fold_rosters,
         inference_cost=operational['inference_cost'],
         parameter_count=operational['parameter_count'],
-        n_bootstrap_resamples=int(n_bootstrap_resamples),
-        bootstrap_seed=int(bootstrap_seed),
+        n_bootstrap_resamples=resolved_bootstrap_resamples,
+        bootstrap_seed=resolved_statistics_seed,
         eligible=operational['eligible'],
         exclusion_reason=operational['exclusion_reason'],
     )
@@ -4406,6 +6312,7 @@ def _read_trusted_comparison_run(
         'run_directory': str(root),
         'artifact_count': sum(1 for path in root.rglob('*') if path.is_file()),
         'authority_identity': authority_identity,
+        'statistics_policy': statistics_policy,
     }
 
 
@@ -4417,9 +6324,9 @@ def build_comparison_archive_from_run_directories(
     comparison_id: str,
     run_id: str,
     output_root: str | Path,
-    n_bootstrap_resamples: int = 10_000,
-    n_permutation_resamples: int = 100_000,
-    statistics_seed: int = 42,
+    n_bootstrap_resamples: int | None = None,
+    n_permutation_resamples: int | None = None,
+    statistics_seed: int | None = None,
     allowed_authority_differences: Iterable[str] = (),
 ) -> dict[str, Any]:
     """Build one explicit statistics archive from complete 5x5 run roots.
@@ -4446,8 +6353,16 @@ def build_comparison_archive_from_run_directories(
         raise ValueError('reference_config_id must occur in run_directories')
     if not str(comparison_family).strip():
         raise ValueError('comparison_family must be explicit')
-    if int(n_bootstrap_resamples) <= 0 or int(n_permutation_resamples) <= 0:
+    if (
+        n_bootstrap_resamples is not None
+        and int(n_bootstrap_resamples) <= 0
+    ) or (
+        n_permutation_resamples is not None
+        and int(n_permutation_resamples) <= 0
+    ):
         raise ValueError('statistics resample counts must be positive')
+    if statistics_seed is not None and not 0 <= int(statistics_seed) <= 0xFFFF_FFFF:
+        raise ValueError('statistics_seed must be in [0,2^32-1]')
     declared_differences = tuple(
         sorted(set(str(value).strip() for value in allowed_authority_differences))
     )
@@ -4463,23 +6378,61 @@ def build_comparison_archive_from_run_directories(
         config_id: _read_trusted_comparison_run(
             config_id,
             directory,
-            n_bootstrap_resamples=int(n_bootstrap_resamples),
-            bootstrap_seed=int(statistics_seed),
+            n_bootstrap_resamples=n_bootstrap_resamples,
+            bootstrap_seed=statistics_seed,
         )
         for config_id, directory in sorted(directories.items())
     }
+    policies = [current['statistics_policy'] for current in loaded.values()]
+    present_policies = [policy for policy in policies if policy is not None]
+    if present_policies and len(present_policies) != len(policies):
+        raise ValueError('comparison_runs_mix_evaluation_policy_presence')
+    if present_policies:
+        encoded_policies = {
+            json.dumps(
+                to_strict_json_value(policy),
+                sort_keys=True,
+                separators=(',', ':'),
+                allow_nan=False,
+            )
+            for policy in present_policies
+        }
+        if len(encoded_policies) != 1:
+            raise ValueError('comparison_runs_use_different_evaluation_policies')
+        common_statistics = dict(present_policies[0])
+        resolved_bootstrap_resamples = int(
+            common_statistics['bootstrap_replicates']
+        )
+        resolved_permutation_resamples = int(
+            common_statistics['paired_permutation_replicates']
+        )
+        resolved_statistics_seed = int(common_statistics['seed'])
+        if (
+            n_permutation_resamples is not None
+            and int(n_permutation_resamples) != resolved_permutation_resamples
+        ):
+            raise ValueError('comparison_permutation_override_config_drift')
+    else:
+        resolved_bootstrap_resamples = (
+            10_000 if n_bootstrap_resamples is None else int(n_bootstrap_resamples)
+        )
+        resolved_permutation_resamples = (
+            100_000
+            if n_permutation_resamples is None
+            else int(n_permutation_resamples)
+        )
+        resolved_statistics_seed = (
+            42 if statistics_seed is None else int(statistics_seed)
+        )
     reference = loaded[reference_config_id]
     for current in loaded.values():
-        if current['machine_id'] not in _FORMAL_COMPARISON_MACHINE_IDS:
-            continue
         expected = _FORMAL_ENSEMBLE_FACTOR_COMPARATOR_CONFIG_IDS.get(
             current['config_id']
         )
         if expected is None:
-            raise ValueError(
-                'ensemble_factor_comparison_ensemble_config_identity_unregistered:'
-                f"{current['config_id']}"
-            )
+            # Exact member-0 pairing is a named historical comparison preset,
+            # not an authorization gate on ordinary configurable ensembles.
+            continue
         expected_config_id, expected_machine_id = expected
         if (
             reference['config_id'] != expected_config_id
@@ -4531,8 +6484,8 @@ def build_comparison_archive_from_run_directories(
                 reference['predictions'],
                 current['predictions'],
                 metric=metric,
-                n_resamples=int(n_permutation_resamples),
-                seed=int(statistics_seed),
+                n_resamples=resolved_permutation_resamples,
+                seed=resolved_statistics_seed,
             )
             result_key = f'{comparison_key}__{metric}'
             paired[result_key] = result
@@ -4581,13 +6534,13 @@ def build_comparison_archive_from_run_directories(
                 for config_id, current in loaded.items()
             },
             'bootstrap_policy': {
-                'resamples': int(n_bootstrap_resamples),
-                'seed': int(statistics_seed),
+                'resamples': resolved_bootstrap_resamples,
+                'seed': resolved_statistics_seed,
                 'metrics': ['balanced_accuracy', 'macro_f1'],
             },
             'paired_permutation_policy': {
-                'resamples': int(n_permutation_resamples),
-                'seed': int(statistics_seed),
+                'resamples': resolved_permutation_resamples,
+                'seed': resolved_statistics_seed,
                 'exchange_unit': 'participant_with_all_repeats',
                 'coverage_policy': 'exact_roster_required_no_intersection',
             },
@@ -4872,7 +6825,9 @@ def write_manual_selection_record(
     source_run = source_runs[config_id]
     if (
         not isinstance(source_run, Mapping)
-        or selected.get('registry_role') not in {'reference', 'ablation', 'comparison'}
+        or selected.get('registry_role') not in {
+            'reference', 'ablation', 'comparison', 'optional'
+        }
         or not str(purpose).strip()
         or not str(human_rationale).strip()
     ):
@@ -4918,8 +6873,8 @@ def final_refit_preflight_from_verified_artifacts(
     trusted = _read_trusted_comparison_run(
         str(selection['config_id']),
         run_root,
-        n_bootstrap_resamples=1,
-        bootstrap_seed=42,
+        n_bootstrap_resamples=None,
+        bootstrap_seed=None,
     )
     if (
         trusted['config_hash'] != selection['config_hash']
@@ -4954,14 +6909,7 @@ def final_refit_preflight_from_verified_artifacts(
         or {str(row.fold_hash) for row in oof_rows} != {report.fold_hash}
     ):
         raise ValueError('final_refit_manifest_fold_or_oof_roster_mismatch')
-    source_snapshots = {
-        str(row.source_snapshot_hash) for row in oof_rows
-    }
-    if (
-        len(source_snapshots) != 1
-        or len(next(iter(source_snapshots))) != 64
-    ):
-        raise ValueError('final_refit_oof_source_snapshot_identity_drift')
+    source_snapshot = _validated_oof_source_snapshot(oof_rows)
     return {
         'schema_version': 'ppg_frailty.final_refit_preflight.v2',
         'pipeline_generation': 'final_pipeline_v2',
@@ -4981,10 +6929,26 @@ def final_refit_preflight_from_verified_artifacts(
         'selection_record_file_sha256': sha256_file(
             Path(selection_record).resolve()
         ),
-        'source_snapshot_sha256': next(iter(source_snapshots)),
+        'source_snapshot_sha256': source_snapshot,
         'next_executable_api': 'execute_final_refit_from_verified_artifacts',
         'training_executed': False,
     }
+
+
+def _validated_oof_source_snapshot(oof_rows: Iterable[Any]) -> str:
+    """Require one valid OOF source identity equal to the executing code tree."""
+
+    source_snapshots = {str(row.source_snapshot_hash) for row in oof_rows}
+    source_snapshot = next(iter(source_snapshots), "")
+    if (
+        len(source_snapshots) != 1
+        or len(source_snapshot) != 64
+        or any(character not in "0123456789abcdef" for character in source_snapshot)
+    ):
+        raise ValueError('final_refit_oof_source_snapshot_identity_drift')
+    if source_snapshot != _source_version():
+        raise ValueError('final_refit_current_source_differs_from_oof_snapshot')
+    return source_snapshot
 
 
 def _canonical_final_bundle_materialization(
@@ -5065,10 +7029,13 @@ def _canonical_final_bundle_materialization(
         source_records_hash=materialized.source_records_hash,
         dataset_hash=materialized.dataset_hash,
     )
+    classifier_role_families = tuple(
+        str(value) for value in training['classifier_role_families']
+    )
     adapter = build_model_input_adapter(
         mode,
         input_schema_hash=execution.plan.input_schema_hash,
-        allowed_role_families=('B', 'R'),
+        allowed_role_families=classifier_role_families,
     )
     feature_vector_schema: dict[str, Any]
     if mode == 'feature_vector':
@@ -5128,7 +7095,7 @@ def _canonical_final_bundle_materialization(
         {
             'training_balance': training['training_balance'],
             'aggregation': aggregation,
-            'classifier_role_families': ('B', 'R'),
+            'classifier_role_families': classifier_role_families,
         }
     )
     metadata = {
@@ -5139,8 +7106,9 @@ def _canonical_final_bundle_materialization(
         },
         'representation_mode': mode,
         'signal_route': {
-            'artifact_reducer': artifact['reducer'],
-            'artifact_reducer_version': artifact['reducer_version'],
+            'artifact_reducer': report.artifact['runtime_reducer'],
+            'artifact_reducer_version': report.artifact['runtime_version'],
+            'artifact_declared_version': artifact['reducer_version'],
             'observed_route_statuses': sorted(
                 {str(row['route_status']) for row in materialized.source_records}
             ),
@@ -5178,9 +7146,13 @@ def _canonical_final_bundle_materialization(
         'mask_semantics': mask_semantics,
         'validity_policy': {
             'quality_mode': quality['mode'],
-            'quality_affects_classification': False,
+            'quality_affects_classification': (
+                quality['mode'] == 'route'
+                or quality['window_selection']['policy'] != 'none'
+            ),
+            'window_selection': quality['window_selection'],
             'hard_recording_qc': 'required_before_materialization',
-            'classifier_role_families': ['B', 'R'],
+            'classifier_role_families': list(classifier_role_families),
         },
         'fitted_objects': fitted_objects,
         'representation_state': {
@@ -5304,8 +7276,16 @@ def execute_final_refit_from_verified_artifacts(
     full_dataset = materialized.dataset
 
     model_section = config.section('model')
-    final_ensemble_declared = int(model_section.get('ensemble_size', 1)) == 5
-    refit_orchestration_seed = 50042 if final_ensemble_declared else 42
+    _, declared_machine_id = api['normalize_model_id'](
+        str(model_section['model_id'])
+    )
+    final_ensemble_declared = _model_is_ensemble(declared_machine_id)
+    declared_member_seeds = (
+        _ensemble_member_seed_roster(model_section)
+        if final_ensemble_declared
+        else ()
+    )
+    refit_orchestration_seed = int(config.section('training')['seed'])
     factory_model_config, machine_id = _resolved_model_config(
         config,
         training_seed=refit_orchestration_seed,
@@ -5346,14 +7326,11 @@ def execute_final_refit_from_verified_artifacts(
         if config.representation_mode in {'feature_vector', 'feature_matrix'}
         else windows['raw_dl']
     )
-    classical = machine_id in _ESTIMATOR_MODEL_IDS
-    ensemble = machine_id in {
-        'inception_full_five_member_ensemble',
-        'inception_matrix_five_member_ensemble',
-    }
+    classical = _model_uses_estimator(machine_id)
+    ensemble = _model_is_ensemble(machine_id)
     if ensemble != final_ensemble_declared:
         raise ValueError('final_refit_declared_and_resolved_ensemble_identity_drift')
-    seeds = FINAL_ENSEMBLE_MEMBER_SEEDS if ensemble else (42,)
+    seeds = declared_member_seeds if ensemble else (refit_orchestration_seed,)
     model_input_fs_hz = _model_input_sampling_rate_hz(config)
     input_channels_order = (
         tuple(str(value) for value in expected_spec.feature_names)
@@ -5361,9 +7338,8 @@ def execute_final_refit_from_verified_artifacts(
         else tuple(str(value) for value in expected_spec.channel_schema)
     )
     base_provenance = api['validate_frozen_model_run_provenance']({
-        'architecture_parameters': _resolved_architecture_parameters(
-            machine_id,
-            model_section,
+        'architecture_parameters': dict(
+            model_config_for_binding['architecture_parameters']
         ),
         'input_channels_order': input_channels_order,
         'sampling_rate_hz': model_input_fs_hz,
@@ -5391,7 +7367,6 @@ def execute_final_refit_from_verified_artifacts(
         'feature_schema_hash': materialized.feature_hash,
         'sqi_routing': {
             'mode': quality['mode'],
-            'supervised_route_ready': quality['supervised_route_ready'],
             'failure_action': quality['failure_action'],
         },
         **_training_algorithm_provenance(
@@ -5402,8 +7377,7 @@ def execute_final_refit_from_verified_artifacts(
         ),
         'random_seeds': seeds,
         'seed_policy': (
-            'final_refit_five_member_seeds'
-            if ensemble else 'final_refit_single_seed_42'
+            'member_roster' if ensemble else 'fixed_explicit'
         ),
         'fold_hash': scope.fold_hash,
         'aggregation': dict(aggregation),
@@ -5434,7 +7408,7 @@ def execute_final_refit_from_verified_artifacts(
         epoch_rule='not_applicable' if classical else 'fixed_epoch',
         model_family='classical_or_rocket' if classical else 'deep',
         oof_evidence_hash=preflight['oof_evidence_sha256'],
-        model_kind='five_member_ensemble' if ensemble else 'single_model',
+        model_kind='ensemble' if ensemble else 'single_model',
         registry_hash=report.module_registry_hash,
         source_snapshot_hash=preflight['source_snapshot_sha256'],
         manual_selection_hash=preflight['manual_selection_sha256'],
@@ -5472,37 +7446,34 @@ def execute_final_refit_from_verified_artifacts(
     )
 
 
-FINAL_ENSEMBLE_MEMBER_SEEDS = (50042, 60042, 70042, 80042, 90042)
+DEFAULT_ENSEMBLE_MEMBER_SEEDS = (50042, 60042, 70042, 80042, 90042)
+# Backward-compatible preset constant; runtime validation never compares to it.
+FINAL_ENSEMBLE_MEMBER_SEEDS = DEFAULT_ENSEMBLE_MEMBER_SEEDS
 
 
 def final_refit_policy(config: Any) -> dict[str, Any]:
     """Return the frozen post-selection policy without fitting or exporting."""
 
+    from .models import normalize_model_id
+
     model = config.section("model")
     model_id = str(model["model_id"])
-    ensemble_size = int(model.get("ensemble_size", 1))
-    if ensemble_size == 1:
+    _, machine_id = normalize_model_id(model_id)
+    orchestration_seed = int(config.section('training')['seed'])
+    if not _model_is_ensemble(machine_id):
         refit = {
             "kind": "single_model",
-            "model_seed": 42,
-            "member_seeds": [42],
-        }
-    elif model_id in {
-        "InceptionTimeFullFiveMemberEnsemble",
-        "InceptionTimeMatrixFiveMemberEnsemble",
-    }:
-        declared = tuple(int(value) for value in model.get("member_seeds", ()))
-        if declared != FINAL_ENSEMBLE_MEMBER_SEEDS:
-            raise _ExperimentProtocolError(
-                "final_ensemble_member_seeds_must_match_confirmed_v2_sequence"
-            )
-        refit = {
-            "kind": "five_member_probability_ensemble",
-            "model_seed": None,
-            "member_seeds": list(FINAL_ENSEMBLE_MEMBER_SEEDS),
+            "model_seed": orchestration_seed,
+            "member_seeds": [orchestration_seed],
         }
     else:
-        raise _ExperimentProtocolError("unsupported_final_refit_ensemble_identity")
+        declared = _ensemble_member_seed_roster(model)
+        refit = {
+            "kind": "probability_ensemble",
+            "model_seed": None,
+            "orchestration_seed": orchestration_seed,
+            "member_seeds": list(declared),
+        }
     return {
         "schema_version": "ppg_frailty.final_refit_policy.v2",
         "pipeline_generation": "final_pipeline_v2",
@@ -5519,11 +7490,13 @@ def final_refit_policy(config: Any) -> dict[str, Any]:
 __all__ = [
     "build_comparison_archive_from_run_directories",
     "ExperimentResult",
+    "DEFAULT_ENSEMBLE_MEMBER_SEEDS",
     "FINAL_ENSEMBLE_MEMBER_SEEDS",
     "execute_final_refit_from_verified_artifacts",
     "final_refit_preflight_from_verified_artifacts",
     "final_refit_policy",
     "run_full_experiment",
+    "run_legacy_bridge_outer_cell",
     "run_outer_cell",
     "run_reduced_fold_experiment",
     "verify_manual_selection_record",

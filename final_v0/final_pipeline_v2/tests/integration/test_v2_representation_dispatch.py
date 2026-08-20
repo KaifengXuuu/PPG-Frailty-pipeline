@@ -21,9 +21,11 @@ from ppg_frailty.features import (
     build_feature_vector,
     default_registry,
     engineering_feature_names,
+    registry_for_groups,
 )
-from ppg_frailty.peaks import BeatPairingResult
+from ppg_frailty.peaks import BeatPairAudit, BeatPairingResult
 from ppg_frailty.representations import RawWindows
+from ppg_frailty.signal.optical import OpticalBeatAudit
 from ppg_frailty.training import RawWindowDataset, SampleIdentity
 
 
@@ -90,6 +92,45 @@ def _states() -> list[experiment._RuntimeRecord]:
 
 
 class RepresentationDispatchTest(unittest.TestCase):
+    def test_composable_file_bag_fusion_preserves_optional_registry_role(self) -> None:
+        self.assertEqual(
+            experiment._registry_role_for_machine_id("file_bag_fusion"),
+            "optional",
+        )
+
+    def test_source_snapshot_is_deterministic_content_addressed_sha256(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            (root / "z.py").write_text("VALUE = 2\n", encoding="utf-8")
+            package = root / "nested"
+            package.mkdir()
+            source = package / "a.py"
+            source.write_text("VALUE = 1\n", encoding="utf-8")
+
+            first = experiment._source_tree_sha256(root)
+            second = experiment._source_tree_sha256(root)
+            self.assertEqual(first, second)
+            self.assertEqual(len(first), 64)
+            self.assertTrue(all(value in "0123456789abcdef" for value in first))
+
+            source.write_text("VALUE = 3\n", encoding="utf-8")
+            self.assertNotEqual(first, experiment._source_tree_sha256(root))
+
+    def test_final_refit_source_snapshot_must_match_current_code(self) -> None:
+        current = experiment._source_version()
+        rows = (SimpleNamespace(source_snapshot_hash=current),)
+        self.assertEqual(experiment._validated_oof_source_snapshot(rows), current)
+
+        with self.assertRaisesRegex(ValueError, "current_source_differs"):
+            experiment._validated_oof_source_snapshot(
+                (SimpleNamespace(source_snapshot_hash="0" * 64),)
+            )
+
+        with self.assertRaisesRegex(ValueError, "identity_drift"):
+            experiment._validated_oof_source_snapshot(
+                (SimpleNamespace(source_snapshot_hash="not-a-sha256"),)
+            )
+
     def test_progress_events_expose_refresh_consumer_fields(self) -> None:
         events: list[dict[str, object]] = []
 
@@ -253,10 +294,28 @@ class RepresentationDispatchTest(unittest.TestCase):
             "quality_mode": "off",
             "quality_diagnostics": [],
             "scientific_scope": "selected_outer_cells_descriptive",
-            "training_history": [{"epoch": 1, "train_loss": 0.75}],
+            "training_history": [
+                {"epoch": 1, "training_loss": 0.75},
+                {
+                    "epoch": 1,
+                    "training_participant_balanced_accuracy": 0.5,
+                    "training_balanced_accuracy_unit": "participant",
+                    "training_balanced_accuracy_aggregation_rule": (
+                        "line_b_equal_role_families"
+                    ),
+                    "training_data_scope": "full_outer_train_only",
+                    "outer_heldout_used": False,
+                    "metric_used_for_selection_or_checkpoint": False,
+                },
+            ],
             "learning_curve_contract": {
-                "status": "outer_train_loss_only_fixed_epoch",
+                "status": "outer_train_loss_and_participant_ba_fixed_epoch",
+                "training_data_scope": "full_outer_train_only",
                 "outer_heldout_used_for_epoch_selection_or_curve": False,
+                "training_metric": "training_participant_balanced_accuracy",
+                "training_metric_unit": "participant",
+                "training_metric_aggregation_rule": "line_b_equal_role_families",
+                "training_metric_used_for_epoch_selection_or_checkpoint": False,
             },
             "metrics": {
                 "balanced_accuracy": 1.0,
@@ -299,11 +358,31 @@ class RepresentationDispatchTest(unittest.TestCase):
             )
             self.assertEqual(
                 history["rows"],
-                [{"repeat": 0, "fold": 0, "epoch": 1, "train_loss": 0.75}],
+                [
+                    {"repeat": 0, "fold": 0, "epoch": 1, "training_loss": 0.75},
+                    {
+                        "repeat": 0,
+                        "fold": 0,
+                        "epoch": 1,
+                        "training_participant_balanced_accuracy": 0.5,
+                        "training_balanced_accuracy_unit": "participant",
+                        "training_balanced_accuracy_aggregation_rule": (
+                            "line_b_equal_role_families"
+                        ),
+                        "training_data_scope": "full_outer_train_only",
+                        "outer_heldout_used": False,
+                        "metric_used_for_selection_or_checkpoint": False,
+                    },
+                ],
             )
             self.assertFalse(
                 history["learning_curve_contract"][
                     "outer_heldout_used_for_epoch_selection_or_curve"
+                ]
+            )
+            self.assertFalse(
+                history["learning_curve_contract"][
+                    "training_metric_used_for_epoch_selection_or_checkpoint"
                 ]
             )
 
@@ -337,6 +416,33 @@ class RepresentationDispatchTest(unittest.TestCase):
         )
         registry = default_registry()
         pulse = object()
+        observed_prv_kwargs: dict[str, object] = {}
+        observed_peak_kwargs: dict[str, object] = {}
+
+        def compute_prv_fixture(*_args: object, **kwargs: object) -> SimpleNamespace:
+            observed_prv_kwargs.update(kwargs)
+            return SimpleNamespace(
+                values={"coverage": 0.75, "hr_mean_bpm": 60.0},
+                validity={"coverage": True, "hr_mean_bpm": True},
+            )
+
+        def detect_fixture(*_args: object, **kwargs: object) -> dict[str, object]:
+            observed_peak_kwargs.update(kwargs)
+            return {"RED": pulse, "IR": pulse}
+        paired_row = BeatPairAudit(
+            reference_wavelength="RED",
+            secondary_wavelength="IR",
+            reference_peak_ordinal=0,
+            reference_peak_sample=100,
+            red_peak_ordinal=0,
+            red_peak_sample=100,
+            ir_peak_ordinal=0,
+            ir_peak_sample=120,
+            lag_samples_ir_minus_red=20,
+            lag_s_ir_minus_red=0.05,
+            pair_valid=True,
+            reason_codes=("paired",),
+        )
         pairing = BeatPairingResult(
             detector_id="aboy_project_v1",
             reference_wavelength="RED",
@@ -353,20 +459,23 @@ class RepresentationDispatchTest(unittest.TestCase):
             ir_selected_polarity=-1,
             red_block_hri_provenance_hash="0" * 64,
             ir_block_hri_provenance_hash="1" * 64,
-            rows=(),
+            rows=(paired_row,),
+        )
+        optical_audit = OpticalBeatAudit(
+            pairing=paired_row,
+            red_left_valley_sample=80,
+            red_right_valley_sample=180,
+            ir_left_valley_sample=90,
+            ir_right_valley_sample=190,
+            optical_valid=True,
+            reason_codes=("paired",),
         )
         api = {
             "SignalRoute": SignalRoute,
             "QualityState": SimpleNamespace(PASS="pass"),
-            "detect_pulses_per_wavelength": lambda *_a, **_k: {
-                "RED": pulse,
-                "IR": pulse,
-            },
+            "detect_pulses_per_wavelength": detect_fixture,
             "select_reference_wavelength": lambda _pulses: "RED",
-            "compute_prv": lambda *_a, **_k: SimpleNamespace(
-                values={"coverage": 0.75, "hr_mean_bpm": 60.0},
-                validity={"coverage": True, "hr_mean_bpm": True},
-            ),
+            "compute_prv": compute_prv_fixture,
             "canonicalize_role_family": lambda value: value,
             "WindowPlan": lambda **_k: object(),
             "extract_engineering_features": lambda *_a, **_k: object(),
@@ -376,27 +485,60 @@ class RepresentationDispatchTest(unittest.TestCase):
                 aggregate_validity={},
             ),
             "extract_dual_optical": lambda *_a, **_k: SimpleNamespace(
-                aggregate_values={},
-                aggregate_validity={},
+                aggregate_values={"red_ac_median": 1.25},
+                aggregate_validity={"red_ac_median": True},
                 schema_version="dual_optical_fixture_v2",
                 pairing=pairing,
-                beat_audit=(),
+                beat_audit=(optical_audit,),
                 diagnostics={"affects_prediction": False},
+                reasons=(),
             ),
             "default_registry": lambda: registry,
+            "registry_for_groups": registry_for_groups,
             "build_feature_vector": build_feature_vector,
         }
         report = SimpleNamespace(
             window_profiles={"engineering": {}},
-            peak_detector={"detector_id": "aboy_project_v1"},
+            peak_detector={
+                "detector_id": "aboy_project_v1",
+                "min_observation_sec": 6.5,
+                "min_peaks": 3,
+            },
         )
         with patch(
             "ppg_frailty.experiment._runtime_imports",
             return_value=api,
         ):
-            experiment._extract_vector(state, report)
+            experiment._extract_vector(
+                state,
+                report,
+                {
+                    "time_prv_min_duration_s": 45.0,
+                    "matrix_k": 9,
+                },
+            )
         self.assertTrue(state.retained)
+        self.assertEqual(
+            observed_peak_kwargs,
+            {
+                "detector_id": "aboy_project_v1",
+                "min_observation_sec": 6.5,
+                "min_peaks": 3,
+            },
+        )
+        self.assertIs(state.route, SignalRoute.DIRECT)
         self.assertNotIn("prv.coverage", state.vector.feature_names)
+        optical_index = state.vector.feature_names.index("optical.red_ac_median")
+        self.assertEqual(state.vector.values[optical_index], 1.25)
+        self.assertTrue(state.vector.validity[optical_index])
+        self.assertEqual(
+            observed_prv_kwargs["config"].time_prv_min_duration_s,
+            45.0,
+        )
+        self.assertEqual(
+            state.vector.provenance["prv_config"]["time_prv_min_duration_s"],
+            45.0,
+        )
         self.assertEqual(
             state.diagnostic_components["non_predictor_features"][
                 "prv.coverage"
@@ -405,7 +547,79 @@ class RepresentationDispatchTest(unittest.TestCase):
         )
         availability = state.diagnostic_components["predictor_availability"]
         self.assertEqual(availability["predictor_count"], len(registry.names))
-        self.assertEqual(availability["available_predictor_count"], 1)
+        self.assertEqual(availability["available_predictor_count"], 2)
+        compact = state.diagnostic_components["dual_optical_pairing"]
+        self.assertNotIn("pairing", compact)
+        self.assertNotIn("beat_audit", compact)
+        self.assertNotIn("rows", compact["pairing_summary"])
+        self.assertEqual(compact["pairing_summary"]["row_count"], 1)
+        self.assertEqual(compact["pairing_summary"]["valid_pair_count"], 1)
+        self.assertEqual(compact["beat_audit_summary"]["row_count"], 1)
+        self.assertEqual(
+            compact["beat_audit_summary"]["optical_valid_count"],
+            1,
+        )
+        self.assertEqual(
+            compact["pairing_summary"]["detector_id"],
+            "aboy_project_v1",
+        )
+        encoded = json.dumps(compact, sort_keys=True)
+        self.assertNotIn("red_peak_sample", encoded)
+        self.assertLess(len(encoded), 4_000)
+
+        fallback = experiment._compact_dual_optical_diagnostics(
+            SimpleNamespace(
+                schema_version="dual_optical_fixture_v2",
+                pairing=None,
+            )
+        )
+        self.assertEqual(fallback["status"], "summary_unavailable_noncausal")
+        self.assertNotIn("pairing", fallback)
+        self.assertNotIn("beat_audit", fallback)
+        self.assertTrue(state.retained)
+        self.assertIs(state.route, SignalRoute.DIRECT)
+        self.assertEqual(state.vector.values[optical_index], 1.25)
+
+        def forbidden_shape_feature(*_args: object, **_kwargs: object) -> object:
+            raise AssertionError("rate_only_direct must not extract shape features")
+
+        rate_only_state = experiment._RuntimeRecord(
+            row=SimpleNamespace(record_id="f2", role="B"),
+            views=SimpleNamespace(
+                x_filter=np.zeros((400, 2), dtype=np.float64),
+                x_native=np.zeros((400, 2), dtype=np.float64),
+            ),
+            retained=True,
+            route=SignalRoute.DIRECT,
+            route_status="rate_only_direct",
+            shape_features_eligible=False,
+        )
+        rate_only_api = {
+            **api,
+            "extract_morphology": forbidden_shape_feature,
+            "extract_dual_optical": forbidden_shape_feature,
+        }
+        with patch(
+            "ppg_frailty.experiment._runtime_imports",
+            return_value=rate_only_api,
+        ):
+            experiment._extract_vector(rate_only_state, report, {})
+        self.assertTrue(rate_only_state.retained)
+        self.assertFalse(
+            rate_only_state.vector.validity[
+                rate_only_state.vector.feature_names.index(
+                    "morphology.amplitude_median"
+                )
+            ]
+        )
+        self.assertFalse(
+            rate_only_state.vector.validity[
+                rate_only_state.vector.feature_names.index("optical.red_ac_median")
+            ]
+        )
+        self.assertNotIn(
+            "dual_optical_pairing", rate_only_state.diagnostic_components
+        )
 
     def test_all_frailty_raw_models_share_one_canonical_8ch_binding(self) -> None:
         identity = SampleIdentity(
@@ -516,6 +730,26 @@ class RepresentationDispatchTest(unittest.TestCase):
         self.assertEqual(matrix_dataset.representation_mode, "feature_matrix")
         self.assertEqual(matrix_dataset.values.shape[0], 1)
         self.assertEqual(matrix_dataset.values.shape[2], 32)
+
+        configurable_matrix_states = _states()
+        configurable_provenance = experiment._fit_representation_artifacts(
+            configurable_matrix_states,
+            "feature_matrix",
+            TRAIN_IDS,
+            OOF_IDS,
+            matrix_k=5,
+        )
+        configurable_dataset = experiment._materialize_representation_dataset(
+            configurable_matrix_states,
+            OOF_IDS,
+            "feature_matrix",
+        )
+        self.assertEqual(configurable_dataset.values.shape[2], 5)
+        self.assertEqual(configurable_provenance["engineering"]["matrix_k"], 5)
+        self.assertEqual(
+            configurable_matrix_states[-1].matrix.provenance["matrix_k"],
+            5,
+        )
 
         fusion_states = _states()
         fusion_provenance = experiment._fit_representation_artifacts(
@@ -661,6 +895,49 @@ class RepresentationDispatchTest(unittest.TestCase):
         )
         self.assertEqual(resolved_repeat_3["seed"], 30042)
 
+    def test_channel_specific_scalar_ablation_reaches_experiment_factory(self) -> None:
+        section = {
+            "model_id": "ShapeFormerChannelSpecificScalarDistanceAblation",
+            "seed_policy": "outer_cv_repeat_seed_equals_split_seed",
+            "num_pip_ratio": 0.35,
+            "shapelets_per_class": 2,
+            "max_discovery_windows": 24,
+            "position_search_neighbourhood_samples": 17,
+            "hidden_channels": 12,
+            "dropout": 0.15,
+            "patch_size_samples": 5,
+            "attention_heads": 3,
+            "attention_layers": 2,
+            "distance_position_chunk_size": 19,
+            "architecture_parameters": {
+                "model_id": (
+                    "shapeformer_channel_specific_scalar_distance_ablation"
+                ),
+            },
+        }
+        config = SimpleNamespace(section=lambda _name: section)
+        resolved, machine_id = experiment._resolved_model_config(
+            config,
+            training_seed=20042,
+        )
+        self.assertEqual(
+            machine_id,
+            "shapeformer_channel_specific_scalar_distance_ablation",
+        )
+        self.assertEqual(resolved["num_pip_ratio"], 0.35)
+        self.assertEqual(resolved["position_search_neighbourhood_samples"], 17)
+        self.assertEqual(resolved["hidden_channels"], 12)
+        self.assertEqual(resolved["attention_heads"], 3)
+        self.assertEqual(resolved["seed"], 20042)
+        self.assertEqual(
+            experiment._model_capability_contract(machine_id)["execution_backend"],
+            "torch",
+        )
+        self.assertEqual(
+            experiment._registry_role_for_machine_id(machine_id),
+            "ablation",
+        )
+
     def test_experiment_result_has_explicit_v2_identity(self) -> None:
         payload = experiment.ExperimentResult(
             status="failed_closed",
@@ -685,8 +962,16 @@ class RepresentationDispatchTest(unittest.TestCase):
         self.assertIn("ShapeFormerEffectSizeFixedV1", default_models)
         self.assertNotIn("InceptionTimeFullFiveMemberEnsemble", default_models)
         self.assertNotIn("InceptionTimeMatrixFiveMemberEnsemble", default_models)
+        self.assertEqual(
+            inspect.signature(pipeline.run_model_comparison)
+            .parameters["ensemble_size"]
+            .default,
+            5,
+        )
         source = inspect.getsource(pipeline.run_model_comparison)
-        self.assertIn('"comparison_only": True', source)
+        self.assertNotIn('"comparison_only": True', source)
+        self.assertIn("model_factory_contract", source)
+        self.assertIn("resolved_architecture_parameters", source)
         self.assertIn('"channel_specific_osd"', source)
         self.assertIn('"effect_size_fixed_v1"', source)
         self.assertNotIn('"ShapeFormerPISDPort"', source)
@@ -700,11 +985,12 @@ class RepresentationDispatchTest(unittest.TestCase):
         self.assertNotIn("build_physical_time_cases", source)
         self.assertNotIn("create_time_scaled_model", source)
         formal_source = inspect.getsource(experiment._execute_cell_unchecked)
-        self.assertIn("prepare_fixed_kernel_dl_input", formal_source)
+        sampling_source = inspect.getsource(experiment._prepare_dl_input_dataset)
+        self.assertIn("prepare_fixed_kernel_dl_input", sampling_source)
         self.assertIn("dl_case_id", formal_source)
         self.assertIn("canonical_features_and_peaks_unchanged", formal_source)
 
-    def test_dispatch_is_not_vector_only_and_ensemble_is_explicit_comparison(self) -> None:
+    def test_dispatch_is_not_vector_only_and_legacy_ensemble_preset_resolves(self) -> None:
         source = inspect.getsource(experiment._execute_cell_unchecked)
         for mode in ("raw", "feature_vector", "feature_matrix", "fusion"):
             self.assertIn(repr(mode), source)
@@ -714,6 +1000,7 @@ class RepresentationDispatchTest(unittest.TestCase):
                 "model_id": "InceptionTimeFullFiveMemberEnsemble",
                 "comparison_only": True,
                 "member_seeds": [50042, 60042, 70042, 80042, 90042],
+                "ensemble_size": 5,
                 "seed_policy": "cv_fixed_five_member_seed_roster",
                 "member_seed_roster_id": "cv_fixed_five_member_seed_roster",
                 "dropout": 0.2,
@@ -721,6 +1008,9 @@ class RepresentationDispatchTest(unittest.TestCase):
                 "dilation": 1,
                 "architecture_parameters": {
                     "model_id": "inception_full_five_member_ensemble",
+                    "member_count": 5,
+                    "member_seeds": [50042, 60042, 70042, 80042, 90042],
+                    "member_variant": "full",
                 },
             }
         )
@@ -759,15 +1049,82 @@ class RepresentationDispatchTest(unittest.TestCase):
         self.assertEqual(final_machine_id, "inception_full")
         self.assertEqual(outer["seed"], 50042)
         self.assertEqual(final["seed"], 42)
-        with self.assertRaisesRegex(
-            experiment._ExperimentProtocolError,
-            "single_model_final_refit_seed_must_be_42",
-        ):
-            experiment._resolved_model_config(
-                config,
-                training_seed=50042,
-                seed_scope="final_refit",
-            )
+        selected_seed, _ = experiment._resolved_model_config(
+            config,
+            training_seed=50042,
+            seed_scope="final_refit",
+        )
+        self.assertEqual(selected_seed["seed"], 50042)
+        self.assertEqual(selected_seed["seed_policy"], "fixed_explicit")
+
+    def test_arbitrary_ensemble_roster_reaches_runtime_and_final_policy(self) -> None:
+        model = {
+            "model_id": "InceptionTimeFullFiveMemberEnsemble",
+            "ensemble_size": 2,
+            "member_seeds": [17, 29],
+            "seed_policy": "member_roster",
+            "dropout": 0.2,
+            "kernel_sizes": [39, 19, 9],
+            "dilation": 1,
+            "architecture_parameters": {
+                "model_id": "inception_full_five_member_ensemble",
+                "member_count": 2,
+                "member_seeds": [17, 29],
+                "member_variant": "full",
+            },
+        }
+        sections = {"model": model, "training": {"seed": 123}}
+        config = SimpleNamespace(
+            config_id="custom_two_member",
+            sha256="a" * 64,
+            section=lambda name: sections[name],
+        )
+        resolved, machine_id = experiment._resolved_model_config(
+            config, training_seed=123
+        )
+        self.assertEqual(machine_id, "inception_full_five_member_ensemble")
+        self.assertEqual(resolved["member_seeds"], (17, 29))
+        self.assertEqual(resolved["seed_policy"], "member_roster")
+        self.assertEqual(
+            experiment._outer_cv_model_training_seed(
+                config, {"training_seed": 40042}
+            ),
+            123,
+        )
+        policy = experiment.final_refit_policy(config)
+        self.assertEqual(policy["refit"]["kind"], "probability_ensemble")
+        self.assertEqual(policy["refit"]["member_seeds"], [17, 29])
+        self.assertEqual(policy["refit"]["orchestration_seed"], 123)
+
+        one_member_model = dict(model)
+        one_member_model.update(
+            {
+                "ensemble_size": 1,
+                "member_seeds": [17],
+                "architecture_parameters": {
+                    **model["architecture_parameters"],
+                    "member_count": 1,
+                    "member_seeds": [17],
+                },
+            }
+        )
+        one_member_sections = {
+            "model": one_member_model,
+            "training": {"seed": 123},
+        }
+        one_member_config = SimpleNamespace(
+            config_id="custom_one_member_ensemble",
+            sha256="b" * 64,
+            section=lambda name: one_member_sections[name],
+        )
+        resolved_one, _ = experiment._resolved_model_config(
+            one_member_config, training_seed=123
+        )
+        self.assertEqual(resolved_one["member_seeds"], (17,))
+        self.assertEqual(
+            experiment.final_refit_policy(one_member_config)["refit"]["member_seeds"],
+            [17],
+        )
 
 
 if __name__ == "__main__":

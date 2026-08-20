@@ -51,9 +51,9 @@ class FrozenModelInputAdapter:
         canonical_roles = tuple(
             canonical_role_family(value) for value in self.allowed_role_families
         )
-        if canonical_roles != ("B", "R"):
+        if not canonical_roles or len(canonical_roles) != len(set(canonical_roles)):
             raise ValueError(
-                "SQI-off V2 adapter allowed_role_families must be exactly B,R"
+                "adapter allowed_role_families must be non-empty and unique"
             )
         object.__setattr__(self, "allowed_role_families", canonical_roles)
         digest = str(self.input_schema_hash)
@@ -210,13 +210,16 @@ def infer_participant(
     if adapter is None or not hasattr(adapter, "allowed_role_families"):
         raise RuntimeError("bundle adapter does not declare allowed_role_families")
     allowed_roles = tuple(str(value) for value in adapter.allowed_role_families)
-    if allowed_roles != ("B", "R"):
-        raise RuntimeError("bundle adapter role-family contract is not current SQI-off B,R")
+    if not allowed_roles or len(allowed_roles) != len(set(allowed_roles)):
+        raise RuntimeError(
+            "bundle adapter role-family contract must be non-empty and unique"
+        )
     for item in frozen:
         family = canonical_role_family(item.role)
         if family not in allowed_roles:
             raise ValueError(
-                f"role family {family!r} is outside this bundle training scope B/R"
+                f"role family {family!r} is outside this bundle training scope "
+                f"{','.join(allowed_roles)}"
             )
         prediction = infer_raw_record(loaded, item.record)
         file_probability[item.file_id] = prediction["file_probability"]

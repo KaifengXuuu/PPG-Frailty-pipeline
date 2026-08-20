@@ -63,6 +63,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Case-level CPU parallelism; deep-model studies are reduced to 1 by default.",
     )
     parser.add_argument(
+        "--measure-operational-costs",
+        action="store_true",
+        help="Measure per-outer-cell operational timing and memory costs.",
+    )
+    parser.add_argument(
         "--output-root",
         default="artifacts/studies",
         help="Parent directory; a dated single-config child is created.",
@@ -99,6 +104,7 @@ def plan_from_args(args: argparse.Namespace) -> StudyPlan:
             repeats=args.repeats,
             folds=args.folds,
             jobs=args.jobs,
+            measure_operational_costs=args.measure_operational_costs,
         ),
         output=OutputSpec(root=args.output_root),
         report=ReportSpec(),

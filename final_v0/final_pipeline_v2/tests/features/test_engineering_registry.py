@@ -169,14 +169,26 @@ class EngineeringRegistryTest(unittest.TestCase):
         )
         self.assertEqual(extraction.sequence.start_samples.tolist(), [0, 2000, 4000])
 
-    def test_extractor_rejects_noncanonical_window_plan(self) -> None:
-        stale_plan = replace(engineering_plan(), hop_seconds=2.5)
-        with self.assertRaisesRegex(ValueError, "10 s / 5 s-hop"):
-            extract_engineering_features(views_fixture(), plan=stale_plan)
-
+    def test_extractor_accepts_configurable_complete_window_plan(self) -> None:
+        overlapping_plan = replace(engineering_plan(), hop_seconds=2.5)
+        overlapping = extract_engineering_features(
+            views_fixture(), plan=overlapping_plan
+        )
+        self.assertEqual(
+            overlapping.sequence.start_samples.tolist(),
+            [0, 1000, 2000, 3000, 4000],
+        )
         capped_plan = replace(engineering_plan(), max_windows=2, cap_policy="uniform_progress")
-        with self.assertRaisesRegex(ValueError, "10 s / 5 s-hop"):
-            extract_engineering_features(views_fixture(), plan=capped_plan)
+        capped = extract_engineering_features(views_fixture(), plan=capped_plan)
+        self.assertEqual(capped.sequence.start_samples.tolist(), [0, 4000])
+
+        padded_plan = replace(
+            engineering_plan(),
+            short_record_action="pad_right",
+            min_valid_fraction=0.5,
+        )
+        with self.assertRaisesRegex(ValueError, "complete unpadded"):
+            extract_engineering_features(views_fixture(), plan=padded_plan)
 
     def test_exact_115_column_order_and_axis_time_only_contract(self) -> None:
         names = engineering_feature_names()
@@ -341,7 +353,8 @@ class EngineeringRegistryTest(unittest.TestCase):
             for field_name in required:
                 self.assertTrue(str(getattr(definition, field_name)).strip())
         self.assertEqual(registry.sha256, default_registry().sha256)
-        self.assertEqual(registry.schema_version, "feature_vector_thesis_115_v2")
+        self.assertEqual(len(registry.names), 282)
+        self.assertEqual(registry.schema_version, "feature_vector_282_v3")
         self.assertNotEqual(registry.schema_version, "feature_vector_v1")
         self.assertIn("optical.red_ir_ac_ratio_median", registry.names)
         self.assertIn("optical.red_ir_dc_ratio_median", registry.names)
@@ -401,8 +414,42 @@ class EngineeringRegistryTest(unittest.TestCase):
             matrix.provenance["validity_encoding"], "paired_explicit_0_1_channels_v1"
         )
         self.assertEqual(
-            matrix.schema_version, "ordered_feature_matrix_thesis_115_d_by_32_v2"
+            matrix.schema_version,
+            f"ordered_feature_matrix_d794_by_32_registry-{registry.sha256[:12]}_v3",
         )
+        compact = build_ordered_matrix(
+            transformed,
+            context=context,
+            provenance={"route": SignalRoute.DIRECT.value},
+            k=2,
+        )
+        self.assertIs(validate_feature_matrix(compact), compact)
+        self.assertEqual(compact.values.shape[1], 2)
+        self.assertEqual(compact.row_mask.shape, (2,))
+        self.assertEqual(compact.provenance["matrix_k"], 2)
+        self.assertEqual(
+            compact.schema_version,
+            f"ordered_feature_matrix_d794_by_2_registry-{registry.sha256[:12]}_v3",
+        )
+        padded = build_ordered_matrix(
+            transformed,
+            context=context,
+            provenance={"route": SignalRoute.DIRECT.value},
+            k=7,
+        )
+        self.assertIs(validate_feature_matrix(padded), padded)
+        self.assertEqual(padded.values.shape[1], 7)
+        self.assertEqual(int(np.sum(padded.row_mask)), 3)
+        self.assertTrue(np.all(padded.values[:, 3:] == 0.0))
+        for invalid_k in (0, -1, True, 4097, 2.5):
+            with self.subTest(invalid_matrix_k=invalid_k):
+                with self.assertRaises(ValueError):
+                    build_ordered_matrix(
+                        transformed,
+                        context=context,
+                        provenance={"route": SignalRoute.DIRECT.value},
+                        k=invalid_k,
+                    )
         stale_values = np.zeros((1, 94), dtype=np.float64)
         stale = EngineeringExtraction(
             EngineeringFeatureSequence(

@@ -7,6 +7,7 @@ import inspect
 import json
 import tempfile
 import unittest
+from dataclasses import asdict, replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -45,6 +46,7 @@ from ppg_frailty.training.bundle import (
     FrozenRepresentationTransformArchive,
     _execute_prepared_full_cohort_refit,
     _save_trusted_final_refit_bundle,
+    _validate_trusted_final_refit_manifest,
 )
 
 
@@ -53,8 +55,8 @@ def _trace_row(
     retained: bool = True,
     member_index: int | None = None,
     prediction_kind: str = "single_model",
+    member_seeds: tuple[int, ...] = (50042, 60042, 70042, 80042, 90042),
 ) -> OofPredictionRow:
-    member_seeds = (50042, 60042, 70042, 80042, 90042)
     training_seed = (
         member_seeds[member_index]
         if prediction_kind == "ensemble_member" and member_index is not None
@@ -155,6 +157,70 @@ def _bundle_metadata() -> dict[str, object]:
 
 
 class TypedOofContracts(unittest.TestCase):
+    def test_arbitrary_n_member_roster_is_complete_and_index_seed_bound(self) -> None:
+        roster = (17, 29)
+        members = tuple(
+            _trace_row(
+                member_index=index,
+                prediction_kind="ensemble_member",
+                member_seeds=roster,
+            )
+            for index in range(2)
+        )
+        average = _trace_row(
+            prediction_kind="ensemble_average", member_seeds=roster
+        )
+        validate_expected_oof_roster(
+            (*members, average),
+            {(0, 0, 42): ("P00",)},
+            expected_config_hashes=("config",),
+            expected_member_count=2,
+        )
+        mismatched_average = _trace_row(
+            prediction_kind="ensemble_average", member_seeds=(29, 17)
+        )
+        with self.assertRaisesRegex(ValueError, "does not match indexed member seeds"):
+            validate_expected_oof_roster(
+                (*members, mismatched_average),
+                {(0, 0, 42): ("P00",)},
+                expected_config_hashes=("config",),
+                expected_member_count=2,
+            )
+        with self.assertRaisesRegex(ValueError, "ordered list or tuple"):
+            _trace_row(
+                prediction_kind="ensemble_average",
+                member_seeds={17, 29},  # type: ignore[arg-type]
+            )
+        for invalid_count in (True, 1.5, 0, -1):
+            with self.subTest(invalid_count=invalid_count):
+                with self.assertRaisesRegex(ValueError, "must be positive"):
+                    validate_expected_oof_roster(
+                        (*members, average),
+                        {(0, 0, 42): ("P00",)},
+                        expected_config_hashes=("config",),
+                        expected_member_count=invalid_count,
+                    )
+
+    def test_one_member_ensemble_remains_distinct_from_one_single_model(self) -> None:
+        roster = (17,)
+        rows = (
+            _trace_row(
+                member_index=0,
+                prediction_kind="ensemble_member",
+                member_seeds=roster,
+            ),
+            _trace_row(
+                prediction_kind="ensemble_average", member_seeds=roster
+            ),
+        )
+        validate_expected_oof_roster(
+            rows,
+            {(0, 0, 42): ("P00",)},
+            expected_config_hashes=("config",),
+            expected_member_count=1,
+            expect_ensemble=True,
+        )
+
     @unittest.skipUnless(importlib.util.find_spec("pyarrow"), "pyarrow unavailable")
     def test_populated_and_empty_oof_use_the_exact_v2_schema(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -172,6 +238,21 @@ class TypedOofContracts(unittest.TestCase):
                 read_oof_parquet_metadata(empty)["empty_reason"],
                 "level_deliberately_absent",
             )
+
+    @unittest.skipUnless(importlib.util.find_spec("pyarrow"), "pyarrow unavailable")
+    def test_existing_five_member_metadata_remains_readable(self) -> None:
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        from ppg_frailty.training.oof import _arrow_schema
+
+        row = _trace_row()
+        schema = _arrow_schema(pa, legacy_ensemble_metadata=True)
+        table = pa.Table.from_pylist([asdict(row)], schema=schema)
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "legacy_v2.parquet"
+            pq.write_table(table, path)
+            self.assertEqual(read_oof_parquet(path), (row,))
 
     @unittest.skipUnless(importlib.util.find_spec("pyarrow"), "pyarrow unavailable")
     def test_list_children_are_nonnullable_and_null_element_tamper_is_rejected(self) -> None:
@@ -309,7 +390,7 @@ class FinalRefitContracts(unittest.TestCase):
 
         self.assertEqual(experiment_module._code_version(), "not_git_bound")
 
-    def test_final_ensemble_plan_requires_exact_five_member_seed_roster(self) -> None:
+    def test_final_ensemble_plan_uses_the_explicit_unique_seed_roster(self) -> None:
         participants = tuple(f"P{i:02d}" for i in range(29))
         common = {
             "purpose": "ensemble_contract",
@@ -331,15 +412,92 @@ class FinalRefitContracts(unittest.TestCase):
             "frozen_run_provenance_hash": "4" * 64,
             "representation_mode": "raw",
         }
-        plan = FinalRefitPlan(
-            training_seeds=(50042, 60042, 70042, 80042, 90042),
-            **common,
+        preset = FinalRefitPlan(
+            training_seeds=(50042, 60042, 70042, 80042, 90042), **common
         )
-        self.assertEqual(plan.training_seeds, (50042, 60042, 70042, 80042, 90042))
-        with self.assertRaisesRegex(ValueError, "exact five member seeds"):
-            FinalRefitPlan(training_seeds=(42,), **common)
+        one_member = FinalRefitPlan(training_seeds=(17,), **common)
+        custom = FinalRefitPlan(training_seeds=(17, 29), **common)
+        arbitrary_epochs = FinalRefitPlan(
+            training_seeds=(17, 29),
+            **dict(common, fixed_epochs=np.int64(23)),
+        )
+        self.assertEqual(
+            preset.training_seeds, (50042, 60042, 70042, 80042, 90042)
+        )
+        self.assertEqual(one_member.training_seeds, (17,))
+        self.assertEqual(custom.training_seeds, (17, 29))
+        self.assertEqual(arbitrary_epochs.fixed_epochs, 23)
+        with self.assertRaisesRegex(ValueError, "non-empty and unique"):
+            FinalRefitPlan(training_seeds=(17, 17), **common)
+        with self.assertRaisesRegex(ValueError, "ordered list or tuple"):
+            FinalRefitPlan(
+                training_seeds={17, 29},  # type: ignore[arg-type]
+                **common,
+            )
+        for invalid_epochs in (None, True, 1.5, 0, -1):
+            with self.subTest(invalid_epochs=invalid_epochs):
+                with self.assertRaisesRegex(ValueError, "positive integer"):
+                    FinalRefitPlan(
+                        training_seeds=(17, 29),
+                        **dict(common, fixed_epochs=invalid_epochs),
+                    )
 
-    def test_ensemble_executor_accepts_seed50042_without_running_training(self) -> None:
+    def test_trusted_bundle_manifest_preserves_arbitrary_ensemble_roster(self) -> None:
+        digest_fields = {
+            "manual_selection_hash", "selection_record_file_sha256",
+            "oof_evidence_hash", "config_hash", "registry_hash", "dataset_hash",
+            "source_snapshot_hash", "resolved_model_config_hash",
+            "architecture_parameters_hash", "input_schema_hash",
+            "training_config_hash", "frozen_run_provenance_hash",
+            "scope_membership_hash", "execution_hash",
+            "bundle_materialization_hash", "source_records_hash",
+            "golden_inputs_hash",
+        }
+        identity = {name: "a" * 64 for name in digest_fields}
+        identity.update(
+            {
+                "purpose": "custom_ensemble",
+                "performance_evidence": "outer_oof_only_no_refit_self_evaluation",
+                "participant_count": 29,
+                "participant_ids": [f"P{index:02d}" for index in range(29)],
+                "training_seeds": [17, 29],
+                "epoch_rule": "fixed_epoch",
+                "fixed_epochs": 23,
+                "model_id": "InceptionTimeFullFiveMemberEnsemble",
+                "model_kind": "ensemble",
+                "model_family": "deep",
+                "representation_mode": "raw",
+            }
+        )
+        manifest = {
+            "metadata": {"final_refit_identity": identity},
+            "config_hash": identity["config_hash"],
+            "run_hash": identity["execution_hash"],
+            "source_snapshot_hash": identity["source_snapshot_hash"],
+            "machine_model_id": "inception_full_five_member_ensemble",
+        }
+        normalized = _validate_trusted_final_refit_manifest(manifest)
+        self.assertEqual(normalized["training_seeds"], [17, 29])
+        self.assertEqual(normalized["fixed_epochs"], 23)
+        for update, pattern in (
+            ({"fixed_epochs": 0}, "epoch identity"),
+            ({"training_seeds": [True, 29]}, "seed roster"),
+            (
+                {"model_kind": "single_model", "training_seeds": [17]},
+                "model kind/identity",
+            ),
+            ({"model_family": "classical_or_rocket"}, "model family/identity"),
+        ):
+            with self.subTest(update=update):
+                tampered_identity = dict(identity, **update)
+                tampered = {
+                    **manifest,
+                    "metadata": {"final_refit_identity": tampered_identity},
+                }
+                with self.assertRaisesRegex(ValueError, pattern):
+                    _validate_trusted_final_refit_manifest(tampered)
+
+    def test_ensemble_executor_binds_arbitrary_roster_and_orchestration_seed(self) -> None:
         participants = tuple(f"P{index:02d}" for index in range(29))
         identities = tuple(
             SampleIdentity(
@@ -364,10 +522,9 @@ class FinalRefitContracts(unittest.TestCase):
             n_classes=3,
             channel_schema=channels,
         )
-        member_seeds = (50042, 60042, 70042, 80042, 90042)
+        member_seeds = (17, 29)
         model_config = {
             "model_id": "InceptionTimeFullFiveMemberEnsemble",
-            "comparison_only": True,
             "member_seeds": member_seeds,
             "dropout": 0.2,
             "kernel_sizes": (39, 19, 9),
@@ -377,7 +534,7 @@ class FinalRefitContracts(unittest.TestCase):
             model_config,
             input_spec,
         )
-        training_config = TrainingConfig(seed=50042)
+        training_config = TrainingConfig(seed=123)
         scope = FullCohortRefitScope(
             participants,
             registry_hash="c" * 64,
@@ -404,11 +561,13 @@ class FinalRefitContracts(unittest.TestCase):
             "dropout": 0.2,
             "label_smoothing": training_config.label_smoothing,
             "gradient_clipping": {"enabled": False, "max_norm": None},
-            "seed_policy": "final_refit_five_member_seeds",
+            "seed_policy": "member_roster",
             "random_seeds": member_seeds,
             "fold_hash": scope.fold_hash,
             "aggregation": {
-                "balance_line": training_config.expected_aggregation_rule,
+                # Output Line A is intentionally independent from the default
+                # Line-B training sampler; both identities remain hash-bound.
+                "balance_line": "line_a_equal_files",
             },
             "calibration": {"fit_scope": "all29_final_refit"},
         }
@@ -433,7 +592,7 @@ class FinalRefitContracts(unittest.TestCase):
             epoch_rule="fixed_epoch",
             model_family="deep",
             oof_evidence_hash="b" * 64,
-            model_kind="five_member_ensemble",
+            model_kind="ensemble",
             registry_hash="c" * 64,
             source_snapshot_hash="d" * 64,
             manual_selection_hash="e" * 64,
@@ -464,15 +623,12 @@ class FinalRefitContracts(unittest.TestCase):
                 expected_aggregation_rule=training_config.expected_aggregation_rule,
                 epoch_profile=training_config.epoch_profile,
                 execution_mode="formal",
-                training_seed=50042,
+                training_seed=123,
                 member_training_seeds=member_seeds,
-                member_state_hashes=tuple(str(index) * 64 for index in range(1, 6)),
+                member_state_hashes=tuple(str(index) * 64 for index in range(1, 3)),
             ),
         )
-        with self.assertRaisesRegex(
-            ValueError,
-            "ensemble final refit orchestration seed must be 50042",
-        ):
+        with self.assertRaisesRegex(ValueError, "trainer config differs"):
             _execute_prepared_full_cohort_refit(
                 plan,
                 UnifiedTrainer(TrainingConfig(seed=42)),
@@ -497,11 +653,30 @@ class FinalRefitContracts(unittest.TestCase):
             )
         fit.assert_called_once()
         self.assertEqual(execution.plan.training_seeds, member_seeds)
-        self.assertEqual(execution.result.provenance.training_seed, 50042)
+        self.assertEqual(execution.result.provenance.training_seed, 123)
         self.assertEqual(
             execution.result.provenance.member_training_seeds,
             member_seeds,
         )
+        drifted = replace(
+            result,
+            provenance=replace(result.provenance, training_seed=124),
+        )
+        with (
+            patch(
+                "ppg_frailty.training.bundle.validate_resolved_architecture"
+            ),
+            patch.object(UnifiedTrainer, "fit", return_value=drifted),
+            self.assertRaisesRegex(RuntimeError, "orchestration seed drifted"),
+        ):
+            _execute_prepared_full_cohort_refit(
+                plan,
+                UnifiedTrainer(training_config),
+                dataset,
+                registry_hash="c" * 64,
+                binding=binding,
+                model_factory=lambda: fake_model,
+            )
 
     def test_verified_executor_exposes_no_caller_injection_boundary(self) -> None:
         from ppg_frailty.experiment import (
@@ -589,7 +764,7 @@ class FinalRefitContracts(unittest.TestCase):
             logistic_max_iter=5000,
             logistic_solver="lbfgs",
         )
-        training_config = TrainingConfig()
+        training_config = TrainingConfig(training_balance="equal_files")
         input_spec = ModelInputSpec(
             "feature_vector",
             n_classes=3,
@@ -740,11 +915,17 @@ class FinalRefitContracts(unittest.TestCase):
                 "raw_dl": {"length_s": 5.0, "hop_s": 2.5, "padding": "none"},
                 "shared_planner_version": "window_plan_v1",
             },
-            "quality": {"mode": "off", "supervised_route_ready": False},
+            "quality": {
+                "mode": "off",
+                "window_selection": {"policy": "none"},
+            },
             "artifact": {"reducer": "identity", "reducer_version": "identity_v1"},
-            "features": {"registry_id": "feature_vector_thesis_115_v2"},
+            "features": {"registry_id": "feature_vector_282_v3"},
             "model": {"variant": "final_refit_contract"},
-            "training": {"training_balance": "equal_files"},
+            "training": {
+                "training_balance": "equal_files",
+                "classifier_role_families": ["B", "S"],
+            },
             "aggregation": {
                 "balance_line": "line_a_equal_files",
                 "window_to_file": "ordinary_mean",
@@ -760,7 +941,13 @@ class FinalRefitContracts(unittest.TestCase):
             execution,
             materialized,
             config,
-            SimpleNamespace(manifest_hash="manifest"),
+            SimpleNamespace(
+                manifest_hash="manifest",
+                artifact={
+                    "runtime_reducer": "identity",
+                    "runtime_version": "identity_exact_v1",
+                },
+            ),
             {
                 "source_snapshot_sha256": "d" * 64,
                 "live_dependency_gate": {"status": "verified"},
@@ -769,6 +956,18 @@ class FinalRefitContracts(unittest.TestCase):
             SimpleNamespace(
                 repository_root=Path(__file__).resolve().parents[4]
             ),
+        )
+        self.assertEqual(
+            publication.pipeline_adapter.allowed_role_families,
+            ("B", "S"),
+        )
+        self.assertEqual(
+            publication.metadata["validity_policy"]["classifier_role_families"],
+            ["B", "S"],
+        )
+        self.assertEqual(
+            publication.metadata["signal_route"]["artifact_reducer_version"],
+            "identity_exact_v1",
         )
         with tempfile.TemporaryDirectory() as temporary:
             loaded = _save_trusted_final_refit_bundle(

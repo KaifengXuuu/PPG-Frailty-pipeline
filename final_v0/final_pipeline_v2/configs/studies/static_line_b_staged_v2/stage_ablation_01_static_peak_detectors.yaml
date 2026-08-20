@@ -1,0 +1,62 @@
+schema_version: ppg_frailty.stage_ablation_01_static_peaks.v1
+study_type: stage_ablation_01_static_peak_detectors
+study_id: stage-ablation-01-static-peak-detectors-v1
+purpose: >-
+  Compare the current project Aboy-inspired detector with MSPTDfast v2 on only
+  the static PTT sit recordings before any motion-denoised dynamic comparison.
+
+ptt_dataset:
+  dataset_id: ptt_ppg_1_1_0_local
+  root: physionet.org/files/pulse-transit-time-ppg/1.1.0
+  participant_count: 22
+  record_count: 66
+  selected_record_count: 22
+  activities: [sit, walk, run]
+  selected_activity: sit
+  distal_channels: {RED: pleth_1, IR: pleth_2}
+  ecg_peak_annotation_column: peaks
+
+activities: [sit]
+motion_denoiser: not_used_pure_static_experiment
+algorithms:
+  - algorithm_id: aboy_project_v1
+    implementation: ppg_frailty.peaks.aboy_project
+    role: current_project_reference
+  - algorithm_id: msptdfast_v2_3_python_port
+    implementation: ppg_frailty.quality.stage5_pre.detect_msptdfast_v2
+    role: paper_method_comparator
+    parity_status: equation_level_port_not_bitwise_matlab_validated
+    parameters:
+      target_downsample_hz: 20.0
+      minimum_heart_rate_bpm: 30.0
+      window_s: 6.0
+      overlap_fraction: 0.2
+
+paper_source:
+  title: "The MSPTDfast photoplethysmography beat detection algorithm: design, benchmarking, and open-source distribution"
+  doi: 10.1088/1361-6579/adb89e
+  official_code_release: ppg-beats-v.2.3
+  official_code_url: https://github.com/peterhcharlton/ppg-beats/releases/tag/v.2.3
+  msptdfast_source_sha256: 39f5010f1d485f2dc180bffbbe662dc9bd16e8116bd1ae630761f1e2b58bcabd
+
+validation:
+  reference: synchronized_manually_verified_ecg_peak_annotations
+  alignment: paper_toolbox_style_lag_search_in_consecutive_time_windows
+  lag_window_s: 60.0
+  max_lag_s: 10.0
+  lag_step_s: 0.02
+  beat_tolerance_s: 0.2
+  primary_metrics: [participant_macro_f1, sensitivity, positive_predictive_value]
+  efficiency_metric: execution_time_as_fraction_of_signal_duration
+  secondary_delay_invariant_metrics: [participant_macro_ibi_ppi_rmse_ms, ibi_ppi_mae_ms]
+  aggregation: per_record_then_equal_participant_then_equal_wavelength_reporting
+  statistical_scope: paired_within_participant_algorithm_comparison_no_model_training
+
+report:
+  formats: [markdown, html, json, csv, png]
+  required_figures: [static_peak_detector_f1, static_peak_detector_interval_rmse, static_peak_detector_runtime]
+
+result_backup:
+  enabled: true
+  include: [resolved_plan, study_manifest, reports, tables, figures, outputs_index]
+  exclude: [source_dataset]

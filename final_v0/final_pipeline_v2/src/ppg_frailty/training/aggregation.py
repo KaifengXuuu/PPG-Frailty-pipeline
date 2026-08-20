@@ -19,6 +19,14 @@ LINE_A_EQUAL_FILES = "line_a_equal_files"
 LINE_B_EQUAL_ROLE_FAMILIES = "line_b_equal_role_families"
 BALANCE_LINES = (LINE_A_EQUAL_FILES, LINE_B_EQUAL_ROLE_FAMILIES)
 CANONICAL_BALANCE_LINE = LINE_B_EQUAL_ROLE_FAMILIES
+QUALITY_WEIGHT_SOURCE_NONE = "none"
+QUALITY_WEIGHT_SOURCE_ROUTE_FILE = "route_file_q_rate"
+QUALITY_WEIGHT_SOURCE_LEGACY_WINDOW = "legacy_window_sqi"
+QUALITY_WEIGHT_SOURCES = (
+    QUALITY_WEIGHT_SOURCE_NONE,
+    QUALITY_WEIGHT_SOURCE_ROUTE_FILE,
+    QUALITY_WEIGHT_SOURCE_LEGACY_WINDOW,
+)
 _ROLE_PATTERN = re.compile(r"^(?P<family>[BRSW])(?:[_-]?[0-9]+)?$", re.IGNORECASE)
 
 
@@ -39,7 +47,11 @@ def canonical_role_family(role: str) -> str:
 
 
 def aggregation_rule_for_training_balance(training_balance: str) -> str:
-    """Map the training-side balance identity to its required aggregation line."""
+    """Map training balance to its train/inner metric hierarchy.
+
+    This does not constrain the independently selected held-out reporting
+    aggregation or its Line A/Line B replay views.
+    """
 
     mapping = {
         "equal_files": LINE_A_EQUAL_FILES,
@@ -212,7 +224,12 @@ def _coverage_summaries(
     return tuple(output)
 
 
-def _mean_probabilities(rows: list[OofPredictionRow], quality_weighted: bool) -> tuple[float, ...]:
+def _mean_probabilities(
+    rows: list[OofPredictionRow],
+    quality_weighted: bool,
+    *,
+    zero_weight_fallback: bool = False,
+) -> tuple[float, ...]:
     """Average probabilities with optional declared SQI weights.
 
     平均概率；仅在显式声明时使用 SQI 权重。
@@ -222,8 +239,15 @@ def _mean_probabilities(rows: list[OofPredictionRow], quality_weighted: bool) ->
     if quality_weighted:
         weights = np.asarray([row.quality_score for row in rows], dtype=np.float64)
         if weights.sum() <= 0:
-            raise ValueError("quality-weighted aggregation requires a positive total weight")
-        result = np.average(values, axis=0, weights=weights)
+            if not zero_weight_fallback:
+                raise ValueError(
+                    "quality-weighted aggregation requires a positive total weight"
+                )
+            # Exact historical quality_weighted_mean behavior: an all-zero
+            # legacy score group falls back to the ordinary probability mean.
+            result = values.mean(axis=0)
+        else:
+            result = np.average(values, axis=0, weights=weights)
     else:
         result = values.mean(axis=0)
     result /= result.sum()
@@ -236,6 +260,8 @@ def _group_aggregate(
     *,
     level: str,
     quality_weighted: bool,
+    zero_weight_fallback: bool,
+    require_constant_quality: bool = False,
     file_id_factory: Callable[[list[OofPredictionRow]], str],
     role_factory: Callable[[list[OofPredictionRow]], str],
 ) -> tuple[OofPredictionRow, ...]:
@@ -247,11 +273,24 @@ def _group_aggregate(
         values = list(grouped)
         if len({row.label for row in values}) != 1:
             raise ValueError("labels disagree within one aggregation unit")
+        if require_constant_quality and not np.allclose(
+            [row.quality_score for row in values],
+            values[0].quality_score,
+            rtol=0.0,
+            atol=1e-12,
+        ):
+            raise ValueError(
+                "route_file_q_rate must be constant across windows of one file"
+            )
         reference = values[0]
         output.append(
             replace(
                 reference,
-                probabilities=_mean_probabilities(values, quality_weighted),
+                probabilities=_mean_probabilities(
+                    values,
+                    quality_weighted,
+                    zero_weight_fallback=zero_weight_fallback,
+                ),
                 file_id=file_id_factory(values),
                 role=role_factory(values),
                 level=level,
@@ -268,6 +307,7 @@ def aggregate_hierarchy(
     *,
     balance_line: str = CANONICAL_BALANCE_LINE,
     quality_weighted: bool = False,
+    quality_weight_source: str | None = None,
 ) -> HierarchyAggregation:
     """Apply one explicit V2 balance line without automatic route selection.
 
@@ -275,6 +315,16 @@ def aggregate_hierarchy(
     window→file→canonical-role→participant with equal available roles. The
     explicitly named Line A ablation is window→file→participant with equal files.
     Missing files/roles are naturally renormalised by ordinary means.
+
+    ``route_file_q_rate`` starts weighting at the file layer: repeated raw
+    windows from one file must carry the same endpoint score and window→file
+    remains an ordinary mean. ``legacy_window_sqi`` consumes the migrated
+    row-aligned historical score at window→file and propagates its file mean to
+    later hierarchy levels. Raw file rows persisted after that first step may
+    therefore be replayed at the upper hierarchy for reporting; non-raw file
+    predictions cannot claim this window-derived source. Omitting the source
+    preserves the public helper's pre-source behavior for direct callers, while
+    pipeline configs always pass one explicit source.
     """
 
     source_rows = tuple(rows)
@@ -284,6 +334,27 @@ def aggregate_hierarchy(
         raise ValueError("no OOF rows are available for aggregation")
     if any(row.level not in {"window", "file"} for row in source_rows):
         raise ValueError("aggregate_hierarchy accepts only window- or file-level source rows")
+    if not isinstance(quality_weighted, bool):
+        raise ValueError("quality_weighted must be boolean")
+    if quality_weight_source is None:
+        resolved_weight_source = (
+            "row_quality_all_levels"
+            if quality_weighted
+            else QUALITY_WEIGHT_SOURCE_NONE
+        )
+    else:
+        resolved_weight_source = str(quality_weight_source)
+        if resolved_weight_source not in QUALITY_WEIGHT_SOURCES:
+            raise ValueError(
+                "quality_weight_source must be one of "
+                f"{list(QUALITY_WEIGHT_SOURCES)}"
+            )
+    if quality_weighted == (
+        resolved_weight_source == QUALITY_WEIGHT_SOURCE_NONE
+    ):
+        raise ValueError(
+            "quality_weighted and quality_weight_source disagree"
+        )
     for row in source_rows:
         experiment_identity(row)
         canonical_role_family(row.role)
@@ -308,8 +379,18 @@ def aggregate_hierarchy(
         raise ValueError("duplicate window prediction detected")
     windows = [row for row in retained if row.level == "window"]
     direct_files = [row for row in retained if row.level == "file"]
+    if resolved_weight_source == QUALITY_WEIGHT_SOURCE_LEGACY_WINDOW and direct_files:
+        if windows or any(row.representation_mode != "raw" for row in direct_files):
+            raise ValueError(
+                "legacy_window_sqi requires raw window predictions or their "
+                "persisted file-level aggregation"
+            )
     generated_files: tuple[OofPredictionRow, ...] = ()
     if windows:
+        weight_windows = resolved_weight_source in {
+            "row_quality_all_levels",
+            QUALITY_WEIGHT_SOURCE_LEGACY_WINDOW,
+        }
         generated_files = _group_aggregate(
             windows,
             lambda row: (
@@ -319,7 +400,13 @@ def aggregate_hierarchy(
                 canonical_role_family(row.role),
             ),
             level="file",
-            quality_weighted=quality_weighted,
+            quality_weighted=weight_windows,
+            zero_weight_fallback=(
+                resolved_weight_source == QUALITY_WEIGHT_SOURCE_LEGACY_WINDOW
+            ),
+            require_constant_quality=(
+                resolved_weight_source == QUALITY_WEIGHT_SOURCE_ROUTE_FILE
+            ),
             file_id_factory=lambda values: values[0].file_id,
             role_factory=lambda values: canonical_role_family(values[0].role),
         )
@@ -352,7 +439,10 @@ def aggregate_hierarchy(
                 canonical_role_family(row.role),
             ),
             level="role",
-            quality_weighted=False,
+            quality_weighted=quality_weighted,
+            zero_weight_fallback=(
+                resolved_weight_source == QUALITY_WEIGHT_SOURCE_LEGACY_WINDOW
+            ),
             file_id_factory=lambda values: (
                 f"role::{values[0].participant_id}::{canonical_role_family(values[0].role)}"
             ),
@@ -366,7 +456,10 @@ def aggregate_hierarchy(
             row.participant_id,
         ),
         level="participant",
-        quality_weighted=False,
+        quality_weighted=quality_weighted,
+        zero_weight_fallback=(
+            resolved_weight_source == QUALITY_WEIGHT_SOURCE_LEGACY_WINDOW
+        ),
         file_id_factory=lambda values: f"participant::{values[0].participant_id}",
         role_factory=lambda values: "participant",
     )

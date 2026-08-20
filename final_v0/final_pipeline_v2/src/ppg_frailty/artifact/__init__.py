@@ -6,7 +6,15 @@ singular ``artifact`` boundary.
 """
 
 from .base import ArtifactReducer, validate_result
-from .bss import BssConfig, FastIcaBssReducer, NmfBssReducer, PcaBssReducer
+from .bss import (
+    BssConfig,
+    FastIcaBssConfig,
+    FastIcaBssReducer,
+    NmfBssConfig,
+    NmfBssReducer,
+    PcaBssConfig,
+    PcaBssReducer,
+)
 from .decomposition import SsaConfig, SsaReducer
 from .identity import IdentityReducer
 from .legacy import (
@@ -22,7 +30,8 @@ from .router import ArtifactRouteOutcome, UnsupportedReducer, get_reducer, run_a
 from .spectral import SpectralMaskConfig, SpectralMaskReducer
 
 __all__ = [
-    "ArtifactReducer", "BssConfig", "FastIcaBssReducer", "IdentityReducer",
+    "ArtifactReducer", "BssConfig", "PcaBssConfig", "FastIcaBssConfig",
+    "NmfBssConfig", "FastIcaBssReducer", "IdentityReducer",
     "EmdSiftingConfig", "EmdSiftingRateOnlyReducer",
     "CeemdLiteNlmsLegacyConfig", "CeemdLiteNlmsLegacyReducer",
     "DwtA2LegacyConfig", "DwtA2LegacyReducer",

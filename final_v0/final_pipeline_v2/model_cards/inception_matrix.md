@@ -21,7 +21,7 @@ Uses the reviewed Inception body on OrderedFeatureMatrixV1 with mask-aware pooli
 - No independent frailty test set is available; formal scores must be named oof_validation_*.
 - No V2 performance is claimed until the same frozen 5×5 participant protocol is run.
 - The implementation is registered/constructible; the scientific benchmark has not been run.
-- Requires a complete fold-local D×32 matrix schema and validity mask.
+- Requires a complete fold-local registry-derived D×K matrix schema and validity mask.
 
 ## Required provenance / 必需追溯字段
 

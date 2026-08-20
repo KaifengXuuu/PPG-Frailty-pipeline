@@ -1,6 +1,6 @@
-schema_version: ppg_frailty.v2_decision_profile.v2
+schema_version: ppg_frailty.v2_decision_profile.v3
 pipeline_generation: final_pipeline_v2
-profile_id: confirmed_defaults_and_deferred_gates_20260816
+profile_id: reference_defaults_and_selectable_modules_20260820
 
 authority:
   primary: user_confirmations_in_v2_dialogue
@@ -41,26 +41,32 @@ confirmed_defaults:
     default_mode: "off"
     available_modes: ["off", diagnostics_only, route]
     diagnostics_affects_retention_aggregation_prediction: false
-    supervised_route_ready_field_semantics: status_only_not_authorization
-    route_activation: hard_disabled_until_code_registered_supervised_artifact_and_hash
+    route_activation: direct_runtime_selection_by_quality_mode
+    route_fit_scope: outer_training_participants_only
+    scientific_evidence_status: implemented_not_formally_benchmarked
   balance:
     decision_ids: [V2-004, workflow_role_aware_resolution]
     default_line:
       line_id: line_b_equal_role_families
       training_balance: equal_role_families
       aggregation: window_file_role_participant_equal_available_roles
-    named_ablation:
+    selectable_alternative:
       line_id: line_a_equal_files
       training_balance: equal_files
       aggregation: window_file_participant_equal_files
-      may_be_called_default_or_reference: false
-    run_selection: mutually_exclusive
+      reference_default: false
+    available_training_balances: [equal_files, equal_role_families]
+    available_reporting_aggregations:
+    - line_a_equal_files
+    - line_b_equal_role_families
+    training_and_reporting_selection: independent
+    report_replay: [window_balanced, line_a_equal_files, line_b_equal_role_families]
   imu_gravity:
     decision_ids: [V2-007, V2-030, V2-036]
     primary: calibrated_roll_pitch_ekf
     reference_profile: calibrated_roll_pitch_ekf
     old_no_precalibration_quaternion_ekf_status: noncanonical_compatibility_only
-    enablement_gate: unit_tests_must_pass
+    configuration_status: runtime_selectable_with_validation
     persisted_parameters: [process_covariance, observation_covariance, unit_conversion]
     input_unit_conversion:
       internal_acceleration: g_to_m_per_s2
@@ -223,7 +229,7 @@ confirmed_defaults:
     capacity_controls_are_project_specific_not_literature_defaults: true
     failure_action: explicit_failure_no_effect_size_fallback
     comparison_discovery: effect_size_fixed_v1
-    execution: mutually_exclusive
+    execution: one_selected_discovery_strategy_per_model_instance
     formal_config_status: materialized_in_formal_experiment_catalog_v2
     effect_size_fixed_v1:
       shapelet_length_samples: 128
@@ -251,17 +257,18 @@ confirmed_defaults:
     - feature_matrix_inception_time_matrix_five_member
     repeat_split_seeds: [42, 10042, 20042, 30042, 40042]
     member_seeds: [50042, 60042, 70042, 80042, 90042]
-    member_seed_scope: fixed_reused_in_every_repeat_and_outer_fold
+    reference_member_seed_scope: reused_in_every_repeat_and_outer_fold
     member0_single_network_comparator_seed: 50042
     split_seed_scope: participant_fold_generation_only
-    fold_probability_rule: arithmetic_mean_of_five_member_probabilities
+    probability_rule: arithmetic_mean_of_configured_member_probabilities
     oof_rule: stitch_heldout_fold_means_then_compute_metrics_once_per_repeat
     forbidden_aggregation:
     - best_member_selection
     - member_metric_mean_as_ensemble_performance
     - twenty_five_member_pool_across_repeats
     - outer_fold_models_as_final_deployment_ensemble
-    five_member_ensemble: explicit_comparison_ablation
+    ordinary_member_roster: explicit_unique_uint32_seeds_one_or_more
+    five_member_ensemble: retained_named_comparison_preset
   sklearn_serialization:
     decision_id: V2-021
     primary: trusted_version_pinned_joblib_with_hash
@@ -325,8 +332,8 @@ confirmed_defaults:
     authority: manual_purpose_specific_final_selection
     fit_scope: all_29_participants_from_scratch
     single_model_seed: 42
-    ensemble_member_seeds: [50042, 60042, 70042, 80042, 90042]
-    ensemble_is_not_one_seed42_model: true
+    reference_ensemble_member_seeds: [50042, 60042, 70042, 80042, 90042]
+    ensemble_member_seed_policy: inherit_selected_config_roster
     performance_evidence: oof_only_no_internal_metric_from_full_refit
     python_bundle_retains_preprocessing: true
   evidence_claim:
@@ -342,7 +349,7 @@ comparison_profiles:
     status: implemented_mode_manual_only
     formal_default: false
   sqi_plus_motion_override:
-    status: retained_ablation_but_gated
+    status: external_ptt_evidence_protocol_not_core_pipeline
     formal_default: false
   historical_light_cnn_motion:
     status: frozen_provenance_backup
@@ -403,22 +410,24 @@ comparison_profiles:
     eligible_models: [CompactCNN1D, InceptionTimeFull]
     execution_status: not_run_in_configuration_layer
 
-deferred_gates:
+deferred_evidence:
   device_specific_qc:
     decision_id: V2-006
     status: deferred_missing_device_information
-    blocks: [absolute_saturation_rails, device_range_thresholds]
+    unavailable_capabilities: [absolute_saturation_rails, device_range_thresholds]
     physical_rules_without_device_constants: enabled
   sqi_supervised_route:
     decision_ids: [V2-009a, V2-009b, V2-009c]
-    status: deferred
-    supervised_route_ready: false
-    yaml_boolean_can_authorize: false
-    required_future_authority: code_registered_supervised_artifact_id_and_hash
-    blocks: [quality_route_mode, sqi_weighted_prediction]
+    status: runtime_implemented_scientific_evidence_not_run
+    runtime_selection: quality.mode
+    affects_training_execution: false
+    pending_evidence:
+    - threshold_calibration_protocol
+    - repeated_grouped_oof_comparison
+    - retained_coverage_analysis
   motion_override_activation:
     decision_id: V2-010
-    status: gated_pending_formal_supervised_evidence
+    status: external_evidence_pending_not_a_core_runtime_gate
     required_internal_evidence: stratified_participant_grouped_5fold_on_29_subjects
     required_external_evidence: pulse_transit_time_ppg_dataset
   final_artifact_reducer_selection:
@@ -427,8 +436,8 @@ deferred_gates:
     default: identity_no_denoise
   target_hardware:
     decision_id: V2-026
-    status: deferred_like_sqi
-    blocks: [device_latency_gate, device_power_gate, hardware_selected_model]
+    status: deferred_deployment_evidence
+    pending_evidence: [device_latency, device_power, hardware_model_selection]
   todo_only_scope:
     decision_id: V2-027
     status: deferred

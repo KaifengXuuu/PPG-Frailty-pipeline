@@ -105,6 +105,49 @@ def _study_info(collected: CollectedStudy) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
+_LEGACY_BRIDGE_NUMERIC_COLUMNS = (
+    ("numeric_profile_order", "Numeric order"),
+    ("model", "Model"),
+    ("profile", "Profile"),
+    ("previous_numeric_profile", "Previous numeric profile"),
+    ("numeric_comparison", "Predefined comparison"),
+    ("BA_legacy_aggregation", "BA legacy W"),
+    ("BA_line_a_aggregation", "BA Line A"),
+    ("BA_v2_aggregation", "BA Line B"),
+    ("delta_BA_legacy_aggregation", "Δ BA legacy W"),
+    ("delta_BA_line_a_aggregation", "Δ BA Line A"),
+    ("delta_BA_v2_aggregation", "Δ BA Line B"),
+    ("macroF1_legacy_aggregation", "Macro-F1 legacy W"),
+    ("macroF1_line_a_aggregation", "Macro-F1 Line A"),
+    ("macroF1_v2_aggregation", "Macro-F1 Line B"),
+    ("delta_macroF1_legacy_aggregation", "Δ Macro-F1 legacy W"),
+    ("delta_macroF1_line_a_aggregation", "Δ Macro-F1 Line A"),
+    ("delta_macroF1_v2_aggregation", "Δ Macro-F1 Line B"),
+    ("worst_class_F1", "Worst-class F1 Line B"),
+    ("delta_worst_class_F1", "Δ worst-class F1"),
+    ("contrast_metrics_available", "Contrast available"),
+    ("interpretation", "Interpretation"),
+)
+
+
+_LEGACY_BRIDGE_EXECUTION_COLUMNS = (
+    ("execution_order", "Execution order"),
+    ("model", "Model"),
+    ("profile", "Profile"),
+    ("previous_execution_profile", "Previous execution profile"),
+    ("execution_transition", "Execution transition"),
+    ("BA_legacy_aggregation", "BA legacy W"),
+    ("BA_line_a_aggregation", "BA Line A"),
+    ("BA_v2_aggregation", "BA Line B"),
+    ("macroF1_legacy_aggregation", "Macro-F1 legacy W"),
+    ("macroF1_line_a_aggregation", "Macro-F1 Line A"),
+    ("macroF1_v2_aggregation", "Macro-F1 Line B"),
+    ("worst_class_F1", "Worst-class F1 Line B"),
+    ("execution_transition_is_ablation", "Transition is ablation"),
+    ("interpretation", "Interpretation"),
+)
+
+
 def _report_markdown(
     collected: CollectedStudy,
     analysis: StudyAnalysis,
@@ -239,6 +282,41 @@ def _report_markdown(
             ),
         )
     )
+    if isinstance(collected.plan.get("legacy_bridge"), Mapping):
+        lines.extend(
+            [
+                "## Legacy/V2 bridge report A — numeric adjacent ablations (L0→L7)",
+                "",
+                "This is the causal-interpretation table: L0 is the baseline and "
+                "the next seven rows are only the predefined adjacent profile "
+                "contrasts L0→L1 through L6→L7. Deltas are never taken from run "
+                "order.",
+                "",
+            ]
+        )
+        lines.extend(
+            _markdown_table(
+                analysis.legacy_bridge_numeric_ablation_report,
+                _LEGACY_BRIDGE_NUMERIC_COLUMNS,
+            )
+        )
+        lines.extend(
+            [
+                "## Legacy/V2 bridge report B — CompactCNN execution order",
+                "",
+                "This table lists absolute W/A/B metrics in the requested "
+                "L7→L5→L6→L4→L3→L2→L1→L0 run order. It deliberately has no "
+                "execution-order delta: L7→L5 and every other neighbouring run "
+                "pair are scheduling transitions, not causal ablations.",
+                "",
+            ]
+        )
+        lines.extend(
+            _markdown_table(
+                analysis.legacy_bridge_execution_order_report,
+                _LEGACY_BRIDGE_EXECUTION_COLUMNS,
+            )
+        )
     lines.extend(
         [
             "## Aggregation sensitivity from the same file-level OOF",
@@ -279,6 +357,60 @@ def _report_markdown(
             ),
         )
     )
+    lines.extend(
+        [
+            "## Parallel window/file/role-balanced participant views",
+            "",
+            "All three rows reuse the same fitted held-out OOF probabilities; they "
+            "are not three training runs. `window_balanced_to_participant` gives "
+            "every retained window equal report weight, Line A gives every file "
+            "equal weight after window→file, and Line B gives every canonical role "
+            "family equal weight after window→file→role. Only the declared training "
+            "aggregation may support the primary leaderboard; the other views are "
+            "post-hoc sensitivity plots.",
+            "",
+        ]
+    )
+    lines.extend(
+        _markdown_table(
+            analysis.aggregation_view_comparison,
+            (
+                ("case_id", "Case"),
+                ("aggregation_view", "Aggregation view"),
+                ("evidence_role", "Evidence role"),
+                ("participant_mean_balanced_accuracy", "Mean BA"),
+                ("participant_mean_macro_f1", "Mean Macro-F1"),
+                ("worst_class_recall", "Worst recall"),
+                ("worst_class_f1", "Worst F1"),
+                ("repeat_count", "Repeats"),
+                ("participant_oof_prediction_count", "Participant OOF n"),
+                ("primary_ranking_eligible", "Primary ranking eligible"),
+            ),
+        )
+    )
+    lines.extend(
+        [
+            "<details><summary>Hierarchy coverage: B/R1–R4 window/file views and "
+            "B/R role-balanced view</summary>",
+            "",
+        ]
+    )
+    lines.extend(
+        _markdown_table(
+            analysis.aggregation_hierarchy_coverage,
+            (
+                ("case_id", "Case"),
+                ("repeat", "Repeat"),
+                ("aggregation_level", "Level"),
+                ("aggregation_view", "View"),
+                ("group_label", "Group"),
+                ("oof_unit_count", "OOF units"),
+                ("retained_oof_unit_count", "Retained units"),
+                ("participant_count", "Participants"),
+            ),
+        )
+    )
+    lines.extend(["</details>", ""])
     lines.extend(
         [
             "## Worst-class F1 stability review",
@@ -430,6 +562,9 @@ def _report_markdown(
             "- [tables/aggregation_line_comparison.csv](tables/aggregation_line_comparison.csv)",
             "- [tables/aggregation_line_repeat_metrics.csv](tables/aggregation_line_repeat_metrics.csv)",
             "- [tables/aggregation_line_per_class_metrics.csv](tables/aggregation_line_per_class_metrics.csv)",
+            "- [tables/aggregation_view_comparison.csv](tables/aggregation_view_comparison.csv)",
+            "- [tables/aggregation_view_confusion_matrices.csv](tables/aggregation_view_confusion_matrices.csv)",
+            "- [tables/aggregation_hierarchy_coverage.csv](tables/aggregation_hierarchy_coverage.csv)",
             "- [tables/metric_distribution_summary.csv](tables/metric_distribution_summary.csv)",
             "- [tables/worst_class_f1_stability.csv](tables/worst_class_f1_stability.csv)",
             "- [tables/incomplete_cases.csv](tables/incomplete_cases.csv)",
@@ -441,6 +576,14 @@ def _report_markdown(
             "",
         ]
     )
+    if isinstance(collected.plan.get("legacy_bridge"), Mapping):
+        lines.extend(
+            [
+                "- [tables/legacy_bridge_numeric_ablation_report.csv](tables/legacy_bridge_numeric_ablation_report.csv)",
+                "- [tables/legacy_bridge_execution_order_report.csv](tables/legacy_bridge_execution_order_report.csv)",
+                "",
+            ]
+        )
     return "\n".join(lines)
 
 
@@ -469,14 +612,41 @@ def _report_html(
     figures: Sequence[Mapping[str, Any]],
 ) -> str:
     study = _study_info(collected)
-    generated = [row for row in figures if row.get("status") == "generated"]
+    generated = [
+        row
+        for row in figures
+        if str(row.get("path", "")).lower().endswith(".png")
+    ]
     figure_html = "".join(
         f"<figure><img src='{html.escape(str(row['path']))}' alt='"
         f"{html.escape(str(row['figure']))}'><figcaption>"
-        f"{html.escape(str(row['figure']))}</figcaption></figure>"
+        f"{html.escape(str(row['figure']))}"
+        f"{(' — N/A: ' + html.escape(str(row.get('reason', '')))) if row.get('status') == 'N/A' else ''}"
+        "</figcaption></figure>"
         for row in generated
     )
     limitations = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.notes)
+    bridge_html = ""
+    if isinstance(collected.plan.get("legacy_bridge"), Mapping):
+        bridge_html = f"""
+<h2>Legacy/V2 bridge report A — numeric adjacent ablations (L0→L7)</h2>
+<p class="notice">This is the causal-interpretation table. L0 is the baseline;
+the next seven rows are only L0→L1 through L6→L7. Deltas are never calculated
+from execution order.</p>
+{_html_table(
+    analysis.legacy_bridge_numeric_ablation_report,
+    _LEGACY_BRIDGE_NUMERIC_COLUMNS,
+)}
+<h2>Legacy/V2 bridge report B — CompactCNN execution order</h2>
+<p class="notice">Absolute W/A/B metrics in
+L7→L5→L6→L4→L3→L2→L1→L0 order. There is deliberately no execution-order
+delta: L7→L5 and all other neighbouring runs are scheduling transitions, not
+causal ablations.</p>
+{_html_table(
+    analysis.legacy_bridge_execution_order_report,
+    _LEGACY_BRIDGE_EXECUTION_COLUMNS,
+)}
+"""
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <title>V2 study — {html.escape(str(study.get("study_id", collected.root.name)))}</title>
@@ -504,6 +674,7 @@ th{{background:#f0f3f6}}img{{max-width:100%;height:auto}}figure{{margin:2rem 0}}
     ("worst_fold_balanced_accuracy", "Worst-fold BA"),
     ("worst_class_f1", "Worst F1"),
 ))}
+{bridge_html}
 <h2>Aggregation sensitivity from the same file-level OOF</h2>
 <p class="notice">The declared-source row reproduces the aggregation used by
 the fitted model and, when eligible, the primary leaderboard. The other row
@@ -527,6 +698,30 @@ Line A/Line B experiment and is not selection evidence.</p>
     ("dropped_file_oof_prediction_count", "Dropped files n"),
     ("source_replay_validation", "Source replay"),
     ("primary_ranking_eligible", "Primary ranking eligible"),
+))}
+<h2>Parallel window/file/role-balanced participant views</h2>
+<p class="notice">These are three report views of the same fitted held-out OOF,
+not three training runs. Equal-window and non-source Line A/Line B views are
+post-hoc sensitivity only. Only the declared training aggregation may support
+the primary leaderboard.</p>
+{_html_table(analysis.aggregation_view_comparison, (
+    ("case_id", "Case"), ("aggregation_view", "Aggregation view"),
+    ("evidence_role", "Evidence role"),
+    ("participant_mean_balanced_accuracy", "Mean BA"),
+    ("participant_mean_macro_f1", "Mean Macro-F1"),
+    ("worst_class_recall", "Worst recall"),
+    ("worst_class_f1", "Worst F1"),
+    ("repeat_count", "Repeats"),
+    ("participant_oof_prediction_count", "Participant OOF n"),
+    ("primary_ranking_eligible", "Primary ranking eligible"),
+))}
+<h3>Hierarchy coverage (B/R1–R4 and B/R)</h3>
+{_html_table(analysis.aggregation_hierarchy_coverage, (
+    ("case_id", "Case"), ("repeat", "Repeat"),
+    ("aggregation_level", "Level"), ("aggregation_view", "View"),
+    ("group_label", "Group"), ("oof_unit_count", "OOF units"),
+    ("retained_oof_unit_count", "Retained units"),
+    ("participant_count", "Participants"),
 ))}
 <h2>Worst-class F1 stability review</h2>
 {_html_table(analysis.worst_class_f1_stability, (
@@ -566,6 +761,11 @@ Line A/Line B experiment and is not selection evidence.</p>
     ("population_sd", "SD"), ("minimum", "Min"), ("maximum", "Max"),
 ))}
 <h2>Figures</h2>{figure_html or "<p><em>N/A — no generated figures.</em></p>"}
+<h3>Figure status, including explicit N/A reasons</h3>
+{_html_table(figures, (
+    ("figure", "Figure"), ("status", "Status"),
+    ("path", "Path"), ("reason", "Reason"),
+))}
 <h2>Limitations</h2><ul>{limitations or "<li>None recorded.</li>"}</ul>
 <p>See <a href="outputs_index.json">outputs_index.json</a> for every artifact.</p>
 </body></html>
@@ -812,6 +1012,31 @@ def generate_study_report(
             analysis.aggregation_line_per_class_metrics,
             "Per-repeat per-class Line A/Line B metrics reaggregated from the same file OOF",
         ),
+        (
+            "aggregation_view_comparison",
+            analysis.aggregation_view_comparison,
+            "Window/file/role-balanced participant views from the same fitted OOF; only the declared source is training evidence",
+        ),
+        (
+            "aggregation_view_repeat_metrics",
+            analysis.aggregation_view_repeat_metrics,
+            "Per-repeat window/file/role-balanced participant metrics from the same fitted OOF",
+        ),
+        (
+            "aggregation_view_per_class_metrics",
+            analysis.aggregation_view_per_class_metrics,
+            "All-class metrics for the three same-OOF aggregation report views",
+        ),
+        (
+            "aggregation_view_confusion_matrices",
+            analysis.aggregation_view_confusion_matrices,
+            "Participant confusion matrices for each same-OOF aggregation report view",
+        ),
+        (
+            "aggregation_hierarchy_coverage",
+            analysis.aggregation_hierarchy_coverage,
+            "Window/file B/R1-R4 and role B/R hierarchy populations",
+        ),
         ("deployment_measurements", analysis.deployment_table, "Operational measurements, separate from ranking"),
         ("repeat_metrics", analysis.repeat_metrics, "Participant OOF or labeled cell fallback per repeat"),
         ("fold_metrics", analysis.fold_metrics, "Per repeat/fold cell metrics"),
@@ -867,6 +1092,19 @@ def generate_study_report(
         ),
         ("case_records", bundle.case_records, "Case pass/fail/resume records"),
     )
+    if isinstance(bundle.plan.get("legacy_bridge"), Mapping):
+        table_payloads += (
+            (
+                "legacy_bridge_numeric_ablation_report",
+                analysis.legacy_bridge_numeric_ablation_report,
+                "CompactCNN L0 baseline plus seven predefined adjacent numeric-profile ablations",
+            ),
+            (
+                "legacy_bridge_execution_order_report",
+                analysis.legacy_bridge_execution_order_report,
+                "CompactCNN absolute metrics in L7,L5,L6,L4,L3,L2,L1,L0 execution order; no causal execution deltas",
+            ),
+        )
     index: list[dict[str, Any]] = []
     table_file_count = 0
     for name, rows, description in table_payloads:

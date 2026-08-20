@@ -27,7 +27,16 @@ class MotionContractSmokeTests(unittest.TestCase):
 
     def test_default_options_and_role_labels(self) -> None:
         self.assertIs(resolve_motion_option(None).option_id, MotionOptionId.SQI_ONLY)
-        self.assertFalse(resolve_motion_option("sqi_plus_motion_override").formal_default)
+        motion_evidence = resolve_motion_option("sqi_plus_motion_override")
+        self.assertFalse(motion_evidence.formal_default)
+        self.assertEqual(
+            motion_evidence.execution_status,
+            "external_ptt_evidence_protocol_not_classifier_runtime",
+        )
+        self.assertEqual(
+            motion_evidence.classifier_effect,
+            "none_not_dispatched_by_core_classifier_pipeline",
+        )
         self.assertEqual(
             [motion_activity_label(role) for role in ("B", "R1", "R4", "S1", "W2")],
             [0, 0, 0, 1, 1],
@@ -79,8 +88,12 @@ class MotionContractSmokeTests(unittest.TestCase):
         self.assertEqual(payload["default_option"], "sqi_only")
         self.assertEqual(payload["execution_status"], "implemented_contract_registered_not_run")
         self.assertEqual(
-            payload["external_ptt_gate"]["status"],
-            "requires_complete_internal_formal_evidence_and_exact_v2_036_unit_artifact",
+            payload["external_ptt_readiness_audit"]["status"],
+            "read_only_complete_internal_formal_evidence_and_exact_v2_036_unit_artifact",
+        )
+        self.assertEqual(
+            payload["external_ptt_readiness_audit"]["execution_authority"],
+            "none_audit_does_not_control_evaluation",
         )
 
 

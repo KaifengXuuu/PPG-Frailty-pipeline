@@ -1,8 +1,9 @@
-# Stage 5 is intentionally split by current implementation status.
-# Runnable now: quality off versus diagnostics_only for manually retained
-# finalists. diagnostics_only must not change retention or predictions.
-# Planned, not runnable from this file: supervised SQI routing, motion override,
-# denoiser efficacy, formal motion 5x5, A3 and A4 endpoint comparisons.
+# Stage 5 intentionally contains only quality off versus diagnostics_only for
+# manually retained finalists; diagnostics_only must not change retention or
+# predictions. The registered SQI route, window-selection/weighting and reducer
+# modules are executable through explicit configs/studies, but this file does
+# not silently add them. Motion evidence, formal motion 5x5, A3 and A4 remain
+# separate scientific comparisons rather than core-runtime permissions.
 # The planned motion sequence is deliberately non-Cartesian:
 # 5B) 8-channel axes+EKF reference versus 11-channel derived augmentation;
 # 5C) selected channel profile with EKF versus Profile-A LPF;
@@ -16,12 +17,12 @@ study:
   study_id: staged_static_05_sqi_diagnostics_finalists_v2
   kind: catalog_sweep
   purpose: "Check SQI diagnostic observability on retained static finalists while preserving identical prediction behavior."
-  flow_position: "Stage 5 runnable diagnostic slice before deferred SQI routing and motion-line competition."
+  flow_position: "Stage 5 diagnostic-only slice; executable route/reducer comparisons require their own explicit cases."
   decision_role: robustness
   reference_case_id: null
   thesis_sections:
     - "SQI diagnostics without classification effect"
-    - "Deferred motion detector and denoiser branches"
+    - "Separately configured motion-evidence and reducer branches"
 catalog:
   path: configs/formal_experiment_catalog_v2.yaml
   balance_line: line_b
@@ -37,7 +38,7 @@ search:
     - "diagnostics_only has classification_effect none"
   notes:
     - "Predictions, retention and participant OOF rows must match within each pair."
-    - "Supervised quality routing remains fail-closed and is not enabled here."
+    - "quality.mode=route is executable but intentionally absent from these diagnostics-only pairs."
     - "Planned motion comparisons are 8-channel EKF reference versus 11-channel augmentation, and EKF versus Profile-A LPF."
     - "After those single-factor choices, compare reducer off with one selected denoiser, then compare the selected motion branch with pure static."
     - "Formal motion 5x5, reducer selection, A3/A4 runners and motion override remain deferred."
@@ -113,6 +114,7 @@ execution:
   parallel_level: cases
   continue_on_error: true
   allow_parallel_deep: false
+  measure_operational_costs: true
 output:
   root: artifacts/studies/static_line_b_staged_v2
 report:

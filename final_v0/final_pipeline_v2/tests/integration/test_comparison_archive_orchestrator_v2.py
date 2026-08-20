@@ -54,6 +54,9 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
         probability_shift: float,
         source_snapshot_hash: str = "6" * 64,
         seed_policy: str | None = None,
+        member_seeds: tuple[int, ...] = _MEMBER_SEEDS,
+        fixed_training_seed: int = 123,
+        evaluation_statistics: dict[str, int] | None = None,
     ) -> Path:
         run_root = root / config_id
         run_root.mkdir()
@@ -64,10 +67,8 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
             "inception_full_five_member_ensemble": "inception_full",
             "inception_matrix_five_member_ensemble": "inception_matrix",
         }.get(machine_id)
-        member_seeds = _MEMBER_SEEDS
         single_seed_policy = seed_policy or "outer_cv_repeat_seed_equals_split_seed"
-        if ensemble_base and seed_policy is not None:
-            raise ValueError("ensemble fixture seed policy is fixed by the contract")
+        ensemble_seed_policy = seed_policy or "cv_fixed_five_member_seed_roster"
         predictions: list[ParticipantPrediction] = []
         summaries: list[dict[str, object]] = []
         fold_ba: dict[str, float] = {}
@@ -100,7 +101,7 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
                 "reason": "not_applicable_estimator_native",
             },
             "seed_policy": (
-                "cv_fixed_five_member_seed_roster"
+                ensemble_seed_policy
                 if ensemble_base
                 else single_seed_policy
             ),
@@ -122,7 +123,12 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
             single_training_seed = (
                 50042
                 if single_seed_policy == "cv_fixed_member0_seed_50042_comparator"
-                else split_seed
+                else (
+                    fixed_training_seed
+                    if single_seed_policy
+                    in {"fixed", "fixed_explicit", "final_refit_single_seed_42"}
+                    else split_seed
+                )
             )
             for fold in range(5):
                 key = f"r{repeat}f{fold}"
@@ -153,7 +159,7 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
                         list(member_seeds) if ensemble_base else []
                     ),
                     "seed_policy": (
-                        "cv_fixed_five_member_seed_roster"
+                        ensemble_seed_policy
                         if ensemble_base
                         else single_seed_policy
                     ),
@@ -179,6 +185,10 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
                     "sqi_calibrator_provenance": {"mode": "off"},
                     "physical_recording_qc": [],
                 }
+                if evaluation_statistics is not None:
+                    summary["evaluation_policy"] = {
+                        "statistics": dict(evaluation_statistics)
+                    }
                 summaries.append(summary)
                 fold_ba[key] = 1.0
                 cell = run_root / f"repeat_{repeat:02d}_fold_{fold:02d}"
@@ -336,8 +346,16 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
                 "cpu_batch1_model_only_p95_ms_mean_across_25_outer_cells": 0.50,
             },
             parameter_count=100,
-            n_bootstrap_resamples=12,
-            bootstrap_seed=42,
+            n_bootstrap_resamples=(
+                12
+                if evaluation_statistics is None
+                else int(evaluation_statistics["bootstrap_replicates"])
+            ),
+            bootstrap_seed=(
+                42
+                if evaluation_statistics is None
+                else int(evaluation_statistics["seed"])
+            ),
             eligible=True,
             exclusion_reason="",
         )
@@ -353,13 +371,18 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
                 "fold_protocol": "frozen_repeated_grouped_5x5",
                 "seeds": list(_SPLIT_SEEDS),
                 "training_seeds": (
-                    list(_MEMBER_SEEDS)
+                    list(member_seeds)
                     if ensemble_base
                     else (
                         [50042]
                         if single_seed_policy
                         == "cv_fixed_member0_seed_50042_comparator"
-                        else list(_SPLIT_SEEDS)
+                        else (
+                            [fixed_training_seed]
+                            if single_seed_policy
+                            in {"fixed", "fixed_explicit", "final_refit_single_seed_42"}
+                            else list(_SPLIT_SEEDS)
+                        )
                     )
                 ),
                 "operational_measurement_status": (
@@ -488,6 +511,45 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
             ):
                 self.assertNotIn(forbidden, refit_parameters)
 
+    def test_archive_inherits_hash_bound_statistics_policy(self) -> None:
+        statistics = {
+            "bootstrap_replicates": 7,
+            "paired_permutation_replicates": 9,
+            "seed": 13,
+        }
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent) as raw:
+            root = Path(raw)
+            reference = self._run_fixture(
+                root,
+                config_id="policy_reference",
+                machine_id="logistic_regression",
+                probability_shift=0.0,
+                evaluation_statistics=statistics,
+            )
+            candidate = self._run_fixture(
+                root,
+                config_id="policy_candidate",
+                machine_id="rbf_svm",
+                probability_shift=0.05,
+                evaluation_statistics=statistics,
+            )
+            result = build_comparison_archive_from_run_directories(
+                {"policy_reference": reference, "policy_candidate": candidate},
+                reference_config_id="policy_reference",
+                comparison_family="configured_statistics",
+                comparison_id="configured_statistics",
+                run_id="run_001",
+                output_root=root / "archives",
+            )
+            manifest = json.loads(
+                (Path(result["output_directory"]) / "run_manifest.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(manifest["bootstrap_policy"]["resamples"], 7)
+            self.assertEqual(manifest["paired_permutation_policy"]["resamples"], 9)
+            self.assertEqual(manifest["bootstrap_policy"]["seed"], 13)
+
     def test_cli_requires_explicit_run_directories(self) -> None:
         """Parser keeps comparison statistics behind an explicit command."""
         parsed = build_parser().parse_args(
@@ -504,8 +566,9 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
             ]
         )
         self.assertEqual(parsed.command, "comparison-archive")
-        self.assertEqual(parsed.bootstrap_resamples, 10_000)
-        self.assertEqual(parsed.permutation_resamples, 100_000)
+        self.assertIsNone(parsed.bootstrap_resamples)
+        self.assertIsNone(parsed.permutation_resamples)
+        self.assertIsNone(parsed.statistics_seed)
         self.assertEqual(
             parsed.allowed_authority_difference,
             ["frozen.architecture_parameters"],
@@ -531,6 +594,47 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
             self.assertEqual(
                 {row.training_seed for row in members},
                 set(_MEMBER_SEEDS),
+            )
+
+    def test_trusted_reader_accepts_configurable_fixed_seed_and_n_member_ensemble(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent) as raw:
+            root = Path(raw)
+            fixed = self._run_fixture(
+                root,
+                config_id="fixed_seed_fixture",
+                machine_id="logistic_regression",
+                probability_shift=0.0,
+                seed_policy="fixed",
+                fixed_training_seed=77,
+            )
+            fixed_loaded = _read_trusted_comparison_run(
+                "fixed_seed_fixture",
+                fixed,
+                n_bootstrap_resamples=12,
+                bootstrap_seed=42,
+            )
+            self.assertEqual(fixed_loaded["seed_policy"], "fixed")
+
+            ensemble = self._run_fixture(
+                root,
+                config_id="two_member_ensemble_fixture",
+                machine_id="inception_full_five_member_ensemble",
+                probability_shift=0.0,
+                seed_policy="member_roster",
+                member_seeds=(17, 29),
+            )
+            ensemble_loaded = _read_trusted_comparison_run(
+                "two_member_ensemble_fixture",
+                ensemble,
+                n_bootstrap_resamples=12,
+                bootstrap_seed=42,
+            )
+            self.assertEqual(ensemble_loaded["seed_policy"], "member_roster")
+            self.assertEqual(
+                len(read_oof_parquet(ensemble / "oof_member_predictions.parquet")),
+                290,
             )
 
     def test_trusted_reader_scopes_member0_policy_without_changing_other_singles(self) -> None:
@@ -777,9 +881,11 @@ class ComparisonArchiveOrchestratorTests(unittest.TestCase):
                 "--selection-record", "artifacts/selections/deployment.json",
                 "--comparison-archive", "artifacts/comparisons/model/run",
                 "--config", "reference_static_feature_vector_v2",
+                "--bundle-directory", "artifacts/bundles/deployment",
             ]
         )
         self.assertEqual(refit.command, "final-refit")
+        self.assertEqual(refit.bundle_directory, "artifacts/bundles/deployment")
         materialize = build_parser().parse_args(
             [
                 "materialize-ablation-config",

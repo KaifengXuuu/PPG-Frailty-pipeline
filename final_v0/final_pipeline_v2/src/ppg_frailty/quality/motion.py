@@ -1,10 +1,11 @@
-"""Fail-closed V2 activity/motion supervision and evaluation contract.
+"""Source-bound V2 activity/motion supervision and evaluation contract.
 
 This module registers contracts; importing it never trains a model, runs cross
 validation, evaluates PTT, or executes an ablation. The formal local detector
 must be trained on all 29 internal participants through one materialized
 participant-grouped SGKF5 split with split seed 42. PTT is a subsequent cross-dataset
-evaluation and cannot open until complete internal OOF evidence is archived.
+evaluation. Complete internal OOF evidence can be audited for reporting readiness,
+but that read-only audit is not an execution authorization mechanism.
 
 The supervised target is protocol activity state, not optical-artifact truth:
 canonical B/R are static (0), while S/W are motion (1).
@@ -74,7 +75,7 @@ HISTORICAL_LIGHT_CNN_CHANNELS = (
 
 MOTION_CONTRACT_SCHEMA = (
     "ppg_frailty.motion_detector_contract.sensor_lpf_order3_"
-    "imu_iqr_over_1p349.v3"
+    "imu_iqr_over_1p349.v4"
 )
 MOTION_INTERNAL_EVIDENCE_SCHEMA = (
     "ppg_frailty.motion_internal_evidence.imu_iqr_over_1p349.v3"
@@ -156,7 +157,7 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 class MotionOptionId(str, Enum):
-    """The three mutually exclusive V2-010 options."""
+    """The three mutually exclusive V2-010 external-evidence options."""
 
     SQI_ONLY = "sqi_only"
     SQI_PLUS_MOTION_OVERRIDE = "sqi_plus_motion_override"
@@ -178,8 +179,8 @@ MOTION_OPTIONS = (
     MotionOptionDescriptor(
         option_id=MotionOptionId.SQI_ONLY,
         formal_default=True,
-        execution_status="implemented_default",
-        classifier_effect="none_motion_not_computed",
+        execution_status="external_audit_control_not_classifier_runtime",
+        classifier_effect="none_core_pipeline_uses_quality_mode",
         supervised_training="not_applicable",
         external_evaluation="not_applicable",
         notes=(
@@ -190,14 +191,14 @@ MOTION_OPTIONS = (
     MotionOptionDescriptor(
         option_id=MotionOptionId.SQI_PLUS_MOTION_OVERRIDE,
         formal_default=False,
-        execution_status="implemented_contract_registered_not_run_gate_closed",
-        classifier_effect="may_override_high_sqi_only_after_frozen_supervised_gate",
+        execution_status="external_ptt_evidence_protocol_not_classifier_runtime",
+        classifier_effect="none_not_dispatched_by_core_classifier_pipeline",
         supervised_training="frailty29_single_sgkf5_seed42_required",
         external_evaluation="ptt_cross_dataset_after_complete_internal_oof_only",
         notes=(
             "activity/motion supervision is B/R=static and S/W=motion",
             "network tensor schema and its SHA-256 must be frozen before training",
-            "no YAML boolean can bypass the evidence gate",
+            "core classifier quality routing uses quality.mode plus motion_energy instead",
         ),
     ),
     MotionOptionDescriptor(
@@ -337,10 +338,14 @@ class MidpointThresholdArtifact:
 
 
 @dataclass(frozen=True)
-class PttExternalGateDecision:
-    """Fail-closed decision for the post-internal PTT evaluation stage."""
+class PttExternalReadinessAudit:
+    """Read-only completeness audit for PTT reporting evidence.
 
-    allowed: bool
+    This value is never consumed by the PTT execution path and conveys no
+    execution authority.
+    """
+
+    ready: bool
     reasons: tuple[str, ...]
     external_registry_id: str = PTT_FORMAL_REGISTRY_ID
     external_registry_csv_sha256: str = PTT_SPLIT_CSV_SHA256
@@ -351,7 +356,7 @@ class PttExternalGateDecision:
 
 
 def resolve_motion_option(value: MotionOptionId | str | None) -> MotionOptionDescriptor:
-    """Resolve an explicit option; omission is the frozen SQI-only default."""
+    """Resolve an external motion-evidence option, never a core pipeline switch."""
 
     option_id = MotionOptionId.SQI_ONLY if value is None else MotionOptionId(value)
     return next(item for item in MOTION_OPTIONS if item.option_id is option_id)
@@ -559,15 +564,16 @@ def validate_motion_major_metrics(payload: Mapping[str, Any]) -> None:
         raise ValueError("motion inference p95 latency cannot be below p50")
 
 
-def _evaluate_ptt_external_gate_payload(
+def _audit_ptt_external_readiness_payload(
     internal_evidence: Mapping[str, Any],
-) -> PttExternalGateDecision:
-    """Open PTT evaluation only after complete, frozen internal formal evidence.
+) -> PttExternalReadinessAudit:
+    """Audit whether complete, frozen internal evidence is report-ready.
 
-    The returned action is evaluation-only.  PTT values may not fit the model,
-    calibrator, tensor schema, or midpoint threshold.  The PTT registry itself
-    carries ``none_not_an_independent_external_test`` and this function preserves
-    that claim boundary.
+    The result is informational and is not consulted by PTT execution. PTT
+    values may not fit the model, calibrator, tensor schema, or midpoint
+    threshold. The PTT registry itself carries
+    ``none_not_an_independent_external_test`` and this function preserves that
+    claim boundary.
     """
 
     reasons: list[str] = []
@@ -662,9 +668,13 @@ def _evaluate_ptt_external_gate_payload(
     if not isinstance(evidence.get("final_model"), Mapping):
         reasons.append("final_model_evidence_missing")
 
-    return PttExternalGateDecision(
-        allowed=not reasons,
-        reasons=tuple(dict.fromkeys(reasons)) if reasons else ("all_internal_gates_passed",),
+    return PttExternalReadinessAudit(
+        ready=not reasons,
+        reasons=(
+            tuple(dict.fromkeys(reasons))
+            if reasons
+            else ("complete_internal_readiness_evidence",)
+        ),
     )
 
 
@@ -761,14 +771,15 @@ def motion_contract_payload() -> dict[str, Any]:
             "center_statistic": "median_of_participant_class_medians",
             "outer_oof_or_ptt_scores_allowed": False,
         },
-        "external_ptt_gate": {
+        "external_ptt_readiness_audit": {
             "status": (
-                "requires_complete_internal_formal_evidence_and_exact_"
+                "read_only_complete_internal_formal_evidence_and_exact_"
                 "v2_036_unit_artifact"
             ),
+            "execution_authority": "none_audit_does_not_control_evaluation",
             "canonical_entry_id": "formal_ptt_motion_reference_source_bound_v2",
             "injected_examples_or_callbacks_allowed": False,
-            "imu_unit_gate": (
+            "imu_unit_evidence_check": (
                 "exact_v2_036_path_sha_schema_and_66_source_hashes_"
                 "before_conversion"
             ),
@@ -820,7 +831,7 @@ __all__ = [
     "MotionFoldJob",
     "MotionOptionDescriptor",
     "MotionOptionId",
-    "PttExternalGateDecision",
+    "PttExternalReadinessAudit",
     "fit_train_only_midpoint_threshold",
     "load_motion_fold_jobs",
     "motion_activity_label",

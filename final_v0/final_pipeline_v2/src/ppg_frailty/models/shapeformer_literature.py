@@ -12,7 +12,6 @@ import numpy as np
 
 from .pisd_port import (
     PISD_DISCOVERY_METHOD,
-    POSITION_SEARCH_NEIGHBOURHOOD_SAMPLES,
     PisdShapelets,
 )
 
@@ -44,10 +43,14 @@ class _ChunkedShapeFormerAttention(nn.Module):
         query_chunk_size: int,
     ) -> None:
         super().__init__()
+        if embedding_channels <= 0 or attention_heads <= 0:
+            raise ValueError("embedding_channels and attention_heads must be positive")
         if embedding_channels % attention_heads:
             raise ValueError("embedding_channels must be divisible by attention_heads")
         if query_chunk_size <= 0:
             raise ValueError("query_chunk_size must be positive")
+        if not np.isfinite(dropout) or not 0.0 <= float(dropout) < 1.0:
+            raise ValueError("dropout must be finite in [0,1)")
         self.embedding_channels = int(embedding_channels)
         self.attention_heads = int(attention_heads)
         self.head_channels = self.embedding_channels // self.attention_heads
@@ -129,11 +132,16 @@ class ChannelSpecificShapeBlock(nn.Module):
             raise ValueError("invalid ShapeBlock source metadata")
         if source_end > sequence_length:
             raise ValueError("ShapeBlock source endpoint exceeds sequence_length")
-        if position_search_neighbourhood_samples != POSITION_SEARCH_NEIGHBOURHOOD_SAMPLES:
-            raise ValueError("canonical ShapeBlock requires the frozen 128-sample neighbourhood")
+        if position_search_neighbourhood_samples <= 0:
+            raise ValueError("position_search_neighbourhood_samples must be positive")
         if distance_position_chunk_size <= 0:
             raise ValueError("distance_position_chunk_size must be positive")
-        if complexity_norm <= 0.0 or max_complexity_ratio < 1.0:
+        if (
+            not np.isfinite(complexity_norm)
+            or not np.isfinite(max_complexity_ratio)
+            or complexity_norm <= 0.0
+            or max_complexity_ratio < 1.0
+        ):
             raise ValueError("invalid complexity correction constants")
         self.source_channel = int(source_channel)
         self.source_start = int(source_start)
@@ -288,12 +296,40 @@ class LiteratureShapeFormerChannelSpecificOSD(nn.Module):
             raise ValueError("ShapeFormer search neighbourhood differs from its bank")
         if n_channels <= 0 or n_classes != 3 or sequence_length <= 0:
             raise ValueError("canonical ShapeFormer needs positive channels/T and three classes")
-        if local_kernel_width_samples <= 1:
-            raise ValueError("local_kernel_width_samples must exceed one")
+        positive_controls = {
+            "local_kernel_width_samples": local_kernel_width_samples,
+            "local_embedding_channels": local_embedding_channels,
+            "shape_embedding_channels": shape_embedding_channels,
+            "attention_feedforward_channels": attention_feedforward_channels,
+            "attention_heads": attention_heads,
+            "attention_query_chunk_size": attention_query_chunk_size,
+            "distance_position_chunk_size": distance_position_chunk_size,
+            "position_search_neighbourhood_samples": (
+                position_search_neighbourhood_samples
+            ),
+        }
+        invalid_controls = [
+            name for name, value in positive_controls.items() if int(value) <= 0
+        ]
+        if invalid_controls:
+            raise ValueError(
+                f"ShapeFormer numeric controls must be positive: {invalid_controls}"
+            )
         if local_embedding_channels % attention_heads:
             raise ValueError("local embedding width must be divisible by attention heads")
         if shape_embedding_channels % attention_heads:
             raise ValueError("shape embedding width must be divisible by attention heads")
+        if not np.isfinite(dropout) or not 0.0 <= float(dropout) < 1.0:
+            raise ValueError("dropout must be finite in [0,1)")
+        if (
+            not np.isfinite(complexity_norm)
+            or float(complexity_norm) <= 0.0
+            or not np.isfinite(max_complexity_ratio)
+            or float(max_complexity_ratio) < 1.0
+        ):
+            raise ValueError(
+                "complexity_norm must be positive and max_complexity_ratio at least one"
+            )
 
         self.n_channels = int(n_channels)
         self.n_classes = int(n_classes)

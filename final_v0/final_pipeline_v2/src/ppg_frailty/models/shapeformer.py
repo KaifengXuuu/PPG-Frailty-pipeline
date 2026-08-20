@@ -29,10 +29,13 @@ except ImportError as exc:  # pragma: no cover
 
 
 EFFECT_SIZE_DISCOVERY_SPECS = {
+    # Backward-compatible route name; values are defaults, not frozen inputs.
     "effect_size_fixed_v1": (128, 64),
+    # Historical named comparison presets retain their explicit identity.
     "effect_size_fixed_400_ablation": (400, 64),
     "effect_size_fixed_800_ablation": (800, 64),
 }
+_PARAMETERIZED_EFFECT_SIZE_METHODS = {"effect_size_fixed_v1"}
 
 
 @dataclass(frozen=True)
@@ -76,11 +79,19 @@ class EffectSizeShapelets:
         if self.shapelet_length_samples != values.shape[-1]:
             raise ValueError("shapelet_length_samples must match the stored shapelet width")
         expected_length, expected_stride = EFFECT_SIZE_DISCOVERY_SPECS[self.discovery_method]
-        if self.shapelet_length_samples != expected_length or self.discovery_stride_samples != expected_stride:
+        if (
+            self.discovery_method not in _PARAMETERIZED_EFFECT_SIZE_METHODS
+            and (
+                self.shapelet_length_samples != expected_length
+                or self.discovery_stride_samples != expected_stride
+            )
+        ):
             raise ValueError(
                 f"{self.discovery_method} requires length/stride "
                 f"{expected_length}/{expected_stride} samples"
             )
+        if self.shapelet_length_samples <= 0 or self.discovery_stride_samples <= 0:
+            raise ValueError("shapelet length and discovery stride must be positive")
         expected_seconds = self.shapelet_length_samples / float(self.input_fs_hz)
         if not np.isclose(self.shapelet_length_seconds, expected_seconds, rtol=0.0, atol=1e-12):
             raise ValueError("shapelet_length_seconds must equal samples / input_fs_hz")
@@ -173,7 +184,10 @@ def discover_effect_size_shapelets(
     if len(participant_ids) != x.shape[0]:
         raise ValueError("one participant id is required per training sample")
     expected_length, expected_stride = EFFECT_SIZE_DISCOVERY_SPECS[discovery_method]
-    if shapelet_length != expected_length or stride != expected_stride:
+    if (
+        discovery_method not in _PARAMETERIZED_EFFECT_SIZE_METHODS
+        and (shapelet_length != expected_length or stride != expected_stride)
+    ):
         raise ValueError(
             f"{discovery_method} requires shapelet_length={expected_length} and stride={expected_stride}"
         )
@@ -265,6 +279,7 @@ class ExperimentalShapeFormer(nn.Module):
         attention_layers: int = 1,
         distance_position_chunk_size: int = 256,
         input_fs_hz: float | None = None,
+        attention_feedforward_channels: int | None = None,
     ) -> None:
         """Build only from a provenance-complete fold-local bank.
 
@@ -289,6 +304,8 @@ class ExperimentalShapeFormer(nn.Module):
             raise ValueError("input_fs_hz is required and must be finite and positive")
         if not np.isclose(input_fs_hz, shapelets.input_fs_hz, rtol=0.0, atol=1e-12):
             raise ValueError("model input_fs_hz must match the fitted shapelet bank")
+        if n_channels <= 0 or n_classes <= 1:
+            raise ValueError("n_channels must be positive and n_classes must exceed one")
         if patch_size_samples < 2:
             raise ValueError(
                 "patch_size_samples must be at least 2; raw sample-token attention is forbidden"
@@ -297,17 +314,26 @@ class ExperimentalShapeFormer(nn.Module):
             raise ValueError("hidden_channels and attention_heads must be positive")
         if hidden_channels % attention_heads != 0:
             raise ValueError("hidden_channels must be divisible by attention_heads")
-        if attention_layers <= 0:
-            raise ValueError("attention_layers must be positive")
+        feedforward_channels = (
+            int(hidden_channels) * 2
+            if attention_feedforward_channels is None
+            else int(attention_feedforward_channels)
+        )
+        if attention_layers <= 0 or feedforward_channels <= 0:
+            raise ValueError(
+                "attention_layers and attention_feedforward_channels must be positive"
+            )
         if distance_position_chunk_size <= 0:
             raise ValueError("distance_position_chunk_size must be positive")
+        if not np.isfinite(dropout) or not 0.0 <= float(dropout) < 1.0:
+            raise ValueError("dropout must be finite in [0,1)")
 
         self.n_channels = int(n_channels)
         self.n_classes = int(n_classes)
         self.hidden_channels = int(hidden_channels)
         self.attention_heads = int(attention_heads)
         self.attention_layers = int(attention_layers)
-        self.attention_feedforward_channels = int(hidden_channels) * 2
+        self.attention_feedforward_channels = feedforward_channels
         self.classifier_dropout = float(dropout)
         self.discovery_method = shapelets.discovery_method
         if isinstance(shapelets, PisdShapelets):
@@ -390,7 +416,7 @@ class ExperimentalShapeFormer(nn.Module):
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=hidden_channels,
             nhead=attention_heads,
-            dim_feedforward=hidden_channels * 2,
+            dim_feedforward=feedforward_channels,
             dropout=dropout,
             activation="gelu",
             batch_first=True,
@@ -427,6 +453,13 @@ class ExperimentalShapeFormer(nn.Module):
             "shapelet_source_channel_names": self.shapelet_source_channel_names,
             "shapelet_candidate_records": self.shapelet_candidate_records,
             "information_gain_split_rule": self.information_gain_split_rule,
+            "hidden_channels": self.hidden_channels,
+            "attention_heads": self.attention_heads,
+            "attention_layers": self.attention_layers,
+            "attention_feedforward_channels": (
+                self.attention_feedforward_channels
+            ),
+            "classifier_dropout": self.classifier_dropout,
             "distance_position_chunk_size": self.distance_position_chunk_size,
             "patch_size_samples": self.patch_size_samples,
             "patch_duration_seconds": self.patch_duration_seconds,

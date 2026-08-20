@@ -113,7 +113,7 @@ class CliCommandTests(unittest.TestCase):
             "spectral_mask",
             "spectral",
             "--duration-s",
-            "8",
+            "10",
             "--seed",
             "42",
         )
@@ -175,7 +175,11 @@ class CliCommandTests(unittest.TestCase):
         indexed = {row["canonical_model_id"]: row for row in payload["results"]}
         self.assertEqual(indexed["ROCKET"]["machine_model_id"], "rocket_numpy")
         self.assertEqual(indexed["ROCKET"]["n_kernels"], 64)
-        self.assertEqual(indexed["CompactCNN1D"]["variant"], "reviewed_compact")
+        self.assertEqual(
+            indexed["CompactCNN1D"]["variant"],
+            "reference_not_wang_fcn",
+        )
+        self.assertTrue(indexed["CompactCNN1D"]["synthetic_contract_only"])
 
     def test_shapeformer_machine_id_builds_strict_discovery_provenance(self) -> None:
         """machine ID 直达仍须构建完整 outer-fold provenance / Strict bank."""
@@ -190,6 +194,27 @@ class CliCommandTests(unittest.TestCase):
         self.assertEqual(row["canonical_model_id"], "ShapeFormerEffectSizeFixedV1")
         self.assertEqual(row["machine_model_id"], "shapeformer_effect_size_fixed_v1")
         self.assertEqual(row["discovery_method"], "effect_size_fixed_v1")
+        self.assertEqual(row["model_status"], "ablation")
+        self.assertTrue(row["finite_probabilities"])
+
+    def test_legacy_effect_size_shapeformer_is_an_explicit_cli_model(self) -> None:
+        completed, payload = run_cli(
+            "compare",
+            "models",
+            "--models",
+            "shapeformer_legacy_effect_size_port",
+            "--seed",
+            "7",
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(payload["status"], "passed")
+        row = payload["results"][0]
+        self.assertEqual(
+            row["canonical_model_id"], "ShapeFormerLegacyEffectSizePort"
+        )
+        self.assertEqual(
+            row["discovery_method"], "legacy_effect_size_channelwise_v1"
+        )
         self.assertEqual(row["model_status"], "ablation")
         self.assertTrue(row["finite_probabilities"])
 
@@ -271,6 +296,38 @@ class CliCommandTests(unittest.TestCase):
             )
         self.assertIsNotNone(created_path)
         self.assertFalse(created_path.exists())
+
+    def test_final_refit_bundle_option_dispatches_executable_api(self) -> None:
+        from ppg_frailty.cli import main
+
+        bundle = ROOT / "artifacts" / "bundles" / "fixture_final"
+        with patch(
+            "ppg_frailty.experiment.execute_final_refit_from_verified_artifacts",
+            return_value=bundle,
+        ) as execute, io.StringIO() as stream, redirect_stdout(stream):
+            code = main(
+                [
+                    "final-refit",
+                    "--run-directory", "artifacts/runs/candidate",
+                    "--selection-record", "artifacts/selections/deployment.json",
+                    "--comparison-archive", "artifacts/comparisons/model/run",
+                    "--config", "default",
+                    "--bundle-directory", "artifacts/bundles/fixture_final",
+                ]
+            )
+            payload = json.loads(stream.getvalue())
+
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["status"], "final_refit_bundle_saved")
+        self.assertIs(payload["training_executed"], True)
+        self.assertEqual(Path(payload["bundle_directory"]), bundle)
+        execute.assert_called_once_with(
+            run_directory=ROOT / "artifacts" / "runs" / "candidate",
+            selection_record=ROOT / "artifacts" / "selections" / "deployment.json",
+            comparison_archive=ROOT / "artifacts" / "comparisons" / "model" / "run",
+            config_path=ROOT / "configs" / "reference_static_feature_vector_v2.yaml",
+            bundle_directory="artifacts/bundles/fixture_final",
+        )
 
     def test_smoke_output_can_use_and_clean_exact_v2_temporary_directory(self) -> None:
         """仅清理由本测试创建的 V2 temp / Clean only the exact V2 temp created here."""

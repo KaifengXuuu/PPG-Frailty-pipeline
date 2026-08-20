@@ -3,7 +3,7 @@
 The functions in this module perform no work at import time. The internal
 entry reads and re-hashes all 261 frozen files itself. The PTT entry reads all
 66 authoritative CSV records itself and requires the exact hash-bound V2-036
-unit decision before any unit conversion, EKF, materialization, or evaluation.
+unit evidence before any unit conversion, EKF, materialization, or evaluation.
 """
 
 from __future__ import annotations
@@ -68,12 +68,8 @@ from .motion_adapters import (
 from .motion_runner import (
     MotionExternalRunResult,
     MotionInternalRunResult,
-    _FormalMotionRunAuthorization,
     _run_internal_motion_oof_impl,
     _run_ptt_external_evaluation_impl,
-    _FORMAL_CANONICAL_ENTRY_TOKEN,
-    evaluate_ptt_external_gate,
-    load_motion_internal_evidence,
 )
 
 
@@ -138,12 +134,12 @@ _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
 class PttImuUnitEvidenceRequired(RuntimeError):
-    """Structured fail-closed status until the exact V2-036 artifact is supplied."""
+    """Structured data-readiness status until exact V2-036 units are supplied."""
 
     def __init__(self, statuses: Mapping[str, int]) -> None:
         self.payload = {
-            "schema_version": "ppg_frailty.ptt_imu_unit_gate.v3",
-            "allowed": False,
+            "schema_version": "ppg_frailty.ptt_imu_unit_readiness.v3",
+            "ready": False,
             "reason": "ptt_v2_036_unit_evidence_not_supplied",
             "source_manifest_sha256": M2_EXTERNAL_MANIFEST_SHA256,
             "observed_manifest_status_counts": dict(statuses),
@@ -790,10 +786,6 @@ def run_formal_internal_motion_reference(
         execution_mode="formal",
         write_artifacts=True,
         formal_source_evidence=source_evidence,
-        formal_run_authorization=_FormalMotionRunAuthorization(
-            FORMAL_INTERNAL_MOTION_ENTRY_ID
-        ),
-        _canonical_entry_token=_FORMAL_CANONICAL_ENTRY_TOKEN,
     )
 
 
@@ -1348,7 +1340,7 @@ def run_formal_ptt_motion_reference(
     unit_evidence_path: str | Path | None = None,
     expected_unit_evidence_sha256: str | None = None,
 ) -> MotionExternalRunResult:
-    """Canonical 66-record PTT entry gated by exact V2-036 unit evidence."""
+    """Canonical 66-record PTT entry using exact V2-036 unit evidence."""
 
     repository = Path(repository_root).resolve()
     records = tuple(
@@ -1374,14 +1366,6 @@ def run_formal_ptt_motion_reference(
         expected_sha256=expected_unit_evidence_sha256,
         expected_records=records,
     )
-    internal_gate = evaluate_ptt_external_gate(
-        internal_evidence_path,
-        expected_sha256=expected_internal_evidence_sha256,
-    )
-    if not internal_gate.allowed:
-        raise RuntimeError(
-            "PTT external motion gate is closed: " + ";".join(internal_gate.reasons)
-        )
     examples, source_evidence = _build_ptt_materialization(
         repository,
         records,
@@ -1398,10 +1382,6 @@ def run_formal_ptt_motion_reference(
         predict_probability=predict_formal_motion_probability,
         output_dir=output_dir,
         formal_source_evidence=source_evidence,
-        formal_run_authorization=_FormalMotionRunAuthorization(
-            FORMAL_PTT_MOTION_ENTRY_ID
-        ),
-        _canonical_entry_token=_FORMAL_CANONICAL_ENTRY_TOKEN,
     )
 
 

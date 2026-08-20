@@ -33,7 +33,10 @@ computed or admitted to the formal predictor registry.
 
 ## Engineering feature contract
 
-Engineering uses complete 10 s windows with 5 s hop on the 400 Hz grid. The
+The engineering reference preset uses complete 10 s windows with a 5 s hop on
+the 400 Hz internal grid. Window length, hop, alignment and cap are resolved
+from the selected engineering window profile; the reference values are
+defaults, not permissions or runtime gates. The
 ordered schema has exactly 115 columns: RED/IR and A/Omega/J each receive seven
 time descriptors, four spectral summaries and family-specific band powers;
 the six individual IMU axes receive only the seven time descriptors. Welch
@@ -47,17 +50,19 @@ eight-channel raw/fusion tensor.
 |---|---|---|
 | `off` | no SQI computation | none; V2 default |
 | `diagnostics_only` | raw components saved separately | none |
-| `route` | may keep/drop/select reducer | disabled pending supervision |
+| `route` | fits endpoint calibration on outer-training participants, then applies the configured keep/drop/reducer state machine | changes only the explicitly selected route; executable without an authorization gate |
 
 `diagnostics_only` calls the raw diagnostic evaluator and cannot emit routing
 weights or normalized threshold decisions. Failures are recorded without
 dropping a record.
 
-Identity is the current artifact reducer. Named EMD-sifting-rate-only,
-CEEMD-lite-NLMS legacy and DWT-A2 legacy routes remain ablations. No fictional
-ANS is registered. A non-identity route is rate-only: post-reducer morphology
-and amplitude-dependent fields are not applicable, and reducer failure cannot
-silently fall back to the direct route.
+Identity is the reference artifact reducer. Named EMD-sifting-rate-only,
+CEEMD-lite-NLMS legacy and DWT-A2 legacy reducers are selectable parallel
+modules. No fictional ANS is registered. A non-identity route is rate-only:
+post-reducer morphology and amplitude-dependent fields are marked ineligible
+rather than extracted from an incompatible signal, while rate/interval and
+eligible matrix features remain available. Reducer failure cannot silently
+fall back to the direct route.
 
 IMU reference units are m/s² and rad/s. The calibrated roll-pitch EKF path uses
 zero-phase third-order sensor low-pass filters at 20 Hz for acceleration and

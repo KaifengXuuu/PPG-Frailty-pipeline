@@ -17,13 +17,22 @@ import numpy as np
 from ..contracts import FeatureVectorV1
 from ..provenance import assert_training_only
 from ..representations.feature_vector import validate_feature_vector
-from .registry import default_registry
+from .registry import default_registry, registry_for_feature_names
 
 
 TRANSFORM_SCHEMA_VERSION = "feature_vector_outer_train_median_iqr_v2"
-FUSION_TENSOR_SCHEMA_VERSION = (
-    "feature_vector_thesis_115_values_plus_validity_v3"
-)
+def fusion_tensor_schema_version(feature_names: Sequence[str]) -> str:
+    """Return a width- and registry-bound fusion tensor identity."""
+
+    registry = registry_for_feature_names(feature_names)
+    width = 2 * len(registry.names)
+    return (
+        f"feature_vector_values_plus_validity_{width}_"
+        f"registry-{registry.sha256[:12]}_v4"
+    )
+
+
+FUSION_TENSOR_SCHEMA_VERSION = fusion_tensor_schema_version(default_registry().names)
 
 
 def _artifact_hash(
@@ -78,7 +87,7 @@ class FoldFeatureVectorTransform:
             raise ValueError("feature-vector transform scale/count is invalid")
         if not self.fitted_on_participant_ids:
             raise ValueError("feature-vector transform requires an outer-train roster")
-        registry = default_registry()
+        registry = registry_for_feature_names(self.feature_names)
         if self.feature_names != registry.names or self.registry_sha256 != registry.sha256:
             raise ValueError("feature-vector transform registry identity drift")
         expected = _artifact_hash(
@@ -101,7 +110,7 @@ class FoldTransformedFeatureBatch:
     fusion_tensor: np.ndarray
     tensor_schema: tuple[str, ...]
     provenance: dict[str, object]
-    schema_version: str = FUSION_TENSOR_SCHEMA_VERSION
+    schema_version: str = ""
 
     def validate(self) -> None:
         tensor = np.asarray(self.fusion_tensor, dtype=np.float64)
@@ -115,12 +124,12 @@ class FoldTransformedFeatureBatch:
             validate_feature_vector(context)
             if context.provenance.get("fold_standardized") is not True:
                 raise ValueError("batch context is not fold standardized")
-        registry = default_registry()
+        registry = registry_for_feature_names(self.contexts[0].feature_names)
         expected_schema = registry.names + tuple(
             f"{name}.validity" for name in registry.names
         )
         if (
-            self.schema_version != FUSION_TENSOR_SCHEMA_VERSION
+            self.schema_version != fusion_tensor_schema_version(registry.names)
             or tuple(self.tensor_schema) != expected_schema
             or self.provenance.get("registry_sha256") != registry.sha256
             or self.provenance.get("fold_standardized") is not True
@@ -149,7 +158,7 @@ def fit_fold_feature_vector_transform(
     ids = tuple(str(value) for value in participant_ids)
     if len(items) != len(ids) or not items:
         raise ValueError("vectors and participant_ids must be non-empty and aligned")
-    registry = default_registry()
+    registry = registry_for_feature_names(items[0].feature_names)
     for vector in items:
         validate_feature_vector(vector)
         if tuple(vector.feature_names) != registry.names:
@@ -277,6 +286,7 @@ def transform_feature_vector_batch(
             "invalid_value_encoding": "neutral_zero",
             "registry_sha256": transform.registry_sha256,
         },
+        schema_version=fusion_tensor_schema_version(transform.feature_names),
     )
     batch.validate()
     return batch
@@ -284,6 +294,7 @@ def transform_feature_vector_batch(
 
 __all__ = [
     "FUSION_TENSOR_SCHEMA_VERSION",
+    "fusion_tensor_schema_version",
     "TRANSFORM_SCHEMA_VERSION",
     "FoldFeatureVectorTransform",
     "FoldTransformedFeatureBatch",

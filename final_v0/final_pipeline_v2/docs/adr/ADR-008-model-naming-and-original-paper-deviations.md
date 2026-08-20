@@ -11,8 +11,10 @@
   五网络 ensemble；
 - 五成员raw与matrix ensemble必须是两个显式comparison ID；每个都使用exact seeds
   `[42,10042,20042,30042,40042]`、无共享权重和逐概率算术平均；
-- ShapeFormer literature-reference只有通过faithful ShapeBlock/IG/OSD gate后才可运行；
-  其他发现方法必须使用独立ablation ID，禁止宣称PISD parity；
+- ShapeFormer literature reference 由可执行的faithful ShapeBlock/IG/OSD模块实现，
+  不设运行门禁；其他发现或downstream方法必须使用独立ablation ID，禁止宣称
+  PISD parity。可选 `FileBagFusion` 只组合已注册raw encoder，并保持fold-local
+  discovery与file-feature transform隔离；
 - ROCKET reference 为 10,000 random kernels + ridge；MiniROCKET 是独立消融。
 
-Architecture snapshot 和 model card 是发布门；名称不能随结果表现改变。
+Architecture snapshot 和 model card 是必需追溯材料；名称不能随结果表现改变。

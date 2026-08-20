@@ -205,7 +205,6 @@ class ReviewedArchitectureTests(unittest.TestCase):
             "outer_repeat_index": 2,
             "outer_fold_index": 3,
             "outer_train_participant_hash": shapelets.outer_train_participant_hash,
-            "architecture_parameters": {"guard_test": True},
         }
         with self.assertRaisesRegex(ValueError, "missing required options"):
             create_model(
@@ -213,7 +212,6 @@ class ReviewedArchitectureTests(unittest.TestCase):
                     "model_id": "shapeformer_effect_size_fixed_v1",
                     "seed": 42,
                     "shapelets": shapelets,
-                    "architecture_parameters": {"guard_test": True},
                 },
                 input_spec,
             )
@@ -406,7 +404,6 @@ class ReviewedArchitectureTests(unittest.TestCase):
                     "seed": 42,
                     "n_kernels": 4,
                     "alpha": 1.0,
-                    "architecture_parameters": {"guard_test": True},
                 },
                 ModelInputSpec("raw", n_channels=8, n_classes=3),
             )
@@ -419,7 +416,6 @@ class ReviewedArchitectureTests(unittest.TestCase):
                     "dropout": 0.2,
                     "kernel_sizes": [39, 19, 9],
                     "dilation": 1,
-                    "architecture_parameters": {"guard_test": True},
                 },
                 ModelInputSpec("raw", n_channels=8, n_classes=3),
             )

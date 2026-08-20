@@ -115,14 +115,47 @@ def _cell_rows(case_id: str, result: Mapping[str, Any], case_directory: Path) ->
     return rows
 
 
-def _history_rows(case_id: str, result: Mapping[str, Any], case_directory: Path) -> list[dict[str, Any]]:
+def _learning_curve_contract_fields(payload: Any) -> dict[str, Any]:
+    """Project curve provenance next to every history row.
+
+    Report code must be able to distinguish an inner/train learning metric from
+    an outer held-out result without reopening the experiment result.  The
+    prefix also prevents contract metadata from being mistaken for a plotted
+    metric.
+    """
+
+    if not isinstance(payload, Mapping):
+        return {}
+    return {
+        "learning_curve_status": payload.get("status"),
+        "learning_curve_training_data_scope": payload.get("training_data_scope"),
+        "learning_curve_outer_heldout_used": payload.get(
+            "outer_heldout_used_for_epoch_selection_or_curve"
+        ),
+        "learning_curve_validation_metric": payload.get("validation_metric"),
+    }
+
+
+def _history_rows(
+    case_id: str,
+    result: Mapping[str, Any],
+    case_directory: Path,
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for cell in result.get("cell_results", ()) if isinstance(result.get("cell_results"), list) else ():
+    cells = (
+        result.get("cell_results", ())
+        if isinstance(result.get("cell_results"), list)
+        else ()
+    )
+    for cell in cells:
         if not isinstance(cell, Mapping):
             continue
         history = cell.get("training_history", cell.get("history", ()))
         if not isinstance(history, list):
             continue
+        contract = _learning_curve_contract_fields(
+            cell.get("learning_curve_contract")
+        )
         for item in history:
             if isinstance(item, Mapping):
                 rows.append(
@@ -131,15 +164,25 @@ def _history_rows(case_id: str, result: Mapping[str, Any], case_directory: Path)
                         "repeat": cell.get("repeat_index", cell.get("repeat")),
                         "fold": cell.get("fold_index", cell.get("fold")),
                         **dict(item),
+                        **contract,
                     }
                 )
     for path in sorted(case_directory.rglob("training_history.json")):
         payload = _read_json(path)
-        values = payload.get("rows", payload) if isinstance(payload, Mapping) else payload
+        values = (
+            payload.get("rows", payload)
+            if isinstance(payload, Mapping)
+            else payload
+        )
+        contract = _learning_curve_contract_fields(
+            payload.get("learning_curve_contract")
+            if isinstance(payload, Mapping)
+            else None
+        )
         if isinstance(values, list):
             for item in values:
                 if isinstance(item, Mapping):
-                    rows.append({"case_id": case_id, **dict(item)})
+                    rows.append({"case_id": case_id, **dict(item), **contract})
     for path in sorted(case_directory.rglob("training_history.csv")):
         with path.open("r", encoding="utf-8", newline="") as stream:
             for item in csv.DictReader(stream):
@@ -206,6 +249,56 @@ def _manifest_case_directory(
         return target
     case_id = str(case["case_id"])
     return study_root / "cases" / case_id
+
+
+def _resolved_aggregation_config(
+    study_root: Path,
+    *,
+    case_id: str,
+    case: Mapping[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Read the persisted per-case aggregation controls for report replay.
+
+    Report-time Line A/Line B reaggregation must retain scientific modifiers
+    from the fitted case.  Only the small aggregation block is retained in the
+    in-memory collection; the full resolved config remains the source of truth
+    on disk.
+    """
+
+    raw = case.get("resolved_config_path")
+    try:
+        if not isinstance(raw, str) or not raw.strip():
+            raise ValueError("manifest case lacks resolved_config_path")
+        relative = Path(raw)
+        if relative.is_absolute():
+            raise ValueError("resolved_config_path must be relative")
+        target = (study_root / relative).resolve()
+        target.relative_to(study_root.resolve())
+        if not target.is_file():
+            raise FileNotFoundError(target)
+        payload = yaml.safe_load(target.read_text(encoding="utf-8"))
+        if not isinstance(payload, Mapping):
+            raise TypeError("resolved config root must be a mapping")
+        aggregation = payload.get("aggregation")
+        if not isinstance(aggregation, Mapping):
+            raise TypeError("resolved config aggregation must be a mapping")
+        return (
+            {
+                "case_id": case_id,
+                "resolved_config_path": relative.as_posix(),
+                "aggregation": dict(aggregation),
+            },
+            None,
+        )
+    except Exception as error:  # noqa: BLE001 - preserve report limitation.
+        return (
+            None,
+            {
+                "case_id": case_id,
+                "resolved_config_path": raw,
+                "error": f"{type(error).__name__}: {error}",
+            },
+        )
 
 
 def _quality_rows(case_id: str, case_directory: Path) -> list[dict[str, Any]]:
@@ -295,6 +388,9 @@ class CollectedStudy:
     trusted_config_metrics: tuple[Mapping[str, Any], ...]
     limitations: tuple[str, ...]
     oof_read_failures: tuple[Mapping[str, Any], ...] = ()
+    window_oof_rows: tuple[Mapping[str, Any], ...] = ()
+    resolved_aggregation_configs: tuple[Mapping[str, Any], ...] = ()
+    resolved_config_failures: tuple[Mapping[str, Any], ...] = ()
 
 
 def collect_study(root: str | Path) -> CollectedStudy:
@@ -322,6 +418,7 @@ def collect_study(root: str | Path) -> CollectedStudy:
     case_records: list[Mapping[str, Any]] = []
     cell_rows: list[Mapping[str, Any]] = []
     history_rows: list[Mapping[str, Any]] = []
+    window_oof_rows: list[Mapping[str, Any]] = []
     file_oof_rows: list[Mapping[str, Any]] = []
     oof_rows: list[Mapping[str, Any]] = []
     role_oof_rows: list[Mapping[str, Any]] = []
@@ -329,10 +426,25 @@ def collect_study(root: str | Path) -> CollectedStudy:
     config_metrics: list[Mapping[str, Any]] = []
     limitations: list[str] = []
     oof_read_failures: list[Mapping[str, Any]] = []
+    resolved_aggregation_configs: list[Mapping[str, Any]] = []
+    resolved_config_failures: list[Mapping[str, Any]] = []
     for case in manifest.get("cases", ()):
         if not isinstance(case, Mapping):
             continue
         case_id = str(case["case_id"])
+        resolved_aggregation, config_failure = _resolved_aggregation_config(
+            study_root,
+            case_id=case_id,
+            case=case,
+        )
+        if resolved_aggregation is not None:
+            resolved_aggregation_configs.append(resolved_aggregation)
+        if config_failure is not None:
+            resolved_config_failures.append(config_failure)
+            limitations.append(
+                f"{case_id}: resolved config unavailable for aggregation replay: "
+                f"{config_failure['error']}"
+            )
         case_directory = _manifest_case_directory(study_root, case)
         result_path = case_directory / "case_result.json"
         if not result_path.is_file():
@@ -378,6 +490,21 @@ def collect_study(root: str | Path) -> CollectedStudy:
         artifact_root = _case_artifact_root(case_directory, record)
         cell_rows.extend(_cell_rows(case_id, result, artifact_root))
         history_rows.extend(_history_rows(case_id, result, artifact_root))
+        current_window_oof, window_limitation = _oof_rows(
+            case_id,
+            artifact_root,
+            filename="oof_window_predictions.parquet",
+        )
+        window_oof_rows.extend(current_window_oof)
+        if window_limitation is not None:
+            limitations.append(f"{case_id}: {window_limitation}")
+            oof_read_failures.append(
+                {
+                    "case_id": case_id,
+                    "oof_level": "window",
+                    "error": window_limitation,
+                }
+            )
         current_file_oof, file_limitation = _oof_rows(
             case_id,
             artifact_root,
@@ -445,4 +572,7 @@ def collect_study(root: str | Path) -> CollectedStudy:
         trusted_config_metrics=tuple(config_metrics),
         limitations=tuple(dict.fromkeys(limitations)),
         oof_read_failures=tuple(oof_read_failures),
+        window_oof_rows=tuple(window_oof_rows),
+        resolved_aggregation_configs=tuple(resolved_aggregation_configs),
+        resolved_config_failures=tuple(resolved_config_failures),
     )

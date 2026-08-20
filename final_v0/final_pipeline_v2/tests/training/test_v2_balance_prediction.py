@@ -99,6 +99,22 @@ class _TinyEnsemble(nn.Module):
         return torch.softmax(self.linear(x.mean(dim=-1)), dim=-1)
 
 
+class _TinyProbabilityEnsemble(nn.Module):
+    def __init__(self, member_count: int) -> None:
+        super().__init__()
+        self.members = nn.ModuleList(nn.Linear(2, 2) for _ in range(member_count))
+        self.member_seeds = tuple(101 + index for index in range(member_count))
+
+    def member_probabilities(
+        self, x: torch.Tensor, mask: torch.Tensor | None = None
+    ) -> torch.Tensor:
+        pooled = x.mean(dim=-1)
+        return torch.stack(
+            [torch.softmax(member(pooled), dim=-1) for member in self.members],
+            dim=0,
+        )
+
+
 class _TinyFileBag(nn.Module):
     def forward(
         self,
@@ -149,6 +165,23 @@ def test_deep_fit_metadata_and_public_deep_ensemble_filebag_prediction() -> None
     assert bag_probability.shape == (2, 2)
     assert bag_labels.tolist() == [0, 1]
     assert len(bag_identities) == 2
+
+
+def test_public_ensemble_prediction_uses_declared_arbitrary_member_roster() -> None:
+    values = np.arange(64, dtype=np.float32).reshape(4, 2, 8) / 64.0
+    raw = RawWindowDataset(values, _identities())
+    trainer = UnifiedTrainer(_smoke_config())
+
+    member_probability, averaged, member_labels, member_identities = (
+        trainer.predict_ensemble_members(_TinyProbabilityEnsemble(2), raw)
+    )
+    assert member_probability.shape == (2, 4, 2)
+    torch.testing.assert_close(
+        torch.from_numpy(averaged),
+        torch.from_numpy(member_probability.mean(axis=0)),
+    )
+    assert member_labels.tolist() == [0, 0, 0, 1]
+    assert len(member_identities) == 4
 
 
 class _MaskEstimator:

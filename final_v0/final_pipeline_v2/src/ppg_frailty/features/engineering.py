@@ -1,7 +1,8 @@
-"""10 s/5 s 工程特征与 fold-local 变换 / Engineering features and fold-local transform."""
+"""可配置完整窗口工程特征与 fold-local 变换 / Configurable-window features."""
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -175,14 +176,26 @@ def _one_channel_features(
     )
     if np.any(power < 0.0):
         raise RuntimeError("Welch returned a negative one-sided PSD")
+    # SciPy deliberately warns for constant or nearly constant windows while
+    # returning the same NaN/finite values used by the existing validity mask.
+    # Keep those numerical semantics without turning expected missingness into a
+    # pipeline-wide warnings-as-errors failure.
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="Precision loss occurred in moment calculation.*",
+            category=RuntimeWarning,
+        )
+        skew = float(stats.skew(x, bias=False))
+        kurtosis = float(stats.kurtosis(x, fisher=False, bias=False))
     features = [
         float(np.mean(x)),
         float(np.std(x, ddof=0)),
         float(np.sqrt(np.mean(np.square(x)))),
         float(q75 - q25),
         float(np.median(np.abs(x - median))),
-        float(stats.skew(x, bias=False)),
-        float(stats.kurtosis(x, fisher=False, bias=False)),
+        skew,
+        kurtosis,
     ]
     if include_spectral_summary:
         total_power = (
@@ -321,29 +334,15 @@ def extract_engineering_features(
 
     views.validate()
     selected_plan = plan
-    expected_plan = (
-        10.0,
-        5.0,
-        "start",
-        "reject",
-        False,
-        None,
-        "not_applicable",
-    )
-    observed_plan = (
-        float(selected_plan.window_seconds),
-        float(selected_plan.hop_seconds),
-        selected_plan.end_alignment,
-        selected_plan.short_record_action,
-        selected_plan.include_padded_tail,
-        selected_plan.max_windows,
-        selected_plan.cap_policy,
-    )
-    if observed_plan != expected_plan:
-        raise ValueError(
-            "engineering extraction requires the frozen complete-window "
-            "10 s / 5 s-hop WindowPlan"
-        )
+    # The statistics operate on complete physical windows but do not depend on
+    # one globally frozen duration, hop, alignment, or cap.  Padding remains a
+    # raw/fusion-only option because this feature representation has no
+    # per-sample mask in its output contract.
+    if (
+        selected_plan.short_record_action != "reject"
+        or selected_plan.include_padded_tail
+    ):
+        raise ValueError("engineering extraction requires complete unpadded windows")
     record_id = str(views.metadata.get("record_id", ""))
     if not record_id or selected_plan.source_record_id != record_id:
         raise ValueError("WindowPlan source_record_id must exactly match signal metadata")
@@ -356,9 +355,7 @@ def extract_engineering_features(
     reasons: list[str] = []
     for item in windows:
         if item.valid_length != item.window_length or any(item.padding_mask):
-            # 中文：engineering reference 明确只接受 complete window。
-            # English: The engineering reference explicitly rejects padded windows.
-            continue
+            raise RuntimeError("complete-window planner emitted a padded engineering row")
         start, stop = item.start_sample, item.end_sample
         row: list[float] = []
         row_validity: list[bool] = []

@@ -11,7 +11,10 @@
 
 ## Identity and deviation / 身份与偏离
 
-Five full raw members with seeds 42/10042/20042/30042/40042 are averaged at probability level.
+The historical model ID is retained as a compatibility alias. Runtime cardinality is
+derived from the explicit unique `member_seeds` roster (one or more members), and all
+declared member probabilities are averaged exactly. The checked-in formal comparison
+preset remains a five-member experiment; it does not constrain ordinary V2 configs.
 
 中文：本卡只描述已实现接口和命名边界，不把架构存在、单元测试通过或历史分数
 解释为 V2 性能证据。

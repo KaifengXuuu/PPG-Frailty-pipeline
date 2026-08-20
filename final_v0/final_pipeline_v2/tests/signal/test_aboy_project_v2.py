@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
@@ -10,6 +12,7 @@ import numpy as np
 from scipy import signal
 
 from ppg_frailty.config import (
+    canonical_json_bytes,
     load_config,
     materialize_formal_ablation_config,
     validate_config_payload,
@@ -55,6 +58,65 @@ def pulse_train(
 
 
 class AboyProjectDetectorTest(unittest.TestCase):
+    def test_public_thresholds_are_validated_and_forwarded(self) -> None:
+        sentinel = {"RED": object()}
+        matrix = np.zeros((4000, 1), dtype=np.float64)
+        with patch(
+            "ppg_frailty.peaks.resolver.detect_pulses_per_wavelength_aboy_project",
+            return_value=sentinel,
+        ) as implementation:
+            observed = detect_pulses_per_wavelength(
+                matrix,
+                detector_id=CANONICAL_DETECTOR_ID,
+                min_observation_sec=6.5,
+                min_peaks=3,
+            )
+        self.assertIs(observed, sentinel)
+        self.assertEqual(implementation.call_args.kwargs["min_observation_sec"], 6.5)
+        self.assertEqual(implementation.call_args.kwargs["min_peaks"], 3)
+        for kwargs, message in (
+            ({"min_observation_sec": 0.0}, "min_observation_sec"),
+            ({"min_observation_sec": float("inf")}, "min_observation_sec"),
+            ({"min_observation_sec": True}, "min_observation_sec"),
+            ({"min_peaks": 0}, "min_peaks"),
+            ({"min_peaks": 2.5}, "min_peaks"),
+            ({"min_peaks": True}, "min_peaks"),
+        ):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaisesRegex(ValueError, message):
+                    detect_pulses_per_wavelength(
+                        matrix,
+                        detector_id=CANONICAL_DETECTOR_ID,
+                        **kwargs,
+                    )
+
+    def test_thresholds_bind_detector_provenance_without_changing_peaks(self) -> None:
+        waveform = pulse_train(np.arange(0.8, 19.5, 1.0))
+        matrix = np.column_stack((waveform, 0.9 * waveform))
+        default = detect_pulses(
+            matrix,
+            detector_id=CANONICAL_DETECTOR_ID,
+        )
+        configured = detect_pulses(
+            matrix,
+            detector_id=CANONICAL_DETECTOR_ID,
+            min_observation_sec=6.5,
+            min_peaks=3,
+        )
+        np.testing.assert_array_equal(configured.peaks, default.peaks)
+        self.assertNotEqual(
+            configured.block_hri_provenance_hash,
+            default.block_hri_provenance_hash,
+        )
+        self.assertTrue(configured.block_provenance)
+        self.assertTrue(
+            all(
+                row["min_observation_sec"] == 6.5
+                and row["min_peaks"] == 3
+                for row in configured.block_provenance
+            )
+        )
+
     def test_positive_and_inverted_sixty_bpm_have_same_events(self) -> None:
         waveform = pulse_train(np.arange(0.8, 19.5, 1.0))
         positive = detect_pulses(
@@ -465,7 +527,6 @@ class AboyProjectDetectorTest(unittest.TestCase):
                 )
 
     def test_active_configs_and_named_ablation_materialization(self) -> None:
-        from pathlib import Path
         import tempfile
 
         root = Path(__file__).resolve().parents[2]
@@ -480,6 +541,16 @@ class AboyProjectDetectorTest(unittest.TestCase):
             self.assertEqual(
                 config.payload["signal"]["peak_detector"]["detector_id"],
                 CANONICAL_DETECTOR_ID,
+            )
+            self.assertEqual(
+                config.payload["signal"]["peak_detector"][
+                    "min_observation_sec"
+                ],
+                8.0,
+            )
+            self.assertEqual(
+                config.payload["signal"]["peak_detector"]["min_peaks"],
+                5,
             )
             missing = config.to_dict()
             del missing["signal"]["peak_detector"]
@@ -506,6 +577,39 @@ class AboyProjectDetectorTest(unittest.TestCase):
             ]
             self.assertEqual(identity["family"], "peak_detector")
             self.assertEqual(identity["catalog_role"], "ablation")
+
+    def test_peak_thresholds_bind_effective_hash_and_invalid_ranges_fail(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        base = load_config(root / "configs/reference_static_role_aware_v2.yaml")
+        custom = base.to_dict()
+        custom["signal"]["peak_detector"].update(
+            {"min_observation_sec": 6.5, "min_peaks": 3}
+        )
+        resolved = validate_config_payload(custom)
+        digest = hashlib.sha256(canonical_json_bytes(resolved)).hexdigest()
+        self.assertNotEqual(digest, base.sha256)
+        self.assertEqual(
+            resolved["signal"]["peak_detector"],
+            {
+                "detector_id": CANONICAL_DETECTOR_ID,
+                "failure_action": "fail_closed_no_fallback",
+                "min_observation_sec": 6.5,
+                "min_peaks": 3,
+            },
+        )
+        for field, value, message in (
+            ("min_observation_sec", 0.0, "min_observation_sec"),
+            ("min_observation_sec", float("nan"), "min_observation_sec"),
+            ("min_observation_sec", False, "min_observation_sec"),
+            ("min_peaks", 0, "min_peaks"),
+            ("min_peaks", 3.5, "min_peaks"),
+            ("min_peaks", False, "min_peaks"),
+        ):
+            with self.subTest(field=field, value=value):
+                invalid = copy.deepcopy(base.to_dict())
+                invalid["signal"]["peak_detector"][field] = value
+                with self.assertRaisesRegex(ValueError, message):
+                    validate_config_payload(invalid)
 
 
 if __name__ == "__main__":

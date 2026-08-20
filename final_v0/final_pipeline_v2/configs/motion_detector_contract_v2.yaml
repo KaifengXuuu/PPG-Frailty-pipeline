@@ -1,4 +1,4 @@
-schema_version: ppg_frailty.motion_detector_contract.sensor_lpf_order3_imu_iqr_over_1p349.v3
+schema_version: ppg_frailty.motion_detector_contract.sensor_lpf_order3_imu_iqr_over_1p349.v4
 contract_id: v2_010_motion_detector_registered_not_run
 execution_status: implemented_contract_registered_not_run
 
@@ -12,8 +12,8 @@ selection:
       effect: motion_not_computed_and_never_changes_classification
     - option_id: sqi_plus_motion_override
       formal_default: false
-      status: registered_ablation_gate_closed_until_formal_evidence
-      effect: may_override_high_sqi_only_after_frozen_supervised_gate
+      status: registered_ablation_requires_explicit_frozen_supervised_evidence
+      effect: optional_external_motion_evidence_never_a_classifier_execution_control
     - option_id: historical_light_cnn_backup
       formal_default: false
       status: historical_frozen_backup_not_v2_run
@@ -142,7 +142,7 @@ internal_training_and_oof:
   split_seeds: [42]
   training_seed: 42
   runtime_split_recomputation_allowed: false
-  all_5_cells_required_before_external_gate: true
+  all_5_cells_required_for_complete_external_readiness_audit: true
   formal_training:
     schema_version: ppg_frailty.formal_motion_trainer.v2
     fixed_epochs: 10
@@ -176,11 +176,12 @@ threshold:
   outer_oof_scores_allowed: false
   ptt_scores_allowed: false
 
-ptt_external_gate:
-  status: requires_complete_internal_formal_evidence_and_exact_v2_036_unit_artifact
+ptt_external_readiness_audit:
+  status: read_only_complete_internal_formal_evidence_and_exact_v2_036_unit_artifact
+  execution_authority: none_audit_does_not_control_evaluation
   canonical_entry_id: formal_ptt_motion_reference_source_bound_v2
   injected_examples_or_callbacks_allowed: false
-  imu_unit_gate: exact_v2_036_path_sha_schema_and_66_source_hashes_before_conversion
+  imu_unit_evidence_check: exact_v2_036_path_sha_schema_and_66_source_hashes_before_conversion
   unit_evidence_schema: ppg_frailty.ptt_imu_unit_evidence.v3
   unit_evidence_relative_path: final_v0/final_pipeline_v2/manifests/ptt_imu_unit_evidence_v2_036.json
   unit_evidence_sha256: c03669029f9e58e53ae24e5e9208aa47541b93d8fcc0b9dea2f215165dc70ee5
@@ -191,7 +192,7 @@ ptt_external_gate:
   gyroscope_source_unit: deg/s
   gyroscope_conversion: degrees_per_second_to_radians_per_second
   gyroscope_evidence_boundary: header_and_historical_deg2rad_no_numeric_conflict_not_device_calibration
-  action_after_open: evaluation_only_never_fit_or_recalibrate
+  action_when_inputs_are_valid: evaluation_only_never_fit_or_recalibrate
   registry_id: ptt_formal_repeated_grouped_activity_balanced_5x5_v2
   split_csv: splits/ptt_formal_repeated_grouped_5x5_v2.csv
   split_csv_sha256: 138f999da334e2280c9e7df3304f9f017496f0ed6b60562a8d33e3c69c502dec

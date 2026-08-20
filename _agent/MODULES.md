@@ -2,7 +2,7 @@
 
 状态：confirmed
 来源：用户项目总纲、用户当前进度说明、`_agent/arc/PROJECT_HANDOFF.md`、代码与结果目录复核。
-最后手动更新时间：2026-07-26
+最后手动更新时间：2026-08-19
 用途：记录本项目各核心模块的用途、输入输出、脚本/函数对应关系、历史版本、当前状态、已实现内容、待实现内容、算法思路和改进方向。
 
 ## 模块总览
@@ -733,3 +733,47 @@
   - 新 detector + peak/IBI 集成未完成。
 - 后续建议：
   - 优先把动态心搏模块接入 notebook。
+
+---
+
+### 11. `final_pipeline_v2` 实验闭环、报告与完成 case 恢复
+
+- 当前最新版本：`final_v0/final_pipeline_v2` 当前活动实现。
+- 相关文件：
+  - `final_v0/final_pipeline_v2/src/ppg_frailty/experiment.py`
+  - `final_v0/final_pipeline_v2/src/ppg_frailty/study/`
+  - `final_v0/final_pipeline_v2/frailty_3class_sweep_v2.py`
+  - `final_v0/final_pipeline_v2/frailty_3class_final_refit_v2.py`
+  - `final_v0/final_pipeline_v2/tools/recover_completed_cases_v2.py`
+- 模块用途：
+  - 固化 study/cell/resume/final-refit 的配置、源码和 artifact provenance。
+  - 从同一份 held-out OOF 生成三种仅报告用 participant aggregation 视角。
+  - 将多个旧 study 中已完成且可校验的 case 汇入独立恢复目录，供统一报告使用。
+- 报告视角：
+  - `W`：window equal-weight；先按 participant 汇总全部 window。
+  - `A`：Line A equal-file；先得到 file 概率，再对同一 participant 的 file 等权。
+  - `B`：Line B equal-role；先在 role 内汇总，再对 participant 的可用 role 等权。
+  - 三个视角只重聚合同一 held-out OOF，不代表三次训练；只有 case 声明并保存了相应
+    source evidence 时才输出该视角。缺少 window OOF 的 feature/matrix/fusion case 明确
+    标为 N/A，不从 participant-level 结果反推或伪造 window 结果。
+- 可复现性边界：
+  - `features`/`aggregation` 配置使用 exact-key、exact-value fail-closed。
+  - final-refit 要求 OOF 的源码 SHA-256 与当前完整 `ppg_frailty` 源码树一致；旧
+    placeholder hash 不能绕过预检。
+  - `measure_operational_costs` 属于 execution/resume contract，不改变科学算法默认值。
+- diagnostics 边界：
+  - 保存小型 detector、运行参数、polarity、pairing-rule、聚合值/有效性、计数和失败摘要。
+  - 不保存逐搏 pairing rows 或 `beat_audit`；该压缩不得改变 predictor、route、
+    retention、aggregation 或 prediction。
+- 已实现内容：
+  - 三视角表格、全类别指标图、confusion matrix 和 HTML 图像引用。
+  - 13 completed cases / 65 cells 的独立恢复 bundle；原 study 和冗余 diagnostics 保持原地。
+  - 仅归档一个已证明不可达的旧 `train/sampling.py` facade；活动源码仍全部静态可达。
+- 验证状态：
+  - safe suite 298/298；study/report 46/46；恢复 hash/index 完整性检查通过。
+  - 未运行新训练；恢复结果不构成新的模型选择证据。
+- 后续建议：
+  - 代码稳定后再生成新鲜 formal 5×5 OOF，满足 source hash 和 operational contract。
+  - 对旧文档中已陈旧的 Line A/Line B、seed 和 active-version 表述单独做文档对齐。
+  - 测试耗时若需继续优化，优先考虑 package lazy import 与 fixture 复用，而非继续归档
+    仍被 registry 或公共 facade 使用的源码。

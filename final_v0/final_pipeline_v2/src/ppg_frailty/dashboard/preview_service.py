@@ -404,8 +404,12 @@ class PipelinePreviewService:
 
         from ppg_frailty.data.windows import WindowPlan
         from ppg_frailty.features.engineering import extract_engineering_features
-        from ppg_frailty.module_registry import resolve_peak_detector_config
+        from ppg_frailty.module_registry import (
+            resolve_peak_detector_config,
+            resolve_window_config,
+        )
         from ppg_frailty.peaks import select_reference_wavelength
+        from ppg_frailty.signal.prv import PrvConfig
         from ppg_frailty.signal import (
             compute_prv,
             detect_pulses_per_wavelength,
@@ -467,14 +471,22 @@ class PipelinePreviewService:
             detector = resolve_peak_detector_config(
                 resolved_config.get("signal", {})
             )
+            add("pulse_ppi", "detector_id", detector["detector_id"])
+            add(
+                "pulse_ppi",
+                "min_observation_sec",
+                detector["min_observation_sec"],
+            )
+            add("pulse_ppi", "min_peaks", detector["min_peaks"])
             pulses_per_wavelength = detect_pulses_per_wavelength(
                 views,
                 detector_id=detector["detector_id"],
+                min_observation_sec=detector["min_observation_sec"],
+                min_peaks=detector["min_peaks"],
             )
             pulse = pulses_per_wavelength[
                 select_reference_wavelength(pulses_per_wavelength)
             ]
-            add("pulse_ppi", "detector_id", detector["detector_id"])
             add("pulse_ppi", "wavelength", pulse.wavelength)
             add("pulse_ppi", "detected_peak_count", int(pulse.peaks.size))
             add(
@@ -521,7 +533,13 @@ class PipelinePreviewService:
                 observation_duration_s=duration_s,
                 role=str(row.role),
                 route=views.route,
-                q_rate_qualified=False,
+                # Off/diagnostics modes do not gate classifier features.  A
+                # standalone preview cannot fit an outer-train empirical SQI
+                # calibrator, so route mode remains conservatively unqualified.
+                q_rate_qualified=quality_mode != "route",
+                config=PrvConfig.from_mapping(
+                    resolved_config.get("features", {})
+                ),
             )
             for name, value in sorted(prv.values.items()):
                 add(
@@ -610,24 +628,10 @@ class PipelinePreviewService:
             add("morphology", "status", "pulse_detection_unavailable", "N/A")
 
         try:
-            windows = resolved_config["windows"]["engineering"]
+            windows = resolve_window_config(resolved_config["windows"])["engineering"]
             plan = WindowPlan(
                 source_record_id=str(row.record_id),
-                window_seconds=float(windows["length_s"]),
-                hop_seconds=float(windows["hop_s"]),
-                end_alignment="start",
-                short_record_action="reject",
-                include_padded_tail=False,
-                max_windows=(
-                    None
-                    if windows.get("cap_per_file") is None
-                    else int(windows["cap_per_file"])
-                ),
-                cap_policy=(
-                    "not_applicable"
-                    if windows.get("cap_per_file") is None
-                    else "uniform_progress"
-                ),
+                **windows,
             )
             engineering = extract_engineering_features(views, plan=plan)
             feature_values = np.asarray(engineering.sequence.values, dtype=np.float64)

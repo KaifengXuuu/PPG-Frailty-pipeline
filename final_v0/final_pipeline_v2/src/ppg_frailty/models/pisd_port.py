@@ -21,6 +21,9 @@ NUM_PIP_RATIO = 0.20
 SHAPELETS_PER_CLASS = 3
 MAX_DISCOVERY_WINDOWS = 180
 DISCOVERY_BALANCE = "participant_file_balanced"
+DISCOVERY_BALANCES = frozenset(
+    {DISCOVERY_BALANCE, "class_window_balanced"}
+)
 POSITION_SEARCH_NEIGHBOURHOOD_SAMPLES = 128
 PIP_ROUNDING_RULE = "floor_ratio_minimum_5_capped_at_actual_T"
 PIP_SELECTION_RULE = "upstream_zscored_time_index_perpendicular_distance_first_max"
@@ -154,20 +157,39 @@ class PisdShapelets:
             raise ValueError("end seconds must equal end samples / input_fs_hz")
         if self.discovery_method != PISD_DISCOVERY_METHOD:
             raise ValueError(f"PisdShapelets requires discovery_method={PISD_DISCOVERY_METHOD}")
-        if self.discovery_balance != DISCOVERY_BALANCE:
-            raise ValueError(f"PISD discovery_balance must be {DISCOVERY_BALANCE}")
+        if self.discovery_balance not in DISCOVERY_BALANCES:
+            raise ValueError(
+                "PISD discovery_balance must be one of "
+                f"{sorted(DISCOVERY_BALANCES)}"
+            )
         if not np.isfinite(self.input_fs_hz) or self.input_fs_hz <= 0.0:
             raise ValueError("input_fs_hz must be finite and positive")
-        if not np.isclose(self.num_pip_ratio, NUM_PIP_RATIO, rtol=0.0, atol=1e-12):
-            raise ValueError(f"num_pip_ratio is frozen at {NUM_PIP_RATIO}")
-        if self.shapelets_per_class != SHAPELETS_PER_CLASS:
-            raise ValueError(f"shapelets_per_class is frozen at {SHAPELETS_PER_CLASS}")
-        if self.max_discovery_windows != MAX_DISCOVERY_WINDOWS:
-            raise ValueError(f"max_discovery_windows is frozen at {MAX_DISCOVERY_WINDOWS}")
-        if self.position_search_neighbourhood_samples != POSITION_SEARCH_NEIGHBOURHOOD_SAMPLES:
+        if (
+            not np.isfinite(self.num_pip_ratio)
+            or not 0.0 < float(self.num_pip_ratio) <= 1.0
+        ):
+            raise ValueError("num_pip_ratio must be finite in (0,1]")
+        if (
+            isinstance(self.shapelets_per_class, (bool, np.bool_))
+            or not isinstance(self.shapelets_per_class, (int, np.integer))
+            or int(self.shapelets_per_class) <= 0
+        ):
+            raise ValueError("shapelets_per_class must be a positive integer")
+        if (
+            isinstance(self.max_discovery_windows, (bool, np.bool_))
+            or not isinstance(self.max_discovery_windows, (int, np.integer))
+            or int(self.max_discovery_windows) <= 0
+        ):
+            raise ValueError("max_discovery_windows must be a positive integer")
+        if (
+            isinstance(self.position_search_neighbourhood_samples, (bool, np.bool_))
+            or not isinstance(
+                self.position_search_neighbourhood_samples, (int, np.integer)
+            )
+            or int(self.position_search_neighbourhood_samples) <= 0
+        ):
             raise ValueError(
-                "position_search_neighbourhood_samples is frozen at "
-                f"{POSITION_SEARCH_NEIGHBOURHOOD_SAMPLES}; it is never a shapelet length"
+                "position_search_neighbourhood_samples must be a positive integer"
             )
         if self.pip_rounding_rule != PIP_ROUNDING_RULE:
             raise ValueError(f"pip_rounding_rule must be {PIP_ROUNDING_RULE}")
@@ -203,18 +225,18 @@ class PisdShapelets:
                 f"{INFORMATION_GAIN_SPLIT_RULE}"
             )
         if not 0 < self.discovery_window_count <= self.max_discovery_windows:
-            raise ValueError("discovery_window_count is outside the frozen capacity")
+            raise ValueError("discovery_window_count is outside the configured capacity")
         source_class_values, class_counts = np.unique(
             integer_arrays["source_classes"], return_counts=True
         )
         if (
             tuple(source_class_values.tolist()) != (0, 1, 2)
             or np.any(class_counts != self.shapelets_per_class)
-            or count != 9
+            or count != 3 * int(self.shapelets_per_class)
         ):
             raise ValueError(
                 "Frailty3 OSD/PISD bank requires source_classes {0,1,2} "
-                "and exactly three shapelets per class"
+                "with the configured equal shapelet count per class"
             )
         if self.outer_repeat_index < 0 or self.outer_fold_index < 0:
             raise ValueError("outer repeat/fold indices must be non-negative")
@@ -513,6 +535,49 @@ def _balanced_discovery_indices(
     return np.asarray(sorted(selected), dtype=np.int64)
 
 
+def _class_window_balanced_discovery_indices(
+    y: np.ndarray,
+    *,
+    maximum: int,
+    seed: int,
+) -> np.ndarray:
+    """Port the legacy class-balanced random-window discovery sampler."""
+
+    labels = np.asarray(y, dtype=np.int64)
+    if maximum <= 0:
+        raise ValueError("maximum discovery windows must be positive")
+    if labels.ndim != 1 or labels.size == 0:
+        raise ValueError("discovery labels must be a non-empty vector")
+    if labels.size <= maximum:
+        return np.arange(labels.size, dtype=np.int64)
+    classes = np.unique(labels)
+    if classes.size < 2:
+        raise ValueError("OSD/PISD discovery needs at least two classes")
+    if maximum < classes.size:
+        raise ValueError("maximum must allocate at least one window per class")
+    rng = np.random.default_rng(int(seed))
+    per_class = max(1, int(maximum) // int(classes.size))
+    selected: list[int] = []
+    for class_value in classes:
+        indices = np.flatnonzero(labels == class_value)
+        take = min(per_class, indices.size)
+        selected.extend(
+            rng.choice(indices, size=take, replace=False).tolist()
+        )
+    if len(selected) < maximum:
+        remaining = np.setdiff1d(
+            np.arange(labels.size),
+            np.asarray(selected, dtype=np.int64),
+            assume_unique=False,
+        )
+        if remaining.size:
+            fill = min(maximum - len(selected), remaining.size)
+            selected.extend(
+                rng.choice(remaining, size=fill, replace=False).tolist()
+            )
+    return np.asarray(sorted(set(selected)), dtype=np.int64)
+
+
 def _z_normalise(window: np.ndarray) -> np.ndarray:
     mean = window.mean()
     scale = window.std()
@@ -718,18 +783,33 @@ def discover_pisd_shapelets(
         raise ValueError(
             f"the reference requires discovery_method={PISD_DISCOVERY_METHOD}; no fallback is allowed"
         )
-    if not np.isclose(num_pip_ratio, NUM_PIP_RATIO, rtol=0.0, atol=1e-12):
-        raise ValueError(f"num_pip_ratio is frozen at {NUM_PIP_RATIO}")
-    if int(shapelets_per_class) != SHAPELETS_PER_CLASS:
-        raise ValueError(f"shapelets_per_class is frozen at {SHAPELETS_PER_CLASS}")
-    if int(max_discovery_windows) != MAX_DISCOVERY_WINDOWS:
-        raise ValueError(f"max_discovery_windows is frozen at {MAX_DISCOVERY_WINDOWS}")
-    if discovery_balance != DISCOVERY_BALANCE:
-        raise ValueError(f"discovery_balance must be {DISCOVERY_BALANCE}")
-    if int(position_search_neighbourhood_samples) != POSITION_SEARCH_NEIGHBOURHOOD_SAMPLES:
+    if not np.isfinite(num_pip_ratio) or not 0.0 < float(num_pip_ratio) <= 1.0:
+        raise ValueError("num_pip_ratio must be finite in (0,1]")
+    if (
+        isinstance(shapelets_per_class, (bool, np.bool_))
+        or not isinstance(shapelets_per_class, (int, np.integer))
+        or int(shapelets_per_class) <= 0
+    ):
+        raise ValueError("shapelets_per_class must be a positive integer")
+    if (
+        isinstance(max_discovery_windows, (bool, np.bool_))
+        or not isinstance(max_discovery_windows, (int, np.integer))
+        or int(max_discovery_windows) <= 0
+    ):
+        raise ValueError("max_discovery_windows must be a positive integer")
+    if discovery_balance not in DISCOVERY_BALANCES:
         raise ValueError(
-            "position_search_neighbourhood_samples must be exactly 128; "
-            "it is a position-search neighbourhood, never a shapelet length"
+            f"discovery_balance must be one of {sorted(DISCOVERY_BALANCES)}"
+        )
+    if (
+        isinstance(position_search_neighbourhood_samples, (bool, np.bool_))
+        or not isinstance(
+            position_search_neighbourhood_samples, (int, np.integer)
+        )
+        or int(position_search_neighbourhood_samples) <= 0
+    ):
+        raise ValueError(
+            "position_search_neighbourhood_samples must be a positive integer"
         )
     if not np.isfinite(input_fs_hz) or input_fs_hz <= 0.0:
         raise ValueError("input_fs_hz must be finite and positive")
@@ -752,6 +832,8 @@ def discover_pisd_shapelets(
         raise ValueError("channel_schema must uniquely name every input channel")
     if not np.isfinite(x).all() or np.unique(y).size < 2:
         raise ValueError("PISD discovery requires finite inputs and at least two classes")
+    if int(max_discovery_windows) < int(np.unique(y).size):
+        raise ValueError("max_discovery_windows must allocate at least one window per class")
     lengths = (
         np.full(x.shape[0], x.shape[-1], dtype=np.int64)
         if sequence_lengths is None
@@ -760,11 +842,23 @@ def discover_pisd_shapelets(
     if lengths.shape != (x.shape[0],) or np.any(lengths < 3) or np.any(lengths > x.shape[-1]):
         raise ValueError("sequence_lengths must give a valid actual T for every window")
 
-    discovery_indices = _balanced_discovery_indices(
-        y, participants, files, maximum=max_discovery_windows, seed=seed
+    discovery_indices = (
+        _balanced_discovery_indices(
+            y,
+            participants,
+            files,
+            maximum=max_discovery_windows,
+            seed=seed,
+        )
+        if discovery_balance == DISCOVERY_BALANCE
+        else _class_window_balanced_discovery_indices(
+            y,
+            maximum=max_discovery_windows,
+            seed=seed,
+        )
     )
     if discovery_indices.size == 0:
-        raise ValueError("participant/file-balanced discovery selected no windows")
+        raise ValueError(f"{discovery_balance} discovery selected no windows")
     discovery_x = x[discovery_indices]
     discovery_y = y[discovery_indices]
     discovery_lengths = lengths[discovery_indices]
@@ -945,6 +1039,7 @@ def discover_pisd_shapelets(
 
 __all__ = [
     "DISCOVERY_BALANCE",
+    "DISCOVERY_BALANCES",
     "MAX_DISCOVERY_WINDOWS",
     "NUM_PIP_RATIO",
     "POSITION_SEARCH_NEIGHBOURHOOD_SAMPLES",

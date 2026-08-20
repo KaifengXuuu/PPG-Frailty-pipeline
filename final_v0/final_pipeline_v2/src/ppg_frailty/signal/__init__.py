@@ -50,11 +50,12 @@ from .preprocess import (
     preprocess_ppg_pair,
     roll_pitch_ekf_config_from_resolved,
 )
-from .prv import MIN_TIME_DOMAIN_PRV_INTERVALS, PrvResult, compute_prv
+from .prv import MIN_TIME_DOMAIN_PRV_INTERVALS, PrvConfig, PrvResult, compute_prv
 from .resample import (
     DlResampleResult,
     SynchronizedResampleResult,
     V2_DL_RESAMPLING_TARGETS_HZ,
+    prepare_configured_dl_input,
     resample_dl_view,
     resample_synchronized_channels,
     validate_dl_resampling_config,
@@ -107,6 +108,8 @@ def extract_direct_features(
     *,
     pulse: PulseResult | None = None,
     detector_id: str | None = None,
+    min_observation_sec: float = 8.0,
+    min_peaks: int = 5,
     pulses_per_wavelength: Mapping[str, PulseResult] | None = None,
 ) -> dict[str, Any]:
     """统一 direct-only 形态与双波长入口 / Unified direct-only feature entry.
@@ -129,6 +132,8 @@ def extract_direct_features(
         else detect_pulses_per_wavelength(
             views,
             detector_id=str(detector_id),
+            min_observation_sec=min_observation_sec,
+            min_peaks=min_peaks,
         )
     )
     if detector_id is not None and any(
@@ -189,12 +194,14 @@ __all__ = [
     "detect_pulses_per_wavelength",
     "CANONICAL_DETECTOR_ID",
     "MIN_BASIC_RATE_PEAKS",
+    "PrvConfig",
     "PrvResult",
     "compute_prv",
     "MIN_TIME_DOMAIN_PRV_INTERVALS",
     "DlResampleResult",
     "SynchronizedResampleResult",
     "V2_DL_RESAMPLING_TARGETS_HZ",
+    "prepare_configured_dl_input",
     "resample_dl_view",
     "resample_synchronized_channels",
     "validate_dl_resampling_config",

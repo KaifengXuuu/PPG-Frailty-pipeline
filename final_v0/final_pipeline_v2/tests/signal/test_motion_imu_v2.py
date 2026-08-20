@@ -100,19 +100,62 @@ class MotionImuTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "fully finite"):
             replace(result, gravity_mps2=nonfinite_gravity).validate()
 
-    def test_sensor_lpf_order3_is_required_and_stale_calibration_is_rejected(self) -> None:
+    def test_filter_parameters_are_configurable_and_stale_calibration_is_rejected(self) -> None:
         self.assertEqual(self.config.sensor_filter_order, 3)
-        with self.assertRaisesRegex(ValueError, "filter configuration"):
-            replace(self.config, sensor_filter_order=4).validate()
         for field, value in (
             ("accelerometer_lowpass_hz", 30.0),
             ("gyroscope_lowpass_hz", 50.0),
             ("gravity_lowpass_hz", 0.5),
             ("gravity_filter_order", 3),
+            ("sensor_filter_order", 4),
         ):
             with self.subTest(config_field=field):
-                with self.assertRaisesRegex(ValueError, "filter configuration"):
+                replace(self.config, **{field: value}).validate()
+        for field, value in (
+            ("accelerometer_lowpass_hz", 0.0),
+            ("gyroscope_lowpass_hz", 200.0),
+            ("gravity_lowpass_hz", float("nan")),
+            ("gravity_filter_order", 0),
+            ("sensor_filter_order", True),
+        ):
+            with self.subTest(invalid_config_field=field):
+                with self.assertRaises(ValueError):
                     replace(self.config, **{field: value}).validate()
+
+        configured = replace(
+            self.config,
+            accelerometer_lowpass_hz=30.0,
+            gyroscope_lowpass_hz=50.0,
+            sensor_filter_order=4,
+            gravity_lowpass_hz=0.5,
+            gravity_filter_order=3,
+        )
+        configured_calibration = fit_motion_imu_calibration(
+            self.acc_g,
+            self.gyro_dps,
+            participant_id="p01",
+            file_id="p01_B_configured",
+            source_role="B",
+            fs_hz=self.fs,
+            acceleration_unit="g",
+            gyroscope_unit="deg/s",
+            config=configured,
+        )
+        configured_result = preprocess_motion_imu_calibrated_ekf(
+            self.acc_g,
+            self.gyro_dps,
+            fs_hz=self.fs,
+            acceleration_unit="g",
+            gyroscope_unit="deg/s",
+            participant_id="p01",
+            calibration=configured_calibration,
+            config=configured,
+        )
+        self.assertEqual(configured_result.diagnostics["sensor_filters"]["order"], 4)
+        self.assertEqual(
+            configured_result.diagnostics["sensor_filters"]["acceleration_lowpass_hz"],
+            30.0,
+        )
         self.assertEqual(self.calibration.schema_version, MOTION_IMU_CALIBRATION_SCHEMA)
         with self.assertRaisesRegex(ValueError, "calibration schema drift"):
             replace(

@@ -12,15 +12,17 @@ source/lock/attestation gate。
 - 验证：participant-grouped 5-fold × 5-repeat。每个 repeat 的五个 folds 共用该
   repeat seed：`[42, 10042, 20042, 30042, 40042]`。固定 `seed=42` 只属于人工
   选出 final use case 后的 all-29 refit。
-- 普通单模型 outer CV 使用各 repeat seed；matched Inception single comparator 固定
-  member 0 seed `50042`。five-member ensemble 在所有 repeats/folds 固定复用
-  `[50042, 60042, 70042, 80042, 90042]`，每 fold 先平均五成员概率，再拼接每个
-  repeat 的完整 participant OOF。final ensemble refit 也使用同一五成员 roster。
-- canonical aggregation 为
-  `window → file → role → participant`（role-aware Line B）；equal-files Line A
-  仅是具名 ablation。
-- reference quality mode 为 `off`。`diagnostics_only` 只记录原始诊断；A1/A2
-  七状态 route/recovery 是纯状态机，只有在监督阈值配置完整时才影响数据路线。
+- reference 单模型 outer CV 使用各 repeat seed；具名 matched Inception comparator
+  默认 member 0 seed `50042`。具名 five-member comparison 默认复用
+  `[50042, 60042, 70042, 80042, 90042]`。普通 V2 ensemble 则由唯一、显式的
+  `member_seeds` 决定任意正成员数，逐 fold 对成员概率取算术均值；final refit 使用
+  被选配置中的同一 roster。
+- reference aggregation 为
+  `window → file → role → participant`（role-aware Line B）。Line A equal-files 与
+  Line B 都是普通可选聚合模块，并与训练采样的 balance line 独立配置；报告可从同一
+  held-out file OOF 并行重放 window/Line A/Line B 三种 participant 视图。
+- reference quality mode 为 `off`。`diagnostics_only` 只记录诊断；`route` 直接选择
+  可执行 SQI/calibration/route/recovery 状态机，不再依赖 readiness 或 Phase-0/C0 门禁。
 - direct PPG view 使用 0.2–8 Hz；0.5–5 Hz 是 ablation。IMU reference 为同一
   participant role-B 校准的 roll–pitch EKF，无静默 fallback；LPF 0.3 Hz 是 ablation。
 - frailty raw/fusion/ShapeFormer 输入固定为 8 通道：
@@ -30,6 +32,43 @@ source/lock/attestation gate。
   `A_mag, Omega_mag, J_mag` 的 11 通道输入只属于具名 augmentation ablation，
   不进入 frailty raw-signal branch。
 - 主结果是 OOF validation，不是 independent test；不会自动挑 winner。
+
+上面都是 reference preset，不是 ordinary V2 的算法许可表。有效配置可独立选择
+Adam/AdamW/SGD/RMSprop、replacement/exhaustive/subject/class-subject samplers、
+participant/window/effective-number/no class weighting、cross-entropy/balanced-softmax/
+focal loss、fixed/inner-grouped epoch 策略、Line A/Line B、quality 与 normalization
+模块，以及正数 window length/hop、alignment、padding、绝对或比例 cap。默认值会在
+hash 前完整物化；配置接受的每个算法字段必须有真实 runtime consumer，不适用于当前
+model backend 的字段会明确报错。任务数据边界（29 participants、三分类、冻结 5×5
+OOF、raw/fusion 的有序 8 通道与 400 Hz 内部信号网格）仍保持不变。
+
+`features.enabled_groups` 是旧 `extra_input`/`manual_features` 的统一替代入口，可组合
+选择 basic PPI/rate、HRV time-domain、HRV spectral、HRV nonlinear、morphology、
+dual optical 与 engineering summary。默认全量 file vector 是 282 fields；engineering
+window sequence 独立保持 115 fields，故默认 ordered matrix 是
+`2 × (115 + 282) = 794` channels × `K`，数值和 validity 成对进入模型。registry、
+vector、fusion tensor 与 matrix 的 schema/count/hash 都从选择派生，不能手工伪造。
+迁移时，旧 `extra_input=PPI` 对应 `ppi_basic_rate`，旧 `HRV` 对应四个 PPI/HRV
+groups 的并集；旧 `manual_features=morphology` 对应 `morphology + dual_optical`，
+旧 `morphology_ppi_hrv_filelevel` 对应上述六组并集。旧实现中的 coverage/technical
+columns 仍不作为 predictor；`engineering_summary` 是独立可选组，不被偷偷并入旧别名。
+
+可选模型 `FileBagFusion` 通过嵌套 `model.signal_encoder` 组合 Compact、full/small
+Inception、faithful channel-specific OSD ShapeFormer、其 scalar-distance ablation、
+新版 effect-size ShapeFormer 或隔离的旧版 effect-size port；`features.enabled_groups`
+决定与之拼接的 file vector。ShapeFormer
+发现只展开已验证的 outer-train file bags，file features 不参与发现，随后每个文件仅在
+window pooling 后拼接一次。原有 `FileBagFusionCompact`/`FileBagFusionInception` 名称
+继续作为兼容路线。
+
+旧版对照模块 `ShapeFormerLegacyEffectSizePort` 保留历史 channel-wise effect-map
+发现和 `PortedShapeFormer` 中实际参与 forward 的 local/shape-token 两支。其默认参数
+对应旧 `RunConfig` 的 3 个 shapelets/class、128 长度、64 stride、180 discovery
+windows、8 candidates/class/channel、48/128 embedding、256 FFN、4 heads 和 0.30
+dropout；这些参数均为可输入且进入运行架构哈希。旧 `processes`/`verbose` 只影响
+执行调度或控制台输出，不作为算法参数；旧 `len_w` 的未使用 bookkeeping 也不作为
+假开关，实际 local convolution width（默认 8）与 shapelet search span（默认 64）
+分别显式配置。
 
 四个 canonical 配置：
 

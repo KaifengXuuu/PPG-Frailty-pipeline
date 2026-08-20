@@ -1,12 +1,12 @@
 # V2 消融与测试计划
 
 状态：实验执行计划，不是结果记录
-依据当前 V2 源码复核日期：2026-08-17
+依据当前 V2 源码复核日期：2026-08-20
 范围：仅 `final_v0/final_pipeline_v2`
 
 ## 1. 目的、依据与边界
 
-本文件规定用于筛选和论证 thesis-grade V2 pipeline 的有序实验。它与结果报告严格分离：创建或阅读本文件不授权训练，不表示任何实验已经运行，也不会把仅存在于 catalogue 的条目自动变成可运行 study。
+本文件规定用于筛选和论证 thesis-grade V2 pipeline 的有序实验。它与结果报告严格分离：创建或阅读本文件不会自动启动训练，不表示任何实验已经运行，也不会把仅存在于 catalogue 的条目自动变成完整 study。普通 V2 不设证据/人审授权门禁；依赖顺序只约束科学解释和晋级结论。
 
 本计划采用以下优先级：
 
@@ -27,7 +27,7 @@
 | `IMPLEMENTED_NEEDS_PLAN` | 算法/模式已实现，但仍缺完整 resolved config、study plan 或 dry-run 验证。 |
 | `CATALOG_ONLY` | 仅登记供物化；catalog 明确为 `auto_run=false`、`materialization_only=true`。 |
 | `PLANNED_NOT_RUNNABLE` | 科学问题有效，但精确可执行合同尚不完整。 |
-| `DEFERRED_GATE` | 已明确暂缓的人审、证据或硬件门禁；不得静默绕过。 |
+| `DEFERRED_EVIDENCE` | 软件可执行，但科学证据、外部条件或人工研究决定尚未完成；不得伪造结论。 |
 | `PROHIBITED` | 会违反冻结科学合同的路线。 |
 
 `RUNNABLE_PATH` 只说明 study 层没有已知缺项，不等于数值正确、运行成本可接受或 5×5 已成功完成。
@@ -233,7 +233,7 @@ python frailty_3class_sweep_v2.py run --plan configs/studies/single_config_v2.ya
   预注册为不可拆的 thesis design？
 - **Reference/config：** raw CompactCNN reference；reference case 保持现有 sampler + class weighting。
 - **唯一变量与取值：** 采用一个共同 reference 加两个彼此独立的单因素 alternatives：
-  (a) sampler=`uniform_shuffle_no_weighted_sampler`、class weighting保持
+  (a) sampler=`exhaustive_shuffle_without_replacement`、class weighting保持
   `outer_train_inverse_frequency`；(b) sampler保持 `balance_line_weighted_v2`、
   class weighting=`none`。禁止构造 sampler 与 class weighting 同时关闭的第四个 case，除非
   另建明确标为 interaction/exploratory 的 study。
@@ -247,11 +247,11 @@ python frailty_3class_sweep_v2.py run --plan configs/studies/single_config_v2.ya
 - **输出要求：** R0、实际 sampler/class-weighting identity、每 fold class counts/weights、
   repeat-paired deltas；只比较每个 alternative 对共同 reference，不把两个 alternatives互比
   解释为单因素因果证据。
-- **晋级规则：** 运行前必须先在 Trainer/config schema 中注册两个 alternative identity 并补
-  outer-fold isolation tests；随后只由完整25-cell OOF和人工审阅决定保留组合或简化。
-- **预计规模：** 计划3 cases、75 cells、75 fits；当前可运行0。
-- **当前状态：** `PLANNED_NOT_RUNNABLE`；Trainer当前只接受reference sampler/class weighting，
-  需人工选择“预注册现有组合”或授权实现本组，不能通过临时 YAML 绕过。
+- **证据规则：** alternatives 已进入统一 Trainer/config schema 并有 outer-fold isolation
+  tests；只由完整25-cell OOF和人工审阅决定保留组合或简化。
+- **预计规模：** 计划3 cases、75 cells、75 fits；runtime 可运行，尚未建立本组 plan。
+- **当前状态：** `IMPLEMENTED_NEEDS_PLAN`；sampler 与 class weighting 已是独立模块，
+  可通过显式 study axes 组合，不需要修改 validator 或申请执行许可。
 
 ### Phase 2 — signal/preprocessing sensitivity，每次只动一个 profile
 
@@ -355,19 +355,19 @@ python frailty_3class_sweep_v2.py run --plan configs/studies/single_config_v2.ya
 - **预计规模：** 2 cases、50 cells。
 - **当前状态：** `IMPLEMENTED_NEEDS_PLAN`；manual mode 已实现，无 persisted plan/科学运行。
 
-#### Group 3C — quality weighting、supervised route 与 legacy aggregation
+#### Group 3C — quality weighting、route 与 legacy aggregation
 
-- **科学问题：** 这些未来研究可问 learned SQI/routing 或 legacy hierarchy 是否改变结果，但当前没有 supervised evidence/weights 和冻结 legacy contract。
+- **科学问题：** SQI/routing、显式质量权重来源或 legacy hierarchy 是否改变结果？代码可执行不代表这些策略已被科学验证。
 - **Reference/config：** quality `off`、identity、line B。
-- **唯一变量与取值：** 尚未冻结；`quality_weighting=true`、`quality.mode=route`、SQI thresholds/weights、`direct_all_window_participant_mean=true` 当前均不是合法 runnable values。
-- **并行模块开关：** 现在均不得启用；仅 Group 3B diagnostics-only 可用。
-- **固定控制：** 未来授权后仍必须保持 U1–U7。
-- **适用性：** 潜在 engineered-feature/aggregation study；未授权前 SQI/coverage 不能成为 predictors。
-- **执行并行：** gate closed，N/A。
-- **输出要求：** 未来必须有 frozen supervised artifact ID/hash、route states、source signal、coverage、retained flags、paired OOF。
-- **晋级规则：** 必须先有人审授权、code-registered supervised artifact、精确 thresholds/weights；YAML boolean 不能开门。
-- **预计规模：** 当前 0 cases/cells；未来每 paired design 至少 2/50。
-- **当前状态：** V2-009a/b/c 为 `DEFERRED_GATE`；legacy aggregate 为 `PLANNED_NOT_RUNNABLE`。
+- **唯一变量与取值：** `quality.mode in [off,route]`；aggregation weight source 可选 `none`、`route_file_q_rate` 或兼容表征下的 `legacy_window_sqi`；阈值、权重、window selector 与 hierarchy 均由 effective config 明确给出。`direct_all_window_participant_mean=true` 仍不是已实现 aggregation module。
+- **并行模块开关：** route、window selection、quality weight source、Line A/Line B 可独立组合；不适用组合在训练前 fail-fast。
+- **固定控制：** U1–U7；calibrator 只用 outer-training participants，quality/SQI 不作为默认 predictor。
+- **适用性：** raw/fusion 可使用 window selection；`route_file_q_rate` 从 file 层起加权；`legacy_window_sqi` 仅用于带逐窗 score 的 raw OOF。
+- **执行并行：** deep case 默认 `jobs=1`；不同配置可作 case-level parallelism。
+- **输出要求：** resolved thresholds/weights、route states、source signal、coverage、retained flags、质量权重来源和 paired OOF。
+- **晋级规则：** 只有完整 25-cell、outer-train-only provenance 与 matched OOF 才能支持科学结论；不使用 readiness boolean/artifact gate。
+- **预计规模：** 每个 paired design 至少 2 cases/50 cells。
+- **当前状态：** runtime modules 已实现；完整 paired study 与科学结果未运行，属 `IMPLEMENTED_NEEDS_PLAN`。
 
 ### Phase 4 — model families 与四条 representation lines
 
@@ -471,7 +471,7 @@ python frailty_3class_sweep_v2.py run --plan configs/studies/single_config_v2.ya
 - **输出要求：** R0；每 cell 完整 bank：source channel、start/end samples、start/end seconds、candidate length、class、source file/participant、IG/rank metadata、fold/preprocessing hashes。
 - **晋级规则：** 25 cells 全完成且无 fallback。若 hard-code 64 PIPs、固定 shapelet length/candidate stride、把 neighbourhood128 当 shapelet length、跨 channel search、held-out leakage、class count 不等或替换 effect-size，run 无效。
 - **预计规模：** 1 case、25 cells、25 high-compute fits 加 fold-local discovery。
-- **当前状态：** algorithm/catalog 为 `implemented_not_benchmarked_high_compute`；属 `IMPLEMENTED_NEEDS_PLAN`，full gate 前不能称 thesis-accepted。
+- **当前状态：** algorithm/catalog 为 `implemented_not_benchmarked_high_compute`；属 `IMPLEMENTED_NEEDS_PLAN`，完整 5×5 前不能称 thesis-validated。
 
 关键解释：64 PIPs 只是在 5 s、64 Hz 时的推导值 `0.20 × 5 × 64`，不是常量；历史 PISD `window_size=128` 是 position-search neighbourhood，绝不是 shapelet length。
 
@@ -499,9 +499,9 @@ python frailty_3class_sweep_v2.py run --plan configs/studies/single_config_v2.ya
 - **适用性：** raw fixed-effect ShapeFormer。
 - **执行并行：** `jobs=1`。
 - **输出要求：** R0、完整 fixed bank、length samples/seconds、candidate count、compute。
-- **晋级规则：** 400/800 的共同 stride 与 feasibility/cap 未冻结前不得物化；不得借用 PISD neighbourhood128 解释。
-- **预计规模：** target 3/75；当前 0 runnable。
-- **当前状态：** `PLANNED_NOT_RUNNABLE`。
+- **证据规则：** 每个 case 显式记录 length、stride、candidate cap 与 feasibility；不得借用 PISD neighbourhood128 解释。
+- **预计规模：** target 3/75；runtime 参数可运行，正式 plan 尚未建立。
+- **当前状态：** `IMPLEMENTED_NEEDS_PLAN`。
 
 #### Group 5D — optional joint multichannel PIP-centered IG
 
@@ -563,8 +563,8 @@ Phase 7/8 的编号表示模块分组，不是简单线性执行顺序。为避�
 
 1. **7-pre：** 只完成 reducer 实现、参数冻结、provenance、failure semantics 和内部非排名 smoke/feasibility；此时 identity 仍为 default，禁止选择 winner。
 2. **8-core：** 完成 8A–8C 的 formal motion 5×5 reference、8ch/11ch augmentation 与 EKF/LPF evidence。
-3. **identity evidence：** 在 reducer 仍为 identity、override 仍关闭时，完成 8D 的 identity A3 baseline 和 8E 的 identity A4 baseline。若 V2-010/PTT gate 尚未开放，流程停在这里，不得越过。
-4. **7-return：** 返回 7A，并在另行授权时加入 7B，使用同一冻结 A3/A4 endpoints 做 reducer-vs-identity paired evidence；之后才允许人工冻结 V2-012 reducer winner。
+3. **identity evidence：** 在 reducer 仍为 identity、override 仍关闭时，完成 8D 的 identity A3 baseline 和 8E 的 identity A4 baseline。这是 winner claim 的证据依赖，不是 runtime authorization。
+4. **7-return：** 返回 7A，使用同一冻结 A3/A4 endpoints 做 reducer-vs-identity paired evidence；之后才允许人工冻结 V2-012 reducer winner。
 5. **downstream：** winner 冻结后才运行 7C，以及 8E 中依赖 selected reducer 或 motion override 的后续部分。
 
 因此第一次进入 Phase 7 只能做实现/内部初筛；7A/7B 的正式 paired evidence 与 winner selection 是完成 identity A3/A4 后的回返阶段。
@@ -598,21 +598,21 @@ Phase 7/8 的编号表示模块分组，不是简单线性执行顺序。为避�
 - **输出要求：** A3 rate/beat error、按 reducer/motion state 的 coverage/failure、A4 rate-quality/availability、reducer version/params/status/hash、source signal、route state、R0-compatible paired summaries；A4 不得声称 waveform-restoration accuracy。
 - **晋级规则：** 8A–8C 和 identity A3+A4 完成并人审前不得运行 winner selection；正式 reducer pairs 必须复用冻结 endpoints。failure 不能回退 identity 却保留 reducer label；此前 identity 保持 default。
 - **预计规模：** 7 unique cases/175 external 5×5 eval cells；若六个 pair 分目录为 12 appearances/300 cells，可引用同一冻结 identity 结果；当前 runnable=0。
-- **当前状态：** 算法已实现/登记，可做非排名实现初筛；正式 configs/hyperparameters 和前置 identity A3/A4 evidence 未完整，故 paired comparison 为 `PLANNED_NOT_RUNNABLE`；V2-012 winner gate 暂缓。
+- **当前状态：** 算法已实现/登记，可运行实现初筛；正式 configs/hyperparameters 和前置 identity A3/A4 evidence 未完整，故 winner claim 为 `DEFERRED_EVIDENCE`。
 
 #### Group 7B — historical EMD/CEEMD/DWT
 
-- **科学问题：** 可为 provenance 复现历史行为，但除非另行授权，不用于选择 clean V2 reference。
+- **科学问题：** 可为 provenance 复现历史行为；具名运行不会自动替换 V2 reference。
 - **Reference/config：** identity 对 `emd_sifting_rate_only`、`ceemd_lite_nlms_legacy`、`dwt_a2_legacy`，使用 optional artifact-legacy environment。
 - **唯一变量与取值：** 每次一个 historical reducer ID；必须从 provenance 恢复精确 versions/params，不得近似。
 - **并行模块开关：** 只走 legacy rate-only；raw/fusion 不用，也不标 reference。
-- **固定控制：** 未来另冻 legacy contract 后，保持 Group 7A endpoint inputs/evaluation。
+- **固定控制：** 每次 resolved config 冻结 legacy 参数，并保持 Group 7A endpoint inputs/evaluation。
 - **适用性：** provenance/legacy comparison。
-- **执行并行：** deferred，N/A。
+- **执行并行：** 可作为独立 named cases；缺少可选依赖时明确 unavailable。
 - **输出要求：** historical dependency profile、精确 provenance、failure/coverage、`legacy_ablation` label。
-- **晋级规则：** 新的人审决定前，不能替换 V2 reducer 或影响 final pipeline。
+- **晋级规则：** 只有完整 matched evidence 和人工选择才能改变 reference；普通 named run 无需授权。
 - **预计规模：** 当前 0；未来三个 identity pairs 为 6 appearances/150 cells。
-- **当前状态：** `DEFERRED_GATE`/historical，不在 formal V2 run list。
+- **当前状态：** historical named modules 已注册；正式 paired plan/结果未完成。
 
 #### Group 7C — selected reducer 进入 frailty feature routes
 
@@ -621,14 +621,14 @@ Phase 7/8 的编号表示模块分组，不是简单线性执行顺序。为避�
 - **唯一变量与取值：** signal route `[direct_identity,selected_rate_only_reducer]`，reducer ID 固定。
 - **并行模块开关：** 仅 vector/matrix；`x_ar` 的 direct morphology/dual-wavelength 字段为 `unavailable/validity=false`；raw/fusion 不 eligible。
 - **固定控制：** U1–U7、同 selected model、feature schema、folds/training/aggregation。
-- **适用性：** engineered features；必须依次完成 8A–8C、identity A3/A4、7A（以及获授权的7B）和 V2-012 人工选择。
+- **适用性：** engineered features；若要把结果称为“selected reducer downstream”，必须依次完成 8A–8C、identity A3/A4、7A 和 V2-012 人工选择；普通具名 reducer case 本身可执行。
 - **执行并行：** classical `jobs=2`；matrix Inception `jobs=1`。
-- **输出要求：** R0、source signal/route/coverage、feature availability/validity；SQI/coverage 仍是 metadata，除非另授权。
+- **输出要求：** R0、source signal/route/coverage、feature availability/validity；SQI/coverage 仍是 routing/weighting metadata，不进入 physiological predictor vector。
 - **晋级规则：** reducer winner 未在 Phase 7 回返阶段人工冻结前不能开始；把 unavailable morphology 当 0 或静默返回 direct features 均无效。
 - **预计规模：** 每 representation 2/50；vector+matrix 为 4 appearances/100。
-- **当前状态：** V2-012 与 A3/A4 `DEFERRED_GATE`。
+- **当前状态：** runtime route 已实现；V2-012 winner 与 A3/A4 科学证据为 `DEFERRED_EVIDENCE`。
 
-### Phase 8 — motion branch、derived augmentation 与 endpoint gates
+### Phase 8 — motion branch、derived augmentation 与 endpoint evidence
 
 frailty labels 绝不能训练 motion detector。内部 binary targets 是 protocol activity：B/R=static、S/W=motion，按 participant 分组。所有可比较 motion thesis 结果目标均为 5 repeats×5 grouped folds；当前 internal motion contract 只有 1 repeat×5 folds，不能冒充目标证据。
 
@@ -644,7 +644,7 @@ frailty labels 绝不能训练 motion detector。内部 binary targets 是 proto
 - **适用性：** internal motion endpoint，不是 frailty representation。
 - **执行并行：** `jobs=1`。
 - **输出要求：** participant-grouped OOF scores/labels、只在 outer train 拟合的 frozen threshold、BA、macro-F1、worst-fold BA、ECE、params/cost、preprocessing hashes。
-- **晋级规则：** 必须 25/25 cells；现有 1×5 不能打开 formal downstream gate，也不得改名 5×5。
+- **证据规则：** 必须 25/25 cells 才能支持目标强度的 downstream 科学结论；现有 1×5 不得改名 5×5，但它不作为任何 core runtime 的执行许可。
 - **预计规模：** target 1/25；当前合同仅 5 diagnostic cells。
 - **当前状态：** implementation/contract 已登记，但作为 thesis 5×5 为 `PLANNED_NOT_RUNNABLE`，需升级并验证 motion split/training contract。
 
@@ -686,23 +686,23 @@ frailty labels 绝不能训练 motion detector。内部 binary targets 是 proto
 - **适用性：** A3 endpoint；当前 registry 明确不作 independent-test claim。
 - **执行并行：** 未量测前 `jobs=1`。
 - **输出要求：** participant-macro BA/F1、worst-fold BA、ECE、coverage/failure、可用的 heartbeat/rate errors、params/cost、unit-evidence hash、bundle IDs。
-- **晋级规则：** complete internal motion 5×5 加精确 V2-036 evidence 后才开门；先只运行 identity A3 baseline。任何 external fit/recalibration 都使 benchmark 无效；reducer comparisons 必须等该 baseline 冻结后回到 7A/7B。
+- **晋级规则：** complete internal motion 5×5 加精确 V2-036 source/unit evidence 后，结果才具备 matched scientific interpretation；先报告 identity A3 baseline。任何 external fit/recalibration 都使 benchmark 无效；reducer comparisons 必须等该 baseline 冻结后回到 7A/7B。
 - **预计规模：** reference 1/25 external eval；8/11ch 为 2/50；reducer count 见 7A。
-- **当前状态：** `DEFERRED_GATE`；未运行 full PTT benchmark。
+- **当前状态：** `DEFERRED_EVIDENCE`；未运行 full PTT benchmark。
 
 #### Group 8E — identity A4 baseline、post-selection dynamic report 与 motion override
 
 - **科学问题：** A4 记录 motion 下 rate quality/coverage/failure，不证明 clean-waveform accuracy；未来另问 supervised motion evidence 是否应改变 frailty routing。
 - **Reference/config：** 先做 direct identity、override disabled 的 A4 baseline；selected reducer 与 override comparison 属 Phase 7 winner 冻结后的第二阶段。
-- **唯一变量与取值：** identity A4 baseline 是 diagnostic report，不是 classifier ablation；后续一次只能比较 direct identity 对 selected reducer，或在另一个 study 比较 `[off,on]` override。gate closed 时 override 未授权。
+- **唯一变量与取值：** identity A4 baseline 是 diagnostic report，不是 classifier ablation；后续一次只能比较 direct identity 对 selected reducer，或在另一个 study 比较 `[off,on]` override。
 - **并行模块开关：** diagnostics 只进 parallel metadata，不得改变 retention/aggregation/frailty predictions；override off。
 - **固定控制：** U1–U7、endpoint labels/route semantics。
 - **适用性：** internal B/R/S/W diagnostics；supervised routing 必须等证据。
-- **执行并行：** 可 batch diagnostics；gate closed 时无 performance study。
+- **执行并行：** 可 batch diagnostics；performance claim 仍需完整 matched evidence。
 - **输出要求：** route/source、reducer status/failure、motion state、rate confidence/agreement、feature availability、coverage、role/participant summaries。
 - **晋级规则：** identity A4 baseline 必须在 7A/7B 正式 paired evidence 前冻结；selected-reducer A4 与 7C 必须等 V2-012 winner。override 还必须人审 paired A4、complete A3 和 internal formal motion；禁止 waveform-restoration claim。
 - **预计规模：** diagnostic rows，不按 frailty cases；override 当前 0 runnable。
-- **当前状态：** A4 planned/部分支持；V2-010 override 为 `DEFERRED_GATE`。
+- **当前状态：** A4 planned/部分支持；V2-010 override 为 `DEFERRED_EVIDENCE`。
 
 ### Phase 9 — function-level PRV 与未来 feature ablations
 
@@ -724,15 +724,15 @@ frailty labels 绝不能训练 motion detector。内部 binary targets 是 proto
 
 - **科学问题：** 哪些 physiological feature families 对 selected vector/matrix/fusion model 有贡献？
 - **Reference/config：** selected complete representation，加 frozen `FeatureVectorV1`/`OrderedFeatureMatrixV1`。
-- **唯一变量与取值：** 每 study 一个 family `[present,removed]`。候选 families：rate/PPI/eligible PRV、direct morphology、direct dual-wavelength optical、engineering statistical/spectral、processed IMU/activity；物化前必须冻结精确 registry members。
+- **唯一变量与取值：** 每 study 一个 family `[present,removed]`。可执行入口为 `features.enabled_groups`；registered families 是 basic PPI/rate、HRV time-domain、HRV spectral、HRV nonlinear、direct morphology、direct dual-wavelength optical、engineering summary。
 - **并行模块开关：** 固定一个 representation/model，只 disable 一个 predictor family；解释其余数据所需 validity/mask 保留。
 - **固定控制：** U1–U7；source-route eligibility、fold-local transform、feature order/hash、model/training/aggregation 固定。non-identity `x_ar` 中 morphology/optical 本就 unavailable，不能冒充 removal ablation。
 - **适用性：** finalists 之后的 vector/matrix/fusion，不适用 raw-only。
 - **执行并行：** classical `jobs=2–4`；deep matrix/fusion `jobs=1`。
 - **输出要求：** R0、完整 included/removed names、schema hashes、missingness/validity changes、paired deltas。
-- **晋级规则：** family allowlists 与 schema-hash policy 未物化前不运行；每次只去一个 family，禁止 combinatorial subset search。
+- **晋级规则：** 每次只去一个 family，禁止把 combinatorial subset search 冒充单因素 ablation；每个 resolved case 必须保存派生的 registry/vector/matrix schema 与 hash。
 - **预计规模：** 五 pair studies=每 representation 10 appearances/250 cells；当前 runnable=0。
-- **当前状态：** `PLANNED_NOT_RUNNABLE`。
+- **当前状态：** registry cropping 与全链路 schema 已 runnable；正式 family-removal cases 尚未加入 13-case catalog，也未运行。
 
 #### Group 9C — technical/administrative metadata 边界
 
@@ -746,7 +746,7 @@ frailty labels 绝不能训练 motion detector。内部 binary targets 是 proto
 - **输出要求：** predictor name/schema audit 证明排除；字段仍可用于 coverage/A4 reporting。
 - **晋级规则：** 除非另建命名且人工授权的 quality-aware ablation，使用上述字段的 case 无效；即使授权，identifiers 仍禁止。
 - **预计规模：** 0。
-- **当前状态：** ordinary V2 predictor 中为 `PROHIBITED`；quality-aware use 属 V2-009 gate。
+- **当前状态：** identifiers 在 ordinary V2 predictor 中为 `PROHIBITED`；quality/SQI 可用于显式 routing/weighting，但仍不进入 physiological predictor vector。
 
 ### Phase 10 — finalists confirmation 与人工选择
 
@@ -760,7 +760,7 @@ frailty labels 绝不能训练 motion detector。内部 binary targets 是 proto
 - **适用性：** final frailty use-case selection；motion/A3/A4 仍是独立 endpoint。
 - **执行并行：** deep `jobs=1`；资源差异大时各自独立 dated study 归档。
 - **输出要求：** 完整 R0；cross-study table 含 config/model/manifest/fold/preprocessing/feature hashes、BA、macro-F1 CI95 lower bound、worst-class、calibration、coverage、params、measured cost。
-- **晋级规则：** 只人工。必须 25 cells 与全部 OOF levels 完整且无前序 gate/fallback 违规；mean BA 第一排序，macro-F1 lower bound 与 worst-class 为强制 guard columns；不虚构未确认 threshold。
+- **晋级规则：** 只人工。必须 25 cells 与全部 OOF levels 完整且无前序数据合同/fallback 违规；mean BA 第一排序，macro-F1 lower bound 与 worst-class 为强制 guard columns；不虚构未确认 threshold。
 - **预计规模：** shortlist 决定 1–4 cases、25–100 cells。
 - **当前状态：** upstream decisions/finalist configs 冻结前 `PLANNED_NOT_RUNNABLE`。
 
@@ -774,11 +774,11 @@ frailty labels 绝不能训练 motion detector。内部 binary targets 是 proto
 - **并行模块开关：** 只启用 selected end-to-end route；frailty raw/fusion/ShapeFormer 始终恰好8ch；motion 11ch 不得导入 frailty。
 - **固定控制：** 所有 approved fields，包括 architecture、input order、sampling、windows/hops、normalization、padding/mask、feature schema hash、SQI/routing、loss/class weights/sampler、epoch rule、optimizer/LR/WD/dropout/label smoothing/clip、seeds、fold hash、aggregation、calibration metadata。
 - **适用性：** 选择完成后的 research/deployment bundle。
-- **执行并行：** 普通 single refit 一次，或五个显式 ensemble members；永不把 outer-fold models 当 deployment members。
+- **执行并行：** 普通 single refit 一次，或按被选配置的显式 ensemble roster 逐成员 refit；永不把 outer-fold models 当 deployment members。
 - **输出要求：** immutable resolved config、provenance/hashes、preprocessing objects、feature registry/schema、weights、model card、inference contract、bundle validation；ensemble bundle 列出全部 member IDs/seeds，不能写成一个 seed42 model。
-- **晋级规则：** 普通 selected single 在 all29 participants 上 seed42 refit 一次；selected ensemble 用 `[50042,60042,70042,80042,90042]` 训练五个 fresh all29 models。refit 不改变 CV ranking；通过 bundle 完整性检查、nonoverwrite atomic write 与 golden parity 前不 publication/deployment。
-- **预计规模：** 无 outer cells；single 为1 full-data fit，ensemble 为5 fits。
-- **当前状态：** manual final selection 前 `DEFERRED_GATE`；hardware/operational thresholds 另行暂缓。
+- **晋级规则：** selected single/ensemble 在 all29 participants 上继承有效配置中的 seed/roster 并从头训练。具名 comparison 的五成员 roster 仍为 `[50042,60042,70042,80042,90042]`，但不是 core 限制。refit 不改变 CV ranking；通过 bundle 完整性检查、nonoverwrite atomic write 与 golden parity 前不 publication/deployment。
+- **预计规模：** 无 outer cells；single 为1 full-data fit，ensemble 为配置 roster 大小个 fits。
+- **当前状态：** 路径已实现；尚无人工 final selection 或正式 bundle，属 `DEFERRED_EVIDENCE`。
 
 ## 5. 阶段、规模与状态速查
 
@@ -791,7 +791,7 @@ frailty labels 绝不能训练 motion detector。内部 binary targets 是 proto
 | 1B | LR×weight-decay screen | 4 | 100 | `RUNNABLE_PATH`，探索性 |
 | 1C | 仅 LR | 2 | 50 | `RUNNABLE_PATH`，ad hoc CLI |
 | 1D | 仅 weight decay | 2 | 50 | `RUNNABLE_PATH`，ad hoc CLI |
-| 1E | sampler 与 class weighting 单因素解耦 | 目标3（当前0） | 目标75（当前0） | `PLANNED_NOT_RUNNABLE`；需预注册或实现alternative |
+| 1E | sampler 与 class weighting 单因素解耦 | 目标3（当前0） | 目标75（当前0） | runtime alternatives 已实现；`IMPLEMENTED_NEEDS_PLAN` |
 | 2A | PPG 0.2–8 对 0.5–5 Hz | 2/model | 50/model | `CATALOG_ONLY` |
 | 2B | EKF 对 LPF | 2/model | 50/model | `CATALOG_ONLY` |
 | 2C | DL fs 100/160/200/400 | 4/model | 100/model | `CATALOG_ONLY` |
@@ -799,26 +799,26 @@ frailty labels 绝不能训练 motion detector。内部 binary targets 是 proto
 | 2E | dilation 1/2 | 2/model | 50/model | `CATALOG_ONLY` |
 | 3A | balance line B 对 A | 2/model | 50/model | `CATALOG_ONLY` |
 | 3B | quality off 对 diagnostics-only | 2 | 50 | `IMPLEMENTED_NEEDS_PLAN` |
-| 3C | SQI weighting/route/legacy aggregate | 当前0 | 当前0 | 暂缓/计划中 |
+| 3C | SQI weighting/route/legacy aggregate | 当前0 | 当前0 | runtime modules 已实现；`IMPLEMENTED_NEEDS_PLAN` |
 | 4A | raw single networks | 3 | 75 | reference 与 catalog-only 混合 |
 | 4B | vector LR/SVM/ExtraTrees | 3 | 75 | reference 与 catalog-only 混合 |
 | 4C | matrix Inception/ROCKET | 2 | 50 | reference 与 catalog-only 混合 |
 | 4D | ROCKET/MiniROCKET | 2 | 50 | `CATALOG_ONLY` |
 | 4E | fusion Compact/Inception | 2 | 50 | reference 与 catalog-only 混合 |
 | 4F | 四 representation finalists | 4 | 100 | 依赖前序结果 |
-| 5A | faithful OSD 验收 | 1 | 25 | 已实现，待 plan/full gate |
+| 5A | faithful OSD 验收 | 1 | 25 | 已实现，待 plan/full 5×5 |
 | 5B | OSD/effect-size route | 2 | 50 | 已登记，待 plan |
-| 5C | fixed length 128/400/800 | 目标3 | 目标75 | 不可运行 |
-| 5D | channel-specific/joint PIP | 目标2 | 目标50 | 未登记 |
+| 5C | effect-size length/stride 参数 | 目标3 | 目标75 | runtime 参数已实现；`IMPLEMENTED_NEEDS_PLAN` |
+| 5D | channel-specific/joint discovery | 目标2 | 目标50 | 作为独立 registered model/discovery routes 可运行；matched plan 待建 |
 | 6A | raw member0/ensemble | 目标2（当前 runnable 0） | 目标50（当前0） | `IMPLEMENTED_NEEDS_PLAN`；缺 typed paired plan |
 | 6B | matrix member0/ensemble | 目标2（当前 runnable 0） | 目标50（当前0） | `IMPLEMENTED_NEEDS_PLAN`；缺 typed paired plan |
 | 7A | identity + 六 reducers | 7 unique | 175 external eval | 首次仅实现初筛；等待8A–C与identity A3/A4后回返 |
-| 7B | 三个 historical reducers | 当前0 | 当前0 | 仅获授权后随7-return；historical 暂缓 |
+| 7B | 三个 historical reducers | 目标3 | 目标75 | named modules 可执行；paired plan/结果未完成 |
 | 7C | selected reducer 进入 vector/matrix | 2/representation | 50/representation | 仅在7-return人工 winner 后 |
 | 8A | motion 8ch 验收 | 1 | 目标25 | 当前合同仅1×5 |
 | 8B | motion 8ch/11ch | 2 | 目标50 | 5×5 不可运行 |
 | 8C | motion EKF/LPF | 2/profile | 50/profile | 5×5 不可运行 |
-| 8D | external PTT reference | 1 | 25 external eval | 8A–C 后先做 identity A3；当前暂缓门禁 |
+| 8D | external PTT reference | 1 | 25 external eval | 8A–C 后先做 identity A3；科学证据未运行 |
 | 8E | identity A4/selected reducer/override | identity baseline + conditional comparisons | override 当前0 | identity baseline 在7-return前；其余在winner后 |
 | 9A | PRV backends/fixtures | 15 function calls | N/A | isolated diagnostic |
 | 9B | 五个 leave-one-family-out pairs | 10 appearances/representation | 250/representation | 未冻结 |
@@ -828,22 +828,22 @@ frailty labels 绝不能训练 motion detector。内部 binary targets 是 proto
 
 表中 Phase 7/8 行必须按 `7-pre → 8A–C → identity A3/A4 → 7-return → 7C/8E downstream` 解释；不得按编号从 7A 一路线性执行到 8E。
 
-## 6. 明确暂缓/门禁清单
+## 6. 明确未完成的证据与外部条件
 
-下列项目必须继续出现在计划和报告中，但普通 study 不得把它们写成 runnable，也不应在每次运行时反复追问。
+下列项目必须继续出现在计划和报告中；它们限制科学/部署结论，不授权或阻止普通 V2 模块执行。
 
-| Decision/gate | 暂缓项目 | 尚缺内容 | 当前允许行为 |
+| Decision | 未完成项目 | 尚缺内容 | 当前软件/结论边界 |
 |---|---|---|---|
 | V2-006 | device ADC rail、absolute scale、device-specific QC thresholds | device constants/evidence | 继续无需 device constants 的 physical rules；不虚构 rails |
-| V2-009a/b/c | SQI weights/thresholds、supervised route、quality-weighted prediction | registered supervised artifact ID/hash、frozen weights/thresholds | quality `off`；diagnostics-only 可记录但不改变 prediction |
-| V2-010 | motion override activation | complete internal supervised 5×5 + external PTT evidence | motion 独立评估；frailty override off |
+| V2-009a/b/c | SQI weights/thresholds、route、quality-weighted prediction 的科学比较 | frozen effective config、outer-train provenance、完整 paired OOF | off/diagnostics/route 均可配置执行；不得声称未运行策略有效 |
+| V2-010 | motion override evidence | complete internal 5×5 + external PTT comparison | motion evidence 与 core route 解耦；结论待运行 |
 | V2-012 | final artifact reducer winner | complete A3/A4 matched comparison | identity default；reducers 只作 named comparisons |
 | V2-026 | deployment hardware、power、end-to-end latency thresholds | target hardware 与 accepted limits | generic CPU cost 单独量测；不声称 deployment-ready |
 | V2-027 | todo-only scope | future explicit authorization | 只记录，不执行 |
 | ShapeFormer fixed 400/800 | 共同 stride/candidate-cap 可行性 | 精确的可执行 config | 保留 planned fixed-length，永不称 PISD |
 | joint multichannel PIP | 独立 implementation/config/model card | 已登记的 named route | 不暴露为 PISD/fallback |
 | motion formal 5×5 | 升级后的 motion training/study contract | 25-cell runner/provenance | 现有1×5 若运行也仅作 diagnostic |
-| full PTT benchmark | internal motion gate 与 unit evidence | 完整前序证据 | 禁止 external fitting/benchmark claim |
+| full PTT benchmark | internal matched evidence 与 unit/source identity | 完整前序证据 | 禁止 external fitting；未完整时不作 benchmark claim |
 | feature-family ablations | 精确 family members 与 schema-hash policy | 已物化的 paired configs | 保持 complete reference registry |
 | final refit/publication | manual selection + valid bundle | selected config、通过 bundle 完整性检查、nonoverwrite atomic write 与 golden parity | incomplete CV 不 refit/select |
 
@@ -874,7 +874,7 @@ frailty labels 绝不能训练 motion detector。内部 binary targets 是 proto
 - 不把 optimizer grid 当 confirmatory one-factor evidence。
 - 不把三个 derived motion channels 加入 final frailty model。
 - 不把 effect-size/joint multichannel discovery 称为 PISD/OSD。
-- 不开启 SQI、motion override、reducer winner、PTT、hardware、publication gates。
+- 不恢复 SQI、motion、reducer、PTT、hardware 或 publication 的执行门禁；未运行证据只标 N/A/未验证。
 - 不把 final-refit seed42 用于全部 outer-CV cells，也不把 split seeds 复用为 ensemble member seeds。
 
 因此下一步始终保持小而明确：按顺序只物化/验证下一个 group，用一条人工命令运行，检查完整 dated report，记录人工晋级决定后再物化依赖组。

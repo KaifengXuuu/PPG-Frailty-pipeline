@@ -306,7 +306,7 @@ class MotionReferenceBoundaryTests(unittest.TestCase):
             np.testing.assert_array_equal(values[0], np.arange(1.0, 9.0))
             self.assertIs(evidence["admitted"], True)
 
-    def test_internal_source_tamper_before_read_fails_hash_gate(self) -> None:
+    def test_internal_source_tamper_before_read_fails_hash_validation(self) -> None:
         payload = self._fixture_payload()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -335,6 +335,21 @@ class MotionReferenceBoundaryTests(unittest.TestCase):
         )
         self.assertFalse(forbidden & internal)
         self.assertFalse(forbidden & external)
+
+        obsolete_authorization = {
+            "formal_run_authorization",
+            "_canonical_entry_token",
+        }
+        internal_core = set(
+            inspect.signature(motion_runner._run_internal_motion_oof_impl).parameters
+        )
+        external_core = set(
+            inspect.signature(
+                motion_runner._run_ptt_external_evaluation_impl
+            ).parameters
+        )
+        self.assertFalse(obsolete_authorization & internal_core)
+        self.assertFalse(obsolete_authorization & external_core)
 
     def test_injected_internal_and_ptt_runners_cannot_enter_formal(self) -> None:
         example = MotionWindowExample(
@@ -386,7 +401,7 @@ class MotionReferenceBoundaryTests(unittest.TestCase):
                     output_dir=root / "ptt",
                 )
 
-    def test_ptt_stops_at_structured_unit_conflict_before_internal_gate(self) -> None:
+    def test_ptt_stops_at_structured_unit_conflict_before_materialization(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             with self.assertRaises(PttImuUnitEvidenceRequired) as captured:
@@ -397,7 +412,7 @@ class MotionReferenceBoundaryTests(unittest.TestCase):
                     output_dir=root / "not_reached",
                 )
         payload = captured.exception.payload
-        self.assertFalse(payload["allowed"])
+        self.assertFalse(payload["ready"])
         self.assertFalse(payload["unit_guessing_allowed"])
         self.assertEqual(
             payload["concrete_conflict_evidence"]["status"],
@@ -460,7 +475,7 @@ class MotionReferenceBoundaryTests(unittest.TestCase):
             expected_sha256=PTT_IMU_UNIT_EVIDENCE_SHA256,
             expected_records=records,
         )
-        with self.assertRaisesRegex(ValueError, "source m/s\^2"):
+        with self.assertRaisesRegex(ValueError, r"source m/s\^2"):
             replace(
                 evidence,
                 acceleration_unit="g",
@@ -481,21 +496,24 @@ class MotionReferenceBoundaryTests(unittest.TestCase):
                     expected_records=records,
                 )
 
-    def test_exact_unit_evidence_reaches_internal_gate_before_materialization(
+    def test_exact_unit_evidence_reaches_materialization_without_readiness_audit(
         self,
     ) -> None:
-        marker = RuntimeError("internal gate reached")
+        marker = RuntimeError("materialization reached")
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             with patch.object(
-                motion_reference,
-                "evaluate_ptt_external_gate",
-                side_effect=marker,
-            ) as internal_gate, patch.object(
+                motion_runner,
+                "audit_ptt_external_readiness",
+                side_effect=AssertionError(
+                    "readiness audit must not authorize execution"
+                ),
+            ) as readiness, patch.object(
                 motion_reference,
                 "_build_ptt_materialization",
+                side_effect=marker,
             ) as materialize:
-                with self.assertRaisesRegex(RuntimeError, "internal gate reached"):
+                with self.assertRaisesRegex(RuntimeError, "materialization reached"):
                     run_formal_ptt_motion_reference(
                         REPOSITORY_ROOT,
                         internal_evidence_path=root / "not_read.json",
@@ -508,8 +526,8 @@ class MotionReferenceBoundaryTests(unittest.TestCase):
                             PTT_IMU_UNIT_EVIDENCE_SHA256
                         ),
                     )
-        internal_gate.assert_called_once()
-        materialize.assert_not_called()
+            readiness.assert_not_called()
+            materialize.assert_called_once()
 
     def test_ptt_builder_shape_and_verifier_are_coherent_and_tamper_closed(
         self,
@@ -529,7 +547,7 @@ class MotionReferenceBoundaryTests(unittest.TestCase):
             verify_formal_ptt_source_evidence(tampered),
         )
 
-    def test_ptt_derived_norm_gate_is_ulp_aware(self) -> None:
+    def test_ptt_derived_norm_validation_is_ulp_aware(self) -> None:
         records = [
             row
             for row in load_m2_external_manifest(

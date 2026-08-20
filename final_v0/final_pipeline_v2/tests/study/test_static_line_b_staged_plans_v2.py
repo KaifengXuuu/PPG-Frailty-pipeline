@@ -1,4 +1,4 @@
-"""No-training contracts for the six staged Static Line B study plans."""
+"""No-training contracts for the staged Static Line B study plans."""
 
 from __future__ import annotations
 
@@ -145,16 +145,27 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
                 case.config["artifact"]["motion_detector_enabled"]
             )
 
-    def test_stage_03_defaults_to_one_shapeformer_outer_cell(self) -> None:
-        plan, expansion = _load("03_shapeformer_stability_v2.yaml")
+    def test_stage_last_defaults_to_one_shapeformer_outer_cell(self) -> None:
+        plan, expansion = _load("stage_last_shapeformer_stability_v2.yaml")
         self.assertEqual(len(expansion.cases), 1)
+        self.assertEqual(
+            plan.study.study_id,
+            "staged_static_stage_last_shapeformer_stability_v2",
+        )
+        self.assertIn("Stage last", plan.study.flow_position)
         self.assertEqual(
             expansion.cases[0].catalog_entry,
             "shapeformer_channel_specific_osd",
         )
+        self.assertEqual(plan.cases[0].screen_profile_id, "canonical")
+        self.assertEqual(plan.cases[0].overrides, {})
+        self.assertIsNone(plan.cases[0].formal_profile)
         self.assertEqual(plan.execution.repeats, (0,))
         self.assertEqual(plan.execution.folds, (0,))
         self.assertEqual(plan.execution.jobs, 1)
+
+    def test_shapeformer_has_no_numbered_stage_03_plan(self) -> None:
+        self.assertFalse((PLAN_DIR / "03_shapeformer_stability_v2.yaml").exists())
 
     def test_stage_04_is_one_exact_raw_matched_ensemble_pair(self) -> None:
         plan, expansion = _load("04_selected_inception_ensemble_v2.yaml")

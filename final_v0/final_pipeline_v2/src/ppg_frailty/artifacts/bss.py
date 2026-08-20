@@ -31,7 +31,11 @@ from .base import (
 
 @dataclass(frozen=True)
 class BssConfig:
-    """BSS 确定性参数 / Deterministic BSS parameters."""
+    """Legacy aggregate input retained only for source compatibility.
+
+    New configuration should use the reducer-specific classes below.  Reducer
+    constructors reject non-default values that their algorithm cannot consume.
+    """
 
     random_state: int = 42
     max_iter: int = 1000
@@ -53,6 +57,130 @@ class BssConfig:
             IMU_REFERENCE_DERIVED9_AUGMENTATION_PROFILE_ID,
         }:
             raise ValueError("unknown BSS IMU reference profile")
+
+
+def _validate_seed_iterations(
+    random_state: int,
+    max_iter: int,
+    tolerance: float,
+) -> None:
+    if (
+        isinstance(random_state, bool)
+        or not isinstance(random_state, (int, np.integer))
+        or not 0 <= int(random_state) <= 0xFFFF_FFFF
+    ):
+        raise ValueError("BSS random_state must be an integer in [0,2^32-1]")
+    if isinstance(max_iter, bool) or not isinstance(max_iter, (int, np.integer)):
+        raise ValueError("BSS max_iter must be an integer")
+    if int(max_iter) <= 0 or not np.isfinite(tolerance) or float(tolerance) <= 0.0:
+        raise ValueError("BSS iteration/tolerance must be positive")
+
+
+def _validate_imu_profile(value: str) -> None:
+    if value not in {
+        IMU_REFERENCE_AXES6_PROFILE_ID,
+        IMU_REFERENCE_DERIVED9_AUGMENTATION_PROFILE_ID,
+    }:
+        raise ValueError("unknown BSS IMU reference profile")
+
+
+@dataclass(frozen=True)
+class PcaBssConfig:
+    """Only the motion-reference selector consumed by deterministic PCA."""
+
+    imu_reference_profile: str = IMU_REFERENCE_AXES6_PROFILE_ID
+
+    def validate(self) -> None:
+        _validate_imu_profile(self.imu_reference_profile)
+
+
+@dataclass(frozen=True)
+class FastIcaBssConfig:
+    """Parameters actually consumed by the FastICA reducer."""
+
+    random_state: int = 42
+    max_iter: int = 1000
+    tolerance: float = 1e-5
+    imu_reference_profile: str = IMU_REFERENCE_AXES6_PROFILE_ID
+
+    def validate(self) -> None:
+        _validate_seed_iterations(self.random_state, self.max_iter, self.tolerance)
+        _validate_imu_profile(self.imu_reference_profile)
+
+
+@dataclass(frozen=True)
+class NmfBssConfig:
+    """Parameters actually consumed by the spectral NMF reducer."""
+
+    random_state: int = 42
+    max_iter: int = 1000
+    tolerance: float = 1e-5
+    nmf_rank: int = 2
+    nperseg: int = 512
+    overlap_fraction: float = 0.75
+
+    def validate(self) -> None:
+        _validate_seed_iterations(self.random_state, self.max_iter, self.tolerance)
+        if (
+            isinstance(self.nmf_rank, bool)
+            or not isinstance(self.nmf_rank, (int, np.integer))
+            or int(self.nmf_rank) <= 0
+        ):
+            raise ValueError("NMF rank must be a positive integer")
+        if (
+            isinstance(self.nperseg, bool)
+            or not isinstance(self.nperseg, (int, np.integer))
+            or int(self.nperseg) < 32
+        ):
+            raise ValueError("NMF nperseg must be an integer >=32")
+        if (
+            not np.isfinite(self.overlap_fraction)
+            or not 0.0 <= float(self.overlap_fraction) < 1.0
+        ):
+            raise ValueError("NMF overlap_fraction must lie in [0,1)")
+
+
+def _pca_config(config: PcaBssConfig | BssConfig) -> PcaBssConfig:
+    if isinstance(config, PcaBssConfig):
+        return config
+    defaults = BssConfig()
+    inactive = (
+        "random_state", "max_iter", "tolerance", "nmf_rank", "nperseg",
+        "overlap_fraction",
+    )
+    if any(getattr(config, name) != getattr(defaults, name) for name in inactive):
+        raise ValueError("PCA BSS received parameters that PCA does not consume")
+    return PcaBssConfig(imu_reference_profile=config.imu_reference_profile)
+
+
+def _fastica_config(config: FastIcaBssConfig | BssConfig) -> FastIcaBssConfig:
+    if isinstance(config, FastIcaBssConfig):
+        return config
+    defaults = BssConfig()
+    inactive = ("nmf_rank", "nperseg", "overlap_fraction")
+    if any(getattr(config, name) != getattr(defaults, name) for name in inactive):
+        raise ValueError("FastICA BSS received NMF-only parameters")
+    return FastIcaBssConfig(
+        random_state=config.random_state,
+        max_iter=config.max_iter,
+        tolerance=config.tolerance,
+        imu_reference_profile=config.imu_reference_profile,
+    )
+
+
+def _nmf_config(config: NmfBssConfig | BssConfig) -> NmfBssConfig:
+    if isinstance(config, NmfBssConfig):
+        return config
+    if config.imu_reference_profile != BssConfig().imu_reference_profile:
+        raise ValueError("NMF BSS does not consume an IMU reference profile")
+    return NmfBssConfig(
+        random_state=config.random_state,
+        max_iter=config.max_iter,
+        tolerance=config.tolerance,
+        nmf_rank=config.nmf_rank,
+        nperseg=config.nperseg,
+        overlap_fraction=config.overlap_fraction,
+    )
 
 
 def _cardiac_fraction(values: np.ndarray, fs_hz: float) -> float:
@@ -99,7 +227,15 @@ class _LinearBssReducer(ArtifactReducer):
 
     method: str
 
-    def __init__(self, config: BssConfig = BssConfig()) -> None:
+    def __init__(
+        self,
+        config: PcaBssConfig | FastIcaBssConfig | BssConfig | None = None,
+    ) -> None:
+        supplied = BssConfig() if config is None else config
+        if self.method == "pca":
+            config = _pca_config(supplied)  # type: ignore[arg-type]
+        else:
+            config = _fastica_config(supplied)  # type: ignore[arg-type]
         config.validate()
         self.config = config
 
@@ -196,7 +332,8 @@ class NmfBssReducer(ArtifactReducer):
     reducer_id = "nmf_bss"
     reducer_version = "nmf_shared_spectral_basis_v1"
 
-    def __init__(self, config: BssConfig = BssConfig()) -> None:
+    def __init__(self, config: NmfBssConfig | BssConfig | None = None) -> None:
+        config = _nmf_config(BssConfig() if config is None else config)
         config.validate()
         self.config = config
 

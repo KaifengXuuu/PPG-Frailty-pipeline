@@ -47,7 +47,7 @@ from ppg_frailty.quality.motion_runner import (
     MotionFittedArtifact,
     MotionWindowExample,
     _write_parquet,
-    evaluate_ptt_external_gate,
+    audit_ptt_external_readiness,
     run_internal_motion_oof,
     run_ptt_external_evaluation,
 )
@@ -301,7 +301,7 @@ def test_midpoint_is_participant_balanced_train_only_and_rejects_leakage() -> No
         )
 
 
-def test_mock_bytes_and_arbitrary_evidence_cannot_open_formal_ptt_gate(
+def test_mock_bytes_and_arbitrary_evidence_are_not_report_ready(
     tmp_path: Path,
 ) -> None:
     evidence = _complete_internal_evidence(tmp_path)
@@ -309,12 +309,12 @@ def test_mock_bytes_and_arbitrary_evidence_cannot_open_formal_ptt_gate(
     archive.write_text(json.dumps(evidence, allow_nan=False), encoding="utf-8")
     archive_sha = hashlib.sha256(archive.read_bytes()).hexdigest()
 
-    closed = evaluate_ptt_external_gate(archive, expected_sha256=archive_sha)
-    assert closed.allowed is False
-    assert "canonical_internal_motion_entry_missing" in closed.reasons
-    assert "canonical_internal_source_evidence_missing" in closed.reasons
+    audit = audit_ptt_external_readiness(archive, expected_sha256=archive_sha)
+    assert audit.ready is False
+    assert "canonical_internal_motion_entry_missing" in audit.reasons
+    assert "canonical_internal_source_evidence_missing" in audit.reasons
     with pytest.raises(ValueError, match="SHA-256 mismatch"):
-        evaluate_ptt_external_gate(archive, expected_sha256="0" * 64)
+        audit_ptt_external_readiness(archive, expected_sha256="0" * 64)
 
 def test_major_metric_schema_includes_only_confirmed_comparison_summary() -> None:
     validate_motion_major_metrics(
@@ -384,16 +384,16 @@ def test_yaml_and_python_contract_agree_without_running_science() -> None:
         python_payload["internal_protocol"]["registry_csv_sha256"]
     )
     assert yaml_payload["threshold"]["rule_id"] == python_payload["threshold"]["rule_id"]
-    assert yaml_payload["ptt_external_gate"]["split_csv_sha256"] == (
-        python_payload["external_ptt_gate"]["registry_csv_sha256"]
+    assert yaml_payload["ptt_external_readiness_audit"]["split_csv_sha256"] == (
+        python_payload["external_ptt_readiness_audit"]["registry_csv_sha256"]
     )
-    assert yaml_payload["ptt_external_gate"]["unit_evidence_sha256"] == (
-        python_payload["external_ptt_gate"]["unit_evidence_sha256"]
+    assert yaml_payload["ptt_external_readiness_audit"]["unit_evidence_sha256"] == (
+        python_payload["external_ptt_readiness_audit"]["unit_evidence_sha256"]
     )
-    assert yaml_payload["ptt_external_gate"]["acceleration_source_unit"] == (
+    assert yaml_payload["ptt_external_readiness_audit"]["acceleration_source_unit"] == (
         PTT_ADOPTED_ACCELERATION_UNIT
     )
-    assert yaml_payload["ptt_external_gate"]["acceleration_conversion"] == (
+    assert yaml_payload["ptt_external_readiness_audit"]["acceleration_conversion"] == (
         PTT_ADOPTED_ACCELERATION_CONVERSION
     )
     assert yaml_payload["major_comparison_metrics"] == python_payload["major_metrics"]
@@ -537,7 +537,7 @@ def test_ptt_unit_conflict_is_structured_and_official_metadata_alone_cannot_bypa
             expected_internal_evidence_sha256="0" * 64,
             output_dir=tmp_path / "not_reached",
         )
-    assert captured.value.payload["allowed"] is False
+    assert captured.value.payload["ready"] is False
     assert captured.value.payload["unit_guessing_allowed"] is False
     assert (
         captured.value.payload["concrete_conflict_evidence"]["status"]
@@ -635,9 +635,9 @@ def test_injected_one_job_smoke_exercises_runner_without_scientific_cv(tmp_path:
     assert len(result.window_oof_rows) == 8
     assert result.evidence_path is not None
     assert result.evidence_sha256 is not None
-    smoke_gate = evaluate_ptt_external_gate(
+    smoke_audit = audit_ptt_external_readiness(
         result.evidence_path,
         expected_sha256=result.evidence_sha256,
     )
-    assert smoke_gate.allowed is False
-    assert "internal_5x5_not_completed_formally" in smoke_gate.reasons
+    assert smoke_audit.ready is False
+    assert "internal_sgkf5_not_completed_formally" in smoke_audit.reasons

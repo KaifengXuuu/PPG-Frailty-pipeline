@@ -12,6 +12,13 @@ import numpy as np
 
 from .analyze import StudyAnalysis
 from .collect import CollectedStudy
+from ..data.schema import CANONICAL_CLASS_NAMES
+
+
+LEGACY_BRIDGE_FIGURE_NAMES = (
+    "legacy_bridge_numeric_ablation_report",
+    "legacy_bridge_execution_order_report",
+)
 
 
 STATIC_FIGURE_NAMES = (
@@ -27,10 +34,18 @@ STATIC_FIGURE_NAMES = (
     "confusion_matrices",
     "confusion_matrices_row_normalized",
     "per_class",
+    "aggregation_view_metrics",
+    "aggregation_hierarchy_coverage",
+    "aggregation_view_confusion_matrices",
+    "aggregation_view_confusion_matrices_row_normalized",
+    "aggregation_view_per_class",
     "learning_curves",
     "top_learning_curves",
+    "balanced_accuracy_learning_curves",
+    "top_balanced_accuracy_learning_curves",
     "parameter_effects",
     "parameter_interaction",
+    *LEGACY_BRIDGE_FIGURE_NAMES,
 )
 
 
@@ -40,6 +55,43 @@ def _number(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return result if math.isfinite(result) else None
+
+
+def _class_tick_labels(order: Sequence[Any]) -> list[str]:
+    return [
+        f"{value} · {CANONICAL_CLASS_NAMES.get(int(value), str(value))}"
+        if str(value).lstrip("-").isdigit()
+        else str(value)
+        for value in order
+    ]
+
+
+def _category_tick_label(value: Any) -> str:
+    """Wrap structured case identifiers without moving their tick anchor."""
+
+    return "\n".join(str(value).split("__"))
+
+
+def _set_centered_category_ticks(
+    axis: Any,
+    positions: Sequence[float],
+    labels: Sequence[Any],
+    *,
+    rotation: float = 0.0,
+) -> None:
+    """Bind categorical labels to explicit numeric centres on every plot."""
+
+    numeric = np.asarray(positions, dtype=np.float64)
+    axis.set_xticks(numeric)
+    axis.set_xticklabels(
+        [_category_tick_label(value) for value in labels],
+        rotation=rotation,
+        ha="center",
+        rotation_mode="anchor",
+    )
+    axis.tick_params(axis="x", labelsize="small", pad=6)
+    if numeric.size:
+        axis.set_xlim(float(numeric.min()) - 0.5, float(numeric.max()) + 0.5)
 
 
 def _unlink_if_file(path: Path) -> None:
@@ -56,19 +108,77 @@ def clear_static_figure_artifacts(directory: str | Path) -> None:
         _unlink_if_file(target / f"{name}.NA.txt")
 
 
-def _na(directory: Path, name: str, reason: str) -> dict[str, Any]:
+def _na(
+    directory: Path,
+    name: str,
+    reason: str,
+    *,
+    pyplot: Any | None = None,
+) -> dict[str, Any]:
     target = directory / f"{name}.NA.txt"
     temporary = directory / f".{name}.NA.tmp-{os.getpid()}-{time.time_ns()}.txt"
+    image_target = directory / f"{name}.png"
+    image_temporary = directory / (
+        f".{name}.NA.tmp-{os.getpid()}-{time.time_ns()}.png"
+    )
+    figure = None
     try:
-        temporary.write_text(f"N/A: {reason.strip()}\n", encoding="utf-8")
-        os.replace(temporary, target)
-        _unlink_if_file(directory / f"{name}.png")
+        if pyplot is None:
+            temporary.write_text(f"N/A: {reason.strip()}\n", encoding="utf-8")
+            os.replace(temporary, target)
+            _unlink_if_file(image_target)
+        else:
+            _unlink_if_file(target)
+            figure, axis = pyplot.subplots(figsize=(9.0, 3.8))
+            axis.axis("off")
+            if name in {
+                "balanced_accuracy_learning_curves",
+                "top_balanced_accuracy_learning_curves",
+            }:
+                scope = "top-ranked " if name.startswith("top_") else ""
+                na_title = f"N/A — {scope}balanced-accuracy learning curve"
+            else:
+                na_title = f"N/A — {name.replace('_', ' ')}"
+            axis.text(
+                0.5,
+                0.57,
+                na_title,
+                ha="center",
+                va="center",
+                fontsize=16,
+                weight="bold",
+                transform=axis.transAxes,
+            )
+            axis.text(
+                0.5,
+                0.38,
+                reason.strip(),
+                ha="center",
+                va="center",
+                fontsize=10,
+                wrap=True,
+                transform=axis.transAxes,
+            )
+            figure.savefig(
+                image_temporary,
+                format="png",
+                dpi=170,
+                bbox_inches="tight",
+            )
+            os.replace(image_temporary, image_target)
     finally:
         _unlink_if_file(temporary)
+        _unlink_if_file(image_temporary)
+        if figure is not None:
+            pyplot.close(figure)
     return {
         "figure": name,
         "status": "N/A",
-        "path": str(target.relative_to(directory.parent)),
+        "path": str(
+            (image_target if pyplot is not None else target).relative_to(
+                directory.parent
+            )
+        ),
         "reason": reason.strip(),
     }
 
@@ -78,6 +188,8 @@ def _save(
     name: str,
     draw: Callable[[Any], Any],
     pyplot: Any,
+    *,
+    render_na_png: bool = False,
 ) -> dict[str, Any]:
     figure = None
     temporary = directory / f".{name}.tmp-{os.getpid()}-{time.time_ns()}.png"
@@ -94,7 +206,12 @@ def _save(
             "reason": "",
         }
     except Exception as error:  # noqa: BLE001 - report remains usable.
-        return _na(directory, name, f"{type(error).__name__}: {error}")
+        return _na(
+            directory,
+            name,
+            f"{type(error).__name__}: {error}",
+            pyplot=pyplot if render_na_png else None,
+        )
     finally:
         _unlink_if_file(temporary)
         if figure is not None:
@@ -139,8 +256,14 @@ def _stability(analysis: StudyAnalysis, pyplot: Any) -> Any:
     if not cases:
         raise ValueError("repeat-level balanced accuracy unavailable")
     labels = sorted(cases)
-    figure, axis = pyplot.subplots(figsize=(max(7, len(labels) * 1.15), 4.8))
-    axis.boxplot([cases[label] for label in labels], tick_labels=labels, showmeans=True)
+    positions = np.arange(len(labels), dtype=np.float64)
+    figure, axis = pyplot.subplots(figsize=(max(7, len(labels) * 1.35), 4.8))
+    axis.boxplot(
+        [cases[label] for label in labels],
+        positions=positions,
+        showmeans=True,
+    )
+    _set_centered_category_ticks(axis, positions, labels)
     axis.set_ylim(0.0, 1.0)
     axis.set_ylabel("Balanced accuracy")
     axis.set_title("Repeat stability")
@@ -233,8 +356,14 @@ def _paired_deltas(analysis: StudyAnalysis, pyplot: Any) -> Any:
     if not groups:
         raise ValueError("reference-paired repeat deltas unavailable")
     labels = sorted(groups)
-    figure, axis = pyplot.subplots(figsize=(max(7, len(labels) * 1.15), 4.8))
-    axis.boxplot([groups[label] for label in labels], tick_labels=labels, showmeans=True)
+    positions = np.arange(len(labels), dtype=np.float64)
+    figure, axis = pyplot.subplots(figsize=(max(7, len(labels) * 1.35), 4.8))
+    axis.boxplot(
+        [groups[label] for label in labels],
+        positions=positions,
+        showmeans=True,
+    )
+    _set_centered_category_ticks(axis, positions, labels)
     axis.axhline(0.0, color="black", linewidth=1)
     axis.set_ylabel("Δ balanced accuracy vs reference")
     axis.set_title("Paired repeat deltas")
@@ -253,8 +382,10 @@ def _coverage(analysis: StudyAnalysis, pyplot: Any) -> Any:
         raise ValueError("coverage metrics unavailable")
     labels = [str(row["case_id"]) for row in rows]
     values = [float(row["mean_coverage_rate"]) for row in rows]
-    figure, axis = pyplot.subplots(figsize=(max(7, len(labels) * 1.1), 4.5))
-    axis.bar(labels, values)
+    positions = np.arange(len(labels), dtype=np.float64)
+    figure, axis = pyplot.subplots(figsize=(max(7, len(labels) * 1.35), 4.5))
+    axis.bar(positions, values)
+    _set_centered_category_ticks(axis, positions, labels)
     axis.set_ylim(0.0, 1.0)
     axis.set_ylabel("Mean coverage rate")
     axis.set_title("Coverage by case")
@@ -286,7 +417,7 @@ def _route_role_coverage(analysis: StudyAnalysis, pyplot: Any) -> Any:
     ]
     positions = np.arange(len(rows), dtype=np.float64)
     figure, axis = pyplot.subplots(
-        figsize=(max(8, len(rows) * 0.75), 5.2)
+        figsize=(max(8, len(rows) * 1.15), 5.2)
     )
     axis.bar(
         positions - 0.18,
@@ -300,7 +431,7 @@ def _route_role_coverage(analysis: StudyAnalysis, pyplot: Any) -> Any:
         width=0.36,
         label="Available predictor fraction",
     )
-    axis.set_xticks(positions, labels, rotation=55, ha="right")
+    _set_centered_category_ticks(axis, positions, labels)
     axis.set_ylim(0.0, 1.0)
     axis.set_ylabel("Fraction")
     axis.set_title("Route × role coverage and feature availability")
@@ -341,7 +472,7 @@ def _quality_distributions(analysis: StudyAnalysis, pyplot: Any) -> Any:
         fmt="o",
         capsize=3,
     )
-    axis.set_xticks(positions, labels, rotation=60, ha="right")
+    _set_centered_category_ticks(axis, positions, labels)
     axis.set_ylabel("Component value (mean ± population SD)")
     axis.set_title("Quality distributions by route and role")
     axis.grid(axis="y", alpha=0.25)
@@ -391,12 +522,15 @@ def _confusion(analysis: StudyAnalysis, pyplot: Any) -> Any:
     for axis, row in zip(axes.flat, rows):
         matrix = np.asarray(row["confusion_matrix"], dtype=np.float64)
         image = axis.imshow(matrix, cmap="Blues")
-        order = [str(value) for value in row["class_order"]]
-        axis.set_xticks(range(len(order)), order)
+        raw_order = list(row["class_order"])
+        order = _class_tick_labels(raw_order)
+        axis.set_xticks(range(len(order)), [str(value) for value in raw_order])
         axis.set_yticks(range(len(order)), order)
         axis.set_xlabel("Predicted")
         axis.set_ylabel("True")
-        axis.set_title(str(row["case_id"]))
+        axis.set_title(
+            f"{row['case_id']}\nclass_order={','.join(str(value) for value in raw_order)}"
+        )
         for y in range(matrix.shape[0]):
             for x in range(matrix.shape[1]):
                 axis.text(x, y, f"{matrix[y, x]:.0f}", ha="center", va="center")
@@ -440,13 +574,17 @@ def _normalized_confusion(analysis: StudyAnalysis, pyplot: Any) -> Any:
             where=totals > 0.0,
         )
         image = axis.imshow(normalized, cmap="Blues", vmin=0.0, vmax=1.0)
-        order = [str(value) for value in row["class_order"]]
-        axis.set_xticks(range(len(order)), order)
+        raw_order = list(row["class_order"])
+        order = _class_tick_labels(raw_order)
+        axis.set_xticks(range(len(order)), [str(value) for value in raw_order])
         axis.set_yticks(range(len(order)), order)
         axis.set_xlabel("Predicted")
         axis.set_ylabel("True")
         case_id = str(row["case_id"])
-        axis.set_title(f"#{ranks[case_id]} · {case_id}")
+        axis.set_title(
+            f"#{ranks[case_id]} · {case_id}\n"
+            f"class_order={','.join(str(value) for value in raw_order)}"
+        )
         for y in range(normalized.shape[0]):
             for x in range(normalized.shape[1]):
                 value = normalized[y, x]
@@ -470,61 +608,430 @@ def _per_class(analysis: StudyAnalysis, pyplot: Any) -> Any:
     rows = list(analysis.per_class_metrics)
     if not rows:
         raise ValueError("participant OOF or labeled cell per-class metrics unavailable")
-    labels = [
-        f"{row['case_id']} / {row['class_label']}"
-        for row in rows
+    observed_cases = {str(row["case_id"]) for row in rows}
+    ranked = [
+        str(row["case_id"])
+        for row in analysis.predictive_leaderboard
+        if str(row["case_id"]) in observed_cases
     ]
-    recall = [float(row["recall"]) for row in rows]
-    f1 = [float(row["f1"]) for row in rows]
-    positions = np.arange(len(rows))
-    figure, axis = pyplot.subplots(figsize=(max(8, len(rows) * 0.55), 4.8))
-    axis.bar(positions - 0.18, recall, width=0.36, label="Recall")
-    axis.bar(positions + 0.18, f1, width=0.36, label="F1")
-    axis.set_xticks(positions, labels, rotation=60, ha="right")
-    axis.set_ylim(0.0, 1.0)
-    axis.set_title("Per-class pooled metrics")
-    axis.legend()
-    axis.grid(axis="y", alpha=0.25)
+    cases = ranked + sorted(observed_cases - set(ranked))
+    classes = sorted(
+        {str(row["class_label"]) for row in rows},
+        key=lambda value: (
+            (0, int(value))
+            if value.lstrip("-").isdigit()
+            else (1, value)
+        ),
+    )
+    lookup = {
+        (str(row["case_id"]), str(row["class_label"])): row for row in rows
+    }
+    positions = np.arange(len(cases), dtype=np.float64)
+    metrics = (("precision", "Precision"), ("recall", "Recall"), ("f1", "F1"))
+    width = 0.25
+    figure, axes = pyplot.subplots(
+        len(classes),
+        1,
+        figsize=(max(10, len(cases) * 1.35), max(4.8, len(classes) * 3.2)),
+        squeeze=False,
+        sharex=True,
+    )
+    for axis, class_label in zip(axes.flat, classes):
+        for metric_index, (metric, metric_label) in enumerate(metrics):
+            values = [
+                _number(lookup.get((case_id, class_label), {}).get(metric))
+                for case_id in cases
+            ]
+            axis.bar(
+                positions + (metric_index - 1) * width,
+                [np.nan if value is None else value for value in values],
+                width=width,
+                label=metric_label,
+            )
+        axis.set_ylim(0.0, 1.0)
+        axis.set_ylabel("Score")
+        axis.set_title(f"Class {_class_tick_labels([class_label])[0]}")
+        axis.grid(axis="y", alpha=0.25)
+    _set_centered_category_ticks(axes.flat[-1], positions, cases)
+    axes.flat[0].legend(loc="upper right")
+    figure.suptitle("Per-class pooled metrics", y=0.995)
+    figure.tight_layout()
     return figure
 
 
-def _history_metric_names(rows: Sequence[Mapping[str, Any]]) -> tuple[str, ...]:
-    excluded = {
-        "case_id",
-        "repeat",
-        "fold",
-        "epoch",
-        "step",
-        "member",
-        "training_seed",
-        "epoch_rng_seed",
+def _aggregation_view_metrics(analysis: StudyAnalysis, pyplot: Any) -> Any:
+    rows = [
+        row
+        for row in analysis.aggregation_view_comparison
+        if _number(row.get("participant_mean_balanced_accuracy")) is not None
+    ]
+    if not rows:
+        raise ValueError("window/file/role-balanced participant views unavailable")
+    views = (
+        "window_balanced_to_participant",
+        "line_a_equal_files",
+        "line_b_equal_role_families",
+    )
+    cases = sorted({str(row["case_id"]) for row in rows})
+    lookup = {
+        (str(row["case_id"]), str(row["aggregation_view"])): row for row in rows
     }
+    positions = np.arange(len(cases), dtype=np.float64)
+    width = 0.25
+    figure, axes = pyplot.subplots(
+        2,
+        1,
+        figsize=(max(10, len(cases) * 1.8), 8.8),
+        sharex=True,
+    )
+    for axis, metric, label in (
+        (axes[0], "participant_mean_balanced_accuracy", "BA"),
+        (axes[1], "participant_mean_macro_f1", "Macro-F1"),
+    ):
+        available_by_case = {
+            case_id: tuple(
+                view
+                for view in views
+                if _number(lookup.get((case_id, view), {}).get(metric))
+                is not None
+            )
+            for case_id in cases
+        }
+        for view in views:
+            bar_positions: list[float] = []
+            values: list[float] = []
+            for case_position, case_id in zip(positions, cases):
+                available = available_by_case[case_id]
+                if view not in available:
+                    continue
+                slot = available.index(view) - (len(available) - 1) / 2.0
+                bar_positions.append(float(case_position + slot * width))
+                values.append(
+                    float(lookup[(case_id, view)][metric])
+                )
+            axis.bar(
+                bar_positions,
+                values,
+                width=width,
+                label=view if label == "BA" else None,
+            )
+            axis.set_ylim(0.0, 1.0)
+            axis.set_ylabel(label)
+            axis.grid(axis="y", alpha=0.25)
+    axes[0].set_title(
+        "Same fitted OOF: window-, file-, and role-balanced participant views"
+    )
+    axes[0].legend(fontsize="small")
+    _set_centered_category_ticks(axes[1], positions, cases, rotation=25.0)
+    figure.tight_layout()
+    return figure
+
+
+def _aggregation_hierarchy_coverage(analysis: StudyAnalysis, pyplot: Any) -> Any:
+    rows = list(analysis.aggregation_hierarchy_coverage)
+    if not rows:
+        raise ValueError("window/file/role hierarchy coverage unavailable")
+    requested = (
+        ("window", "Window OOF: B/R1–R4"),
+        ("file", "File-balanced input: B/R1–R4"),
+        ("role", "Role-balanced input: B/R"),
+    )
+    available = [
+        (level, title)
+        for level, title in requested
+        if any(str(row.get("aggregation_level")) == level for row in rows)
+    ]
+    if not available:
+        raise ValueError("no window/file/role coverage rows")
+    cases = sorted({str(row["case_id"]) for row in rows})
+    figure, axes = pyplot.subplots(
+        len(available),
+        1,
+        figsize=(max(9, len(cases) * 0.75), 3.4 * len(available)),
+        squeeze=False,
+    )
+    for axis, (level, title) in zip(axes.flat, available):
+        current = [row for row in rows if str(row.get("aggregation_level")) == level]
+        labels = sorted(
+            {str(row["group_label"]) for row in current},
+            key=lambda value: (value[:1], int(value[1:]) if value[1:].isdigit() else -1),
+        )
+        values_by_key: dict[tuple[str, str], list[float]] = {}
+        for row in current:
+            values_by_key.setdefault(
+                (str(row["case_id"]), str(row["group_label"])), []
+            ).append(float(row["participant_count"]))
+        matrix = np.full((len(cases), len(labels)), np.nan, dtype=np.float64)
+        for row_index, case_id in enumerate(cases):
+            for column_index, label in enumerate(labels):
+                values = values_by_key.get((case_id, label), ())
+                if values:
+                    matrix[row_index, column_index] = float(np.mean(values))
+        image = axis.imshow(matrix, aspect="auto", cmap="Blues")
+        axis.set_yticks(range(len(cases)), cases)
+        axis.set_xticks(range(len(labels)), labels)
+        axis.set_title(f"{title} — mean distinct participants per repeat")
+        for row_index in range(matrix.shape[0]):
+            for column_index in range(matrix.shape[1]):
+                if np.isfinite(matrix[row_index, column_index]):
+                    axis.text(
+                        column_index,
+                        row_index,
+                        f"{matrix[row_index, column_index]:.0f}",
+                        ha="center",
+                        va="center",
+                    )
+        figure.colorbar(image, ax=axis, fraction=0.025, label="Participants")
+    figure.tight_layout()
+    return figure
+
+
+def _aggregation_view_confusions(
+    analysis: StudyAnalysis,
+    pyplot: Any,
+    *,
+    row_normalized: bool = False,
+) -> Any:
+    rows = list(analysis.aggregation_view_confusion_matrices)
+    if not rows:
+        raise ValueError("aggregation-view confusion matrices unavailable")
+    views = (
+        "window_balanced_to_participant",
+        "line_a_equal_files",
+        "line_b_equal_role_families",
+    )
+    ranked = [str(row["case_id"]) for row in analysis.predictive_leaderboard]
+    cases = ranked + sorted(
+        {str(row["case_id"]) for row in rows} - set(ranked)
+    )
+    lookup = {
+        (str(row["case_id"]), str(row["aggregation_view"])): row for row in rows
+    }
+    figure, axes = pyplot.subplots(
+        len(cases),
+        len(views),
+        figsize=(4.0 * len(views), max(3.6, 3.35 * len(cases))),
+        squeeze=False,
+    )
+    for row_index, case_id in enumerate(cases):
+        for column_index, view in enumerate(views):
+            axis = axes[row_index, column_index]
+            row = lookup.get((case_id, view))
+            if row is None:
+                axis.axis("off")
+                axis.set_title(f"{case_id}\n{view}\nN/A")
+                continue
+            counts = np.asarray(row["confusion_matrix"], dtype=np.float64)
+            matrix = counts
+            if row_normalized:
+                totals = counts.sum(axis=1, keepdims=True)
+                matrix = np.divide(
+                    counts,
+                    totals,
+                    out=np.zeros_like(counts),
+                    where=totals > 0.0,
+                )
+            raw_order = list(row["class_order"])
+            order = _class_tick_labels(raw_order)
+            image = axis.imshow(
+                matrix,
+                cmap="Blues",
+                vmin=0.0 if row_normalized else None,
+                vmax=1.0 if row_normalized else None,
+            )
+            axis.set_xticks(range(len(order)), [str(value) for value in raw_order])
+            axis.set_yticks(range(len(order)), order)
+            axis.tick_params(axis="both", labelsize="x-small")
+            axis.set_xlabel("Predicted")
+            axis.set_ylabel("True")
+            axis.set_title(
+                f"{case_id}\n{view}\n"
+                f"class_order={','.join(str(value) for value in raw_order)}",
+                fontsize="small",
+            )
+            for y in range(matrix.shape[0]):
+                for x in range(matrix.shape[1]):
+                    axis.text(
+                        x,
+                        y,
+                        f"{matrix[y, x]:.1%}" if row_normalized else f"{matrix[y, x]:.0f}",
+                        ha="center",
+                        va="center",
+                    )
+            figure.colorbar(image, ax=axis, fraction=0.046)
+    figure.suptitle(
+        "Participant confusion matrices from the same fitted OOF "
+        f"(three report views; {'row-normalized' if row_normalized else 'counts'})",
+        y=0.995,
+    )
+    figure.subplots_adjust(
+        left=0.09,
+        right=0.96,
+        bottom=0.025,
+        top=0.975,
+        wspace=0.55,
+        hspace=0.75,
+    )
+    return figure
+
+
+def _aggregation_view_per_class(analysis: StudyAnalysis, pyplot: Any) -> Any:
+    rows = list(analysis.aggregation_view_per_class_metrics)
+    if not rows:
+        raise ValueError("aggregation-view per-class metrics unavailable")
+    groups: dict[tuple[str, str, str], dict[str, list[float]]] = {}
+    for row in rows:
+        key = (
+            str(row["case_id"]),
+            str(row["aggregation_view"]),
+            str(row["class_label"]),
+        )
+        bucket = groups.setdefault(key, {"precision": [], "recall": [], "f1": []})
+        for metric in ("precision", "recall", "f1"):
+            value = _number(row.get(metric))
+            if value is not None:
+                bucket[metric].append(value)
+    view_labels = {
+        "window_balanced_to_participant": "W · equal-window",
+        "line_a_equal_files": "A · equal-file",
+        "line_b_equal_role_families": "B · equal-role",
+    }
+    view_order = {view: index for index, view in enumerate(view_labels)}
+    ranked_cases = [str(row["case_id"]) for row in analysis.predictive_leaderboard]
+    all_cases = {key[0] for key in groups}
+    case_order = ranked_cases + sorted(all_cases - set(ranked_cases))
+    case_rank = {case_id: index for index, case_id in enumerate(case_order)}
+    row_labels = sorted(
+        {(key[0], key[1]) for key in groups},
+        key=lambda item: (
+            case_rank.get(item[0], len(case_rank)),
+            view_order.get(item[1], len(view_order)),
+        ),
+    )
+    classes = sorted({key[2] for key in groups})
+    figure, axes = pyplot.subplots(
+        1,
+        3,
+        figsize=(22, max(8, len(row_labels) * 0.45)),
+        squeeze=False,
+        sharey=True,
+    )
+    images = []
+    for axis_index, (axis, metric) in enumerate(
+        zip(axes.flat, ("precision", "recall", "f1"))
+    ):
+        matrix = np.full((len(row_labels), len(classes)), np.nan, dtype=np.float64)
+        for row_index, (case_id, view) in enumerate(row_labels):
+            for column_index, class_label in enumerate(classes):
+                values = groups.get((case_id, view, class_label), {}).get(metric, ())
+                if values:
+                    matrix[row_index, column_index] = float(np.mean(values))
+        image = axis.imshow(matrix, aspect="auto", cmap="viridis", vmin=0.0, vmax=1.0)
+        images.append(image)
+        axis.set_yticks(range(len(row_labels)))
+        if axis_index == 0:
+            axis.set_yticklabels(
+                [
+                    f"{case_id} · {view_labels.get(view, view)}"
+                    for case_id, view in row_labels
+                ],
+                fontsize="x-small",
+            )
+        else:
+            axis.tick_params(axis="y", labelleft=False)
+        axis.set_xticks(
+            range(len(classes)),
+            [
+                f"{value}\n{CANONICAL_CLASS_NAMES.get(int(value), value)}"
+                for value in classes
+            ],
+        )
+        axis.set_xlabel("Class label")
+        axis.set_title(metric.capitalize())
+    figure.suptitle(
+        "All-class metrics from the same fitted OOF aggregation views",
+        y=0.985,
+    )
+    figure.subplots_adjust(
+        left=0.34,
+        right=0.95,
+        bottom=0.07,
+        top=0.94,
+        wspace=0.08,
+    )
+    figure.colorbar(
+        images[-1],
+        ax=list(axes.flat),
+        fraction=0.018,
+        pad=0.015,
+        label="Mean per-repeat score",
+    )
+    return figure
+
+
+def _loss_history_metric_names(
+    rows: Sequence[Mapping[str, Any]],
+) -> tuple[str, ...]:
     preferred = (
         "training_loss",
         "inner_training_loss",
-        "inner_participant_balanced_accuracy",
-        "loss",
         "train_loss",
-        "val_loss",
-        "validation_loss",
-        "balanced_accuracy",
-        "val_balanced_accuracy",
-        "macro_f1",
-        "val_macro_f1",
+        "loss",
     )
-    present = []
-    for name in preferred:
-        if any(_number(row.get(name)) is not None for row in rows):
-            present.append(name)
-    if present:
-        return tuple(present[:4])
-    candidates = []
-    for key in dict.fromkeys(key for row in rows for key in row):
-        if key in excluded:
-            continue
-        if any(_number(row.get(key)) is not None for row in rows):
-            candidates.append(key)
-    return tuple(candidates[:4])
+    return tuple(
+        name
+        for name in preferred
+        if any(_number(row.get(name)) is not None for row in rows)
+    )
+
+
+def _balanced_accuracy_history_metric_names(
+    rows: Sequence[Mapping[str, Any]],
+) -> tuple[str, ...]:
+    """Return only explicitly inner/train BA fields, never outer OOF metrics."""
+
+    aliases = _BALANCED_ACCURACY_HISTORY_ALIASES
+    selected: list[str] = []
+    for alternatives in aliases:
+        for name in alternatives:
+            if any(_number(row.get(name)) is not None for row in rows):
+                selected.append(name)
+                break
+    return tuple(selected)
+
+
+_BALANCED_ACCURACY_HISTORY_ALIASES = (
+    (
+        "inner_participant_balanced_accuracy",
+        "inner_balanced_accuracy",
+    ),
+    (
+        "training_participant_balanced_accuracy",
+        "train_participant_balanced_accuracy",
+        "train_balanced_accuracy",
+    ),
+)
+
+
+def _has_explicit_inner_or_train_balanced_accuracy(
+    row: Mapping[str, Any],
+) -> bool:
+    return any(
+        _number(row.get(name)) is not None
+        for aliases in _BALANCED_ACCURACY_HISTORY_ALIASES
+        for name in aliases
+    )
+
+
+def _explicitly_uses_outer_heldout(row: Mapping[str, Any]) -> bool:
+    value = row.get("learning_curve_outer_heldout_used")
+    if value is True:
+        return True
+    return isinstance(value, str) and value.strip().lower() in {
+        "true",
+        "yes",
+        "1",
+    }
 
 
 def _learning_curves(collected: CollectedStudy, pyplot: Any) -> Any:
@@ -532,9 +1039,9 @@ def _learning_curves(collected: CollectedStudy, pyplot: Any) -> Any:
     if not rows:
         raise ValueError("training history unavailable")
     x_name = "epoch" if any("epoch" in row for row in rows) else "step"
-    metrics = _history_metric_names(rows)
+    metrics = _loss_history_metric_names(rows)
     if not metrics:
-        raise ValueError("training history has no numeric learning metric")
+        raise ValueError("training history has no declared train/inner-train loss")
     groups: dict[tuple[str, Any, Any], list[Mapping[str, Any]]] = {}
     for row in rows:
         groups.setdefault(
@@ -544,7 +1051,7 @@ def _learning_curves(collected: CollectedStudy, pyplot: Any) -> Any:
         len(metrics), 1, figsize=(8.5, max(3.2, len(metrics) * 2.8)), squeeze=False
     )
     for axis, metric in zip(axes.flat, metrics):
-        drew = False
+        seen_labels: set[str] = set()
         for (case_id, repeat, fold), values in sorted(groups.items(), key=str):
             points = [
                 (_number(row.get(x_name)), _number(row.get(metric)))
@@ -559,9 +1066,9 @@ def _learning_curves(collected: CollectedStudy, pyplot: Any) -> Any:
                 [point[1] for point in points],
                 alpha=0.45,
                 linewidth=1,
-                label=case_id if not drew else None,
+                label=case_id if case_id not in seen_labels else None,
             )
-            drew = True
+            seen_labels.add(case_id)
         axis.set_xlabel(x_name)
         axis.set_ylabel(metric)
         axis.grid(alpha=0.25)
@@ -587,9 +1094,9 @@ def _top_learning_curves(
     if not rows:
         raise ValueError("top-ranked cases have no training history")
     x_name = "epoch" if any("epoch" in row for row in rows) else "step"
-    metrics = _history_metric_names(rows)
+    metrics = _loss_history_metric_names(rows)
     if not metrics:
-        raise ValueError("top-ranked training history has no numeric learning metric")
+        raise ValueError("top-ranked training history has no declared train/inner-train loss")
     figure, axes = pyplot.subplots(
         len(metrics),
         1,
@@ -627,6 +1134,95 @@ def _top_learning_curves(
         pyplot.close(figure)
         raise ValueError("top-ranked learning curves contain no finite points")
     axes.flat[0].set_title("Top-ranked learning curves (mean across repeat/fold traces)")
+    axes.flat[0].legend(fontsize="small")
+    figure.tight_layout()
+    return figure
+
+
+def _balanced_accuracy_learning_curves(
+    collected: CollectedStudy,
+    pyplot: Any,
+    *,
+    top_cases: Sequence[str] | None = None,
+) -> Any:
+    """Plot provenance-safe inner/train BA histories only.
+
+    A generic ``balanced_accuracy`` or ``val_balanced_accuracy`` field is
+    intentionally rejected: without an explicit inner/train name it could be
+    derived from the outer held-out fold and would make a training-time curve
+    invalid.
+    """
+
+    allowed = None if top_cases is None else set(top_cases)
+    rows = [
+        row
+        for row in collected.history_rows
+        if allowed is None or str(row.get("case_id")) in allowed
+    ]
+    if not rows:
+        raise ValueError("training history unavailable for requested cases")
+    rejected_rows = [
+        row
+        for row in rows
+        if _explicitly_uses_outer_heldout(row)
+        and _has_explicit_inner_or_train_balanced_accuracy(row)
+    ]
+    if rejected_rows:
+        raise ValueError(
+            "at least one inner/train balanced-accuracy history row explicitly "
+            "marks outer held-out data as used; the complete learning-curve "
+            "figure is rejected"
+        )
+    metrics = _balanced_accuracy_history_metric_names(rows)
+    if not metrics:
+        raise ValueError(
+            "no provenance-safe inner/train balanced-accuracy history; "
+            "outer held-out metrics are never converted into a learning curve"
+        )
+    x_name = "epoch" if any("epoch" in row for row in rows) else "step"
+    cases = sorted({str(row.get("case_id")) for row in rows})
+    figure, axes = pyplot.subplots(
+        len(metrics),
+        1,
+        figsize=(9.0, max(3.4, len(metrics) * 3.0)),
+        squeeze=False,
+    )
+    drew_any = False
+    for axis, metric in zip(axes.flat, metrics):
+        for case_id in cases:
+            by_step: dict[float, list[float]] = {}
+            for row in rows:
+                if str(row.get("case_id")) != case_id:
+                    continue
+                x_value = _number(row.get(x_name))
+                y_value = _number(row.get(metric))
+                if x_value is None or y_value is None:
+                    continue
+                by_step.setdefault(x_value, []).append(y_value)
+            if not by_step:
+                continue
+            ordered = sorted(by_step)
+            axis.plot(
+                ordered,
+                [float(np.mean(by_step[value])) for value in ordered],
+                marker="o",
+                markersize=2.5,
+                linewidth=1.6,
+                label=case_id,
+            )
+            drew_any = True
+        axis.set_xlabel(x_name)
+        axis.set_ylabel(metric)
+        axis.set_ylim(0.0, 1.0)
+        axis.grid(alpha=0.25)
+    if not drew_any:
+        pyplot.close(figure)
+        raise ValueError("balanced-accuracy history contains no finite points")
+    qualifier = "top-ranked " if top_cases is not None else ""
+    axes.flat[0].set_title(
+        f"Provenance-safe {qualifier}balanced-accuracy learning curves "
+        "(mean across repeat/fold traces)"
+    )
     axes.flat[0].legend(fontsize="small")
     figure.tight_layout()
     return figure
@@ -801,6 +1397,153 @@ def _parameter_interaction(
     return figure
 
 
+def _legacy_bridge_numeric_ablation_report(
+    analysis: StudyAnalysis,
+    pyplot: Any,
+) -> Any:
+    """Plot only the seven declared L0->L7 adjacent bridge contrasts."""
+
+    rows = [
+        row
+        for row in analysis.legacy_bridge_numeric_ablation_report
+        if row.get("comparison_role")
+        == "predefined_adjacent_numeric_ablation"
+    ]
+    if len(rows) != 7:
+        raise ValueError(
+            "numeric bridge report requires exactly seven adjacent ablation rows"
+        )
+    labels = [
+        str(row.get("numeric_comparison")).replace("->", "→")
+        for row in rows
+    ]
+    positions = np.arange(len(rows), dtype=np.float64)
+    views = (
+        ("legacy_aggregation", "Window-balanced legacy"),
+        ("line_a_aggregation", "File-balanced Line A"),
+        ("v2_aggregation", "Role-balanced Line B"),
+    )
+    figure, axes = pyplot.subplots(
+        2,
+        1,
+        figsize=(max(10.0, len(rows) * 1.45), 7.4),
+        sharex=True,
+    )
+    width = 0.24
+    drew_any = False
+    for axis, (prefix, ylabel) in zip(
+        axes,
+        (("BA", "Delta balanced accuracy"), ("macroF1", "Delta Macro-F1")),
+    ):
+        for view_index, (suffix, view_label) in enumerate(views):
+            values = [
+                _number(row.get(f"delta_{prefix}_{suffix}"))
+                for row in rows
+            ]
+            heights = [np.nan if value is None else value for value in values]
+            if any(value is not None for value in values):
+                axis.bar(
+                    positions + (view_index - 1) * width,
+                    heights,
+                    width=width,
+                    label=view_label,
+                )
+                drew_any = True
+        axis.axhline(0.0, color="black", linewidth=0.8)
+        axis.set_ylabel(ylabel)
+        axis.grid(axis="y", alpha=0.25)
+    if not drew_any:
+        pyplot.close(figure)
+        raise ValueError("numeric bridge ablation deltas are unavailable")
+    _set_centered_category_ticks(axes[-1], positions, labels)
+    figure.suptitle(
+        "Bridge report A — seven predefined adjacent ablations (L0→L7)"
+    )
+    handles, legend_labels = axes[0].get_legend_handles_labels()
+    figure.legend(
+        handles,
+        legend_labels,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.945),
+        fontsize="small",
+        ncol=3,
+    )
+    axes[-1].set_xlabel("Predefined numeric-profile comparison")
+    figure.tight_layout(rect=(0.0, 0.0, 1.0, 0.90))
+    return figure
+
+
+def _legacy_bridge_execution_order_report(
+    analysis: StudyAnalysis,
+    pyplot: Any,
+) -> Any:
+    """Plot absolute bridge metrics in run order, never execution deltas."""
+
+    rows = list(analysis.legacy_bridge_execution_order_report)
+    profiles = [str(row.get("profile")) for row in rows]
+    if profiles != ["L7", "L5", "L6", "L4", "L3", "L2", "L1", "L0"]:
+        raise ValueError(
+            "execution bridge report requires L7,L5,L6,L4,L3,L2,L1,L0"
+        )
+    if any(
+        bool(row.get("execution_transition_is_ablation"))
+        for row in rows
+    ):
+        raise ValueError("execution-order transitions must not be marked as ablations")
+    positions = np.arange(len(rows), dtype=np.float64)
+    views = (
+        ("legacy_aggregation", "Window-balanced legacy"),
+        ("line_a_aggregation", "File-balanced Line A"),
+        ("v2_aggregation", "Role-balanced Line B"),
+    )
+    figure, axes = pyplot.subplots(
+        2,
+        1,
+        figsize=(max(10.0, len(rows) * 1.35), 7.4),
+        sharex=True,
+    )
+    width = 0.24
+    drew_any = False
+    for axis, (prefix, ylabel) in zip(
+        axes,
+        (("BA", "Balanced accuracy"), ("macroF1", "Macro-F1")),
+    ):
+        for view_index, (suffix, view_label) in enumerate(views):
+            values = [_number(row.get(f"{prefix}_{suffix}")) for row in rows]
+            heights = [np.nan if value is None else value for value in values]
+            if any(value is not None for value in values):
+                axis.bar(
+                    positions + (view_index - 1) * width,
+                    heights,
+                    width=width,
+                    label=view_label,
+                )
+                drew_any = True
+        axis.set_ylim(0.0, 1.0)
+        axis.set_ylabel(ylabel)
+        axis.grid(axis="y", alpha=0.25)
+    if not drew_any:
+        pyplot.close(figure)
+        raise ValueError("execution-order bridge absolute metrics are unavailable")
+    _set_centered_category_ticks(axes[-1], positions, profiles)
+    figure.suptitle(
+        "Bridge report B — CompactCNN execution order (absolute metrics; "
+        "transitions are not causal ablations)"
+    )
+    handles, legend_labels = axes[0].get_legend_handles_labels()
+    figure.legend(
+        handles,
+        legend_labels,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.945),
+        fontsize="small",
+        ncol=3,
+    )
+    axes[-1].set_xlabel("Execution profile (L7→L5 jump is scheduling only)")
+    figure.tight_layout(rect=(0.0, 0.0, 1.0, 0.90))
+    return figure
+
+
 def generate_static_figures(
     collected: CollectedStudy,
     analysis: StudyAnalysis,
@@ -817,9 +1560,18 @@ def generate_static_figures(
         import matplotlib.pyplot as pyplot
     except Exception as error:  # noqa: BLE001
         reason = f"matplotlib unavailable: {type(error).__name__}: {error}"
+        requested_names = (
+            STATIC_FIGURE_NAMES
+            if isinstance(collected.plan.get("legacy_bridge"), Mapping)
+            else tuple(
+                name
+                for name in STATIC_FIGURE_NAMES
+                if name not in LEGACY_BRIDGE_FIGURE_NAMES
+            )
+        )
         return tuple(
             _na(target, name, reason)
-            for name in STATIC_FIGURE_NAMES
+            for name in requested_names
         )
     plots: tuple[tuple[str, Callable[[Any], Any]], ...] = (
         ("leaderboard", lambda plot: _leaderboard(analysis, plot)),
@@ -846,10 +1598,47 @@ def generate_static_figures(
             lambda plot: _normalized_confusion(analysis, plot),
         ),
         ("per_class", lambda plot: _per_class(analysis, plot)),
+        (
+            "aggregation_view_metrics",
+            lambda plot: _aggregation_view_metrics(analysis, plot),
+        ),
+        (
+            "aggregation_hierarchy_coverage",
+            lambda plot: _aggregation_hierarchy_coverage(analysis, plot),
+        ),
+        (
+            "aggregation_view_confusion_matrices",
+            lambda plot: _aggregation_view_confusions(analysis, plot),
+        ),
+        (
+            "aggregation_view_confusion_matrices_row_normalized",
+            lambda plot: _aggregation_view_confusions(
+                analysis, plot, row_normalized=True
+            ),
+        ),
+        (
+            "aggregation_view_per_class",
+            lambda plot: _aggregation_view_per_class(analysis, plot),
+        ),
         ("learning_curves", lambda plot: _learning_curves(collected, plot)),
         (
             "top_learning_curves",
             lambda plot: _top_learning_curves(collected, analysis, plot),
+        ),
+        (
+            "balanced_accuracy_learning_curves",
+            lambda plot: _balanced_accuracy_learning_curves(collected, plot),
+        ),
+        (
+            "top_balanced_accuracy_learning_curves",
+            lambda plot: _balanced_accuracy_learning_curves(
+                collected,
+                plot,
+                top_cases=[
+                    str(row["case_id"])
+                    for row in analysis.predictive_leaderboard[:6]
+                ],
+            ),
         ),
         (
             "parameter_effects",
@@ -860,10 +1649,40 @@ def generate_static_figures(
             lambda plot: _parameter_interaction(collected, analysis, plot),
         ),
     )
-    return tuple(_save(target, name, draw, pyplot) for name, draw in plots)
+    if isinstance(collected.plan.get("legacy_bridge"), Mapping):
+        plots += (
+            (
+                "legacy_bridge_numeric_ablation_report",
+                lambda plot: _legacy_bridge_numeric_ablation_report(
+                    analysis, plot
+                ),
+            ),
+            (
+                "legacy_bridge_execution_order_report",
+                lambda plot: _legacy_bridge_execution_order_report(
+                    analysis, plot
+                ),
+            ),
+        )
+    na_png_names = {
+        "balanced_accuracy_learning_curves",
+        "top_balanced_accuracy_learning_curves",
+        *LEGACY_BRIDGE_FIGURE_NAMES,
+    }
+    return tuple(
+        _save(
+            target,
+            name,
+            draw,
+            pyplot,
+            render_na_png=name in na_png_names,
+        )
+        for name, draw in plots
+    )
 
 
 __all__ = [
+    "LEGACY_BRIDGE_FIGURE_NAMES",
     "STATIC_FIGURE_NAMES",
     "clear_static_figure_artifacts",
     "generate_static_figures",

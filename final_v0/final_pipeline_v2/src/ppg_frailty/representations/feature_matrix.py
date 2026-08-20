@@ -7,28 +7,41 @@ from ..contracts import OrderedFeatureMatrixV1
 
 
 def validate_feature_matrix(matrix: OrderedFeatureMatrixV1) -> OrderedFeatureMatrixV1:
-    """强制 D×32、mask 和 neutral padding / Enforce D-by-32 and neutral padding."""
+    """强制 D×K、mask 和 neutral padding / Enforce D-by-K and neutral padding."""
 
     from ..features.engineering import (
         ENGINEERING_SCHEMA_VERSION,
         engineering_feature_names,
     )
     from ..features.registry import (
-        ORDERED_MATRIX_SCHEMA_VERSION,
-        default_registry,
+        ordered_matrix_schema_version,
+        registry_for_feature_names,
     )
 
     values = np.asarray(matrix.values, dtype=np.float64)
     mask = np.asarray(matrix.row_mask, dtype=bool)
-    if values.ndim != 2 or values.shape[1] != 32 or mask.shape != (32,):
-        raise ValueError("OrderedFeatureMatrixV1 must be [D,32] with row_mask[32]")
+    if values.ndim != 2 or values.shape[1] <= 0 or mask.shape != (values.shape[1],):
+        raise ValueError("OrderedFeatureMatrixV1 must be [D,K] with row_mask[K]")
+    matrix_k = int(values.shape[1])
     if len(matrix.channel_schema) != values.shape[0] or len(set(matrix.channel_schema)) != values.shape[0]:
         raise ValueError("matrix channel schema must uniquely name D channels")
     if not np.isfinite(values).all() or not np.any(mask):
         raise ValueError("matrix must be finite with at least one valid position")
     if np.any(values[:, ~mask] != 0.0):
         raise ValueError("post-transform padded positions must be standardized neutral zero")
-    registry = default_registry()
+    if len(matrix.context_schema) % 2:
+        raise ValueError(
+            "OrderedFeatureMatrixV1 uses a stale or inconsistent formal schema"
+        )
+    context_width = len(matrix.context_schema) // 2
+    context_names = tuple(matrix.context_schema[:context_width])
+    try:
+        registry = registry_for_feature_names(context_names)
+    except ValueError as exc:
+        raise ValueError(
+            "OrderedFeatureMatrixV1 uses a stale or inconsistent formal schema"
+        ) from exc
+    expected_schema_version = ordered_matrix_schema_version(matrix_k, registry)
     engineering_names = engineering_feature_names()
     context_schema = registry.names + tuple(
         f"{name}.validity" for name in registry.names
@@ -46,7 +59,9 @@ def validate_feature_matrix(matrix: OrderedFeatureMatrixV1) -> OrderedFeatureMat
     ).hexdigest()
     provenance = matrix.provenance
     if (
-        matrix.schema_version != ORDERED_MATRIX_SCHEMA_VERSION
+        matrix.schema_version != expected_schema_version
+        or provenance.get("matrix_k") != matrix_k
+        or provenance.get("matrix_schema_version") != expected_schema_version
         or tuple(matrix.channel_schema) != expected_channel_schema
         or tuple(matrix.context_schema) != context_schema
         or provenance.get("matrix_channel_schema_sha256") != channel_hash

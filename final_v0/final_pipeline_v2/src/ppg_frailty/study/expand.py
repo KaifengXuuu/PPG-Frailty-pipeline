@@ -22,63 +22,91 @@ from .schema import (
     catalog_cases_from_mapping,
     catalog_spec_from_mapping,
     execution_from_mapping,
+    legacy_bridge_spec_from_mapping,
     sparse_search_spec_from_mapping,
 )
 
 
 _SLUG_RE = re.compile(r"[^A-Za-z0-9_-]+")
 _IDENTITY_ONLY_PATHS = frozenset({"config_id"})
-_CATALOG_SEARCH_OVERRIDE_PATHS = frozenset(
-    {
-        "quality.mode",
-        "training.learning_rate",
-        "training.weight_decay",
-        "model.logistic_c",
-        "model.architecture_parameters.C",
-        "model.svm_c",
-        "model.svm_gamma",
-        "model.architecture_parameters.gamma",
-        "model.extra_trees_max_features",
-        "model.extra_trees_min_samples_leaf",
-        "model.architecture_parameters.max_features",
-        "model.architecture_parameters.min_samples_leaf",
-        "model.n_kernels",
-        "model.alpha",
-        "model.architecture_parameters.n_kernels",
-        "model.architecture_parameters.ridge_alpha",
-    }
-)
-_MODEL_AXIS_PROVENANCE_MIRRORS = {
-    "model.logistic_c": "model.architecture_parameters.C",
-    "model.svm_c": "model.architecture_parameters.C",
-    "model.svm_gamma": "model.architecture_parameters.gamma",
-    "model.extra_trees_max_features": (
-        "model.architecture_parameters.max_features"
-    ),
-    "model.extra_trees_min_samples_leaf": (
-        "model.architecture_parameters.min_samples_leaf"
-    ),
-    "model.n_kernels": "model.architecture_parameters.n_kernels",
-    "model.alpha": "model.architecture_parameters.ridge_alpha",
+_NAMED_EPOCH_PROFILES = {
+    7: "ablation_7",
+    10: "default_10",
+    15: "ablation_15",
 }
 
 
 def _derived_axis_values(path: str, value: Any) -> dict[str, Any]:
     """Return schema fields that describe the same declared study factor."""
 
-    mirror = _MODEL_AXIS_PROVENANCE_MIRRORS.get(path)
-    if mirror is not None:
-        return {mirror: copy.deepcopy(value)}
+    if path == "training.optimizer":
+        from ppg_frailty.training.trainer import resolve_optimizer_parameters
+
+        # Switching the strategy also switches to that strategy's own defaults.
+        # Individual optimizer parameters remain ordinary independent axes.
+        return {
+            "training.optimizer_parameters": resolve_optimizer_parameters(
+                str(value), {}
+            )
+        }
+    if path == "aggregation.balance_line":
+        derived = {
+            "line_a_equal_files": {
+                "aggregation.hierarchy": ["window", "file", "participant"],
+                "aggregation.file_to_role": "not_applicable",
+                "aggregation.role_to_participant": "not_applicable",
+                "aggregation.missing_role_policy": "not_applicable",
+            },
+            "line_b_equal_role_families": {
+                "aggregation.hierarchy": [
+                    "window", "file", "role", "participant",
+                ],
+                "aggregation.file_to_role": "ordinary_mean",
+                "aggregation.role_to_participant": "ordinary_mean",
+                "aggregation.missing_role_policy": "mean_available_roles",
+            },
+        }
+        return copy.deepcopy(derived.get(str(value), {}))
     if path != "training.fixed_epochs":
         return {}
-    if isinstance(value, bool) or value not in {7, 10, 15}:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         return {}
-    profile_by_epoch = {
-        7: "ablation_7",
-        10: "default_10",
-        15: "ablation_15",
+    from ppg_frailty.training.trainer import derived_epoch_profile
+
+    return {
+        "training.epoch_profile": derived_epoch_profile("fixed_epoch", int(value))
     }
-    return {"training.epoch_profile": profile_by_epoch[int(value)]}
+
+
+def _normalize_axis_value(path: str, value: Any) -> Any:
+    """Normalize semantic aliases before case identity/mismatch accounting."""
+
+    if path == "features.enabled_groups":
+        from ppg_frailty.features.registry import canonicalize_feature_groups
+
+        return list(canonicalize_feature_groups(value))
+    return copy.deepcopy(value)
+
+
+def _is_reportable_parameter_path(path: str) -> bool:
+    """Exclude automatically derived model provenance from study axes."""
+
+    return (
+        path not in _IDENTITY_ONLY_PATHS
+        and path != "model.ensemble_size"
+        and not path.startswith("model.architecture_parameters")
+    )
+
+
+def _drop_model_derived_provenance(payload: dict[str, Any]) -> None:
+    """Remove generated fields before applying/validating user study inputs."""
+
+    from ppg_frailty.module_registry import model_factory_contract
+
+    model = payload["model"]
+    contract = model_factory_contract(str(model["model_id"]))
+    for field in contract["derived_provenance_fields"]:
+        model.pop(str(field), None)
 
 
 def _epoch_materialization_identity(
@@ -169,6 +197,15 @@ def _set_dotted(payload: dict[str, Any], path: str, value: Any) -> None:
     if leaf not in cursor:
         raise KeyError(f"unknown configuration field: {path}")
     cursor[leaf] = copy.deepcopy(value)
+
+
+def _get_dotted(payload: Mapping[str, Any], path: str) -> Any:
+    cursor: Any = payload
+    for field in path.split("."):
+        if not isinstance(cursor, Mapping) or field not in cursor:
+            return None
+        cursor = cursor[field]
+    return copy.deepcopy(cursor)
 
 
 def _config_sha256(payload: Mapping[str, Any]) -> str:
@@ -268,6 +305,8 @@ def parse_study_plan(
             "output",
             "report",
         }
+        if "legacy_bridge" in raw:
+            expected_top.add("legacy_bridge")
         if set(raw) != expected_top:
             raise ValueError(
                 "catalog_sweep plan key mismatch: "
@@ -340,6 +379,11 @@ def parse_study_plan(
             catalog_cases_from_mapping(raw["cases"])
             if kind == "catalog_sweep"
             else ()
+        ),
+        legacy_bridge=(
+            legacy_bridge_spec_from_mapping(raw["legacy_bridge"])
+            if "legacy_bridge" in raw
+            else None
         ),
         execution=execution_from_mapping(raw.get("execution")),
         output=OutputSpec(root=str(output_raw.get("root", "artifacts/studies"))),
@@ -434,12 +478,8 @@ def _apply_fixed_kernel_profile(
     if machine_id == "compact_cnn":
         dilations = [int(selected.dilation)] * 3
         payload["model"]["dilations"] = dilations
-        payload["model"]["architecture_parameters"]["dilations"] = dilations
     else:
         payload["model"]["dilation"] = int(selected.dilation)
-        payload["model"]["architecture_parameters"]["dilation"] = int(
-            selected.dilation
-        )
     profiles = load_formal_ablation_profiles(
         pipeline_root / "configs" / "formal_ablation_profiles_v2.yaml"
     )
@@ -577,12 +617,6 @@ def _expand_catalog_sweep(
                 f"{case.case_id} output_group={case.output_group!r} differs "
                 f"from representation_mode={expected_group!r}"
             )
-        unknown_overrides = set(case.overrides) - _CATALOG_SEARCH_OVERRIDE_PATHS
-        if unknown_overrides:
-            raise ValueError(
-                f"{case.case_id} has non-screening overrides: "
-                f"{sorted(unknown_overrides)}"
-            )
         payload = copy.deepcopy(payload_by_entry[case.catalog_entry])
         if case.formal_profile is not None:
             if case.formal_profile.family != "fixed_kernel_samples":
@@ -600,14 +634,34 @@ def _expand_catalog_sweep(
             )
         for path, value in case.overrides.items():
             _set_dotted(payload, path, value)
+        if plan.execution.device is not None:
+            _set_dotted(payload, "training.device", plan.execution.device)
         payload["config_id"] = (
             f"{payload['config_id']}__{case.screen_profile_id}"
         )
+        _drop_model_derived_provenance(payload)
         checked = validate_config_payload(payload)
         changed: dict[str, Any] = {
             "study.catalog_entry": case.catalog_entry,
             "study.screen_profile_id": case.screen_profile_id,
         }
+        if plan.legacy_bridge is not None:
+            profile_matches = tuple(
+                profile
+                for profile in plan.legacy_bridge.profiles
+                if str(profile["catalog_case_id"]) == case.case_id
+            )
+            if len(profile_matches) != 1:
+                raise ValueError(
+                    "legacy bridge case must bind exactly one frozen profile: "
+                    f"{case.case_id}"
+                )
+            changed["study.legacy_bridge_profile"] = str(
+                profile_matches[0]["profile_id"]
+            )
+            changed["study.legacy_bridge_runtime"] = (
+                plan.legacy_bridge.runtime_status
+            )
         changed.update(copy.deepcopy(dict(case.overrides)))
         if case.formal_profile is not None:
             changed["study.formal_profile"] = (
@@ -686,7 +740,7 @@ def _rows_for_parameters(
         case.case_id: {
             path: value
             for path, value in flatten_mapping(case.config).items()
-            if path not in _IDENTITY_ONLY_PATHS
+            if _is_reportable_parameter_path(path)
         }
         for case in cases
     }
@@ -720,6 +774,18 @@ def expand_study(plan: StudyPlan, *, pipeline_root: str | Path) -> StudyExpansio
     if not isinstance(base, Mapping):
         raise TypeError("base pipeline config must be a mapping")
     base_payload = copy.deepcopy(dict(base))
+    # Canonical V2 axes operate on the complete effective configuration, not
+    # only fields that happened to be written in the source YAML.  This makes
+    # newly configurable defaults (for example samples_per_epoch or optimizer
+    # parameters) valid study axes while keeping this expansion utility generic
+    # for the lightweight synthetic schemas used by product-layer tests.
+    if base_payload.get("schema_version") == "ppg_frailty.pipeline_config.v2":
+        from ppg_frailty.config import validate_config_payload
+
+        base_payload = validate_config_payload(base_payload)
+        if plan.execution.device is not None:
+            _set_dotted(base_payload, "training.device", plan.execution.device)
+            base_payload = validate_config_payload(base_payload)
     combinations = (
         [()]
         if not plan.axes
@@ -729,7 +795,7 @@ def expand_study(plan: StudyPlan, *, pipeline_root: str | Path) -> StudyExpansio
     base_flat = flatten_mapping(base_payload)
     for index, values in enumerate(combinations):
         changes = {
-            axis.path: copy.deepcopy(value)
+            axis.path: _normalize_axis_value(axis.path, value)
             for axis, value in zip(plan.axes, values)
         }
         config = copy.deepcopy(base_payload)
@@ -741,8 +807,11 @@ def expand_study(plan: StudyPlan, *, pipeline_root: str | Path) -> StudyExpansio
             ).items():
                 _set_dotted(config, derived_path, derived_value)
                 derived_changes[derived_path] = derived_value
-        if "training.fixed_epochs" in changes and _derived_axis_values(
-            "training.fixed_epochs", changes["training.fixed_epochs"]
+        changed_epoch = changes.get("training.fixed_epochs")
+        if (
+            not isinstance(changed_epoch, bool)
+            and isinstance(changed_epoch, int)
+            and changed_epoch in _NAMED_EPOCH_PROFILES
         ):
             identity = _epoch_materialization_identity(
                 base_path=base_path,
@@ -759,6 +828,34 @@ def expand_study(plan: StudyPlan, *, pipeline_root: str | Path) -> StudyExpansio
                     {"output": {"formal_ablation_materialization": identity}}
                 )
             )
+        if config.get("schema_version") == "ppg_frailty.pipeline_config.v2":
+            from ppg_frailty.config import validate_config_payload
+
+            _drop_model_derived_provenance(config)
+            config = validate_config_payload(config)
+            if set(changes) & {
+                "features.enabled_groups",
+                "features.matrix_k",
+            }:
+                for field in (
+                    "registry_id",
+                    "file_vector_schema",
+                    "matrix_schema",
+                ):
+                    path = f"features.{field}"
+                    derived_changes[path] = config["features"][field]
+            derived_changes.update(
+                flatten_mapping(
+                    {
+                        "model": {
+                            "architecture_parameters": config["model"][
+                                "architecture_parameters"
+                            ],
+                            "ensemble_size": config["model"]["ensemble_size"],
+                        }
+                    }
+                )
+            )
         case_id = _case_id(changes, index)
         original_id = str(base_payload.get("config_id", "study_config"))
         config["config_id"] = f"{original_id}__{case_id}"
@@ -769,11 +866,22 @@ def expand_study(plan: StudyPlan, *, pipeline_root: str | Path) -> StudyExpansio
             and _strict_value_key(value) != _strict_value_key(base_flat.get(path))
         }
         allowed_changed_paths = set(changes) | set(derived_changes)
-        if not changed_paths <= allowed_changed_paths:
+        allowed_changed_prefixes = tuple(
+            f"{path}."
+            for path, value in derived_changes.items()
+            if isinstance(value, Mapping)
+        )
+        undeclared_changed_paths = {
+            path
+            for path in changed_paths
+            if path not in allowed_changed_paths
+            and not path.startswith(allowed_changed_prefixes)
+        }
+        if undeclared_changed_paths:
             raise ValueError(
                 f"case {case_id} changed undeclared fields: "
                 f"expected={sorted(allowed_changed_paths)}, "
-                f"observed={sorted(changed_paths)}"
+                f"observed={sorted(undeclared_changed_paths)}"
             )
         resolved_flat = flatten_mapping(config)
         mismatches = {
@@ -786,9 +894,9 @@ def expand_study(plan: StudyPlan, *, pipeline_root: str | Path) -> StudyExpansio
                 f"case {case_id} did not preserve requested axis values: {mismatches}"
             )
         derived_mismatches = {
-            path: {"derived": value, "resolved": resolved_flat.get(path)}
+            path: {"derived": value, "resolved": _get_dotted(config, path)}
             for path, value in derived_changes.items()
-            if _strict_value_key(resolved_flat.get(path))
+            if _strict_value_key(_get_dotted(config, path))
             != _strict_value_key(value)
         }
         if derived_mismatches:
@@ -833,12 +941,25 @@ def expand_study(plan: StudyPlan, *, pipeline_root: str | Path) -> StudyExpansio
     if len(references) > 1:
         raise ValueError(f"study has more than one reference case: {references}")
     reference_case_id = references[0] if references else None
-    derived_axis_paths = {
-        derived_path
-        for axis in plan.axes
-        for value in axis.values
-        for derived_path in _derived_axis_values(axis.path, value)
-    }
+    derived_axis_paths: set[str] = set()
+    for axis in plan.axes:
+        for value in axis.values:
+            for derived_path, derived_value in _derived_axis_values(
+                axis.path, value
+            ).items():
+                derived_axis_paths.add(derived_path)
+                if isinstance(derived_value, Mapping):
+                    derived_axis_paths.update(
+                        flatten_mapping(derived_value, derived_path)
+                    )
+        if axis.path in {"features.enabled_groups", "features.matrix_k"}:
+            derived_axis_paths.update(
+                {
+                    "features.registry_id",
+                    "features.file_vector_schema",
+                    "features.matrix_schema",
+                }
+            )
     if any(axis.path == "training.fixed_epochs" for axis in plan.axes):
         derived_axis_paths.update(
             row["parameter_path"]

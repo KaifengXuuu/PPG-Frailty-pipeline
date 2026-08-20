@@ -2,7 +2,7 @@
 
 状态：confirmed
 来源：用户 2026-08-01/2026-08-02 要求、`_agent/arc/PROJECT_HANDOFF.md`、现有 `_agent` 活动文档、相关代码与结果只读复核
-最后手动更新时间：2026-08-02
+最后手动更新时间：2026-08-19
 用途：记录项目必须完成项、具体实现顺序、依赖关系、验收条件和可选任务。
 
 ## 总体实施顺序
@@ -19,6 +19,54 @@
 10. 归档旧路线并维护可追溯文档。
 
 以下 `M0–M10` 均为必须完成项。所有 benchmark、正式比较和报告必须位于项目实现及 smoke test 之后；在代码尚未跑通时，不得提前用不完整结果锁定最终路线。
+
+---
+
+## 当前活动：Stage 3 ShapeFormer 分级稳定性门禁（2026-08-19）
+
+- 状态：confirmed
+- 来源：用户明确“确认录入”；Stage 1/2 report 与 OOF/metrics 复核；
+  `_agent/docs/decision-log.md` 同日决策。
+- [ ] P0：运行 Stage 3 默认 one-cell implementation test。
+  - 配置：`final_v0/final_pipeline_v2/configs/studies/static_line_b_staged_v2/03_shapeformer_stability_v2.yaml`。
+  - 验收：无 OOM、NaN、Inf 或 fallback；9 个 shapelets 且每类 3 个；discovery
+    仅使用 outer-train participants；概率有限、归一且非恒定；OOF、配置、模型和
+    provenance/hash 完整。
+  - 边界：单 fold 性能不得用于模型排名或晋级声明。
+- [ ] P0：one-cell 通过后运行 repeat 0 的五个 frozen folds。
+  - 验收：5/5 cells passed；29 participants、145 file OOF；零静默丢弃；
+    canonical Line B source replay 通过；无类别整体 F1=0，fold BA=0 时默认止损并审计。
+  - 对照：Raw 主对照为 CompactCNN Line B BA/Macro-F1 `0.4444/0.4328`；
+    跨 representation 参考为 Logistic `0.4583/0.4504`。
+- [ ] P0：依据 repeat-0 结果人工决定是否授权 ShapeFormer full 5×5。
+  - 探索止损带：Line B BA 约 `0.404`、Macro-F1 约 `0.393`；不得把约 `0.04`
+    容差解释为统计显著性。
+  - 只允许 canonical Line B 决定晋级；post-hoc Line A 仅记录 aggregation sensitivity。
+  - 若晋级，按每 repeat 先计算指标、再跨五 repeats 汇总；不得池化成 145 个独立样本。
+- [ ] P1：若 ShapeFormer 进入 full 5×5，为 CompactCNN 补同协议 full 5×5 matched
+  comparator；必要时为 Logistic 补总体 static benchmark。未补齐前不得声明 superiority。
+- [ ] P1：暂停自动进入 Stage 4 Inception ensemble；等待 Stage 3 repeat-0 裁决 Raw
+  路线。若 ShapeFormer 胜出，另行设计并登记 matched ensemble，禁止复用 Inception 配置。
+- [ ] P1：修复 study report 的 route-role coverage 显示。
+  - 现状：role OOF 实际为 `B=29, R=29`，报告按 `B/R1/R2/R3/R4` 对齐后把
+    R1–R4 显示为 0，未显示聚合角色 `R`。
+  - 验收：coverage 表按实际 persisted role schema 展示；不得改变现有 BA/F1、
+    participant/file OOF 或 canonical Line B 主排名。
+
+---
+
+## `final_pipeline_v2` 证据与维护收尾（2026-08-19）
+
+- 状态：confirmed
+- 来源：用户明确“确认录入”；2026-08-19 代码、报告、恢复产物和测试复核。
+- [ ] P0：待代码稳定后运行新鲜 formal 5×5，重新生成带当前完整源码 SHA-256、
+  execution/resume contract 和 operational measurement provenance 的 OOF；旧 placeholder
+  source hash 结果不得进入 final-refit。
+- [ ] P1：对齐仍写有旧 Line A 默认、11-channel motion reference、旧 ensemble seeds、
+  outer seed 42 或 V1 active-code 表述的 `_agent`、ADR、algorithm/model-card 和 migration
+  文档；对齐前不得以这些陈旧描述覆盖当前 README/STATUS/checked-in 配置。
+- [ ] P2：若继续优化 safe test 时间，优先评估 package `__init__` lazy import 和测试
+  fixture 复用；不得仅凭文件名相似或 import 成本归档 registry/public facade。
 
 ---
 

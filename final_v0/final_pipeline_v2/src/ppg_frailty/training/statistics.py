@@ -119,8 +119,12 @@ class ConfigMetrics:
     def __post_init__(self) -> None:
         if not str(self.config_id).strip():
             raise ValueError("config_id must be non-empty")
-        if self.registry_role not in {"reference", "ablation", "comparison"}:
-            raise ValueError("registry_role must preserve reference/ablation/comparison provenance")
+        if self.registry_role not in {
+            "reference", "ablation", "comparison", "optional",
+        }:
+            raise ValueError(
+                "registry_role must preserve reference/ablation/comparison/optional provenance"
+            )
         primary = np.asarray(
             (
                 self.participant_mean_balanced_accuracy,
@@ -196,7 +200,9 @@ class ManualFinalSelection:
     def __post_init__(self) -> None:
         if not all(str(value).strip() for value in (self.purpose, self.config_id, self.rationale)):
             raise ValueError("manual final selections require purpose, config_id and rationale")
-        if self.registry_role not in {"reference", "ablation", "comparison"}:
+        if self.registry_role not in {
+            "reference", "ablation", "comparison", "optional",
+        }:
             raise ValueError("manual selection must retain the original registry_role")
 
 

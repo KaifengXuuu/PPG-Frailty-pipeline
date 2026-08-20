@@ -4,7 +4,15 @@ English: Public facade for deterministic reducers and fail-closed V1 routing.
 """
 
 from .base import ArtifactReducer, validate_result
-from .bss import BssConfig, FastIcaBssReducer, NmfBssReducer, PcaBssReducer
+from .bss import (
+    BssConfig,
+    FastIcaBssConfig,
+    FastIcaBssReducer,
+    NmfBssConfig,
+    NmfBssReducer,
+    PcaBssConfig,
+    PcaBssReducer,
+)
 from .decomposition import SsaConfig, SsaReducer
 from .identity import IdentityReducer
 from .legacy import (
@@ -35,6 +43,9 @@ __all__ = [
     "SpectralMaskConfig",
     "SpectralMaskReducer",
     "BssConfig",
+    "PcaBssConfig",
+    "FastIcaBssConfig",
+    "NmfBssConfig",
     "PcaBssReducer",
     "FastIcaBssReducer",
     "NmfBssReducer",

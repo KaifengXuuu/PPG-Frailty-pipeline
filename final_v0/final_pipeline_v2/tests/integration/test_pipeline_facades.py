@@ -33,7 +33,10 @@ from ppg_frailty.module_registry import (
     resolve_window_config,
 )
 from ppg_frailty.pipeline import PipelinePaths, preflight_pipeline, validate_installation
-from ppg_frailty.signal.resample import resample_dl_view
+from ppg_frailty.signal.resample import (
+    prepare_configured_dl_input,
+    resample_dl_view,
+)
 from ppg_frailty.training.bundle import LoadedBundle, REQUIRED_METADATA
 from ppg_frailty.training.oof import OofPredictionRow
 
@@ -48,6 +51,9 @@ class CanonicalFacadeTests(unittest.TestCase):
         source = ROOT / "configs" / "reference_static_feature_vector_v2.yaml"
         payload = yaml.safe_load(source.read_text(encoding="utf-8"))
         payload["config_id"] = payload["config_id"] + "__grid_case_001"
+        payload["signal"]["peak_detector"].update(
+            {"min_observation_sec": 6.5, "min_peaks": 3}
+        )
         with tempfile.TemporaryDirectory() as directory:
             generated = Path(directory) / "resolved_case.yaml"
             generated.write_text(
@@ -61,6 +67,12 @@ class CanonicalFacadeTests(unittest.TestCase):
             )
             self.assertEqual(report.status, "passed")
             self.assertEqual(config.config_id, payload["config_id"])
+            self.assertEqual(report.peak_detector["min_observation_sec"], 6.5)
+            self.assertEqual(report.peak_detector["min_peaks"], 3)
+            self.assertEqual(
+                config.section("signal")["peak_detector"],
+                report.peak_detector,
+            )
 
             invalid = dict(payload)
             invalid["training"] = dict(payload["training"], fixed_epochs="bad")
@@ -71,7 +83,7 @@ class CanonicalFacadeTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(
                 ValueError,
-                "epoch_profile and fixed_epochs",
+                "fixed_epochs must be an integer",
             ):
                 preflight_pipeline(
                     bad.resolve(),
@@ -171,10 +183,23 @@ class CanonicalFacadeTests(unittest.TestCase):
         resolved = resolve_artifact_config(config["artifact"])
         self.assertEqual(resolved["declared_reducer"], "spectral_mask")
         self.assertEqual(resolved["runtime_reducer"], "spectral_mask")
+        self.assertEqual(resolved["declared_version"], resolved["runtime_version"])
         invalid = dict(config["artifact"])
         invalid["parameters"] = dict(invalid["parameters"], invented_parameter=1)
         with self.assertRaisesRegex(ValueError, "unknown reducer parameters"):
             resolve_artifact_config(invalid)
+        wrong_version = dict(config["artifact"], reducer_version="invented_v99")
+        with self.assertRaisesRegex(ValueError, "not bound to.*runtime version"):
+            resolve_artifact_config(wrong_version)
+
+        identity = load_config(
+            ROOT / "configs" / "reference_static_role_aware_v2.yaml"
+        ).to_dict()["artifact"]
+        identity_resolved = resolve_artifact_config(identity)
+        self.assertTrue(
+            identity_resolved["declared_version_is_compatibility_alias"]
+        )
+        self.assertEqual(identity_resolved["runtime_version"], "identity_exact_v1")
 
     def test_artifact_comparison_ids_are_canonical_or_explicit_legacy(self) -> None:
         """comparison 不静默翻译短名 / Comparison never silently translates IDs."""
@@ -209,6 +234,26 @@ class CanonicalFacadeTests(unittest.TestCase):
         self.assertEqual(result.values.shape, (2, 100))
         self.assertEqual((result.up, result.down), (1, 4))
         np.testing.assert_array_equal(source, snapshot)
+
+    def test_configured_dl_resampling_preserves_explicit_padding_mask(self) -> None:
+        values = np.zeros((2, 2, 400), dtype=np.float32)
+        values[0, :, :400] = 1.0
+        values[1, :, :200] = 2.0
+        mask = np.zeros((2, 400), dtype=bool)
+        mask[0, :400] = True
+        mask[1, :200] = True
+
+        output, output_mask, profile = prepare_configured_dl_input(
+            values,
+            mask,
+            target_fs_hz=128.0,
+            source_fs_hz=400.0,
+        )
+
+        self.assertEqual(output.shape, (2, 2, 128))
+        self.assertEqual(output_mask.sum(axis=1).tolist(), [128, 64])
+        self.assertTrue(np.all(output[1, :, 64:] == 0.0))
+        self.assertEqual(profile["target_fs_hz"], 128.0)
 
 
 class AuthorityContractTests(unittest.TestCase):

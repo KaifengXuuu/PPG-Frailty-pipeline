@@ -2,8 +2,9 @@
 
 ``off`` is the default and computes no SQI. ``diagnostics_only`` computes and
 returns component evidence but is structurally forbidden from changing retention,
-aggregation, artifact reduction, or prediction. ``route`` remains fail-closed
-until a supervised routing artifact and policy are designed and approved.
+aggregation, artifact reduction, or prediction. ``route`` computes the configured
+endpoint quality and hands the result to the explicit route state machine.  It is
+an ordinary optional runtime module, not a readiness-gated special case.
 """
 
 from __future__ import annotations
@@ -29,10 +30,6 @@ class QualityMode(str, Enum):
     OFF = "off"
     DIAGNOSTICS_ONLY = "diagnostics_only"
     ROUTE = "route"
-
-
-class QualityRoutingDisabledError(RuntimeError):
-    """Raised when the deliberately unavailable supervised SQI router is requested."""
 
 
 @dataclass(frozen=True)
@@ -82,6 +79,16 @@ class QualityModeOutcome:
             not self.computed or self.result is None
         ):
             raise ValueError("diagnostics_only must retain its computed SQI result")
+        if self.mode is QualityMode.ROUTE:
+            if not self.computed or self.result is None:
+                raise ValueError("route mode must retain its computed SQI result")
+            if (
+                self.classification_action != "apply_explicit_route_policy"
+                or not self.affects_retention
+                or not self.affects_aggregation
+                or not self.affects_prediction
+            ):
+                raise ValueError("route mode must declare its classification effects")
 
 
 def resolve_quality_mode(value: QualityMode | str | None) -> QualityMode:
@@ -113,14 +120,15 @@ def run_quality_mode(
     evaluator: Callable[..., QualityResult | SqiDiagnostics | Any] = evaluate_quality_diagnostics,
     **evaluation_kwargs: Any,
 ) -> QualityModeOutcome:
-    """Run only the confirmed semantics; the supervised router is not implemented."""
+    """Execute one quality mode without using metadata as an authorization gate.
+
+    ``route`` evaluates the endpoint score and marks the result for the explicit
+    route state machine.  Artifact reduction remains a separate step because it
+    requires reducer configuration and segment integrity inputs that are not part
+    of this small facade.
+    """
 
     resolved = resolve_quality_mode(mode)
-    if resolved is QualityMode.ROUTE:
-        raise QualityRoutingDisabledError(
-            "quality.mode=route is disabled until a supervised routing artifact, "
-            "frozen component weights, and thresholds are approved"
-        )
     if resolved is QualityMode.OFF:
         outcome = QualityModeOutcome(
             mode=resolved,
@@ -132,7 +140,7 @@ def run_quality_mode(
             affects_prediction=False,
             reasons=("sqi_disabled_v2_default",),
         )
-    else:
+    elif resolved is QualityMode.DIAGNOSTICS_ONLY:
         result = evaluator(values, **evaluation_kwargs)
         outcome = QualityModeOutcome(
             mode=resolved,
@@ -143,6 +151,22 @@ def run_quality_mode(
             affects_aggregation=False,
             affects_prediction=False,
             reasons=("diagnostics_saved_separately_not_a_predictor_or_gate",),
+        )
+    else:
+        result = evaluator(values, **evaluation_kwargs)
+        if not isinstance(result, QualityResult):
+            raise TypeError(
+                "quality route evaluator must return an endpoint QualityResult"
+            )
+        outcome = QualityModeOutcome(
+            mode=resolved,
+            computed=True,
+            result=result,
+            classification_action="apply_explicit_route_policy",
+            affects_retention=True,
+            affects_aggregation=True,
+            affects_prediction=True,
+            reasons=("endpoint_quality_ready_for_explicit_route_state_machine",),
         )
     outcome.validate()
     return outcome
@@ -157,8 +181,9 @@ def route_segment_pre_reduction(
 ) -> RouteResult:
     """Resolve A1 through the explicit reducer-candidate transition.
 
-    This function consumes already-fitted endpoint states only. It does not fit or
-    activate a threshold, so operational supervised quality routing stays disabled.
+    This function consumes already-fitted endpoint states only. It never fits a
+    calibrator or reads labels, and therefore preserves the caller's train/OOF
+    isolation boundary.
     """
 
     integrity.validate()
@@ -308,7 +333,6 @@ def assert_quality_route(result: QualityResult, route: SignalRoute | str) -> Non
 __all__ = [
     "QualityMode",
     "QualityModeOutcome",
-    "QualityRoutingDisabledError",
     "SegmentIntegrity",
     "assert_quality_route",
     "finalize_rate_recovery",

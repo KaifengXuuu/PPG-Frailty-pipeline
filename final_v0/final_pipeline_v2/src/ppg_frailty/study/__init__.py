@@ -28,6 +28,7 @@ from .schema import (
     CatalogSpec,
     ExecutionSpec,
     FormalProfileSpec,
+    LegacyBridgeSpec,
     OutputSpec,
     ReportSpec,
     SparseSearchSpec,
@@ -37,6 +38,7 @@ from .schema import (
     catalog_cases_from_mapping,
     catalog_spec_from_mapping,
     formal_profile_spec_from_mapping,
+    legacy_bridge_spec_from_mapping,
     sparse_search_spec_from_mapping,
 )
 
@@ -47,6 +49,7 @@ __all__ = [
     "CompositeProgressSink",
     "ExecutionSpec",
     "FormalProfileSpec",
+    "LegacyBridgeSpec",
     "JsonlProgressSink",
     "NullProgressSink",
     "OutputSpec",
@@ -67,6 +70,7 @@ __all__ = [
     "expand_study",
     "flatten_mapping",
     "formal_profile_spec_from_mapping",
+    "legacy_bridge_spec_from_mapping",
     "load_study_plan",
     "parse_study_plan",
     "sparse_search_spec_from_mapping",

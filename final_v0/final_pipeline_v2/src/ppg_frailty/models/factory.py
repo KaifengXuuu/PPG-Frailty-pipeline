@@ -10,6 +10,7 @@ import copy
 from dataclasses import dataclass
 import hashlib
 import json
+import math
 from typing import Any
 
 import numpy as np
@@ -54,6 +55,345 @@ FROZEN_MODEL_RUN_PROVENANCE_FIELDS = (
 )
 
 
+SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS: dict[str, int | float] = {
+    "input_fs_hz": 400.0,
+    "num_pip_ratio": 0.20,
+    "shapelets_per_class": 3,
+    "max_discovery_windows": 180,
+    "position_search_neighbourhood_samples": 128,
+    "sequence_length_samples": 2000,
+    "local_kernel_width_samples": 8,
+    "local_embedding_channels": 48,
+    "shape_embedding_channels": 128,
+    "attention_feedforward_channels": 256,
+    "attention_heads": 4,
+    "attention_query_chunk_size": 128,
+    "distance_position_chunk_size": 256,
+    "dropout": 0.30,
+    "complexity_norm": 1000.0,
+    "max_complexity_ratio": 3.0,
+}
+
+SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS: dict[str, int | float] = {
+    "input_fs_hz": 400.0,
+    "shapelets_per_class": 3,
+    "max_candidates_per_class": 128,
+    "hidden_channels": 64,
+    "dropout": 0.20,
+    "patch_size_samples": 16,
+    "attention_heads": 4,
+    "attention_layers": 1,
+    "attention_feedforward_channels": 128,
+    "distance_position_chunk_size": 256,
+}
+
+SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS: dict[str, int | float] = {
+    "input_fs_hz": 400.0,
+    "sequence_length_samples": 2000,
+    "shapelet_length_samples": 128,
+    "discovery_stride_samples": 64,
+    "shapelets_per_class": 3,
+    "max_discovery_windows": 180,
+    "candidates_per_class_channel": 8,
+    # The historical functional local convolution used width 8.  Its exposed
+    # len_w=64 bookkeeping was not consumed by forward and is not revived as a
+    # fake option; the effective 64-sample control is the shapelet search span.
+    "local_kernel_width_samples": 8,
+    "local_embedding_channels": 48,
+    "shape_embedding_channels": 128,
+    "attention_feedforward_channels": 256,
+    "attention_heads": 4,
+    "dropout": 0.30,
+    "shapelet_search_window_samples": 64,
+    "complexity_norm": 1000.0,
+    "max_complexity_ratio": 3.0,
+}
+
+SHAPEFORMER_CHANNEL_SPECIFIC_RULE_DEFAULTS: dict[str, str] = {
+    "discovery_method": "channel_specific_osd",
+    "discovery_balance": "participant_file_balanced",
+    "pip_rounding_rule": "floor_ratio_minimum_5_capped_at_actual_T",
+    "pip_selection_rule": (
+        "upstream_zscored_time_index_perpendicular_distance_first_max"
+    ),
+    "candidate_generation_rule": (
+        "insertion_stage_three_consecutive_pips_half_open"
+    ),
+    "candidate_enumeration_rule": (
+        "upstream_class_channel_source_sample_insertion_order"
+    ),
+    "candidate_ranking_rule": "upstream_numpy_default_argsort_then_reverse",
+    "selected_bank_order_rule": "upstream_per_class_start_sample_default_argsort",
+    "discovery_position_search_boundary_rule": (
+        "upstream_pcs_start_minus_w_plus_1_end_plus_w_half_open"
+    ),
+    "information_gain_split_rule": "upstream_positive_recall_grid_0p2",
+}
+
+
+_SEED_POLICY_ALIASES = {
+    "outer_repeat": "outer_repeat",
+    "outer_cv_repeat_seed_equals_split_seed": "outer_repeat",
+    "fixed_explicit": "fixed_explicit",
+    "fixed": "fixed_explicit",
+    "cv_fixed_member0_seed_50042_comparator": "fixed_explicit",
+    "final_refit_single_seed_42": "fixed_explicit",
+    "member_roster": "member_roster",
+    "cv_fixed_five_member_seed_roster": "member_roster",
+    "final_refit_five_member_seeds": "member_roster",
+}
+
+
+def _normalise_seed(value: Any, *, field: str) -> int:
+    """Return one exact integer seed without silently truncating floats."""
+
+    if isinstance(value, (bool, np.bool_)):
+        raise ValueError(f"{field} must contain integer seeds, not booleans")
+    try:
+        seed = int(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{field} must contain integer seeds") from exc
+    if isinstance(value, (float, np.floating)) and (
+        not np.isfinite(value) or float(value) != float(seed)
+    ):
+        raise ValueError(f"{field} must contain finite integer seeds")
+    if seed < 0 or seed > 0xFFFF_FFFF:
+        raise ValueError(f"{field} must contain executable uint32 seeds")
+    return seed
+
+
+def _normalise_seed_roster(values: Any, *, field: str) -> tuple[int, ...]:
+    if not isinstance(values, (list, tuple)):
+        raise ValueError(f"{field} must be an ordered list or tuple of integer seeds")
+    seeds = tuple(_normalise_seed(value, field=field) for value in values)
+    if not seeds or len(seeds) != len(set(seeds)):
+        raise ValueError(f"{field} must be non-empty and unique")
+    return seeds
+
+
+def _normalise_positive_integer(value: Any, *, field: str) -> int:
+    if isinstance(value, (bool, np.bool_)):
+        raise ValueError(f"{field} must be a positive integer")
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{field} must be a positive integer") from exc
+    if isinstance(value, (float, np.floating)) and (
+        not np.isfinite(value) or float(value) != float(normalized)
+    ):
+        raise ValueError(f"{field} must be a finite positive integer")
+    if normalized <= 0:
+        raise ValueError(f"{field} must be a positive integer")
+    return normalized
+
+
+def _normalise_positive_integer_sequence(
+    values: Any,
+    *,
+    field: str,
+    length: int | None = None,
+    odd: bool = False,
+) -> tuple[int, ...]:
+    if isinstance(values, (str, bytes)):
+        raise ValueError(f"{field} must be a non-string integer sequence")
+    try:
+        normalized = tuple(
+            _normalise_positive_integer(value, field=field) for value in values
+        )
+    except TypeError as exc:
+        raise ValueError(f"{field} must be an integer sequence") from exc
+    if not normalized or length is not None and len(normalized) != length:
+        expected = "non-empty" if length is None else f"length {length}"
+        raise ValueError(f"{field} must be a {expected} integer sequence")
+    if odd and any(value % 2 == 0 for value in normalized):
+        raise ValueError(f"{field} must contain positive odd integers")
+    return normalized
+
+
+def _normalise_dropout(value: Any, *, field: str = "dropout") -> float:
+    try:
+        probability = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{field} must be a finite probability in [0, 1)") from exc
+    if not math.isfinite(probability) or not 0.0 <= probability < 1.0:
+        raise ValueError(f"{field} must be a finite probability in [0, 1)")
+    return probability
+
+
+def _normalise_dropout_sequence(
+    values: Any, *, field: str, length: int
+) -> tuple[float, ...]:
+    if isinstance(values, (str, bytes)):
+        raise ValueError(f"{field} must be a non-string probability sequence")
+    try:
+        normalized = tuple(
+            _normalise_dropout(value, field=field) for value in values
+        )
+    except TypeError as exc:
+        raise ValueError(f"{field} must be a probability sequence") from exc
+    if len(normalized) != length:
+        raise ValueError(f"{field} must contain exactly {length} probabilities")
+    return normalized
+
+
+def _normalise_finite_positive(value: Any, *, field: str) -> float:
+    if isinstance(value, (bool, np.bool_)):
+        raise ValueError(f"{field} must be finite and positive")
+    try:
+        normalized = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{field} must be finite and positive") from exc
+    if not math.isfinite(normalized) or normalized <= 0.0:
+        raise ValueError(f"{field} must be finite and positive")
+    return normalized
+
+
+def _normalise_positive_fraction(value: Any, *, field: str) -> float:
+    normalized = _normalise_finite_positive(value, field=field)
+    if normalized > 1.0:
+        raise ValueError(f"{field} must be finite in (0,1]")
+    return normalized
+
+
+def _normalise_nonzero_integer(value: Any, *, field: str) -> int:
+    if isinstance(value, (bool, np.bool_)) or not isinstance(
+        value, (int, np.integer)
+    ):
+        raise ValueError(f"{field} must be a non-zero integer")
+    normalized = int(value)
+    if normalized == 0:
+        raise ValueError(f"{field} must be a non-zero integer")
+    return normalized
+
+
+_LOGISTIC_SOLVERS = {
+    "lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga",
+}
+
+
+def _normalise_logistic_solver(value: Any) -> str:
+    solver = str(value)
+    if solver not in _LOGISTIC_SOLVERS:
+        raise ValueError(f"logistic_solver must be one of {sorted(_LOGISTIC_SOLVERS)}")
+    return solver
+
+
+def _normalise_extra_trees_max_features(value: Any) -> str | int | float | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        if value not in {"sqrt", "log2"}:
+            raise ValueError("extra_trees_max_features string must be 'sqrt' or 'log2'")
+        return value
+    if isinstance(value, (bool, np.bool_)):
+        raise ValueError("extra_trees_max_features cannot be boolean")
+    if isinstance(value, (int, np.integer)):
+        if int(value) <= 0:
+            raise ValueError("integer extra_trees_max_features must be positive")
+        return int(value)
+    if isinstance(value, (float, np.floating)):
+        normalized = float(value)
+        if not math.isfinite(normalized) or not 0.0 < normalized <= 1.0:
+            raise ValueError("float extra_trees_max_features must be in (0,1]")
+        return normalized
+    raise ValueError("unsupported extra_trees_max_features value")
+
+
+def _normalise_extra_trees_min_samples_leaf(value: Any) -> int | float:
+    if isinstance(value, (bool, np.bool_)):
+        raise ValueError("extra_trees_min_samples_leaf cannot be boolean")
+    if isinstance(value, (int, np.integer)):
+        if int(value) <= 0:
+            raise ValueError("integer extra_trees_min_samples_leaf must be positive")
+        return int(value)
+    if isinstance(value, (float, np.floating)):
+        normalized = float(value)
+        if not math.isfinite(normalized) or not 0.0 < normalized <= 0.5:
+            raise ValueError("float extra_trees_min_samples_leaf must be in (0,0.5]")
+        return normalized
+    raise ValueError("unsupported extra_trees_min_samples_leaf value")
+
+
+def _normalise_training_owned_class_weight(value: Any) -> None:
+    if value is not None:
+        raise ValueError(
+            "model.class_weight is not an independent weighting capability; "
+            "configure the single training.class_weighting strategy"
+        )
+    return None
+
+
+def resolve_seed_policy(
+    seed_policy: str | None = None,
+    *,
+    seed: Any | None = None,
+    outer_repeat_seed: Any | None = None,
+    member_seeds: Any | None = None,
+) -> tuple[int, ...]:
+    """Resolve an optional seed strategy into the seeds actually executed.
+
+    The three generic strategies are ``outer_repeat``, ``fixed_explicit`` and
+    ``member_roster``. Historical policy names remain accepted as aliases, but
+    names that encode a literal seed/member count retain that exact meaning.
+    """
+
+    if seed_policy is None or not str(seed_policy).strip():
+        policy = (
+            "member_roster"
+            if member_seeds is not None
+            else "outer_repeat"
+            if outer_repeat_seed is not None
+            else "fixed_explicit"
+        )
+        declared_policy = policy
+    else:
+        declared_policy = str(seed_policy).strip()
+        try:
+            policy = _SEED_POLICY_ALIASES[declared_policy]
+        except KeyError as exc:
+            raise ValueError(
+                f"unsupported seed_policy {declared_policy!r}; expected one of "
+                f"{sorted(_SEED_POLICY_ALIASES)}"
+            ) from exc
+
+    if policy == "member_roster":
+        if seed is not None or outer_repeat_seed is not None:
+            raise ValueError("member_roster cannot also declare a single/outer-repeat seed")
+        seeds = _normalise_seed_roster(member_seeds, field="member_seeds")
+        if declared_policy == "cv_fixed_five_member_seed_roster" and len(seeds) != 5:
+            raise ValueError(
+                "cv_fixed_five_member_seed_roster declares exactly five member seeds"
+            )
+        return seeds
+
+    if member_seeds is not None:
+        raise ValueError(f"{policy} cannot also declare member_seeds")
+    if policy == "outer_repeat":
+        if outer_repeat_seed is None:
+            if seed is None:
+                raise ValueError("outer_repeat requires outer_repeat_seed")
+            outer_repeat_seed = seed
+        resolved = _normalise_seed(outer_repeat_seed, field="outer_repeat_seed")
+        if seed is not None and _normalise_seed(seed, field="seed") != resolved:
+            raise ValueError("seed differs from the declared outer_repeat_seed")
+        return (resolved,)
+
+    if seed is None:
+        raise ValueError("fixed_explicit requires seed")
+    if outer_repeat_seed is not None:
+        raise ValueError("fixed_explicit cannot also declare outer_repeat_seed")
+    resolved = _normalise_seed(seed, field="seed")
+    legacy_fixed = {
+        "cv_fixed_member0_seed_50042_comparator": 50042,
+        "final_refit_single_seed_42": 42,
+    }
+    if declared_policy in legacy_fixed and resolved != legacy_fixed[declared_policy]:
+        raise ValueError(
+            f"{declared_policy} declares seed {legacy_fixed[declared_policy]}, got {resolved}"
+        )
+    return (resolved,)
+
+
 def validate_frozen_model_run_provenance(value: Mapping[str, Any]) -> dict[str, Any]:
     """Fail closed unless every V2-031 model/training identity is explicit."""
 
@@ -68,22 +408,27 @@ def validate_frozen_model_run_provenance(value: Mapping[str, Any]) -> dict[str, 
         if isinstance(item, (tuple, list, dict)) and not item:
             raise ValueError(f"frozen model/run provenance field {name!r} must not be empty")
     channels = tuple(str(item) for item in payload["input_channels_order"])
-    seeds = tuple(int(item) for item in payload["random_seeds"])
+    seeds = _normalise_seed_roster(payload["random_seeds"], field="random_seeds")
     if not channels or len(channels) != len(set(channels)):
         raise ValueError("input_channels_order must be non-empty and unique")
-    if not seeds or len(seeds) != len(set(seeds)):
-        raise ValueError("random_seeds must be non-empty and unique")
-    allowed_seed_policies = {
-        "outer_cv_repeat_seed_equals_split_seed",
-        "cv_fixed_member0_seed_50042_comparator",
-        "cv_fixed_five_member_seed_roster",
-        "final_refit_single_seed_42",
-        "final_refit_five_member_seeds",
-    }
-    if payload["seed_policy"] not in allowed_seed_policies:
-        raise ValueError(
-            f"seed_policy must be one of {sorted(allowed_seed_policies)}"
+    policy = str(payload["seed_policy"])
+    strategy = _SEED_POLICY_ALIASES.get(policy)
+    if strategy == "member_roster":
+        resolved_seeds = resolve_seed_policy(policy, member_seeds=seeds)
+    else:
+        if len(seeds) != 1:
+            raise ValueError(f"seed_policy {policy!r} executes exactly one seed")
+        resolved_seeds = resolve_seed_policy(
+            policy,
+            seed=seeds[0],
+            outer_repeat_seed=(
+                payload.get("outer_repeat_seed", seeds[0])
+                if strategy == "outer_repeat"
+                else None
+            ),
         )
+    if resolved_seeds != seeds:
+        raise ValueError("seed_policy declaration differs from random_seeds execution roster")
     payload["input_channels_order"] = channels
     payload["random_seeds"] = seeds
     return payload
@@ -110,8 +455,10 @@ CANONICAL_MODEL_REGISTRY: dict[str, str] = {
         "shapeformer_channel_specific_scalar_distance_ablation"
     ),
     "ShapeFormerEffectSizeFixedV1": "shapeformer_effect_size_fixed_v1",
+    "ShapeFormerLegacyEffectSizePort": "shapeformer_legacy_effect_size_port",
     "FileBagFusionCompact": "fusion_compact",
     "FileBagFusionInception": "fusion_inception",
+    "FileBagFusion": "file_bag_fusion",
 }
 _MACHINE_TO_CANONICAL = {machine: canonical for canonical, machine in CANONICAL_MODEL_REGISTRY.items()}
 
@@ -172,23 +519,43 @@ CHANNEL_SPECIFIC_SCALAR_DISTANCE_ABLATION = ModelCandidate(
     "shapeformer_downstream",
     "named_optional_ablation_not_literature_shapeformer_not_default",
 )
-_CANDIDATE_BY_MACHINE_ID = {item.machine_id: item for item in NONENSEMBLE_MODEL_CANDIDATES}
-if len(NONENSEMBLE_MODEL_CANDIDATES) != 13 or len(_CANDIDATE_BY_MACHINE_ID) != 13:
-    raise RuntimeError("V2 requires exactly 13 unique non-ensemble candidate contracts")
-if sum(item.registry_role == "reference" for item in NONENSEMBLE_MODEL_CANDIDATES) != 11:
-    raise RuntimeError("V2 non-ensemble registry must contain 11 reference candidates")
+_FORMAL_CATALOG_CANDIDATE_BY_MACHINE_ID = {
+    item.machine_id: item for item in NONENSEMBLE_MODEL_CANDIDATES
+}
 
 
 def model_candidate(model_id_or_name: str) -> ModelCandidate:
-    """Return one non-ensemble candidate record; the ensemble stays separate."""
+    """Return any registered non-ensemble model, not only the 13-case preset.
 
-    _, machine_id = normalize_model_id(model_id_or_name)
-    try:
-        return _CANDIDATE_BY_MACHINE_ID[machine_id]
-    except KeyError as exc:
+    ``NONENSEMBLE_MODEL_CANDIDATES`` remains the historical formal-catalog
+    preset for compatibility. Runtime discovery comes from the complete module
+    registry so optional and later parallel models do not require a second
+    allow-list here.
+    """
+
+    from ..module_registry import model_factory_contract
+
+    contract = model_factory_contract(model_id_or_name)
+    if "member_seeds" in set(contract["factory_fields"]):
         raise ValueError(
-            "ensemble/additional ablation entries are outside the 13 non-ensemble candidate set"
-        ) from exc
+            "model_candidate describes non-ensemble registered models; use the "
+            "explicit ensemble comparison descriptors for ensemble identities"
+        )
+    modes = tuple(str(value) for value in contract["representation_modes"])
+    if len(modes) != 1:
+        raise ValueError("registered model candidate must have one representation mode")
+    machine_id = str(contract["machine_model_id"])
+    preset = _FORMAL_CATALOG_CANDIDATE_BY_MACHINE_ID.get(machine_id)
+    if preset is not None:
+        return preset
+    return ModelCandidate(
+        canonical_name=str(contract["canonical_model_name"]),
+        machine_id=machine_id,
+        representation_mode=modes[0],
+        registry_role=str(contract["registry_role"]),
+        comparison_family=str(contract["scientific_status"]),
+        execution_status="registered_runnable_contract_not_benchmarked",
+    )
 
 
 def normalize_model_id(value: str) -> tuple[str, str]:
@@ -236,6 +603,50 @@ def normalize_model_config(model_config: Mapping[str, Any]) -> dict[str, Any]:
     config.pop("model_name", None)
     config["model_id"] = machine
     config["canonical_model_name"] = canonical
+    return config
+
+
+FUSION_SIGNAL_ENCODER_IDS = frozenset(
+    {
+        "compact_cnn",
+        "inception_full",
+        "inception_small",
+        "shapeformer_channel_specific_osd",
+        "shapeformer_channel_specific_scalar_distance_ablation",
+        "shapeformer_effect_size_fixed_v1",
+        "shapeformer_legacy_effect_size_port",
+    }
+)
+FUSION_SHAPEFORMER_ENCODER_IDS = frozenset(
+    {
+        "shapeformer_channel_specific_osd",
+        "shapeformer_channel_specific_scalar_distance_ablation",
+        "shapeformer_effect_size_fixed_v1",
+        "shapeformer_legacy_effect_size_port",
+    }
+)
+
+
+def normalize_fusion_signal_encoder_config(value: Any) -> dict[str, Any]:
+    """Normalize one raw signal encoder used by the generic file-bag composer.
+
+    The nested mapping is a real factory input surface, not a label.  Only raw
+    torch models that expose ``forward_features`` are composable.  Seed and
+    fold-local discovery state are owned by the outer factory and are injected
+    after the frozen outer-train dataset has been verified.
+    """
+
+    if value is None:
+        value = {"model_id": "compact_cnn"}
+    if not isinstance(value, Mapping):
+        raise ValueError("signal_encoder must be a model configuration mapping")
+    config = normalize_model_config(value)
+    model_id = str(config["model_id"])
+    if model_id not in FUSION_SIGNAL_ENCODER_IDS:
+        raise ValueError(
+            "file-bag signal_encoder must be one of the registered raw "
+            f"feature encoders: {sorted(FUSION_SIGNAL_ENCODER_IDS)}"
+        )
     return config
 
 
@@ -349,11 +760,57 @@ def _inception_architecture(model: Any) -> dict[str, Any]:
         "depth": int(model.depth),
         "kernel_sizes": tuple(int(value) for value in model.kernel_sizes),
         "dilation": int(model.dilation),
+        "pool_size": int(model.pool_size),
         "branch_count": int(model.branch_count),
         "residual_interval": int(model.residual_interval),
         "global_pooling": "mask_aware_global_average",
         "classifier_dropout": float(model.classifier_dropout),
     }
+
+
+def _fusion_raw_input_spec(spec: ModelInputSpec) -> ModelInputSpec:
+    """Return the exact raw-tensor view consumed by a fusion signal encoder."""
+
+    return ModelInputSpec(
+        RepresentationMode.RAW,
+        n_channels=int(spec.n_channels),
+        n_classes=int(spec.n_classes),
+        channel_schema=tuple(spec.channel_schema),
+    )
+
+
+def _signal_feature_dim_from_architecture(
+    architecture: Mapping[str, Any],
+) -> int:
+    """Derive the encoder output width from its complete raw architecture."""
+
+    model_id = str(architecture.get("model_id", ""))
+    if model_id == "compact_cnn":
+        width = tuple(int(value) for value in architecture["stage_channels"])[-1]
+    elif model_id in {"inception_full", "inception_small"}:
+        width = int(architecture["out_channels"]) * int(
+            architecture["branch_count"]
+        )
+    elif model_id == "shapeformer_channel_specific_osd":
+        width = int(architecture["local_embedding_channels"]) + int(
+            architecture["shape_embedding_channels"]
+        )
+    elif model_id in {
+        "shapeformer_channel_specific_scalar_distance_ablation",
+        "shapeformer_effect_size_fixed_v1",
+    }:
+        width = int(architecture["hidden_channels"]) + int(
+            architecture["shapelet_count"]
+        )
+    elif model_id == "shapeformer_legacy_effect_size_port":
+        width = int(architecture["local_embedding_channels"]) + int(
+            architecture["shape_embedding_channels"]
+        )
+    else:  # pragma: no cover - guarded by normalize_fusion_signal_encoder_config
+        raise ValueError(f"unsupported fusion signal encoder architecture: {model_id}")
+    if width <= 0:
+        raise ValueError("fusion signal encoder must expose a positive feature width")
+    return width
 
 
 def resolved_architecture_parameters(
@@ -427,7 +884,7 @@ def resolved_architecture_parameters(
                     "n_estimators": int(model.extra_trees_n_estimators),
                     "n_jobs": int(model.extra_trees_n_jobs),
                     "max_features": model.extra_trees_max_features,
-                    "min_samples_leaf": int(model.extra_trees_min_samples_leaf),
+                    "min_samples_leaf": model.extra_trees_min_samples_leaf,
                 }
             )
     elif model_id in {"rocket_numpy", "minirocket_ablation"}:
@@ -444,6 +901,57 @@ def resolved_architecture_parameters(
                 "features_per_kernel": 2,
                 "classifier": "sklearn.linear_model.RidgeClassifier",
                 "ridge_alpha": float(model.alpha),
+            }
+        )
+    elif model_id == "shapeformer_legacy_effect_size_port":
+        base.update(
+            {
+                "scientific_status": (
+                    "legacy_parallel_ablation_not_osd_parity"
+                ),
+                "discovery_method": str(model.discovery_method),
+                "discovery_balance": str(model.discovery_balance),
+                "shapelet_count": int(model.shapelet_count),
+                "shapelet_count_per_class": int(model.shapelets_per_class),
+                "shapelet_channel_policy": "single_source_channel",
+                "shapelet_length_policy": "fixed_samples",
+                "shapelet_length_samples": int(model.shapelet_length_samples),
+                "candidate_stride_samples": int(
+                    model.discovery_stride_samples
+                ),
+                "candidates_per_class_channel": int(
+                    model.candidates_per_class_channel
+                ),
+                "max_discovery_windows": int(model.max_discovery_windows),
+                "sequence_length_samples": int(model.sequence_length_samples),
+                "input_fs_hz": float(model.input_fs_hz),
+                "local_kernel_width_samples": int(
+                    model.local_kernel_width_samples
+                ),
+                "local_embedding_channels": int(
+                    model.local_embedding_channels
+                ),
+                "shape_embedding_channels": int(
+                    model.shape_embedding_channels
+                ),
+                "attention_feedforward_channels": int(
+                    model.attention_feedforward_channels
+                ),
+                "attention_heads": int(model.attention_heads),
+                "dropout": float(model.dropout_probability),
+                "shapelet_search_window_samples": int(
+                    model.shapelet_search_window_samples
+                ),
+                "complexity_norm": float(model.complexity_norm),
+                "max_complexity_ratio": float(model.max_complexity_ratio),
+                "shapelet_token_formula": (
+                    "selected_projection(raw_best_segment)-"
+                    "shapelet_projection(shapelet)"
+                ),
+                "shapelet_weighting": "learnable_initialised_from_effect_score",
+                "local_branch": "legacy_two_conv_attention_feedforward",
+                "shape_branch": "legacy_source_position_attention_first_token",
+                "complete_window_required": True,
             }
         )
     elif model_id in {
@@ -611,6 +1119,21 @@ def resolved_architecture_parameters(
                 }
             )
         base.update(common)
+    elif model_id == "file_bag_fusion":
+        signal_spec = _fusion_raw_input_spec(spec)
+        signal_parameters = resolved_architecture_parameters(
+            model.signal_encoder, signal_spec
+        )
+        base.update(
+            {
+                "signal_feature_dim": int(model.signal_feature_dim),
+                "feature_hidden_dim": int(model.feature_hidden_dim),
+                "fusion_hidden_dim": int(model.fusion_hidden_dim),
+                "pooling": str(model.pooling),
+                "fusion_dropout": float(model.fusion_dropout),
+                "signal_encoder": signal_parameters,
+            }
+        )
     elif model_id in {"fusion_compact", "fusion_inception"}:
         base.update(
             {
@@ -650,11 +1173,11 @@ def materialize_architecture_parameters(
     model_config: Mapping[str, Any],
     input_spec: ModelInputSpec | Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Materialise the complete declaration that a formal config must persist.
+    """Materialise complete derived provenance from top-level factory inputs.
 
-    This helper is intentionally not called implicitly by :func:`create_model`.
-    Formal YAML/run locks must store its complete result so review can see every
-    constructor constant before execution.
+    ``architecture_parameters`` is not a second user-input surface. Callers may
+    preserve an older source annotation for compatibility, but execution and
+    run locks always regenerate this mapping from the top-level model options.
     """
 
     spec = ModelInputSpec.from_value(input_spec)
@@ -663,6 +1186,10 @@ def materialize_architecture_parameters(
     config.pop("canonical_model_name")
     config.pop("architecture_parameters", None)
     config.pop("seed", None)
+    config.pop("seed_policy", None)
+    config.pop("outer_repeat_seed", None)
+    config.pop("member_seed_roster_id", None)
+    config.pop("comparison_only", None)
     base: dict[str, Any] = {
         "model_id": model_id,
         "representation_mode": spec.mode.value,
@@ -672,13 +1199,36 @@ def materialize_architecture_parameters(
     if model_id == "compact_cnn":
         base.update(
             {
-                "stage_channels": (32, 64, 128),
-                "kernel_sizes": tuple(config["kernel_sizes"]),
-                "dilations": tuple(config["dilations"]),
-                "pool_sizes": tuple(config["pool_sizes"]),
-                "stage_dropouts": (0.10, 0.15),
+                "stage_channels": _normalise_positive_integer_sequence(
+                    config.get("stage_channels", (32, 64, 128)),
+                    field="stage_channels",
+                    length=3,
+                ),
+                "kernel_sizes": _normalise_positive_integer_sequence(
+                    config.get("kernel_sizes", (9, 9, 7)),
+                    field="kernel_sizes",
+                    length=3,
+                    odd=True,
+                ),
+                "dilations": _normalise_positive_integer_sequence(
+                    config.get("dilations", (1, 1, 1)),
+                    field="dilations",
+                    length=3,
+                ),
+                "pool_sizes": _normalise_positive_integer_sequence(
+                    config.get("pool_sizes", (4, 4)),
+                    field="pool_sizes",
+                    length=2,
+                ),
+                "stage_dropouts": _normalise_dropout_sequence(
+                    config.get("stage_dropouts", (0.10, 0.15)),
+                    field="stage_dropouts",
+                    length=2,
+                ),
                 "global_pooling": "adaptive_average_1",
-                "classifier_dropout": float(config["dropout"]),
+                "classifier_dropout": _normalise_dropout(
+                    config.get("dropout", 0.20)
+                ),
             }
         )
     elif model_id in {"inception_full", "inception_small", "inception_matrix"}:
@@ -687,52 +1237,103 @@ def materialize_architecture_parameters(
             if model_id == "inception_matrix"
             else model_id.removeprefix("inception_")
         )
-        capacity = {
+        default_capacity = {
             "full": (32, 32, 6),
             "small": (16, 16, 3),
         }[variant]
         base.update(
             {
                 "variant": variant,
-                "out_channels": capacity[0],
-                "bottleneck_channels": capacity[1],
-                "depth": capacity[2],
-                "kernel_sizes": tuple(config["kernel_sizes"]),
-                "dilation": int(config["dilation"]),
-                "branch_count": 4,
-                "residual_interval": 3,
+                "out_channels": _normalise_positive_integer(
+                    config.get("out_channels", default_capacity[0]),
+                    field="out_channels",
+                ),
+                "bottleneck_channels": _normalise_positive_integer(
+                    config.get("bottleneck_channels", default_capacity[1]),
+                    field="bottleneck_channels",
+                ),
+                "depth": _normalise_positive_integer(
+                    config.get("depth", default_capacity[2]), field="depth"
+                ),
+                "kernel_sizes": _normalise_positive_integer_sequence(
+                    config.get("kernel_sizes", (39, 19, 9)),
+                    field="kernel_sizes",
+                    odd=True,
+                ),
+                "dilation": _normalise_positive_integer(
+                    config.get("dilation", 1), field="dilation"
+                ),
+                "pool_size": _normalise_positive_integer(
+                    config.get("pool_size", 3), field="pool_size"
+                ),
+                "branch_count": len(tuple(config.get("kernel_sizes", (39, 19, 9)))) + 1,
+                "residual_interval": _normalise_positive_integer(
+                    config.get("residual_interval", 3), field="residual_interval"
+                ),
                 "global_pooling": "mask_aware_global_average",
-                "classifier_dropout": float(config["dropout"]),
+                "classifier_dropout": _normalise_dropout(
+                    config.get("dropout", 0.20)
+                ),
             }
         )
     elif model_id in {
         "inception_full_five_member_ensemble",
         "inception_matrix_five_member_ensemble",
     }:
+        variant = str(config.get("variant", "full"))
+        default_capacity = {
+            "full": (32, 32, 6),
+            "small": (16, 16, 3),
+        }[variant]
+        member_kernels = _normalise_positive_integer_sequence(
+            config.get("kernel_sizes", (39, 19, 9)),
+            field="kernel_sizes",
+            odd=True,
+        )
         member = {
-            "variant": "full",
-            "out_channels": 32,
-            "bottleneck_channels": 32,
-            "depth": 6,
-            "kernel_sizes": tuple(config["kernel_sizes"]),
-            "dilation": int(config["dilation"]),
-            "branch_count": 4,
-            "residual_interval": 3,
+            "variant": variant,
+            "out_channels": _normalise_positive_integer(
+                config.get("out_channels", default_capacity[0]),
+                field="out_channels",
+            ),
+            "bottleneck_channels": _normalise_positive_integer(
+                config.get("bottleneck_channels", default_capacity[1]),
+                field="bottleneck_channels",
+            ),
+            "depth": _normalise_positive_integer(
+                config.get("depth", default_capacity[2]), field="depth"
+            ),
+            "kernel_sizes": member_kernels,
+            "dilation": _normalise_positive_integer(
+                config.get("dilation", 1), field="dilation"
+            ),
+            "pool_size": _normalise_positive_integer(
+                config.get("pool_size", 3), field="pool_size"
+            ),
+            "branch_count": len(member_kernels) + 1,
+            "residual_interval": _normalise_positive_integer(
+                config.get("residual_interval", 3), field="residual_interval"
+            ),
             "global_pooling": "mask_aware_global_average",
-            "classifier_dropout": float(config["dropout"]),
+            "classifier_dropout": _normalise_dropout(config.get("dropout", 0.20)),
         }
+        member_seeds = _normalise_seed_roster(
+            config["member_seeds"], field="member_seeds"
+        )
         base.update({f"member_{key}": value for key, value in member.items()})
         base.update(
             {
-                "member_count": 5,
-                "member_seeds": tuple(int(value) for value in config["member_seeds"]),
+                "member_count": len(member_seeds),
+                "member_seeds": member_seeds,
                 "probability_aggregation": "arithmetic_mean",
             }
         )
     elif model_id in {"logistic_regression", "rbf_svm", "extra_trees"}:
         base.update(
             {
-                "class_weight": config["class_weight"],
+                "class_weight": _normalise_training_owned_class_weight(
+                    config.get("class_weight")
+                ),
             }
         )
         if model_id == "logistic_regression":
@@ -743,9 +1344,16 @@ def materialize_architecture_parameters(
                         "standard_scaler",
                     ),
                     "estimator": "sklearn.linear_model.LogisticRegression",
-                    "C": float(config["logistic_c"]),
-                    "max_iter": int(config["logistic_max_iter"]),
-                    "solver": str(config["logistic_solver"]),
+                    "C": _normalise_finite_positive(
+                        config.get("logistic_c", 1.0), field="logistic_c"
+                    ),
+                    "max_iter": _normalise_positive_integer(
+                        config.get("logistic_max_iter", 5000),
+                        field="logistic_max_iter",
+                    ),
+                    "solver": _normalise_logistic_solver(
+                        config.get("logistic_solver", "lbfgs")
+                    ),
                 }
             )
         elif model_id == "rbf_svm":
@@ -767,11 +1375,19 @@ def materialize_architecture_parameters(
                 {
                     "preprocessing": ("median_imputer_keep_empty_features",),
                     "estimator": "sklearn.ensemble.ExtraTreesClassifier",
-                    "n_estimators": int(config["extra_trees_n_estimators"]),
-                    "n_jobs": int(config["extra_trees_n_jobs"]),
-                    "max_features": config["extra_trees_max_features"],
-                    "min_samples_leaf": int(
-                        config["extra_trees_min_samples_leaf"]
+                    "n_estimators": _normalise_positive_integer(
+                        config.get("extra_trees_n_estimators", 500),
+                        field="extra_trees_n_estimators",
+                    ),
+                    "n_jobs": _normalise_nonzero_integer(
+                        config.get("extra_trees_n_jobs", 1),
+                        field="extra_trees_n_jobs",
+                    ),
+                    "max_features": _normalise_extra_trees_max_features(
+                        config.get("extra_trees_max_features", "sqrt")
+                    ),
+                    "min_samples_leaf": _normalise_extra_trees_min_samples_leaf(
+                        config.get("extra_trees_min_samples_leaf", 1)
                     ),
                 }
             )
@@ -798,6 +1414,185 @@ def materialize_architecture_parameters(
                 "ridge_alpha": float(config["alpha"]),
             }
         )
+    elif model_id == "shapeformer_legacy_effect_size_port":
+        from .shapeformer_legacy import (
+            LEGACY_DISCOVERY_BALANCE,
+            LEGACY_EFFECT_SIZE_DISCOVERY_METHOD,
+        )
+
+        bank = config.get("shapelets")
+
+        def legacy_bank_or_config(name: str) -> Any:
+            if name in config:
+                return config[name]
+            if bank is not None:
+                return (
+                    bank[name]
+                    if isinstance(bank, Mapping)
+                    else getattr(bank, name)
+                )
+            return SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[name]
+
+        per_class = _normalise_positive_integer(
+            legacy_bank_or_config("shapelets_per_class"),
+            field="shapelets_per_class",
+        )
+        count = (
+            len(bank["values"])
+            if isinstance(bank, Mapping)
+            else len(bank.values)
+            if bank is not None
+            else int(spec.n_classes) * per_class
+        )
+        discovery_method = str(
+            config.get("discovery_method", LEGACY_EFFECT_SIZE_DISCOVERY_METHOD)
+        )
+        if discovery_method != LEGACY_EFFECT_SIZE_DISCOVERY_METHOD:
+            raise ValueError(
+                "legacy effect-size ShapeFormer discovery_method drifted"
+            )
+        discovery_balance = (
+            str(config["discovery_balance"])
+            if "discovery_balance" in config
+            else str(bank["discovery_balance"])
+            if isinstance(bank, Mapping)
+            else str(bank.discovery_balance)
+            if bank is not None
+            else LEGACY_DISCOVERY_BALANCE
+        )
+        if discovery_balance != LEGACY_DISCOVERY_BALANCE:
+            raise ValueError(
+                "legacy effect-size ShapeFormer discovery_balance drifted"
+            )
+        complexity_norm = _normalise_finite_positive(
+            config.get(
+                "complexity_norm",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS["complexity_norm"],
+            ),
+            field="complexity_norm",
+        )
+        max_complexity_ratio = _normalise_finite_positive(
+            config.get(
+                "max_complexity_ratio",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                    "max_complexity_ratio"
+                ],
+            ),
+            field="max_complexity_ratio",
+        )
+        if max_complexity_ratio < 1.0:
+            raise ValueError("max_complexity_ratio must be at least 1")
+        base.update(
+            {
+                "scientific_status": (
+                    "legacy_parallel_ablation_not_osd_parity"
+                ),
+                "discovery_method": discovery_method,
+                "discovery_balance": discovery_balance,
+                "shapelet_count": int(count),
+                "shapelet_count_per_class": per_class,
+                "shapelet_channel_policy": "single_source_channel",
+                "shapelet_length_policy": "fixed_samples",
+                "shapelet_length_samples": _normalise_positive_integer(
+                    legacy_bank_or_config("shapelet_length_samples"),
+                    field="shapelet_length_samples",
+                ),
+                "candidate_stride_samples": _normalise_positive_integer(
+                    legacy_bank_or_config("discovery_stride_samples"),
+                    field="discovery_stride_samples",
+                ),
+                "candidates_per_class_channel": _normalise_positive_integer(
+                    legacy_bank_or_config("candidates_per_class_channel"),
+                    field="candidates_per_class_channel",
+                ),
+                "max_discovery_windows": _normalise_positive_integer(
+                    legacy_bank_or_config("max_discovery_windows"),
+                    field="max_discovery_windows",
+                ),
+                "sequence_length_samples": _normalise_positive_integer(
+                    legacy_bank_or_config("sequence_length_samples"),
+                    field="sequence_length_samples",
+                ),
+                "input_fs_hz": _normalise_finite_positive(
+                    legacy_bank_or_config("input_fs_hz"),
+                    field="input_fs_hz",
+                ),
+                "local_kernel_width_samples": _normalise_positive_integer(
+                    config.get(
+                        "local_kernel_width_samples",
+                        SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                            "local_kernel_width_samples"
+                        ],
+                    ),
+                    field="local_kernel_width_samples",
+                ),
+                "local_embedding_channels": _normalise_positive_integer(
+                    config.get(
+                        "local_embedding_channels",
+                        SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                            "local_embedding_channels"
+                        ],
+                    ),
+                    field="local_embedding_channels",
+                ),
+                "shape_embedding_channels": _normalise_positive_integer(
+                    config.get(
+                        "shape_embedding_channels",
+                        SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                            "shape_embedding_channels"
+                        ],
+                    ),
+                    field="shape_embedding_channels",
+                ),
+                "attention_feedforward_channels": _normalise_positive_integer(
+                    config.get(
+                        "attention_feedforward_channels",
+                        SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                            "attention_feedforward_channels"
+                        ],
+                    ),
+                    field="attention_feedforward_channels",
+                ),
+                "attention_heads": _normalise_positive_integer(
+                    config.get(
+                        "attention_heads",
+                        SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                            "attention_heads"
+                        ],
+                    ),
+                    field="attention_heads",
+                ),
+                "dropout": _normalise_dropout(
+                    config.get(
+                        "dropout",
+                        SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS["dropout"],
+                    )
+                ),
+                "shapelet_search_window_samples": _normalise_positive_integer(
+                    config.get(
+                        "shapelet_search_window_samples",
+                        SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                            "shapelet_search_window_samples"
+                        ],
+                    ),
+                    field="shapelet_search_window_samples",
+                ),
+                "complexity_norm": complexity_norm,
+                "max_complexity_ratio": max_complexity_ratio,
+                "shapelet_token_formula": (
+                    "selected_projection(raw_best_segment)-"
+                    "shapelet_projection(shapelet)"
+                ),
+                "shapelet_weighting": (
+                    "learnable_initialised_from_effect_score"
+                ),
+                "local_branch": "legacy_two_conv_attention_feedforward",
+                "shape_branch": (
+                    "legacy_source_position_attention_first_token"
+                ),
+                "complete_window_required": True,
+            }
+        )
     elif model_id in {
         "shapeformer_channel_specific_osd",
         "shapeformer_channel_specific_scalar_distance_ablation",
@@ -807,7 +1602,9 @@ def materialize_architecture_parameters(
         channel_specific = model_id != "shapeformer_effect_size_fixed_v1"
         bank = config.get("shapelets")
         if "shapelets_per_class" in config:
-            per_class = int(config["shapelets_per_class"])
+            per_class = _normalise_positive_integer(
+                config["shapelets_per_class"], field="shapelets_per_class"
+            )
         elif bank is not None:
             classes = np.asarray(
                 bank["source_classes"]
@@ -819,7 +1616,13 @@ def materialize_architecture_parameters(
                 raise ValueError("shapelet bank must have equal per-class capacity")
             per_class = int(counts[0])
         else:
-            raise ValueError("ShapeFormer architecture requires shapelets_per_class or a bank")
+            per_class = int(
+                SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS["shapelets_per_class"]
+                if channel_specific
+                else SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS[
+                    "shapelets_per_class"
+                ]
+            )
         if bank is not None:
             count = (
                 len(bank["values"])
@@ -831,14 +1634,25 @@ def materialize_architecture_parameters(
         def bank_or_config(name: str) -> Any:
             if name in config:
                 return config[name]
-            if bank is None:
-                raise ValueError(f"ShapeFormer architecture is missing {name}")
-            return bank[name] if isinstance(bank, Mapping) else getattr(bank, name)
+            if bank is not None:
+                return bank[name] if isinstance(bank, Mapping) else getattr(bank, name)
+            if name in SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS:
+                return SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[name]
+            if name in SHAPEFORMER_CHANNEL_SPECIFIC_RULE_DEFAULTS:
+                return SHAPEFORMER_CHANNEL_SPECIFIC_RULE_DEFAULTS[name]
+            raise ValueError(f"ShapeFormer architecture is missing {name}")
 
         if reference:
             base.update(
                 {
-                    "discovery_method": str(config["discovery_method"]),
+                    "discovery_method": str(
+                        config.get(
+                            "discovery_method",
+                            SHAPEFORMER_CHANNEL_SPECIFIC_RULE_DEFAULTS[
+                                "discovery_method"
+                            ],
+                        )
+                    ),
                     "shapelet_count": int(count),
                     "shapelet_count_per_class": per_class,
                     "shapelet_channel_policy": "single_source_channel",
@@ -848,7 +1662,9 @@ def materialize_architecture_parameters(
                     "shapelet_length_samples": None,
                     "candidate_stride_samples": None,
                     "best_fit_search_stride_samples": 1,
-                    "num_pip_ratio": float(bank_or_config("num_pip_ratio")),
+                    "num_pip_ratio": _normalise_positive_fraction(
+                        bank_or_config("num_pip_ratio"), field="num_pip_ratio"
+                    ),
                     "pip_rounding_rule": str(
                         bank_or_config("pip_rounding_rule")
                     ),
@@ -875,48 +1691,119 @@ def materialize_architecture_parameters(
                     "information_gain_split_rule": str(
                         bank_or_config("information_gain_split_rule")
                     ),
-                    "max_discovery_windows": int(
-                        bank_or_config("max_discovery_windows")
+                    "max_discovery_windows": _normalise_positive_integer(
+                        bank_or_config("max_discovery_windows"),
+                        field="max_discovery_windows",
                     ),
                     "discovery_balance": str(
                         bank_or_config("discovery_balance")
                     ),
-                    "input_fs_hz": float(config["input_fs_hz"]),
+                    "input_fs_hz": _normalise_finite_positive(
+                        config.get(
+                            "input_fs_hz",
+                            SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS["input_fs_hz"],
+                        ),
+                        field="input_fs_hz",
+                    ),
                     "implementation_status": (
                         "implemented_not_benchmarked_high_compute"
                     ),
-                    "sequence_length_samples": int(
-                        config["sequence_length_samples"]
+                    "sequence_length_samples": _normalise_positive_integer(
+                        config.get(
+                            "sequence_length_samples",
+                            SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                                "sequence_length_samples"
+                            ],
+                        ),
+                        field="sequence_length_samples",
                     ),
-                    "position_search_neighbourhood_samples": int(
-                        bank_or_config(
-                            "position_search_neighbourhood_samples"
+                    "position_search_neighbourhood_samples": _normalise_positive_integer(
+                        bank_or_config("position_search_neighbourhood_samples"),
+                        field="position_search_neighbourhood_samples",
+                    ),
+                    "local_kernel_width_samples": _normalise_positive_integer(
+                        config.get(
+                            "local_kernel_width_samples",
+                            SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                                "local_kernel_width_samples"
+                            ],
+                        ),
+                        field="local_kernel_width_samples",
+                    ),
+                    "local_embedding_channels": _normalise_positive_integer(
+                        config.get(
+                            "local_embedding_channels",
+                            SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                                "local_embedding_channels"
+                            ],
+                        ),
+                        field="local_embedding_channels",
+                    ),
+                    "shape_embedding_channels": _normalise_positive_integer(
+                        config.get(
+                            "shape_embedding_channels",
+                            SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                                "shape_embedding_channels"
+                            ],
+                        ),
+                        field="shape_embedding_channels",
+                    ),
+                    "attention_heads": _normalise_positive_integer(
+                        config.get(
+                            "attention_heads",
+                            SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS["attention_heads"],
+                        ),
+                        field="attention_heads",
+                    ),
+                    "attention_query_chunk_size": _normalise_positive_integer(
+                        config.get(
+                            "attention_query_chunk_size",
+                            SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                                "attention_query_chunk_size"
+                            ],
+                        ),
+                        field="attention_query_chunk_size",
+                    ),
+                    "attention_feedforward_channels": _normalise_positive_integer(
+                        config.get(
+                            "attention_feedforward_channels",
+                            SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                                "attention_feedforward_channels"
+                            ],
+                        ),
+                        field="attention_feedforward_channels",
+                    ),
+                    "distance_position_chunk_size": _normalise_positive_integer(
+                        config.get(
+                            "distance_position_chunk_size",
+                            SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                                "distance_position_chunk_size"
+                            ],
+                        ),
+                        field="distance_position_chunk_size",
+                    ),
+                    "complexity_norm": _normalise_finite_positive(
+                        config.get(
+                            "complexity_norm",
+                            SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS["complexity_norm"],
+                        ),
+                        field="complexity_norm",
+                    ),
+                    "max_complexity_ratio": _normalise_finite_positive(
+                        config.get(
+                            "max_complexity_ratio",
+                            SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                                "max_complexity_ratio"
+                            ],
+                        ),
+                        field="max_complexity_ratio",
+                    ),
+                    "dropout": _normalise_dropout(
+                        config.get(
+                            "dropout",
+                            SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS["dropout"],
                         )
                     ),
-                    "local_kernel_width_samples": int(
-                        config["local_kernel_width_samples"]
-                    ),
-                    "local_embedding_channels": int(
-                        config["local_embedding_channels"]
-                    ),
-                    "shape_embedding_channels": int(
-                        config["shape_embedding_channels"]
-                    ),
-                    "attention_heads": int(config["attention_heads"]),
-                    "attention_query_chunk_size": int(
-                        config["attention_query_chunk_size"]
-                    ),
-                    "attention_feedforward_channels": int(
-                        config["attention_feedforward_channels"]
-                    ),
-                    "distance_position_chunk_size": int(
-                        config["distance_position_chunk_size"]
-                    ),
-                    "complexity_norm": float(config["complexity_norm"]),
-                    "max_complexity_ratio": float(
-                        config["max_complexity_ratio"]
-                    ),
-                    "dropout": float(config["dropout"]),
                     "shapelet_token_formula": (
                         "selected_projection(raw_best_segment)-"
                         "shapelet_projection(shapelet)"
@@ -964,9 +1851,32 @@ def materialize_architecture_parameters(
             return _normalise_architecture_value(base)
 
         if channel_specific:
+            hidden_channels = _normalise_positive_integer(
+                config.get(
+                    "hidden_channels",
+                    SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS["hidden_channels"],
+                ),
+                field="hidden_channels",
+            )
+            patch_size = _normalise_positive_integer(
+                config.get(
+                    "patch_size_samples",
+                    SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS[
+                        "patch_size_samples"
+                    ],
+                ),
+                field="patch_size_samples",
+            )
             base.update(
                 {
-                    "discovery_method": str(config["discovery_method"]),
+                    "discovery_method": str(
+                        config.get(
+                            "discovery_method",
+                            SHAPEFORMER_CHANNEL_SPECIFIC_RULE_DEFAULTS[
+                                "discovery_method"
+                            ],
+                        )
+                    ),
                     "shapelet_count": int(count),
                     "shapelet_count_per_class": per_class,
                     "shapelet_channel_policy": "single_source_channel",
@@ -976,47 +1886,102 @@ def materialize_architecture_parameters(
                     "shapelet_length_samples": None,
                     "candidate_stride_samples": None,
                     "best_fit_search_stride_samples": 1,
-                    "num_pip_ratio": float(bank_or_config("num_pip_ratio")),
+                    "num_pip_ratio": _normalise_positive_fraction(
+                        bank_or_config("num_pip_ratio"), field="num_pip_ratio"
+                    ),
                     "information_gain_split_rule": str(
                         bank_or_config("information_gain_split_rule")
                     ),
-                    "max_discovery_windows": int(
-                        bank_or_config("max_discovery_windows")
+                    "max_discovery_windows": _normalise_positive_integer(
+                        bank_or_config("max_discovery_windows"),
+                        field="max_discovery_windows",
                     ),
                     "discovery_balance": str(
                         bank_or_config("discovery_balance")
                     ),
-                    "position_search_neighbourhood_samples": int(
-                        bank_or_config(
-                            "position_search_neighbourhood_samples"
-                        )
+                    "position_search_neighbourhood_samples": _normalise_positive_integer(
+                        bank_or_config("position_search_neighbourhood_samples"),
+                        field="position_search_neighbourhood_samples",
                     ),
-                    "input_fs_hz": float(config["input_fs_hz"]),
+                    "input_fs_hz": _normalise_finite_positive(
+                        config.get(
+                            "input_fs_hz",
+                            SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS["input_fs_hz"],
+                        ),
+                        field="input_fs_hz",
+                    ),
                     "downstream_status": (
                         "scalar_distance_ablation_not_literature_shapeformer"
                     ),
-                    "hidden_channels": int(config["hidden_channels"]),
-                    "patch_size_samples": int(config["patch_size_samples"]),
-                    "patch_stride_samples": int(config["patch_size_samples"]),
+                    "hidden_channels": hidden_channels,
+                    "patch_size_samples": patch_size,
+                    "patch_stride_samples": patch_size,
                     "patch_bias": False,
-                    "attention_heads": int(config["attention_heads"]),
-                    "attention_layers": int(config["attention_layers"]),
-                    "attention_feedforward_channels": (
-                        int(config["hidden_channels"]) * 2
+                    "attention_heads": _normalise_positive_integer(
+                        config.get(
+                            "attention_heads",
+                            SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS[
+                                "attention_heads"
+                            ],
+                        ),
+                        field="attention_heads",
+                    ),
+                    "attention_layers": _normalise_positive_integer(
+                        config.get(
+                            "attention_layers",
+                            SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS[
+                                "attention_layers"
+                            ],
+                        ),
+                        field="attention_layers",
+                    ),
+                    "attention_feedforward_channels": _normalise_positive_integer(
+                        config.get(
+                            "attention_feedforward_channels",
+                            hidden_channels * 2,
+                        ),
+                        field="attention_feedforward_channels",
                     ),
                     "attention_activation": "gelu",
                     "attention_norm_first": False,
-                    "distance_position_chunk_size": int(
-                        config["distance_position_chunk_size"]
+                    "distance_position_chunk_size": _normalise_positive_integer(
+                        config.get(
+                            "distance_position_chunk_size",
+                            SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS[
+                                "distance_position_chunk_size"
+                            ],
+                        ),
+                        field="distance_position_chunk_size",
                     ),
-                    "classifier_dropout": float(config["dropout"]),
+                    "classifier_dropout": _normalise_dropout(
+                        config.get(
+                            "dropout",
+                            SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS["dropout"],
+                        )
+                    ),
                 }
             )
             return _normalise_architecture_value(base)
 
+        hidden_channels = _normalise_positive_integer(
+            config.get(
+                "hidden_channels",
+                SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS["hidden_channels"],
+            ),
+            field="hidden_channels",
+        )
+        patch_size = _normalise_positive_integer(
+            config.get(
+                "patch_size_samples",
+                SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS["patch_size_samples"],
+            ),
+            field="patch_size_samples",
+        )
         base.update(
             {
-                "discovery_method": str(config["discovery_method"]),
+                "discovery_method": str(
+                    config.get("discovery_method", "effect_size_fixed_v1")
+                ),
                 "shapelet_count": int(count),
                 "shapelet_count_per_class": per_class,
                 "shapelet_channel_policy": (
@@ -1028,12 +1993,26 @@ def materialize_architecture_parameters(
                 "shapelet_length_samples": (
                     None
                     if reference
-                    else int(bank_or_config("shapelet_length_samples"))
+                    else _normalise_positive_integer(
+                        (
+                            bank_or_config("shapelet_length_samples")
+                            if bank is not None
+                            else config.get("shapelet_length_samples", 128)
+                        ),
+                        field="shapelet_length_samples",
+                    )
                 ),
                 "candidate_stride_samples": (
                     None
                     if reference
-                    else int(bank_or_config("discovery_stride_samples"))
+                    else _normalise_positive_integer(
+                        (
+                            bank_or_config("discovery_stride_samples")
+                            if bank is not None
+                            else config.get("discovery_stride_samples", 64)
+                        ),
+                        field="discovery_stride_samples",
+                    )
                 ),
                 "best_fit_search_stride_samples": 1,
                 "num_pip_ratio": (
@@ -1045,22 +2024,88 @@ def materialize_architecture_parameters(
                 "discovery_balance": (
                     str(bank_or_config("discovery_balance")) if reference else None
                 ),
-                "input_fs_hz": float(config["input_fs_hz"]),
-                "hidden_channels": int(config["hidden_channels"]),
-                "patch_size_samples": int(config["patch_size_samples"]),
-                "patch_stride_samples": int(config["patch_size_samples"]),
+                "input_fs_hz": _normalise_finite_positive(
+                    config.get(
+                        "input_fs_hz",
+                        SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS["input_fs_hz"],
+                    ),
+                    field="input_fs_hz",
+                ),
+                "hidden_channels": hidden_channels,
+                "patch_size_samples": patch_size,
+                "patch_stride_samples": patch_size,
                 "patch_bias": False,
-                "attention_heads": int(config["attention_heads"]),
-                "attention_layers": int(config["attention_layers"]),
-                "attention_feedforward_channels": int(config["hidden_channels"]) * 2,
+                "attention_heads": _normalise_positive_integer(
+                    config.get(
+                        "attention_heads",
+                        SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS["attention_heads"],
+                    ),
+                    field="attention_heads",
+                ),
+                "attention_layers": _normalise_positive_integer(
+                    config.get(
+                        "attention_layers",
+                        SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS["attention_layers"],
+                    ),
+                    field="attention_layers",
+                ),
+                "attention_feedforward_channels": _normalise_positive_integer(
+                    config.get(
+                        "attention_feedforward_channels",
+                        hidden_channels * 2,
+                    ),
+                    field="attention_feedforward_channels",
+                ),
                 "attention_activation": "gelu",
                 "attention_norm_first": False,
-                "distance_position_chunk_size": int(
-                    config["distance_position_chunk_size"]
+                "distance_position_chunk_size": _normalise_positive_integer(
+                    config.get(
+                        "distance_position_chunk_size",
+                        SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS[
+                            "distance_position_chunk_size"
+                        ],
+                    ),
+                    field="distance_position_chunk_size",
                 ),
-                "classifier_dropout": float(config["dropout"]),
+                "classifier_dropout": _normalise_dropout(
+                    config.get(
+                        "dropout",
+                        SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS["dropout"],
+                    )
+                ),
             }
         )
+    elif model_id == "file_bag_fusion":
+        signal_config = normalize_fusion_signal_encoder_config(
+            config.pop("signal_encoder", None)
+        )
+        signal_architecture = materialize_architecture_parameters(
+            signal_config,
+            _fusion_raw_input_spec(spec),
+        )
+        pooling = str(config.pop("pooling", "mean"))
+        if pooling not in {"mean", "attention"}:
+            raise ValueError("pooling must be 'mean' or 'attention'")
+        base.update(
+            {
+                "signal_feature_dim": _signal_feature_dim_from_architecture(
+                    signal_architecture
+                ),
+                "feature_hidden_dim": _normalise_positive_integer(
+                    config.pop("feature_hidden_dim", 32),
+                    field="feature_hidden_dim",
+                ),
+                "fusion_hidden_dim": _normalise_positive_integer(
+                    config.pop("fusion_hidden_dim", 64),
+                    field="fusion_hidden_dim",
+                ),
+                "pooling": pooling,
+                "fusion_dropout": _normalise_dropout(config.pop("dropout", 0.20)),
+                "signal_encoder": signal_architecture,
+            }
+        )
+        if config:
+            raise ValueError(f"unknown file-bag fusion options: {sorted(config)}")
     elif model_id in {"fusion_compact", "fusion_inception"}:
         base.update(
             {
@@ -1072,28 +2117,57 @@ def materialize_architecture_parameters(
             }
         )
         if model_id == "fusion_compact":
+            stage_channels = _normalise_positive_integer_sequence(
+                config.get("signal_stage_channels", (32, 64, 128)),
+                field="signal_stage_channels",
+                length=3,
+            )
             signal = {
-                "stage_channels": (32, 64, 128),
+                "stage_channels": stage_channels,
                 "kernel_sizes": tuple(config["signal_kernel_sizes"]),
                 "dilations": tuple(config["signal_dilations"]),
                 "pool_sizes": tuple(config["signal_pool_sizes"]),
-                "stage_dropouts": (0.10, 0.15),
+                "stage_dropouts": _normalise_dropout_sequence(
+                    config.get("signal_stage_dropouts", (0.10, 0.15)),
+                    field="signal_stage_dropouts",
+                    length=2,
+                ),
                 "global_pooling": "adaptive_average_1",
                 "classifier_dropout": float(config["signal_dropout"]),
             }
+            base["signal_feature_dim"] = stage_channels[-1]
         else:
             variant = str(config["signal_variant"])
             capacity = {"full": (32, 32, 6), "small": (16, 16, 3)}[variant]
-            base["signal_feature_dim"] = capacity[0] * 4
+            out_channels = _normalise_positive_integer(
+                config.get("signal_out_channels", capacity[0]),
+                field="signal_out_channels",
+            )
+            bottleneck_channels = _normalise_positive_integer(
+                config.get("signal_bottleneck_channels", capacity[1]),
+                field="signal_bottleneck_channels",
+            )
+            depth = _normalise_positive_integer(
+                config.get("signal_depth", capacity[2]),
+                field="signal_depth",
+            )
+            branch_count = len(tuple(config["signal_kernel_sizes"])) + 1
+            base["signal_feature_dim"] = out_channels * branch_count
             signal = {
                 "variant": variant,
-                "out_channels": capacity[0],
-                "bottleneck_channels": capacity[1],
-                "depth": capacity[2],
+                "out_channels": out_channels,
+                "bottleneck_channels": bottleneck_channels,
+                "depth": depth,
                 "kernel_sizes": tuple(config["signal_kernel_sizes"]),
                 "dilation": int(config["signal_dilation"]),
-                "branch_count": 4,
-                "residual_interval": 3,
+                "pool_size": _normalise_positive_integer(
+                    config.get("signal_pool_size", 3), field="signal_pool_size"
+                ),
+                "branch_count": branch_count,
+                "residual_interval": _normalise_positive_integer(
+                    config.get("signal_residual_interval", 3),
+                    field="signal_residual_interval",
+                ),
                 "global_pooling": "mask_aware_global_average",
                 "classifier_dropout": float(config["signal_dropout"]),
             }
@@ -1101,6 +2175,74 @@ def materialize_architecture_parameters(
     else:
         raise ValueError(f"cannot materialise architecture for {model_id}")
     return _normalise_architecture_value(base)
+
+
+def validate_source_architecture_annotation(
+    declared: Any,
+    derived: Mapping[str, Any],
+) -> None:
+    """Validate a source-side legacy annotation as a subset of derived truth."""
+
+    if declared is None:
+        return
+    if not isinstance(declared, Mapping) or not declared:
+        raise ValueError(
+            "architecture_parameters must be omitted or a non-empty legacy provenance mapping"
+        )
+    normalized = _normalise_architecture_value(declared)
+    expected = _normalise_architecture_value(derived)
+    legacy_source_only = {
+        "shape_channel_position_width",
+        "shape_start_position_width",
+        "shape_end_position_width",
+    }
+
+    def compare(source: Mapping[str, Any], target: Mapping[str, Any], prefix: str) -> None:
+        for field, value in source.items():
+            path = f"{prefix}.{field}" if prefix else str(field)
+            if field not in target:
+                if path in legacy_source_only:
+                    continue
+                raise ValueError(
+                    f"legacy architecture_parameters contains unknown derived field: {path}"
+                )
+            target_value = target[field]
+            if isinstance(value, Mapping) and isinstance(target_value, Mapping):
+                compare(value, target_value, path)
+                continue
+            if (
+                path == "generic_branch_input"
+                and value == "canonical_frailty_raw_8"
+                and target_value == "full_multivariate_input"
+            ):
+                continue
+            if value != target_value:
+                raise ValueError(
+                    "legacy architecture_parameters derived field mismatch: "
+                    f"{path}"
+                )
+
+    compare(normalized, expected, "")
+
+
+def _resolved_source_architecture_provenance(
+    model_config: Mapping[str, Any],
+    input_spec: ModelInputSpec | Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate a legacy annotation, then rematerialize all runtime values."""
+
+    spec = ModelInputSpec.from_value(input_spec)
+    config = normalize_model_config(model_config)
+    derived = materialize_architecture_parameters(config, spec)
+    validate_source_architecture_annotation(
+        config.get("architecture_parameters"), derived
+    )
+    for field in ("model_id", "representation_mode", "n_classes"):
+        if derived.get(field) is None:
+            raise ValueError(
+                f"derived architecture_parameters is missing identity field {field}"
+            )
+    return derived
 
 
 def validate_resolved_architecture(
@@ -1114,6 +2256,22 @@ def validate_resolved_architecture(
         raise ValueError("architecture_parameters must be an explicit non-empty mapping")
     actual = resolved_architecture_parameters(model, input_spec)
     expected = _normalise_architecture_value(declared)
+    # Architecture manifests written before pool_size became configurable did
+    # not name the default Inception max-pool branch width. Preserve those
+    # manifests only for the unchanged default; any non-default still has to be
+    # declared explicitly and therefore fails this equality check.
+    model_id = str(actual.get("model_id", ""))
+    if model_id in {"inception_full", "inception_small", "inception_matrix"}:
+        expected.setdefault("pool_size", 3)
+    elif model_id in {
+        "inception_full_five_member_ensemble",
+        "inception_matrix_five_member_ensemble",
+    }:
+        expected.setdefault("member_pool_size", 3)
+    elif model_id == "fusion_inception" and isinstance(
+        expected.get("signal_encoder"), dict
+    ):
+        expected["signal_encoder"].setdefault("pool_size", 3)
     if expected != actual:
         keys = sorted(set(expected) | set(actual))
         differing = [key for key in keys if expected.get(key) != actual.get(key)]
@@ -1197,6 +2355,72 @@ def _shapelet_bank_hash(bank: Any) -> str:
     return digest.hexdigest()
 
 
+@dataclass(frozen=True)
+class _DerivedDiscoveryScope:
+    """Bind a deterministic raw-window view to an already verified file bag."""
+
+    source_scope: Any
+    derived_dataset_hash: str
+
+    @property
+    def repeat(self) -> int:
+        return int(self.source_scope.repeat)
+
+    @property
+    def fold(self) -> int:
+        return int(self.source_scope.fold)
+
+    def assert_training_dataset(self, dataset: Any, *, exact: bool = True) -> None:
+        from ..training.trainer import dataset_binding_hash
+
+        self.source_scope.assert_train_only(dataset.participant_ids, exact=exact)
+        if dataset_binding_hash(dataset) != self.derived_dataset_hash:
+            raise ValueError("derived fusion discovery dataset content changed")
+
+
+def _flatten_file_bag_for_discovery(dataset: Any) -> Any:
+    """Expand verified file bags to raw windows without copying file features.
+
+    This adapter is used only for fold-local shapelet discovery.  Its input is
+    the exact outer-training ``FileBagDataset`` already checked by the source
+    split; consequently no OOF row can enter the derived raw dataset.
+    """
+
+    from ..training.datasets import FileBagDataset, RawWindowDataset, SampleIdentity
+
+    if not isinstance(dataset, FileBagDataset):
+        raise TypeError("fusion ShapeFormer discovery requires a FileBagDataset")
+    values: list[np.ndarray] = []
+    masks: list[np.ndarray] = []
+    identities: list[SampleIdentity] = []
+    for file_index, (bag, bag_mask, identity) in enumerate(
+        zip(dataset.window_bags, dataset.sample_masks, dataset.identities)
+    ):
+        for window_index in range(int(bag.shape[0])):
+            values.append(np.asarray(bag[window_index], dtype=np.float32))
+            masks.append(np.asarray(bag_mask[window_index], dtype=bool))
+            identities.append(
+                SampleIdentity(
+                    participant_id=str(identity.participant_id),
+                    file_id=str(identity.file_id),
+                    role=str(identity.role),
+                    label=int(identity.label),
+                    signal_route=str(identity.signal_route),
+                    quality_score=float(identity.quality_score),
+                    retained=bool(identity.retained),
+                    aggregation_retained=bool(identity.aggregation_retained),
+                    window_id=(
+                        f"fusion_file_{file_index:06d}_window_{window_index:06d}"
+                    ),
+                )
+            )
+    return RawWindowDataset(
+        np.stack(values, axis=0),
+        identities,
+        np.stack(masks, axis=0),
+    )
+
+
 def prepare_model_factory(
     model_config: Mapping[str, Any],
     input_spec: ModelInputSpec | Mapping[str, Any],
@@ -1216,12 +2440,99 @@ def prepare_model_factory(
     _validate_frailty_factory_input(spec, require_explicit_schema=True)
     frozen_split.assert_training_dataset(outer_train_dataset, exact=True)
     config = normalize_model_config(model_config)
+    config["architecture_parameters"] = _resolved_source_architecture_provenance(
+        config, spec
+    )
     model_id = str(config["model_id"])
     shapeformer_ids = {
         "shapeformer_channel_specific_osd",
         "shapeformer_channel_specific_scalar_distance_ablation",
         "shapeformer_effect_size_fixed_v1",
+        "shapeformer_legacy_effect_size_port",
     }
+    if model_id == "file_bag_fusion":
+        if spec.mode is not RepresentationMode.FUSION:
+            raise TypeError("file_bag_fusion preparation requires fusion representation")
+        signal_config = normalize_fusion_signal_encoder_config(
+            config.get("signal_encoder")
+        )
+        signal_model_id = str(signal_config["model_id"])
+        if signal_model_id not in FUSION_SHAPEFORMER_ENCODER_IDS:
+            return PreparedModelFactory(
+                resolved_model_config=copy.deepcopy(config),
+                input_spec=spec,
+                provenance={
+                    "model_id": model_id,
+                    "signal_encoder_model_id": signal_model_id,
+                    "fold_local_preparation": "not_required",
+                    "outer_repeat_index": int(frozen_split.repeat),
+                    "outer_fold_index": int(frozen_split.fold),
+                    "outer_train_dataset_hash": dataset_binding_hash(
+                        outer_train_dataset
+                    ),
+                },
+            )
+        forbidden_nested = {
+            "seed",
+            "seed_policy",
+            "outer_repeat_seed",
+            "shapelets",
+            "outer_repeat_index",
+            "outer_fold_index",
+            "outer_train_participant_hash",
+        } & set(signal_config)
+        if forbidden_nested:
+            raise ValueError(
+                "file_bag_fusion owns signal-encoder seed/discovery state; "
+                f"remove nested fields {sorted(forbidden_nested)}"
+            )
+        raw_dataset = _flatten_file_bag_for_discovery(outer_train_dataset)
+        raw_dataset_hash = dataset_binding_hash(raw_dataset)
+        derived_scope = _DerivedDiscoveryScope(
+            source_scope=frozen_split,
+            derived_dataset_hash=raw_dataset_hash,
+        )
+        nested_config = copy.deepcopy(signal_config)
+        nested_config["seed"] = _normalise_seed(
+            config.get("seed", 42), field="seed"
+        )
+        nested_config["seed_policy"] = "fixed_explicit"
+        prepared_signal = prepare_model_factory(
+            nested_config,
+            _fusion_raw_input_spec(spec),
+            raw_dataset,
+            derived_scope,
+        )
+        resolved = copy.deepcopy(config)
+        resolved["signal_encoder"] = copy.deepcopy(
+            dict(prepared_signal.resolved_model_config)
+        )
+        resolved["architecture_parameters"] = materialize_architecture_parameters(
+            resolved, spec
+        )
+        return PreparedModelFactory(
+            resolved_model_config=resolved,
+            input_spec=spec,
+            provenance={
+                "model_id": model_id,
+                "canonical_model_name": str(config["canonical_model_name"]),
+                "registry_role": "optional_composable_fusion",
+                "fold_local_preparation": "signal_encoder_shapelet_discovery",
+                "signal_encoder_model_id": signal_model_id,
+                "signal_encoder_provenance": dict(prepared_signal.provenance),
+                "discovery_bank_hash": prepared_signal.provenance[
+                    "discovery_bank_hash"
+                ],
+                "outer_repeat_index": int(frozen_split.repeat),
+                "outer_fold_index": int(frozen_split.fold),
+                "outer_train_dataset_hash": dataset_binding_hash(
+                    outer_train_dataset
+                ),
+                "derived_raw_discovery_dataset_hash": raw_dataset_hash,
+                "file_features_used_for_discovery": False,
+                "fallback_used": False,
+            },
+        )
     if model_id not in shapeformer_ids:
         return PreparedModelFactory(
             resolved_model_config=copy.deepcopy(config),
@@ -1256,23 +2567,250 @@ def prepare_model_factory(
             f"values: {sorted(forbidden)}"
         )
 
+    if model_id == "shapeformer_legacy_effect_size_port":
+        from .shapeformer_legacy import (
+            LEGACY_DISCOVERY_BALANCE,
+            LEGACY_EFFECT_SIZE_DISCOVERY_METHOD,
+            discover_legacy_effect_size_shapelets,
+        )
+
+        allowed_legacy_options = {
+            "model_id",
+            "canonical_model_name",
+            "architecture_parameters",
+            "seed",
+            "seed_policy",
+            "outer_repeat_seed",
+            "discovery_method",
+            "discovery_balance",
+            "input_fs_hz",
+            "sequence_length_samples",
+            "shapelet_length_samples",
+            "discovery_stride_samples",
+            "shapelets_per_class",
+            "max_discovery_windows",
+            "candidates_per_class_channel",
+            "local_kernel_width_samples",
+            "local_embedding_channels",
+            "shape_embedding_channels",
+            "attention_feedforward_channels",
+            "attention_heads",
+            "dropout",
+            "shapelet_search_window_samples",
+            "complexity_norm",
+            "max_complexity_ratio",
+        }
+        unknown_legacy_options = sorted(
+            set(config) - allowed_legacy_options
+        )
+        if unknown_legacy_options:
+            raise ValueError(
+                "unknown legacy effect-size ShapeFormer options: "
+                f"{unknown_legacy_options}"
+            )
+
+        if not bool(sample_mask.all()):
+            raise ValueError(
+                "legacy effect-size ShapeFormer requires complete, unpadded windows"
+            )
+        discovery_method = str(
+            config.pop(
+                "discovery_method", LEGACY_EFFECT_SIZE_DISCOVERY_METHOD
+            )
+        )
+        if discovery_method != LEGACY_EFFECT_SIZE_DISCOVERY_METHOD:
+            raise ValueError(
+                "legacy effect-size ShapeFormer discovery_method drifted"
+            )
+        discovery_balance = str(
+            config.pop("discovery_balance", LEGACY_DISCOVERY_BALANCE)
+        )
+        if discovery_balance != LEGACY_DISCOVERY_BALANCE:
+            raise ValueError(
+                "legacy effect-size ShapeFormer discovery_balance drifted"
+            )
+        input_fs_hz = _normalise_finite_positive(
+            config.pop(
+                "input_fs_hz",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS["input_fs_hz"],
+            ),
+            field="input_fs_hz",
+        )
+        sequence_length_samples = _normalise_positive_integer(
+            config.pop(
+                "sequence_length_samples",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                    "sequence_length_samples"
+                ],
+            ),
+            field="sequence_length_samples",
+        )
+        if sequence_length_samples != int(outer_train_dataset.values.shape[-1]):
+            raise ValueError(
+                "legacy effect-size ShapeFormer sequence_length_samples does "
+                "not match outer-train windows"
+            )
+        shapelet_length_samples = _normalise_positive_integer(
+            config.pop(
+                "shapelet_length_samples",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                    "shapelet_length_samples"
+                ],
+            ),
+            field="shapelet_length_samples",
+        )
+        discovery_stride_samples = _normalise_positive_integer(
+            config.pop(
+                "discovery_stride_samples",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                    "discovery_stride_samples"
+                ],
+            ),
+            field="discovery_stride_samples",
+        )
+        shapelets_per_class = _normalise_positive_integer(
+            config.pop(
+                "shapelets_per_class",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                    "shapelets_per_class"
+                ],
+            ),
+            field="shapelets_per_class",
+        )
+        max_discovery_windows = _normalise_positive_integer(
+            config.pop(
+                "max_discovery_windows",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                    "max_discovery_windows"
+                ],
+            ),
+            field="max_discovery_windows",
+        )
+        candidates_per_class_channel = _normalise_positive_integer(
+            config.pop(
+                "candidates_per_class_channel",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                    "candidates_per_class_channel"
+                ],
+            ),
+            field="candidates_per_class_channel",
+        )
+        seed = _normalise_seed(config.get("seed", 42), field="seed")
+        config["seed"] = seed
+        participants = tuple(
+            str(identity.participant_id)
+            for identity in outer_train_dataset.identities
+        )
+        files = tuple(
+            str(identity.file_id) for identity in outer_train_dataset.identities
+        )
+        windows = tuple(
+            str(identity.window_id)
+            for identity in outer_train_dataset.identities
+        )
+        bank = discover_legacy_effect_size_shapelets(
+            np.asarray(outer_train_dataset.values, dtype=np.float32),
+            np.asarray(outer_train_dataset.labels, dtype=np.int64),
+            participants,
+            files,
+            windows,
+            discovery_method=discovery_method,
+            input_fs_hz=input_fs_hz,
+            sequence_length_samples=sequence_length_samples,
+            shapelet_length_samples=shapelet_length_samples,
+            discovery_stride_samples=discovery_stride_samples,
+            shapelets_per_class=shapelets_per_class,
+            max_discovery_windows=max_discovery_windows,
+            candidates_per_class_channel=candidates_per_class_channel,
+            outer_repeat_index=int(frozen_split.repeat),
+            outer_fold_index=int(frozen_split.fold),
+            seed=seed,
+        )
+        resolved = copy.deepcopy(config)
+        resolved.update(
+            {
+                "model_id": model_id,
+                "shapelets": bank,
+                "discovery_method": discovery_method,
+                "discovery_balance": discovery_balance,
+                "input_fs_hz": input_fs_hz,
+                "sequence_length_samples": sequence_length_samples,
+                "shapelet_length_samples": shapelet_length_samples,
+                "discovery_stride_samples": discovery_stride_samples,
+                "shapelets_per_class": shapelets_per_class,
+                "max_discovery_windows": max_discovery_windows,
+                "candidates_per_class_channel": candidates_per_class_channel,
+                "outer_repeat_index": int(frozen_split.repeat),
+                "outer_fold_index": int(frozen_split.fold),
+                "outer_train_participant_hash": (
+                    bank.outer_train_participant_hash
+                ),
+            }
+        )
+        resolved["architecture_parameters"] = (
+            materialize_architecture_parameters(resolved, spec)
+        )
+        return PreparedModelFactory(
+            resolved_model_config=resolved,
+            input_spec=spec,
+            provenance={
+                "model_id": model_id,
+                "canonical_model_name": str(config["canonical_model_name"]),
+                "registry_role": "ablation",
+                "scientific_status": (
+                    "legacy_parallel_ablation_not_osd_parity"
+                ),
+                "discovery_method": discovery_method,
+                "discovery_balance": discovery_balance,
+                "discovery_bank_hash": _shapelet_bank_hash(bank),
+                "shapelet_count": int(bank.count),
+                "shapelet_length_samples": shapelet_length_samples,
+                "discovery_stride_samples": discovery_stride_samples,
+                "shapelets_per_class": shapelets_per_class,
+                "max_discovery_windows": max_discovery_windows,
+                "candidates_per_class_channel": candidates_per_class_channel,
+                "discovery_window_count": int(bank.discovery_indices.size),
+                "enumerated_candidate_count": int(
+                    bank.enumerated_candidate_count
+                ),
+                "retained_candidate_count": int(bank.retained_candidate_count),
+                "discovery_selection_hash": bank.discovery_selection_hash,
+                "candidate_records": bank.candidate_records(),
+                "input_fs_hz": input_fs_hz,
+                "outer_repeat_index": int(frozen_split.repeat),
+                "outer_fold_index": int(frozen_split.fold),
+                "outer_train_participant_hash": (
+                    bank.outer_train_participant_hash
+                ),
+                "outer_train_dataset_hash": dataset_binding_hash(
+                    outer_train_dataset
+                ),
+                "fallback_used": False,
+            },
+        )
+
     expected_method = (
         "channel_specific_osd"
         if model_id != "shapeformer_effect_size_fixed_v1"
         else "effect_size_fixed_v1"
     )
-    discovery_method = str(config.pop("discovery_method", ""))
+    discovery_method = str(config.pop("discovery_method", expected_method))
     if discovery_method != expected_method:
         raise ValueError(
             f"{model_id} requires explicit discovery_method={expected_method}; "
             "no discovery fallback is allowed"
         )
-    if "input_fs_hz" not in config:
-        raise ValueError("ShapeFormer preparation requires explicit input_fs_hz")
-    input_fs_hz = float(config.pop("input_fs_hz"))
-    if "seed" not in config:
-        raise ValueError("ShapeFormer fold-local discovery requires explicit seed")
-    seed = int(config["seed"])
+    numeric_defaults = (
+        SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS
+        if model_id != "shapeformer_effect_size_fixed_v1"
+        else SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS
+    )
+    input_fs_hz = _normalise_finite_positive(
+        config.pop("input_fs_hz", numeric_defaults["input_fs_hz"]),
+        field="input_fs_hz",
+    )
+    seed = _normalise_seed(config.get("seed", 42), field="seed")
+    config["seed"] = seed
     participants = tuple(
         str(identity.participant_id) for identity in outer_train_dataset.identities
     )
@@ -1317,30 +2855,49 @@ def prepare_model_factory(
             )
         if not spec.channel_schema or len(spec.channel_schema) != spec.n_channels:
             raise ValueError("channel_specific_osd requires the exact ordered channel_schema")
-        if str(config.pop("pip_rounding_rule")) != PIP_ROUNDING_RULE:
+        if str(config.pop("pip_rounding_rule", PIP_ROUNDING_RULE)) != PIP_ROUNDING_RULE:
             raise ValueError("channel_specific_osd pip_rounding_rule drifted")
-        if str(config.pop("pip_selection_rule")) != PIP_SELECTION_RULE:
+        if str(config.pop("pip_selection_rule", PIP_SELECTION_RULE)) != PIP_SELECTION_RULE:
             raise ValueError("channel_specific_osd pip_selection_rule drifted")
-        if str(config.pop("candidate_generation_rule")) != CANDIDATE_GENERATION_RULE:
+        if str(
+            config.pop("candidate_generation_rule", CANDIDATE_GENERATION_RULE)
+        ) != CANDIDATE_GENERATION_RULE:
             raise ValueError("channel_specific_osd candidate_generation_rule drifted")
         if (
-            str(config.pop("candidate_enumeration_rule"))
+            str(
+                config.pop(
+                    "candidate_enumeration_rule", CANDIDATE_ENUMERATION_RULE
+                )
+            )
             != CANDIDATE_ENUMERATION_RULE
         ):
             raise ValueError("channel_specific_osd candidate_enumeration_rule drifted")
-        if str(config.pop("candidate_ranking_rule")) != CANDIDATE_RANKING_RULE:
+        if str(
+            config.pop("candidate_ranking_rule", CANDIDATE_RANKING_RULE)
+        ) != CANDIDATE_RANKING_RULE:
             raise ValueError("channel_specific_osd candidate_ranking_rule drifted")
-        if str(config.pop("selected_bank_order_rule")) != SELECTED_BANK_ORDER_RULE:
+        if str(
+            config.pop("selected_bank_order_rule", SELECTED_BANK_ORDER_RULE)
+        ) != SELECTED_BANK_ORDER_RULE:
             raise ValueError("channel_specific_osd selected_bank_order_rule drifted")
         if (
-            str(config.pop("discovery_position_search_boundary_rule"))
+            str(
+                config.pop(
+                    "discovery_position_search_boundary_rule",
+                    DISCOVERY_POSITION_SEARCH_BOUNDARY_RULE,
+                )
+            )
             != DISCOVERY_POSITION_SEARCH_BOUNDARY_RULE
         ):
             raise ValueError(
                 "channel_specific_osd discovery_position_search_boundary_rule drifted"
             )
         if (
-            str(config.pop("information_gain_split_rule"))
+            str(
+                config.pop(
+                    "information_gain_split_rule", INFORMATION_GAIN_SPLIT_RULE
+                )
+            )
             != INFORMATION_GAIN_SPLIT_RULE
         ):
             raise ValueError("channel_specific_osd information_gain_split_rule drifted")
@@ -1350,24 +2907,78 @@ def prepare_model_factory(
             window_ids=windows,
             channel_schema=spec.channel_schema,
             sequence_lengths=sequence_lengths,
-            num_pip_ratio=float(config.pop("num_pip_ratio")),
-            shapelets_per_class=int(config.pop("shapelets_per_class")),
-            max_discovery_windows=int(config.pop("max_discovery_windows")),
-            discovery_balance=str(config.pop("discovery_balance")),
-            position_search_neighbourhood_samples=int(
-                config.pop("position_search_neighbourhood_samples")
+            num_pip_ratio=_normalise_positive_fraction(
+                config.pop(
+                    "num_pip_ratio",
+                    SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS["num_pip_ratio"],
+                ),
+                field="num_pip_ratio",
             ),
-            distance_position_chunk_size=int(config.get("distance_position_chunk_size", 256)),
+            shapelets_per_class=_normalise_positive_integer(
+                config.pop(
+                    "shapelets_per_class",
+                    SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                        "shapelets_per_class"
+                    ],
+                ),
+                field="shapelets_per_class",
+            ),
+            max_discovery_windows=_normalise_positive_integer(
+                config.pop(
+                    "max_discovery_windows",
+                    SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                        "max_discovery_windows"
+                    ],
+                ),
+                field="max_discovery_windows",
+            ),
+            discovery_balance=str(
+                config.pop("discovery_balance", "participant_file_balanced")
+            ),
+            position_search_neighbourhood_samples=_normalise_positive_integer(
+                config.pop(
+                    "position_search_neighbourhood_samples",
+                    SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                        "position_search_neighbourhood_samples"
+                    ],
+                ),
+                field="position_search_neighbourhood_samples",
+            ),
+            distance_position_chunk_size=_normalise_positive_integer(
+                config.get(
+                    "distance_position_chunk_size",
+                    SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                        "distance_position_chunk_size"
+                    ],
+                ),
+                field="distance_position_chunk_size",
+            ),
         )
     else:
         from .shapeformer import discover_effect_size_shapelets
 
         bank = discover_effect_size_shapelets(
             **base_discovery,
-            shapelet_length=int(config.pop("shapelet_length_samples")),
-            shapelets_per_class=int(config.pop("shapelets_per_class")),
-            stride=int(config.pop("discovery_stride_samples")),
-            max_candidates_per_class=int(config.pop("max_candidates_per_class")),
+            shapelet_length=int(config.pop("shapelet_length_samples", 128)),
+            shapelets_per_class=_normalise_positive_integer(
+                config.pop(
+                    "shapelets_per_class",
+                    SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS[
+                        "shapelets_per_class"
+                    ],
+                ),
+                field="shapelets_per_class",
+            ),
+            stride=int(config.pop("discovery_stride_samples", 64)),
+            max_candidates_per_class=_normalise_positive_integer(
+                config.pop(
+                    "max_candidates_per_class",
+                    SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS[
+                        "max_candidates_per_class"
+                    ],
+                ),
+                field="max_candidates_per_class",
+            ),
         )
 
     resolved = copy.deepcopy(config)
@@ -1404,9 +3015,9 @@ def prepare_model_factory(
         resolved["discovery_position_search_boundary_rule"] = str(
             bank.discovery_position_search_boundary_rule
         )
-        resolved["architecture_parameters"] = materialize_architecture_parameters(
-            resolved, spec
-        )
+    resolved["architecture_parameters"] = materialize_architecture_parameters(
+        resolved, spec
+    )
     provenance = {
         "model_id": model_id,
         "canonical_model_name": str(config["canonical_model_name"]),
@@ -1463,50 +3074,63 @@ def create_model(
     任何未知键路线均显式失败，避免运行时悄悄退化为另一算法。
     """
 
+    spec = ModelInputSpec.from_value(input_spec)
+    _validate_frailty_factory_input(spec, require_explicit_schema=False)
     config = normalize_model_config(model_config)
+    declared_architecture = _resolved_source_architecture_provenance(config, spec)
     model_id = str(config.pop("model_id"))
     canonical_model_name = str(config.pop("canonical_model_name"))
-    if "architecture_parameters" not in config:
-        raise ValueError("formal V2 model_config requires architecture_parameters")
-    declared_architecture = config.pop("architecture_parameters")
+    config.pop("architecture_parameters", None)
     ensemble_ids = {
         "inception_full_five_member_ensemble",
         "inception_matrix_five_member_ensemble",
     }
+    seed_policy = config.pop("seed_policy", None)
+    outer_repeat_seed = config.pop("outer_repeat_seed", None)
+    config.pop("member_seed_roster_id", None)
     if model_id in ensemble_ids:
         if "seed" in config:
-            raise ValueError("ensemble has no single seed; use the exact member_seeds list")
+            raise ValueError("ensemble has no single seed; use member_seeds")
         seed = 0
     else:
-        if "seed" not in config:
-            raise ValueError(f"{model_id} requires an explicit seed")
-        seed = int(config.pop("seed"))
-    spec = ModelInputSpec.from_value(input_spec)
-    _validate_frailty_factory_input(spec, require_explicit_schema=False)
+        seed = _normalise_seed(config.pop("seed", 42), field="seed")
+        seed = resolve_seed_policy(
+            seed_policy,
+            seed=seed,
+            outer_repeat_seed=outer_repeat_seed,
+        )[0]
     mode = spec.mode
 
     feature_ids = {"logistic_regression", "rbf_svm", "extra_trees"}
     if model_id in feature_ids:
         if mode is not RepresentationMode.FEATURE_VECTOR:
             raise ValueError("feature baselines require feature_vector representation")
-        if "class_weight" not in config:
-            raise ValueError(f"{model_id} requires explicit class_weight (null is allowed)")
-        options: dict[str, Any] = {"class_weight": config.pop("class_weight")}
-        required_by_model = {
-            "logistic_regression": (
-                "logistic_c", "logistic_max_iter", "logistic_solver"
-            ),
-            "rbf_svm": ("svm_kernel", "svm_probability", "svm_c", "svm_gamma"),
-            "extra_trees": (
-                "extra_trees_n_estimators", "extra_trees_n_jobs",
-                "extra_trees_max_features", "extra_trees_min_samples_leaf",
-            ),
+        options: dict[str, Any] = {
+            "class_weight": _normalise_training_owned_class_weight(
+                config.pop("class_weight", None)
+            )
         }
-        missing_options = sorted(set(required_by_model[model_id]) - set(config))
-        if missing_options:
-            raise ValueError(f"{model_id} missing explicit options: {missing_options}")
-        for name in required_by_model[model_id]:
-            options[name] = config.pop(name)
+        defaults_by_model: dict[str, dict[str, Any]] = {
+            "logistic_regression": {
+                "logistic_c": 1.0,
+                "logistic_max_iter": 5000,
+                "logistic_solver": "lbfgs",
+            },
+            "rbf_svm": {
+                "svm_kernel": "rbf",
+                "svm_probability": True,
+                "svm_c": 1.0,
+                "svm_gamma": "scale",
+            },
+            "extra_trees": {
+                "extra_trees_n_estimators": 500,
+                "extra_trees_n_jobs": 1,
+                "extra_trees_max_features": "sqrt",
+                "extra_trees_min_samples_leaf": 1,
+            },
+        }
+        for name, default in defaults_by_model[model_id].items():
+            options[name] = config.pop(name, default)
         if config:
             raise ValueError(f"unknown feature baseline options: {sorted(config)}")
         model = FeatureVectorBaseline(model_id, spec.feature_names, seed=seed, **options)
@@ -1540,14 +3164,33 @@ def create_model(
         from .compact_cnn import CompactCNN1D
 
         _torch_seed(seed)
-        required = {"dropout", "kernel_sizes", "dilations", "pool_sizes"}
-        missing_options = sorted(required - set(config))
-        if missing_options:
-            raise ValueError(f"compact_cnn missing explicit options: {missing_options}")
-        dropout = float(config.pop("dropout"))
-        kernel_sizes = tuple(int(value) for value in config.pop("kernel_sizes"))
-        dilations = tuple(int(value) for value in config.pop("dilations"))
-        pool_sizes = tuple(int(value) for value in config.pop("pool_sizes"))
+        dropout = _normalise_dropout(config.pop("dropout", 0.20))
+        kernel_sizes = _normalise_positive_integer_sequence(
+            config.pop("kernel_sizes", (9, 9, 7)),
+            field="kernel_sizes",
+            length=3,
+            odd=True,
+        )
+        dilations = _normalise_positive_integer_sequence(
+            config.pop("dilations", (1, 1, 1)),
+            field="dilations",
+            length=3,
+        )
+        pool_sizes = _normalise_positive_integer_sequence(
+            config.pop("pool_sizes", (4, 4)),
+            field="pool_sizes",
+            length=2,
+        )
+        stage_channels = _normalise_positive_integer_sequence(
+            config.pop("stage_channels", (32, 64, 128)),
+            field="stage_channels",
+            length=3,
+        )
+        stage_dropouts = _normalise_dropout_sequence(
+            config.pop("stage_dropouts", (0.10, 0.15)),
+            field="stage_dropouts",
+            length=2,
+        )
         if config:
             raise ValueError(f"unknown CompactCNN options: {sorted(config)}")
         model = CompactCNN1D(
@@ -1557,9 +3200,13 @@ def create_model(
             kernel_sizes=kernel_sizes,
             dilations=dilations,
             pool_sizes=pool_sizes,
+            stage_channels=stage_channels,
+            stage_dropouts=stage_dropouts,
         )
         model.model_id = model_id
         model.canonical_model_name = canonical_model_name
+        model.seed_policy = str(seed_policy or "fixed_explicit")
+        model.training_seeds = (seed,)
         return _finalize_model(model, declared_architecture, spec)
 
     if model_id in {"inception_full", "inception_small", "inception_matrix"}:
@@ -1572,20 +3219,29 @@ def create_model(
         from .inception import InceptionTimeSingleNetwork
 
         _torch_seed(seed)
-        required = {"dropout", "kernel_sizes", "dilation"}
-        if model_id == "inception_matrix":
-            required.add("variant")
-        missing_options = sorted(required - set(config))
-        if missing_options:
-            raise ValueError(f"{model_id} missing explicit options: {missing_options}")
         variant = (
-            str(config.pop("variant"))
+            str(config.pop("variant", "full"))
             if model_id == "inception_matrix"
             else model_id.removeprefix("inception_")
         )
-        dropout = float(config.pop("dropout"))
-        kernel_sizes = tuple(int(value) for value in config.pop("kernel_sizes"))
-        dilation = int(config.pop("dilation"))
+        dropout = _normalise_dropout(config.pop("dropout", 0.20))
+        kernel_sizes = _normalise_positive_integer_sequence(
+            config.pop("kernel_sizes", (39, 19, 9)),
+            field="kernel_sizes",
+            odd=True,
+        )
+        dilation = _normalise_positive_integer(
+            config.pop("dilation", 1), field="dilation"
+        )
+        pool_size = _normalise_positive_integer(
+            config.pop("pool_size", 3), field="pool_size"
+        )
+        out_channels = config.pop("out_channels", None)
+        bottleneck_channels = config.pop("bottleneck_channels", None)
+        depth = config.pop("depth", None)
+        residual_interval = _normalise_positive_integer(
+            config.pop("residual_interval", 3), field="residual_interval"
+        )
         if config:
             raise ValueError(f"unknown InceptionTime options: {sorted(config)}")
         model = InceptionTimeSingleNetwork(
@@ -1595,19 +3251,39 @@ def create_model(
             dropout=dropout,
             kernel_sizes=kernel_sizes,
             dilation=dilation,
+            pool_size=pool_size,
+            out_channels=(
+                None
+                if out_channels is None
+                else _normalise_positive_integer(out_channels, field="out_channels")
+            ),
+            bottleneck_channels=(
+                None
+                if bottleneck_channels is None
+                else _normalise_positive_integer(
+                    bottleneck_channels, field="bottleneck_channels"
+                )
+            ),
+            depth=(
+                None
+                if depth is None
+                else _normalise_positive_integer(depth, field="depth")
+            ),
+            residual_interval=residual_interval,
         )
         model.model_id = model_id
         model.canonical_model_name = canonical_model_name
+        model.seed_policy = str(seed_policy or "fixed_explicit")
+        model.training_seeds = (seed,)
         return _finalize_model(model, declared_architecture, spec)
 
     if model_id in {
         "inception_full_five_member_ensemble",
         "inception_matrix_five_member_ensemble",
     }:
-        if config.pop("comparison_only", False) is not True:
-            raise ValueError(
-                "five-member ensemble requires comparison_only=true and is never the default"
-            )
+        comparison_only = config.pop("comparison_only", None)
+        if comparison_only is not None and not isinstance(comparison_only, bool):
+            raise ValueError("comparison_only is optional metadata and must be boolean")
         expected_mode = (
             RepresentationMode.RAW
             if model_id == "inception_full_five_member_ensemble"
@@ -1618,26 +3294,37 @@ def create_model(
         if spec.n_channels <= 0:
             raise ValueError("ensemble input channel count must be resolved and positive")
         from .inception import (
-            CANONICAL_ENSEMBLE_MEMBER_SEEDS,
             InceptionTimeFiveMemberProbabilityEnsemble,
             InceptionTimeSingleNetwork,
         )
 
-        missing_options = sorted(
-            {"dropout", "member_seeds", "kernel_sizes", "dilation"} - set(config)
-        )
+        missing_options = sorted({"member_seeds"} - set(config))
         if missing_options:
             raise ValueError(f"ensemble missing explicit options: {missing_options}")
-        variant = "full"
-        dropout = float(config.pop("dropout"))
-        kernel_sizes = tuple(int(value) for value in config.pop("kernel_sizes"))
-        dilation = int(config.pop("dilation"))
-        member_seeds = tuple(int(value) for value in config.pop("member_seeds"))
-        if member_seeds != CANONICAL_ENSEMBLE_MEMBER_SEEDS:
-            raise ValueError(
-                "V2 ensemble member_seeds must equal "
-                f"{list(CANONICAL_ENSEMBLE_MEMBER_SEEDS)}"
-            )
+        variant = str(config.pop("variant", "full"))
+        dropout = _normalise_dropout(config.pop("dropout", 0.20))
+        kernel_sizes = _normalise_positive_integer_sequence(
+            config.pop("kernel_sizes", (39, 19, 9)),
+            field="kernel_sizes",
+            odd=True,
+        )
+        dilation = _normalise_positive_integer(
+            config.pop("dilation", 1), field="dilation"
+        )
+        pool_size = _normalise_positive_integer(
+            config.pop("pool_size", 3), field="pool_size"
+        )
+        out_channels = config.pop("out_channels", None)
+        bottleneck_channels = config.pop("bottleneck_channels", None)
+        depth = config.pop("depth", None)
+        residual_interval = _normalise_positive_integer(
+            config.pop("residual_interval", 3), field="residual_interval"
+        )
+        member_seeds = resolve_seed_policy(
+            seed_policy or "member_roster",
+            outer_repeat_seed=outer_repeat_seed,
+            member_seeds=config.pop("member_seeds"),
+        )
         if config:
             raise ValueError(f"unknown ensemble options: {sorted(config)}")
         members = []
@@ -1651,6 +3338,27 @@ def create_model(
                     dropout=dropout,
                     kernel_sizes=kernel_sizes,
                     dilation=dilation,
+                    pool_size=pool_size,
+                    out_channels=(
+                        None
+                        if out_channels is None
+                        else _normalise_positive_integer(
+                            out_channels, field="out_channels"
+                        )
+                    ),
+                    bottleneck_channels=(
+                        None
+                        if bottleneck_channels is None
+                        else _normalise_positive_integer(
+                            bottleneck_channels, field="bottleneck_channels"
+                        )
+                    ),
+                    depth=(
+                        None
+                        if depth is None
+                        else _normalise_positive_integer(depth, field="depth")
+                    ),
+                    residual_interval=residual_interval,
                 )
             )
         model = InceptionTimeFiveMemberProbabilityEnsemble(members, member_seeds)
@@ -1662,6 +3370,246 @@ def create_model(
             else "inception_matrix"
         )
         model.representation_mode = expected_mode.value
+        model.seed_policy = str(seed_policy or "member_roster")
+        model.training_seeds = member_seeds
+        return _finalize_model(model, declared_architecture, spec)
+
+    if model_id == "shapeformer_legacy_effect_size_port":
+        if mode is not RepresentationMode.RAW:
+            raise ValueError(
+                "legacy effect-size ShapeFormer requires raw representation"
+            )
+        if spec.n_channels <= 0:
+            raise ValueError(
+                "legacy effect-size ShapeFormer requires positive input channels"
+            )
+        from .shapeformer_legacy import (
+            LEGACY_DISCOVERY_BALANCE,
+            LEGACY_EFFECT_SIZE_DISCOVERY_METHOD,
+            LegacyEffectSizeShapeFormer,
+            LegacyEffectSizeShapelets,
+        )
+
+        required = {
+            "shapelets",
+            "discovery_method",
+            "discovery_balance",
+            "input_fs_hz",
+            "sequence_length_samples",
+            "shapelet_length_samples",
+            "discovery_stride_samples",
+            "shapelets_per_class",
+            "max_discovery_windows",
+            "candidates_per_class_channel",
+            "outer_repeat_index",
+            "outer_fold_index",
+            "outer_train_participant_hash",
+        }
+        missing = sorted(required - set(config))
+        if missing:
+            raise ValueError(
+                "legacy effect-size ShapeFormer missing prepared options: "
+                f"{missing}"
+            )
+        shapelets_value = config.pop("shapelets")
+        if isinstance(shapelets_value, Mapping):
+            payload = dict(shapelets_value)
+            payload["values"] = tuple(
+                np.asarray(value, dtype=np.float32)
+                for value in payload["values"]
+            )
+            for name in (
+                "source_sample_indices",
+                "source_starts",
+                "source_ends",
+                "source_scores",
+                "source_weights",
+                "source_classes",
+                "source_channels",
+                "discovery_indices",
+            ):
+                payload[name] = np.asarray(payload[name])
+            for name in (
+                "source_participant_ids",
+                "source_file_ids",
+                "source_window_ids",
+                "discovery_participant_ids",
+                "discovery_file_ids",
+                "discovery_window_ids",
+                "fitted_participant_ids",
+            ):
+                payload[name] = tuple(payload[name])
+            shapelets_value = LegacyEffectSizeShapelets(**payload)
+        if not isinstance(shapelets_value, LegacyEffectSizeShapelets):
+            raise TypeError(
+                "legacy effect-size ShapeFormer received the wrong discovery bank"
+            )
+        discovery_method = str(config.pop("discovery_method"))
+        if (
+            discovery_method != LEGACY_EFFECT_SIZE_DISCOVERY_METHOD
+            or shapelets_value.discovery_method != discovery_method
+        ):
+            raise ValueError("legacy effect-size discovery method drifted")
+        discovery_balance = str(config.pop("discovery_balance"))
+        if (
+            discovery_balance != LEGACY_DISCOVERY_BALANCE
+            or shapelets_value.discovery_balance != discovery_balance
+        ):
+            raise ValueError("legacy effect-size discovery balance drifted")
+        input_fs_hz = _normalise_finite_positive(
+            config.pop("input_fs_hz"), field="input_fs_hz"
+        )
+        if not np.isclose(
+            input_fs_hz,
+            shapelets_value.input_fs_hz,
+            rtol=0.0,
+            atol=1e-12,
+        ):
+            raise ValueError(
+                "legacy effect-size model sampling rate differs from its bank"
+            )
+
+        def pop_bank_integer(name: str) -> int:
+            value = _normalise_positive_integer(config.pop(name), field=name)
+            if value != int(getattr(shapelets_value, name)):
+                raise ValueError(
+                    f"legacy effect-size {name} differs from its bank"
+                )
+            return value
+
+        sequence_length_samples = pop_bank_integer(
+            "sequence_length_samples"
+        )
+        pop_bank_integer("shapelet_length_samples")
+        pop_bank_integer("discovery_stride_samples")
+        pop_bank_integer("shapelets_per_class")
+        pop_bank_integer("max_discovery_windows")
+        pop_bank_integer("candidates_per_class_channel")
+        outer_repeat_index = int(config.pop("outer_repeat_index"))
+        outer_fold_index = int(config.pop("outer_fold_index"))
+        outer_train_participant_hash = str(
+            config.pop("outer_train_participant_hash")
+        )
+        if (
+            outer_repeat_index != shapelets_value.outer_repeat_index
+            or outer_fold_index != shapelets_value.outer_fold_index
+        ):
+            raise ValueError(
+                "legacy effect-size model repeat/fold differs from its bank"
+            )
+        if (
+            outer_train_participant_hash
+            != shapelets_value.outer_train_participant_hash
+        ):
+            raise ValueError(
+                "legacy effect-size model outer-train roster differs from its bank"
+            )
+        local_kernel_width_samples = _normalise_positive_integer(
+            config.pop(
+                "local_kernel_width_samples",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                    "local_kernel_width_samples"
+                ],
+            ),
+            field="local_kernel_width_samples",
+        )
+        local_embedding_channels = _normalise_positive_integer(
+            config.pop(
+                "local_embedding_channels",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                    "local_embedding_channels"
+                ],
+            ),
+            field="local_embedding_channels",
+        )
+        shape_embedding_channels = _normalise_positive_integer(
+            config.pop(
+                "shape_embedding_channels",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                    "shape_embedding_channels"
+                ],
+            ),
+            field="shape_embedding_channels",
+        )
+        attention_feedforward_channels = _normalise_positive_integer(
+            config.pop(
+                "attention_feedforward_channels",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                    "attention_feedforward_channels"
+                ],
+            ),
+            field="attention_feedforward_channels",
+        )
+        attention_heads = _normalise_positive_integer(
+            config.pop(
+                "attention_heads",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS["attention_heads"],
+            ),
+            field="attention_heads",
+        )
+        dropout = _normalise_dropout(
+            config.pop(
+                "dropout",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS["dropout"],
+            )
+        )
+        shapelet_search_window_samples = _normalise_positive_integer(
+            config.pop(
+                "shapelet_search_window_samples",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                    "shapelet_search_window_samples"
+                ],
+            ),
+            field="shapelet_search_window_samples",
+        )
+        complexity_norm = _normalise_finite_positive(
+            config.pop(
+                "complexity_norm",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS["complexity_norm"],
+            ),
+            field="complexity_norm",
+        )
+        max_complexity_ratio = _normalise_finite_positive(
+            config.pop(
+                "max_complexity_ratio",
+                SHAPEFORMER_LEGACY_EFFECT_SIZE_DEFAULTS[
+                    "max_complexity_ratio"
+                ],
+            ),
+            field="max_complexity_ratio",
+        )
+        if max_complexity_ratio < 1.0:
+            raise ValueError("max_complexity_ratio must be at least 1")
+        if config:
+            raise ValueError(
+                "unknown legacy effect-size ShapeFormer options: "
+                f"{sorted(config)}"
+            )
+        _torch_seed(seed)
+        model = LegacyEffectSizeShapeFormer(
+            spec.n_channels,
+            spec.n_classes,
+            shapelets_value,
+            sequence_length_samples=sequence_length_samples,
+            local_kernel_width_samples=local_kernel_width_samples,
+            local_embedding_channels=local_embedding_channels,
+            shape_embedding_channels=shape_embedding_channels,
+            attention_feedforward_channels=attention_feedforward_channels,
+            attention_heads=attention_heads,
+            dropout=dropout,
+            shapelet_search_window_samples=shapelet_search_window_samples,
+            complexity_norm=complexity_norm,
+            max_complexity_ratio=max_complexity_ratio,
+            input_fs_hz=input_fs_hz,
+        )
+        model.model_id = model_id
+        model.canonical_model_name = canonical_model_name
+        model.registry_role = "ablation"
+        model.scientific_status = (
+            "legacy_parallel_ablation_not_osd_parity"
+        )
+        model.seed_policy = str(seed_policy or "fixed_explicit")
+        model.training_seeds = (seed,)
         return _finalize_model(model, declared_architecture, spec)
 
     if model_id in {
@@ -1721,7 +3669,9 @@ def create_model(
             raise ValueError(
                 f"{model_id} requires discovery_method={expected_method}; never fall back"
             )
-        input_fs_hz = float(config.pop("input_fs_hz"))
+        input_fs_hz = _normalise_finite_positive(
+            config.pop("input_fs_hz"), field="input_fs_hz"
+        )
         outer_repeat_index = int(config.pop("outer_repeat_index"))
         outer_fold_index = int(config.pop("outer_fold_index"))
         outer_train_participant_hash = str(config.pop("outer_train_participant_hash"))
@@ -1870,35 +3820,22 @@ def create_model(
                     "model information_gain_split_rule does not match the "
                     "upstream PISD bank"
                 )
+            position_search_neighbourhood_samples = _normalise_positive_integer(
+                config.pop(
+                    "position_search_neighbourhood_samples",
+                    shapelets_value.position_search_neighbourhood_samples,
+                ),
+                field="position_search_neighbourhood_samples",
+            )
+            if (
+                position_search_neighbourhood_samples
+                != int(shapelets_value.position_search_neighbourhood_samples)
+            ):
+                raise ValueError(
+                    "model position_search_neighbourhood_samples does not match "
+                    "the upstream PISD bank"
+                )
 
-        architecture_fields = (
-            {
-                "sequence_length_samples",
-                "local_kernel_width_samples",
-                "local_embedding_channels",
-                "shape_embedding_channels",
-                "attention_feedforward_channels",
-                "attention_heads",
-                "attention_query_chunk_size",
-                "distance_position_chunk_size",
-                "dropout",
-                "complexity_norm",
-                "max_complexity_ratio",
-                "position_search_neighbourhood_samples",
-            }
-            if model_id == "shapeformer_channel_specific_osd"
-            else {
-                "hidden_channels",
-                "dropout",
-                "patch_size_samples",
-                "attention_heads",
-                "attention_layers",
-                "distance_position_chunk_size",
-            }
-        )
-        missing_architecture = sorted(architecture_fields - set(config))
-        if missing_architecture:
-            raise ValueError(f"ShapeFormer missing explicit architecture options: {missing_architecture}")
         _torch_seed(seed)
         if model_id == "shapeformer_channel_specific_osd":
             from .shapeformer_literature import (
@@ -1908,47 +3845,168 @@ def create_model(
             model = LiteratureShapeFormerChannelSpecificOSD(
                 n_channels=spec.n_channels,
                 n_classes=spec.n_classes,
-                sequence_length=int(config.pop("sequence_length_samples")),
+                sequence_length=_normalise_positive_integer(
+                    config.pop(
+                        "sequence_length_samples",
+                        SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                            "sequence_length_samples"
+                        ],
+                    ),
+                    field="sequence_length_samples",
+                ),
                 shapelets=shapelets_value,
-                local_kernel_width_samples=int(
-                    config.pop("local_kernel_width_samples")
+                local_kernel_width_samples=_normalise_positive_integer(
+                    config.pop(
+                        "local_kernel_width_samples",
+                        SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                            "local_kernel_width_samples"
+                        ],
+                    ),
+                    field="local_kernel_width_samples",
                 ),
-                local_embedding_channels=int(
-                    config.pop("local_embedding_channels")
+                local_embedding_channels=_normalise_positive_integer(
+                    config.pop(
+                        "local_embedding_channels",
+                        SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                            "local_embedding_channels"
+                        ],
+                    ),
+                    field="local_embedding_channels",
                 ),
-                shape_embedding_channels=int(
-                    config.pop("shape_embedding_channels")
+                shape_embedding_channels=_normalise_positive_integer(
+                    config.pop(
+                        "shape_embedding_channels",
+                        SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                            "shape_embedding_channels"
+                        ],
+                    ),
+                    field="shape_embedding_channels",
                 ),
-                attention_feedforward_channels=int(
-                    config.pop("attention_feedforward_channels")
+                attention_feedforward_channels=_normalise_positive_integer(
+                    config.pop(
+                        "attention_feedforward_channels",
+                        SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                            "attention_feedforward_channels"
+                        ],
+                    ),
+                    field="attention_feedforward_channels",
                 ),
-                attention_heads=int(config.pop("attention_heads")),
-                attention_query_chunk_size=int(
-                    config.pop("attention_query_chunk_size")
+                attention_heads=_normalise_positive_integer(
+                    config.pop(
+                        "attention_heads",
+                        SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS["attention_heads"],
+                    ),
+                    field="attention_heads",
                 ),
-                distance_position_chunk_size=int(
-                    config.pop("distance_position_chunk_size")
+                attention_query_chunk_size=_normalise_positive_integer(
+                    config.pop(
+                        "attention_query_chunk_size",
+                        SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                            "attention_query_chunk_size"
+                        ],
+                    ),
+                    field="attention_query_chunk_size",
                 ),
-                dropout=float(config.pop("dropout")),
-                complexity_norm=float(config.pop("complexity_norm")),
-                max_complexity_ratio=float(config.pop("max_complexity_ratio")),
-                position_search_neighbourhood_samples=int(
-                    config.pop("position_search_neighbourhood_samples")
+                distance_position_chunk_size=_normalise_positive_integer(
+                    config.pop(
+                        "distance_position_chunk_size",
+                        SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                            "distance_position_chunk_size"
+                        ],
+                    ),
+                    field="distance_position_chunk_size",
+                ),
+                dropout=_normalise_dropout(
+                    config.pop(
+                        "dropout",
+                        SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS["dropout"],
+                    )
+                ),
+                complexity_norm=_normalise_finite_positive(
+                    config.pop(
+                        "complexity_norm",
+                        SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS["complexity_norm"],
+                    ),
+                    field="complexity_norm",
+                ),
+                max_complexity_ratio=_normalise_finite_positive(
+                    config.pop(
+                        "max_complexity_ratio",
+                        SHAPEFORMER_REFERENCE_NUMERIC_DEFAULTS[
+                            "max_complexity_ratio"
+                        ],
+                    ),
+                    field="max_complexity_ratio",
+                ),
+                position_search_neighbourhood_samples=(
+                    position_search_neighbourhood_samples
                 ),
                 input_fs_hz=input_fs_hz,
             )
         else:
+            experimental_hidden_channels = _normalise_positive_integer(
+                config.pop(
+                    "hidden_channels",
+                    SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS["hidden_channels"],
+                ),
+                field="hidden_channels",
+            )
+            experimental_feedforward_channels = _normalise_positive_integer(
+                config.pop(
+                    "attention_feedforward_channels",
+                    experimental_hidden_channels * 2,
+                ),
+                field="attention_feedforward_channels",
+            )
             model = ExperimentalShapeFormer(
                 spec.n_channels,
                 spec.n_classes,
                 shapelets_value,
-                hidden_channels=int(config.pop("hidden_channels")),
-                dropout=float(config.pop("dropout")),
-                patch_size_samples=int(config.pop("patch_size_samples")),
-                attention_heads=int(config.pop("attention_heads")),
-                attention_layers=int(config.pop("attention_layers")),
-                distance_position_chunk_size=int(
-                    config.pop("distance_position_chunk_size")
+                hidden_channels=experimental_hidden_channels,
+                dropout=_normalise_dropout(
+                    config.pop(
+                        "dropout",
+                        SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS["dropout"],
+                    )
+                ),
+                patch_size_samples=_normalise_positive_integer(
+                    config.pop(
+                        "patch_size_samples",
+                        SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS[
+                            "patch_size_samples"
+                        ],
+                    ),
+                    field="patch_size_samples",
+                ),
+                attention_heads=_normalise_positive_integer(
+                    config.pop(
+                        "attention_heads",
+                        SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS[
+                            "attention_heads"
+                        ],
+                    ),
+                    field="attention_heads",
+                ),
+                attention_layers=_normalise_positive_integer(
+                    config.pop(
+                        "attention_layers",
+                        SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS[
+                            "attention_layers"
+                        ],
+                    ),
+                    field="attention_layers",
+                ),
+                attention_feedforward_channels=(
+                    experimental_feedforward_channels
+                ),
+                distance_position_chunk_size=_normalise_positive_integer(
+                    config.pop(
+                        "distance_position_chunk_size",
+                        SHAPEFORMER_EXPERIMENTAL_NUMERIC_DEFAULTS[
+                            "distance_position_chunk_size"
+                        ],
+                    ),
+                    field="distance_position_chunk_size",
                 ),
                 input_fs_hz=input_fs_hz,
             )
@@ -1959,6 +4017,67 @@ def create_model(
         model.registry_role = (
             "reference" if model_id == "shapeformer_channel_specific_osd" else "ablation"
         )
+        return _finalize_model(model, declared_architecture, spec)
+
+    if model_id == "file_bag_fusion":
+        if mode is not RepresentationMode.FUSION:
+            raise ValueError("file_bag_fusion requires fusion representation")
+        if spec.n_channels <= 0 or spec.n_file_features <= 0:
+            raise ValueError("fusion requires positive signal channels and file-feature width")
+        from .fusion import FileBagFusionClassifier
+
+        signal_config = normalize_fusion_signal_encoder_config(
+            config.pop("signal_encoder", None)
+        )
+        nested_seed = signal_config.get("seed")
+        if nested_seed is not None and _normalise_seed(
+            nested_seed, field="signal_encoder.seed"
+        ) != seed:
+            raise ValueError(
+                "signal_encoder.seed must equal the outer file-bag fusion seed"
+            )
+        nested_policy = signal_config.get("seed_policy")
+        if nested_policy is not None and str(nested_policy) not in {
+            "fixed",
+            "fixed_explicit",
+        }:
+            raise ValueError(
+                "signal_encoder.seed_policy is derived as fixed_explicit from "
+                "the outer fusion seed"
+            )
+        signal_config["seed"] = seed
+        signal_config["seed_policy"] = "fixed_explicit"
+        signal = create_model(signal_config, _fusion_raw_input_spec(spec))
+        if not hasattr(signal, "feature_dim") or not hasattr(
+            signal, "forward_features"
+        ):
+            raise TypeError(
+                "configured file-bag signal encoder lacks forward_features/feature_dim"
+            )
+        feature_hidden_dim = _normalise_positive_integer(
+            config.pop("feature_hidden_dim", 32), field="feature_hidden_dim"
+        )
+        fusion_hidden_dim = _normalise_positive_integer(
+            config.pop("fusion_hidden_dim", 64), field="fusion_hidden_dim"
+        )
+        pooling = str(config.pop("pooling", "mean"))
+        dropout = _normalise_dropout(config.pop("dropout", 0.20))
+        if config:
+            raise ValueError(f"unknown file-bag fusion options: {sorted(config)}")
+        model = FileBagFusionClassifier(
+            signal,
+            int(signal.feature_dim),
+            spec.n_file_features,
+            spec.n_classes,
+            feature_hidden_dim=feature_hidden_dim,
+            fusion_hidden_dim=fusion_hidden_dim,
+            pooling=pooling,
+            dropout=dropout,
+        )
+        model.model_id = model_id
+        model.canonical_model_name = canonical_model_name
+        model.seed_policy = str(seed_policy or "fixed_explicit")
+        model.training_seeds = (seed,)
         return _finalize_model(model, declared_architecture, spec)
 
     if model_id in {"fusion_compact", "fusion_inception"}:
@@ -1988,6 +4107,16 @@ def create_model(
                 kernel_sizes=tuple(int(value) for value in config.pop("signal_kernel_sizes")),
                 dilations=tuple(int(value) for value in config.pop("signal_dilations")),
                 pool_sizes=tuple(int(value) for value in config.pop("signal_pool_sizes")),
+                stage_channels=_normalise_positive_integer_sequence(
+                    config.pop("signal_stage_channels", (32, 64, 128)),
+                    field="signal_stage_channels",
+                    length=3,
+                ),
+                stage_dropouts=_normalise_dropout_sequence(
+                    config.pop("signal_stage_dropouts", (0.10, 0.15)),
+                    field="signal_stage_dropouts",
+                    length=2,
+                ),
             )
         else:
             required_signal = {
@@ -2006,6 +4135,36 @@ def create_model(
                 dropout=float(config.pop("signal_dropout")),
                 kernel_sizes=tuple(int(value) for value in config.pop("signal_kernel_sizes")),
                 dilation=int(config.pop("signal_dilation")),
+                pool_size=_normalise_positive_integer(
+                    config.pop("signal_pool_size", 3), field="signal_pool_size"
+                ),
+                out_channels=(
+                    None
+                    if "signal_out_channels" not in config
+                    else _normalise_positive_integer(
+                        config.pop("signal_out_channels"),
+                        field="signal_out_channels",
+                    )
+                ),
+                bottleneck_channels=(
+                    None
+                    if "signal_bottleneck_channels" not in config
+                    else _normalise_positive_integer(
+                        config.pop("signal_bottleneck_channels"),
+                        field="signal_bottleneck_channels",
+                    )
+                ),
+                depth=(
+                    None
+                    if "signal_depth" not in config
+                    else _normalise_positive_integer(
+                        config.pop("signal_depth"), field="signal_depth"
+                    )
+                ),
+                residual_interval=_normalise_positive_integer(
+                    config.pop("signal_residual_interval", 3),
+                    field="signal_residual_interval",
+                ),
             )
         required_fusion = {"feature_hidden_dim", "fusion_hidden_dim", "pooling", "dropout"}
         missing_fusion = sorted(required_fusion - set(config))

@@ -58,19 +58,33 @@ class ImuProfile:
     gravity_filter_order: int = 2
     eskf: EskfConfiguration = EskfConfiguration()
 
-    def validate(self) -> None:
-        """拒绝未登记算法和隐藏参数 / Reject unregistered methods and parameters."""
+    def validate(self, fs_hz: float = CANONICAL_FS_HZ) -> None:
+        """拒绝未实现算法及越界参数 / Reject unimplemented methods and bad ranges."""
 
         if self.gravity_method not in {"no_precalibration_ekf", "lpf_0p3"}:
             raise ValueError("gravity_method must be no_precalibration_ekf or lpf_0p3")
-        if (
-            self.sensor_filter_order != 3
-            or self.acceleration_lowpass_hz != 20.0
-            or self.gyroscope_lowpass_hz != 40.0
+        if not np.isfinite(fs_hz) or fs_hz <= 0.0:
+            raise ValueError("IMU sampling frequency must be finite and positive")
+        for name, order in (
+            ("sensor_filter_order", self.sensor_filter_order),
+            ("gravity_filter_order", self.gravity_filter_order),
         ):
-            raise ValueError("shared sensor filters are frozen to order3 ACC20/Gyro40")
-        if self.gravity_filter_order != 2 or self.gravity_lowpass_hz != 0.3:
-            raise ValueError("LPF comparator is frozen to causal order2 0.3 Hz")
+            if (
+                isinstance(order, bool)
+                or not isinstance(order, (int, np.integer))
+                or not 1 <= int(order) <= 20
+            ):
+                raise ValueError(f"{name} must be an integer in [1,20]")
+        for name, cutoff_hz in (
+            ("acceleration_lowpass_hz", self.acceleration_lowpass_hz),
+            ("gyroscope_lowpass_hz", self.gyroscope_lowpass_hz),
+            ("gravity_lowpass_hz", self.gravity_lowpass_hz),
+        ):
+            if (
+                not np.isfinite(cutoff_hz)
+                or not 0.0 < float(cutoff_hz) < fs_hz / 2.0
+            ):
+                raise ValueError(f"{name} must be finite and within Nyquist")
 
 
 @dataclass(frozen=True)
@@ -213,6 +227,18 @@ def _causal_filter_axes(
     source = np.asarray(values, dtype=np.float64)
     if source.ndim != 2 or source.shape[0] == 0:
         raise ValueError("filter input must be non-empty samples-by-axes")
+    if (
+        not np.isfinite([fs_hz, cutoff_hz]).all()
+        or fs_hz <= 0.0
+        or not 0.0 < cutoff_hz < fs_hz / 2.0
+    ):
+        raise ValueError("filter cutoff must be finite and within Nyquist")
+    if (
+        isinstance(order, bool)
+        or not isinstance(order, (int, np.integer))
+        or not 1 <= int(order) <= 20
+    ):
+        raise ValueError("filter order must be an integer in [1,20]")
     sos = signal.butter(order, cutoff_hz, btype="lowpass", fs=fs_hz, output="sos")
     state = initial_state
     if state is None:
@@ -600,7 +626,7 @@ class CausalImuProcessor:
 
         if float(fs_hz) != CANONICAL_FS_HZ:
             raise ValueError("V1 causal IMU processor requires exactly 400 Hz")
-        profile.validate()
+        profile.validate(float(fs_hz))
         # 中文：构造时先校验单位，禁止首 chunk 后才发现 metadata 错误。
         # English: Validate unit names before a session mutates any state.
         convert_acceleration(np.zeros((1, 3)), acceleration_unit)
@@ -813,6 +839,11 @@ class CausalImuProcessor:
                     self.profile.gyroscope_lowpass_hz
                 ),
                 "sensor_filter_order": self.profile.sensor_filter_order,
+                "gravity_lowpass_hz": (
+                    self.profile.gravity_lowpass_hz
+                    if self.profile.gravity_method == "lpf_0p3"
+                    else None
+                ),
                 "gravity_filter_order": (
                     self.profile.gravity_filter_order
                     if self.profile.gravity_method == "lpf_0p3"
@@ -909,11 +940,21 @@ def preprocess_imu(
     gravity_method: str,
     timestamps_s: np.ndarray | None = None,
     eskf_config: EskfConfiguration | None = None,
+    acceleration_lowpass_hz: float = 20.0,
+    gyroscope_lowpass_hz: float = 40.0,
+    sensor_filter_order: int = 3,
+    gravity_lowpass_hz: float = 0.3,
+    gravity_filter_order: int = 2,
 ) -> ImuPreprocessResult:
     """所有正式参数显式的一次入口 / One-shot facade with explicit parameters."""
 
     profile = ImuProfile(
         gravity_method=gravity_method,
+        acceleration_lowpass_hz=acceleration_lowpass_hz,
+        gyroscope_lowpass_hz=gyroscope_lowpass_hz,
+        sensor_filter_order=sensor_filter_order,
+        gravity_lowpass_hz=gravity_lowpass_hz,
+        gravity_filter_order=gravity_filter_order,
         eskf=eskf_config or EskfConfiguration(),
     )
     processor = CausalImuProcessor(
@@ -933,6 +974,9 @@ def estimate_gravity_no_precalibration_ekf(
     *,
     fs_hz: float = CANONICAL_FS_HZ,
     config: EskfConfiguration | None = None,
+    acceleration_lowpass_hz: float = 20.0,
+    gyroscope_lowpass_hz: float = 40.0,
+    sensor_filter_order: int = 3,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """One-shot MEKF 兼容包装 / Compatibility wrapper around stateful MEKF."""
 
@@ -944,6 +988,9 @@ def estimate_gravity_no_precalibration_ekf(
         gyro_unit="rad/s",
         gravity_method="no_precalibration_ekf",
         eskf_config=config,
+        acceleration_lowpass_hz=acceleration_lowpass_hz,
+        gyroscope_lowpass_hz=gyroscope_lowpass_hz,
+        sensor_filter_order=sensor_filter_order,
     )
     if result.status in {"failed", "no_estimate"}:
         raise ValueError("MEKF failed: " + ";".join(result.reasons))
@@ -955,6 +1002,11 @@ def estimate_gravity_lpf(
     *,
     fs_hz: float = CANONICAL_FS_HZ,
     gyro_rads: np.ndarray | None = None,
+    acceleration_lowpass_hz: float = 20.0,
+    gyroscope_lowpass_hz: float = 40.0,
+    sensor_filter_order: int = 3,
+    gravity_lowpass_hz: float = 0.3,
+    gravity_filter_order: int = 2,
 ) -> np.ndarray:
     """共享 ACC20 后 causal order2 0.3 Hz comparator / Frozen LPF route."""
 
@@ -971,6 +1023,11 @@ def estimate_gravity_lpf(
         acc_unit="m/s2",
         gyro_unit="rad/s",
         gravity_method="lpf_0p3",
+        acceleration_lowpass_hz=acceleration_lowpass_hz,
+        gyroscope_lowpass_hz=gyroscope_lowpass_hz,
+        sensor_filter_order=sensor_filter_order,
+        gravity_lowpass_hz=gravity_lowpass_hz,
+        gravity_filter_order=gravity_filter_order,
     )
     if result.status == "failed":
         raise ValueError("LPF comparator failed: " + ";".join(result.reasons))
@@ -995,6 +1052,11 @@ def compare_ekf_lpf_gravity(
     *,
     fs_hz: float = CANONICAL_FS_HZ,
     config: EskfConfiguration | None = None,
+    acceleration_lowpass_hz: float = 20.0,
+    gyroscope_lowpass_hz: float = 40.0,
+    sensor_filter_order: int = 3,
+    gravity_lowpass_hz: float = 0.3,
+    gravity_filter_order: int = 2,
 ) -> GravityComparisonResult:
     """Compute paired gravity estimates and descriptive differences only."""
 
@@ -1003,11 +1065,19 @@ def compare_ekf_lpf_gravity(
         gyro_rads,
         fs_hz=fs_hz,
         config=config,
+        acceleration_lowpass_hz=acceleration_lowpass_hz,
+        gyroscope_lowpass_hz=gyroscope_lowpass_hz,
+        sensor_filter_order=sensor_filter_order,
     )
     lpf = estimate_gravity_lpf(
         acc_mps2,
         fs_hz=fs_hz,
         gyro_rads=gyro_rads,
+        acceleration_lowpass_hz=acceleration_lowpass_hz,
+        gyroscope_lowpass_hz=gyroscope_lowpass_hz,
+        sensor_filter_order=sensor_filter_order,
+        gravity_lowpass_hz=gravity_lowpass_hz,
+        gravity_filter_order=gravity_filter_order,
     )
     if ekf.shape != lpf.shape:
         raise ValueError("EKF and LPF gravity outputs lost alignment")

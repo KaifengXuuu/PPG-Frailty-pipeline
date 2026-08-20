@@ -3930,6 +3930,26 @@
 | `train_val/` |  |  | 根级文件：1 个 | 1 | .csv | 2026-08-02 |
 | `train_window/` |  |  | 根级文件：12 个 | 12 | .csv | 2026-08-02 |
 
+## 2026-08-19 增量结构记录（`final_pipeline_v2`）
+
+- 状态：confirmed
+- 来源：用户明确“确认录入”；路径、恢复索引和 hash 完整性只读检查。
+- 口径：本节是 2026-08-02 全量扫描后的增量记录，不改写上方原扫描计数，也不表示已对
+  整个仓库重新做同口径全量统计。
+- `final_v0/final_pipeline_v2/tools/recover_completed_cases_v2.py`
+  - 作用：从指定旧 study、Stage 1 和 Stage 2 中筛选已完成 case，校验并复制生成完整
+    report 所需的最小 artifact；不修改源结果，不复制大体积 diagnostics。
+  - 来源：2026-08-19 completed-case recovery 实现。
+- `final_v0/final_pipeline_v2/historical/v1_transition/archived_source/ppg_frailty/train/sampling.py`
+  - 作用：保存经 registry/tests/tools/入口与动态 import 审计确认不可达的旧 facade。
+  - 来源：V1 transition source archive；不属于当前活动 import path。
+- `final_v0/final_pipeline_v2/artifacts/studies/recovered_completed_cases_v2/20260819_completed_cases_legacy_stage1_stage2_v2/`
+  - 作用：统一报告备用恢复 bundle，包含 13 cases、65 cells、17 PNG 与 HTML/index。
+  - 内容：536 个文件，约 18 MiB；390 组源/副本 SHA、13/13 canonical config hash、
+    outputs index 中 535/535 个带 hash 条目均通过校验；self-entry 按 schema 不设 hash。
+  - 来源：历史 sweep 6 cases、Stage 1 四 cases、Stage 2 三 cases；生成目录被 Git 忽略，
+    原结果目录及冗余 diagnostics 均留在原地。
+
 ## 完整性校验摘要
 
 - 根目录文件逐项记录：`45`。
