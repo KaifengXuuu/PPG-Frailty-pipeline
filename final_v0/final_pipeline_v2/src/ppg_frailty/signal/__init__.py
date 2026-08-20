@@ -110,6 +110,7 @@ def extract_direct_features(
     detector_id: str | None = None,
     min_observation_sec: float = 8.0,
     min_peaks: int = 5,
+    detector_parameters: Mapping[str, Any] | None = None,
     pulses_per_wavelength: Mapping[str, PulseResult] | None = None,
 ) -> dict[str, Any]:
     """统一 direct-only 形态与双波长入口 / Unified direct-only feature entry.
@@ -134,6 +135,7 @@ def extract_direct_features(
             detector_id=str(detector_id),
             min_observation_sec=min_observation_sec,
             min_peaks=min_peaks,
+            detector_parameters=detector_parameters,
         )
     )
     if detector_id is not None and any(

@@ -636,11 +636,14 @@ def _peak_detection_runtime_kwargs(
 ) -> dict[str, Any]:
     """Select the fully materialized detector arguments used at runtime."""
 
-    return {
+    resolved = {
         'detector_id': str(detector['detector_id']),
         'min_observation_sec': float(detector['min_observation_sec']),
         'min_peaks': int(detector['min_peaks']),
     }
+    if 'parameters' in detector:
+        resolved['detector_parameters'] = dict(detector['parameters'])
+    return resolved
 
 
 def _fit_quality_calibrator(states: list[_RuntimeRecord], config: Any, train_ids: tuple[str, ...], oof_ids: tuple[str, ...]) -> tuple[Any, Any]:
@@ -3413,12 +3416,23 @@ def _execute_cell_unchecked(
             mode=mode,
             estimator=model_id in estimator_ids,
         )
+        operational_model = training.model
+        if model_id not in estimator_ids:
+            import torch
+
+            # The registered deployment metric is deliberately CPU batch-1.
+            # OOF inference is already complete, so move the trained model to
+            # CPU explicitly instead of passing a CUDA model to the CPU-only
+            # measurer or silently changing the requested metric definition.
+            operational_model = operational_model.to('cpu')
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
         operational_metrics = {
             'status': 'measured_explicit_cpu_batch1_request',
             **to_strict_json_value(
                 asdict(
                     api['measure_cpu_batch1_operational_metrics'](
-                        training.model,
+                        operational_model,
                         model_input,
                     )
                 )

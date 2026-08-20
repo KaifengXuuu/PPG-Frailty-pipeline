@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
+import os
 import tempfile
 import unittest
 from dataclasses import asdict, replace
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 
@@ -17,14 +20,19 @@ from ppg_frailty.quality.motion import (
 )
 from ppg_frailty.quality.motion_adapters import (
     FORMAL_MOTION_ARTIFACT_SCHEMA,
+    FormalMotionRuntime,
     FormalMotionTrainerConfig,
     MotionRecordingInput,
+    fit_formal_motion_model,
     load_formal_motion_model,
     materialize_motion_window_examples,
+    predict_formal_motion_probability,
+    require_formal_motion_cuda,
     write_formal_motion_input_schema,
 )
 from ppg_frailty.quality.motion_runner import (
     MOTION_WINDOW_OOF_SCHEMA,
+    MotionPredictionInput,
     _read_motion_parquet,
     _validate_internal_oof_rows,
     _write_parquet,
@@ -37,6 +45,7 @@ from ppg_frailty.motion_ids import FORMAL_MOTION_MODEL_ID
 from ppg_frailty.representations.motion import (
     MOTION_NETWORK_CHANNEL_SCHEMA,
     MOTION_NETWORK_SCHEMA_SHA256,
+    apply_motion_fold_imu_transform,
     fit_motion_fold_imu_transform,
 )
 from ppg_frailty.signal.motion_imu import (
@@ -113,8 +122,77 @@ class MotionAdaptersTest(unittest.TestCase):
 
     def test_trainer_configuration_is_frozen_without_training(self) -> None:
         FormalMotionTrainerConfig().validate()
+        self.assertEqual(FormalMotionTrainerConfig().device, "cuda")
         with self.assertRaisesRegex(ValueError, "configuration drift"):
             replace(FormalMotionTrainerConfig(), fixed_epochs=7).validate()
+        historical_cpu = replace(FormalMotionTrainerConfig(), device="cpu")
+        historical_cpu.validate()
+        with self.assertRaisesRegex(ValueError, "CPU fallback is forbidden"):
+            require_formal_motion_cuda(historical_cpu)
+        with self.assertRaisesRegex(ValueError, "CPU fallback is forbidden"):
+            fit_formal_motion_model((), SimpleNamespace(), config=historical_cpu)
+
+    def test_cuda_preflight_fails_instead_of_silently_using_cpu(self) -> None:
+        fake_torch = SimpleNamespace(
+            cuda=SimpleNamespace(is_available=lambda: False),
+        )
+        with patch.dict(
+            os.environ,
+            {"CUBLAS_WORKSPACE_CONFIG": ":4096:8"},
+        ), patch(
+            "ppg_frailty.quality.motion_adapters._require_torch",
+            return_value=fake_torch,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "requires CUDA"):
+                require_formal_motion_cuda()
+
+    def test_motion_transform_and_prediction_keep_float32_and_batch_bound(self) -> None:
+        try:
+            import torch
+        except ImportError:
+            self.skipTest("torch is not installed")
+
+        values = np.zeros((5, 8, 3200), dtype=np.float32)
+        for index in range(values.shape[0]):
+            values[index, 2:, :] = np.float32(index + 1)
+        transform = fit_motion_fold_imu_transform(
+            values,
+            ("p1",) * len(values),
+            fitted_on_participant_ids=("p1",),
+            outer_train_participant_ids=("p1",),
+            outer_oof_participant_ids=(),
+        )
+        scaled = apply_motion_fold_imu_transform(values, transform)
+        self.assertEqual(scaled.dtype, np.float32)
+        legacy_formula = values.astype(np.float64)
+        legacy_formula[:, 2:, :] = (
+            legacy_formula[:, 2:, :]
+            - transform.center.reshape(1, 6, 1)
+        ) / transform.scale.reshape(1, 6, 1)
+        np.testing.assert_array_equal(scaled, legacy_formula.astype(np.float32))
+
+        class BatchRecorder(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.maximum_batch = 0
+
+            def forward(self, tensor):
+                self.maximum_batch = max(self.maximum_batch, int(tensor.shape[0]))
+                return torch.zeros(tensor.shape[0], device=tensor.device)
+
+        model = BatchRecorder()
+        runtime = FormalMotionRuntime(
+            model=model,
+            imu_transform=transform,
+            device="cpu",
+            batch_size=2,
+        )
+        probabilities = predict_formal_motion_probability(
+            runtime,
+            tuple(MotionPredictionInput(row) for row in values),
+        )
+        self.assertEqual(probabilities.shape, (5,))
+        self.assertEqual(model.maximum_batch, 2)
 
     def test_strict_model_loader_rejects_mock_or_field_drift_without_training(self) -> None:
         try:
@@ -145,7 +223,9 @@ class MotionAdaptersTest(unittest.TestCase):
             "schema_version": FORMAL_MOTION_ARTIFACT_SCHEMA,
             "model_id": FORMAL_MOTION_MODEL_ID,
             "model_input_schema_sha256": MOTION_NETWORK_SCHEMA_SHA256,
-            "trainer_config": asdict(FormalMotionTrainerConfig()),
+            "trainer_config": asdict(
+                replace(FormalMotionTrainerConfig(), device="cpu")
+            ),
             "training_participant_ids": ["p1", "p2"],
             "final_training_loss": 0.5,
             "state_dict": model.state_dict(),
@@ -175,6 +255,7 @@ class MotionAdaptersTest(unittest.TestCase):
                 "model_input_schema_sha256": MOTION_NETWORK_SCHEMA_SHA256,
             }
             loaded = load_formal_motion_model(artifact, metadata)
+            self.assertEqual(loaded.device, "cpu")
             self.assertEqual(
                 tuple(loaded.imu_transform.fitted_on_participant_ids),
                 ("p1", "p2"),

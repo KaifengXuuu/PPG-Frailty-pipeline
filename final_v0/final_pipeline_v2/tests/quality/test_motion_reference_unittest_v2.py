@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
@@ -55,6 +56,24 @@ REPOSITORY_ROOT = PIPELINE_ROOT.parents[1]
 
 
 class MotionReferenceBoundaryTests(unittest.TestCase):
+    def test_internal_cuda_preflight_precedes_source_materialization(self) -> None:
+        with patch.object(
+            motion_reference,
+            "require_formal_motion_cuda",
+            side_effect=RuntimeError("CUDA unavailable"),
+        ) as preflight, patch.object(
+            motion_reference,
+            "_build_internal_materialization",
+            side_effect=AssertionError("materialization must not start"),
+        ) as materialize:
+            with self.assertRaisesRegex(RuntimeError, "CUDA unavailable"):
+                run_formal_internal_motion_reference(
+                    REPOSITORY_ROOT,
+                    output_dir=Path("/tmp/not-created-stage5-preflight"),
+                )
+        preflight.assert_called_once()
+        materialize.assert_not_called()
+
     @staticmethod
     def _valid_formal_ptt_source_evidence_fixture() -> dict[str, object]:
         records = tuple(
@@ -193,6 +212,12 @@ class MotionReferenceBoundaryTests(unittest.TestCase):
             }
             for row in rows
         }
+        materialization_eligibility = (
+            motion_reference._internal_materialization_eligibility(rows)
+        )
+        eligible_record_ids = record_ids - set(
+            materialization_eligibility["excluded_record_n_samples_by_id"]
+        )
         payload: dict[str, object] = {
             "schema_version":
                 motion_reference.FORMAL_INTERNAL_SOURCE_EVIDENCE_SCHEMA,
@@ -226,18 +251,23 @@ class MotionReferenceBoundaryTests(unittest.TestCase):
                 participant: "a" * 64 for participant in participants
             },
             "record_ekf_lineage_sha256_by_id": {
-                record_id: "b" * 64 for record_id in record_ids
+                record_id: "b" * 64 for record_id in eligible_record_ids
             },
             "record_motion_values_sha256_by_id": {
-                record_id: "c" * 64 for record_id in record_ids
+                record_id: "c" * 64 for record_id in eligible_record_ids
             },
             "ekf_config_sha256": "d" * 64,
             "tensor_schema_sha256":
                 motion_reference.MOTION_NETWORK_SCHEMA_SHA256,
-            "materialized_window_count": 1,
+            "materialization_record_eligibility": materialization_eligibility,
+            "materialized_record_count": len(eligible_record_ids),
+            "materialized_window_count": materialization_eligibility[
+                "expected_window_count"
+            ],
             "materialized_window_values_sha256": "e" * 64,
             "source_loader_id":
-                "same_hashed_bytes_csv_header_shape_finite_manifest_physical_qc_v2",
+                "same_hashed_bytes_csv_header_shape_finite_manifest_physical_qc_"
+                "complete_motion_windows_v3",
         }
         payload["source_evidence_sha256"] = stable_payload_sha256(payload)
         return payload
@@ -576,6 +606,139 @@ class MotionReferenceBoundaryTests(unittest.TestCase):
         self.assertIn(
             "formal_source_physical_qc_evidence_drift",
             verify_formal_internal_source_evidence(tampered),
+        )
+
+    def test_internal_short_records_are_excluded_without_padding_and_hash_bound(
+        self,
+    ) -> None:
+        rows = tuple(
+            motion_reference.load_m2_internal_manifest(
+                REPOSITORY_ROOT, verify_sources=True
+            )
+        )
+        eligibility = motion_reference._internal_materialization_eligibility(rows)
+        self.assertEqual(eligibility["window_samples"], 3200)
+        self.assertEqual(eligibility["short_record_action"], "exclude_record")
+        self.assertEqual(eligibility["padding"], "none")
+        self.assertEqual(eligibility["eligible_record_count"], 256)
+        self.assertEqual(eligibility["expected_window_count"], 21785)
+        self.assertEqual(eligibility["eligible_participant_count"], 29)
+        self.assertEqual(eligibility["participants_without_eligible_records"], [])
+        self.assertEqual(eligibility["participants_missing_static_records"], [])
+        self.assertEqual(eligibility["participants_missing_motion_records"], [])
+        self.assertEqual(
+            eligibility["excluded_record_n_samples_by_id"],
+            {
+                "frailty3:AKO19_01:W1": 2753,
+                "frailty3:AKO19_01:W2": 2932,
+                "frailty3:ERL70_04:W1": 2888,
+                "frailty3:SDI19_04:W2": 3065,
+                "frailty3:SJI29_02:W2": 2755,
+            },
+        )
+
+        evidence = self._valid_formal_source_evidence_fixture()
+        self.assertEqual(verify_formal_internal_source_evidence(evidence), ())
+        tampered = copy.deepcopy(evidence)
+        tampered["materialization_record_eligibility"][
+            "excluded_record_n_samples_by_id"
+        ].pop("frailty3:AKO19_01:W1")
+        unsigned = {
+            key: value
+            for key, value in tampered.items()
+            if key != "source_evidence_sha256"
+        }
+        tampered["source_evidence_sha256"] = stable_payload_sha256(unsigned)
+        self.assertIn(
+            "formal_source_materialization_eligibility_drift",
+            verify_formal_internal_source_evidence(tampered),
+        )
+
+    def test_internal_builder_excludes_short_records_before_materialization(
+        self,
+    ) -> None:
+        rows = tuple(
+            motion_reference.load_m2_internal_manifest(
+                REPOSITORY_ROOT, verify_sources=True
+            )
+        )
+        observed_record_ids: list[str] = []
+        expected_window_count = motion_reference._internal_materialization_eligibility(
+            rows
+        )["expected_window_count"]
+
+        def fake_materialize(recordings, *, dataset_kind):
+            self.assertEqual(dataset_kind, "internal")
+            observed_record_ids.extend(row.record_id for row in recordings)
+            first_per_record = tuple(
+                MotionWindowExample(
+                    window_id=f"{row.record_id}:0000000000",
+                    participant_id=row.participant_id,
+                    file_id=row.record_id,
+                    role_or_activity=row.role_or_activity,
+                    activity_label=motion_reference.motion_activity_label(
+                        row.role_or_activity
+                    ),
+                    values=np.zeros((1, 1), dtype=np.float32),
+                    dataset_id=row.dataset_id,
+                )
+                for row in recordings
+            )
+            return first_per_record + (first_per_record[0],) * (
+                expected_window_count - len(first_per_record)
+            )
+
+        fake_qc = {"admitted": True}
+        fake_calibration = SimpleNamespace(artifact_sha256="a" * 64)
+        fake_motion = SimpleNamespace(
+            diagnostics={
+                "lineage_sha256": "b" * 64,
+                "output_values_sha256": "c" * 64,
+            }
+        )
+        with patch.object(
+            motion_reference,
+            "load_m2_internal_manifest",
+            return_value=rows,
+        ), patch.object(
+            motion_reference,
+            "_load_internal_numeric_source",
+            return_value=(np.zeros((1, 8), dtype=np.float64), fake_qc),
+        ), patch.object(
+            motion_reference,
+            "fit_motion_imu_calibration",
+            return_value=fake_calibration,
+        ), patch.object(
+            motion_reference,
+            "preprocess_motion_imu_calibrated_ekf",
+            return_value=fake_motion,
+        ), patch.object(
+            motion_reference,
+            "materialize_motion_window_examples",
+            side_effect=fake_materialize,
+        ), patch.object(
+            motion_reference,
+            "_materialized_examples_sha256",
+            return_value="d" * 64,
+        ):
+            examples, evidence = motion_reference._build_internal_materialization(
+                REPOSITORY_ROOT,
+                motion_reference.RollPitchEkfConfig(),
+            )
+
+        excluded_ids = set(
+            evidence["materialization_record_eligibility"][
+                "excluded_record_n_samples_by_id"
+            ]
+        )
+        self.assertEqual(len(examples), expected_window_count)
+        self.assertEqual(len(observed_record_ids), 256)
+        self.assertTrue(excluded_ids.isdisjoint(observed_record_ids))
+        self.assertEqual(evidence["record_count"], 261)
+        self.assertEqual(len(evidence["physical_recording_qc_evidence_by_id"]), 261)
+        self.assertEqual(
+            set(evidence["record_ekf_lineage_sha256_by_id"]),
+            set(observed_record_ids),
         )
 
 

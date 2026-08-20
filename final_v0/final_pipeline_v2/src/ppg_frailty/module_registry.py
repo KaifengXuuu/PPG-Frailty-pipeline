@@ -402,11 +402,20 @@ PEAK_DETECTOR_MODULES = (
     ModuleDescriptor(
         "aboy_project_v1",
         "peak_detector",
-        "ppg_frailty.peaks.aboy_project",
+        "ppg_frailty.peaks.aboy_project.detect_pulses_per_wavelength_aboy_project",
         ("raw", "feature_vector", "feature_matrix", "fusion"),
         "canonical_project_aboy_inspired",
         "signal",
         "400 Hz, complete non-overlapping 10 s blocks, HRI-adaptive second-order band-pass, dual polarity; configurable min_observation_sec=8.0 and min_peaks=5 defaults; not an exact upstream Aboy++ reproduction",
+    ),
+    ModuleDescriptor(
+        "aboy_project_v2",
+        "peak_detector",
+        "ppg_frailty.peaks.aboy_project_v2.detect_pulses_per_wavelength_aboy_project_v2",
+        ("raw", "feature_vector", "feature_matrix", "fusion"),
+        "seven_step_authoritative_ablation",
+        "signal",
+        "authoritative project seven-step contract: owned 0.2-Hz high-pass, complete non-overlapping 10-s blocks, per-block dual-polarity selection, retained-Pd HRI, ratio peak removal before physiological/MAD cleaning",
     ),
     ModuleDescriptor(
         "dual_polarity_prominence_v1_ablation",
@@ -416,6 +425,15 @@ PEAK_DETECTOR_MODULES = (
         "explicit_legacy_ablation_only",
         "signal",
         "numerically preserved whole-record fixed distance/prominence detector; configurable min_observation_sec=8.0 and min_peaks=5 defaults; never a fallback",
+    ),
+    ModuleDescriptor(
+        "msptdfast_v2_3_python_port",
+        "peak_detector",
+        "ppg_frailty.peaks.msptdfast_v2.detect_msptdfast_v2",
+        ("raw", "feature_vector", "feature_matrix", "fusion"),
+        "stage_ablation_01_equation_level_port",
+        "signal",
+        "single registered implementation shared by Stage-ablation-01 and the ordinary pipeline; bound to ppg-beats v2.3 source SHA-256; not bitwise MATLAB parity",
     ),
 )
 
@@ -590,7 +608,7 @@ def resolve_peak_detector_config(signal_section: Mapping[str, Any]) -> dict[str,
         )
     data = dict(raw)
     required = {"detector_id", "failure_action"}
-    allowed = required | {"min_observation_sec", "min_peaks"}
+    allowed = required | {"min_observation_sec", "min_peaks", "parameters"}
     if not required <= set(data) or not set(data) <= allowed:
         raise ValueError(
             "signal.peak_detector key mismatch: "
@@ -601,6 +619,7 @@ def resolve_peak_detector_config(signal_section: Mapping[str, Any]) -> dict[str,
         DEFAULT_MIN_OBSERVATION_SEC,
         DEFAULT_MIN_PEAKS,
         resolve_detector_id,
+        resolve_detector_parameters,
         validate_peak_detection_parameters,
     )
 
@@ -609,16 +628,20 @@ def resolve_peak_detector_config(signal_section: Mapping[str, Any]) -> dict[str,
         data.get("min_observation_sec", DEFAULT_MIN_OBSERVATION_SEC),
         data.get("min_peaks", DEFAULT_MIN_PEAKS),
     )
+    parameters = resolve_detector_parameters(detector_id, data.get("parameters"))
     if data["failure_action"] != "fail_closed_no_fallback":
         raise ValueError(
             "signal.peak_detector.failure_action must be fail_closed_no_fallback"
         )
-    return {
+    resolved = {
         "detector_id": detector_id,
         "failure_action": "fail_closed_no_fallback",
         "min_observation_sec": min_observation_sec,
         "min_peaks": min_peaks,
     }
+    if parameters:
+        resolved["parameters"] = parameters
+    return resolved
 
 
 _ARTIFACT_CONFIG_TO_RUNTIME = {

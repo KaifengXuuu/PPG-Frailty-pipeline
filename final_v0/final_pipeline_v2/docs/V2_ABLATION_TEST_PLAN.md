@@ -60,9 +60,9 @@
 
 - 原始物理输入顺序 `[RED,IR,AX,AY,AZ,GX,GY,GZ]`，内部采样率 400 Hz。
 - direct PPG reference：3 阶 zero-phase Butterworth，0.2–8.0 Hz，无 notch、无第二次 filter。
-- 内部 acceleration：`g -> m/s^2`；gyro：`degree/s -> rad/s`。
+- 内部 acceleration：`g * 9.81 -> m/s^2`；gyro：`degree/s -> rad/s`。
 - 外部 SIT/PTT acceleration 已是 `m/s^2`，必须 identity conversion；禁止再乘 9.80665。
-- reference gravity separation：same-participant calibrated roll–pitch EKF。必须保存单位转换、calibration identity、process covariance `[5.0,5.0,0.05,0.05,0.05]`/s、observation covariance `[0.5,0.5] rad^2`、initial covariance `[1.0,1.0,0.5,0.5,0.5]` 和 dynamic observation scale 3.0。
+- reference gravity separation：same-participant calibrated roll–pitch EKF。必须保存单位转换、calibration identity、process covariance `[5.0,5.0,0.05,0.05,0.05]`/s、observation covariance `[0.5,0.5] rad^2`、initial covariance `[1.0,1.0,0.5,0.5,0.5]` 和单侧 dynamic observation scale `1+3*max(0,||a||-g)/g`；无 magnetometer 时只用 roll/pitch，不声称 yaw correction。
 - 计算 `A_dyn_x/y/z`、`A_mag`、`Omega_mag`、`J_mag`；IMU robust center/scale 只能在 outer-training participants 上拟合。禁止按每个 window 把 IMU amplitude 归一到相同强度。
 - EKF 失败必须显式 fail-closed，绝不能静默改走 low-pass profile。
 
@@ -665,7 +665,7 @@ frailty labels 绝不能训练 motion detector。内部 binary targets 是 proto
 #### Group 8C — motion EKF 对 Profile-A LPF
 
 - **科学问题：** motion endpoint 对 gravity profile 多敏感？
-- **Reference/config：** calibrated EKF 对 `profile_a_sensor_lpf_order3_gravity_0p3hz_v3_ablation_only`。
+- **Reference/config：** calibrated EKF 对 `profile_a_sensor_lpf_order3_gravity_0p3hz_v4_ablation_only`。
 - **唯一变量与取值：** 固定 channel profile 内 `[calibrated_roll_pitch_ekf,profile_a_lowpass_0p3hz]`。
 - **并行模块开关：** 一次固定 8ch 或 11ch，不能与 derived augmentation 交叉变化。
 - **固定控制：** 8A/B；两路都有显式 same-participant calibration、同 unit/scaling；LPF 不是 error recovery。

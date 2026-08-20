@@ -140,6 +140,36 @@ def _weighted_bundle() -> CollectedStudy:
     )
 
 
+def _with_runtime_line(
+    bundle: CollectedStudy,
+    balance_line: str,
+) -> CollectedStudy:
+    windows = tuple(
+        replace(
+            OofPredictionRow(
+                **{key: value for key, value in row.items() if key != "case_id"}
+            ),
+            aggregation_rule=balance_line,
+        )
+        for row in bundle.window_oof_rows
+    )
+    persisted = aggregate_hierarchy(
+        windows,
+        balance_line=balance_line,
+        quality_weighted=True,
+        quality_weight_source=QUALITY_WEIGHT_SOURCE_LEGACY_WINDOW,
+    )
+    def projected(rows):
+        return tuple({"case_id": CASE_ID, **asdict(row)} for row in rows)
+    return replace(
+        bundle,
+        window_oof_rows=projected(windows),
+        file_oof_rows=projected(persisted.file_rows),
+        subject_oof_rows=projected(persisted.participant_rows),
+        role_oof_rows=projected(persisted.role_rows),
+    )
+
+
 class QualityWeightedReportingReplayTests(unittest.TestCase):
     def test_source_line_matches_persisted_oof_and_both_lines_keep_weights(self) -> None:
         analysis = analyze_study(_weighted_bundle())
@@ -182,46 +212,9 @@ class QualityWeightedReportingReplayTests(unittest.TestCase):
         )
 
     def test_runtime_line_overrides_resolved_catalog_default(self) -> None:
-        bundle = _weighted_bundle()
-        source_windows = tuple(
-            replace(
-                OofPredictionRow(
-                    **{
-                        key: value
-                        for key, value in row.items()
-                        if key != "case_id"
-                    }
-                ),
-                aggregation_rule=LINE_A_EQUAL_FILES,
-            )
-            for row in bundle.window_oof_rows
+        analysis = analyze_study(
+            _with_runtime_line(_weighted_bundle(), LINE_A_EQUAL_FILES)
         )
-        persisted = aggregate_hierarchy(
-            source_windows,
-            balance_line=LINE_A_EQUAL_FILES,
-            quality_weighted=True,
-            quality_weight_source=QUALITY_WEIGHT_SOURCE_LEGACY_WINDOW,
-        )
-        runtime_line_a = replace(
-            bundle,
-            window_oof_rows=tuple(
-                {"case_id": CASE_ID, **asdict(row)} for row in source_windows
-            ),
-            file_oof_rows=tuple(
-                {"case_id": CASE_ID, **asdict(row)}
-                for row in persisted.file_rows
-            ),
-            subject_oof_rows=tuple(
-                {"case_id": CASE_ID, **asdict(row)}
-                for row in persisted.participant_rows
-            ),
-            role_oof_rows=tuple(
-                {"case_id": CASE_ID, **asdict(row)}
-                for row in persisted.role_rows
-            ),
-        )
-
-        analysis = analyze_study(runtime_line_a)
         by_line = {
             str(row["balance_line"]): row
             for row in analysis.aggregation_line_comparison
@@ -280,6 +273,19 @@ class QualityWeightedReportingReplayTests(unittest.TestCase):
                 "multiple or unsupported effective source lines" in note
                 for note in rejected.notes
             )
+        )
+
+        wrong_seed = analyze_study(
+            replace(
+                bundle,
+                cell_rows=(
+                    {**bundle.cell_rows[0], "split_seed": 99},
+                ),
+            )
+        )
+        self.assertEqual(wrong_seed.aggregation_line_comparison, ())
+        self.assertTrue(
+            any("split_seed disagrees" in note for note in wrong_seed.notes)
         )
 
     def test_missing_config_or_row_weight_suppresses_replay(self) -> None:

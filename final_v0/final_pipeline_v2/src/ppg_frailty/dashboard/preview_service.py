@@ -483,6 +483,7 @@ class PipelinePreviewService:
                 detector_id=detector["detector_id"],
                 min_observation_sec=detector["min_observation_sec"],
                 min_peaks=detector["min_peaks"],
+                detector_parameters=detector.get("parameters"),
             )
             pulse = pulses_per_wavelength[
                 select_reference_wavelength(pulses_per_wavelength)

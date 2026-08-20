@@ -82,7 +82,10 @@ def _add_execution_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--device",
-        help="Override training.device for every resolved case (for example cuda).",
+        help=(
+            "Torch training device (default: cuda); estimator cases in mixed "
+            "studies remain on their executable CPU backend."
+        ),
     )
     operational_costs = parser.add_mutually_exclusive_group()
     operational_costs.add_argument(
@@ -179,7 +182,13 @@ def _execution(args: argparse.Namespace, base: ExecutionSpec | None = None) -> E
         repeats=args.repeats if args.repeats is not None else source.repeats,
         folds=args.folds if args.folds is not None else source.folds,
         jobs=args.jobs if args.jobs is not None else source.jobs,
-        device=args.device if args.device is not None else source.device,
+        device=(
+            args.device
+            if args.device is not None
+            else source.device
+            if source.device is not None
+            else "cuda"
+        ),
         measure_operational_costs=(
             args.measure_operational_costs
             if args.measure_operational_costs is not None

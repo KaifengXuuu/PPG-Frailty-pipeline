@@ -14,6 +14,8 @@ from ppg_frailty.signal.motion_imu import (
     PROFILE_A_LPF_ID,
     PTT_STATIC_CALIBRATION_ROLE,
     RollPitchEkfConfig,
+    _gravity_from_roll_pitch,
+    _run_roll_pitch_ekf,
     fit_motion_imu_calibration,
     preprocess_motion_imu_calibrated_ekf,
     preprocess_motion_imu_lpf_ablation,
@@ -69,6 +71,10 @@ class MotionImuTests(unittest.TestCase):
             list(self.config.observation_covariance_diagonal_rad2),
         )
         self.assertFalse(result.diagnostics["silent_fallback"])
+        self.assertEqual(result.diagnostics["gravity_mps2"], 9.81)
+        self.assertEqual(
+            result.diagnostics["unit_conversion"]["g_to_mps2_factor"], 9.81
+        )
         self.assertEqual(result.diagnostics["sensor_filters"]["order"], 3)
         for name in (
             "source_acceleration_sha256",
@@ -99,6 +105,67 @@ class MotionImuTests(unittest.TestCase):
         nonfinite_gravity[0, 0] = np.nan
         with self.assertRaisesRegex(ValueError, "fully finite"):
             replace(result, gravity_mps2=nonfinite_gravity).validate()
+
+    def test_authoritative_observation_scale_is_one_sided(self) -> None:
+        count = 8
+        gyro = np.zeros((count, 3), dtype=np.float64)
+        low_acc = np.tile(
+            np.asarray([0.0, 0.0, 0.8 * self.config.gravity_mps2]),
+            (count, 1),
+        )
+        _, _, _, low = _run_roll_pitch_ekf(
+            low_acc,
+            gyro,
+            fs_hz=self.fs,
+            initial_roll_rad=0.0,
+            initial_pitch_rad=0.0,
+            config=self.config,
+        )
+        self.assertEqual(low["observed_measurement_scale_min"], 1.0)
+        self.assertEqual(low["observed_measurement_scale_max"], 1.0)
+        high_acc = np.tile(
+            np.asarray([0.0, 0.0, 1.2 * self.config.gravity_mps2]),
+            (count, 1),
+        )
+        _, _, _, high = _run_roll_pitch_ekf(
+            high_acc,
+            gyro,
+            fs_hz=self.fs,
+            initial_roll_rad=0.0,
+            initial_pitch_rad=0.0,
+            config=self.config,
+        )
+        self.assertAlmostEqual(high["observed_measurement_scale_min"], 1.6)
+        self.assertAlmostEqual(high["observed_measurement_scale_max"], 1.6)
+        self.assertEqual(
+            high["observation_scale_equation"],
+            "1+alpha_R*max(0,norm_acc-g)/g",
+        )
+
+    def test_gravity_rotation_is_rx_then_ry_and_yaw_free(self) -> None:
+        roll = np.asarray([0.3])
+        pitch = np.asarray([-0.2])
+        observed = _gravity_from_roll_pitch(
+            roll,
+            pitch,
+            gravity_mps2=self.config.gravity_mps2,
+        )[0]
+        rx = np.asarray(
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, np.cos(roll[0]), -np.sin(roll[0])],
+                [0.0, np.sin(roll[0]), np.cos(roll[0])],
+            ]
+        )
+        ry = np.asarray(
+            [
+                [np.cos(pitch[0]), 0.0, np.sin(pitch[0])],
+                [0.0, 1.0, 0.0],
+                [-np.sin(pitch[0]), 0.0, np.cos(pitch[0])],
+            ]
+        )
+        expected = (rx @ ry).T @ np.asarray([0.0, 0.0, 9.81])
+        np.testing.assert_allclose(observed, expected, rtol=0.0, atol=1e-12)
 
     def test_filter_parameters_are_configurable_and_stale_calibration_is_rejected(self) -> None:
         self.assertEqual(self.config.sensor_filter_order, 3)

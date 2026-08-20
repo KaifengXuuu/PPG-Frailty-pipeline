@@ -23,6 +23,9 @@ from ..signal.views import CANONICAL_FS_HZ, CanonicalSignalViews
 DETECTOR_ID = "aboy_project_v1"
 DETECTOR_VERSION = "project_aboy_inspired_block_adaptive_v1"
 DETECTOR_NAME = "project Aboy++-inspired detector"
+IMPLEMENTATION_PATH = (
+    "ppg_frailty.peaks.aboy_project.detect_pulses_per_wavelength_aboy_project"
+)
 BLOCK_SECONDS = 10.0
 INITIAL_HRI = 0.0
 INITIAL_HRI_RULE = "historical_project_fixed_zero_no_label_tuning"
@@ -635,6 +638,7 @@ __all__ = [
     "DETECTOR_VERSION",
     "INITIAL_HRI",
     "INITIAL_HRI_RULE",
+    "IMPLEMENTATION_PATH",
     "MAX_BPM",
     "MIN_BASIC_RATE_PEAKS",
     "MIN_BPM",

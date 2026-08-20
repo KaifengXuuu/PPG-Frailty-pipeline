@@ -29,6 +29,7 @@ class StudyCliHelpTests(unittest.TestCase):
         self.assertIn("--config", output)
         self.assertIn("--resume", output)
         self.assertIn("--jobs", output)
+        self.assertIn("--device", output)
         self.assertIn("--measure-operational-costs", output)
 
     def test_artifact_comparison_accepts_peak_thresholds(self) -> None:
@@ -79,6 +80,7 @@ class StudyCliHelpTests(unittest.TestCase):
         self.assertTrue(
             plan_from_args(pipeline_args).execution.measure_operational_costs
         )
+        self.assertEqual(plan_from_args(pipeline_args).execution.device, "cuda")
 
         plan_path = ROOT / "configs" / "studies" / "single_config_v2.yaml"
         loaded = _run_plan(
@@ -126,6 +128,27 @@ class StudyCliHelpTests(unittest.TestCase):
                     plan.execution.measure_operational_costs,
                     enabled,
                 )
+                self.assertEqual(plan.execution.device, "cuda")
+
+    def test_mixed_study_routes_cuda_only_to_torch_cases(self) -> None:
+        from ppg_frailty.study import StudyRunner, load_study_plan
+
+        plan = load_study_plan(
+            ROOT
+            / "configs"
+            / "studies"
+            / "static_line_b_staged_v2"
+            / "01_representation_baselines_v2.yaml"
+        )
+        expansion = StudyRunner(pipeline_root=ROOT).expand(plan)
+        devices = {
+            case.case_id: case.config["training"]["device"]
+            for case in expansion.cases
+        }
+        self.assertEqual(devices["raw__compact_cnn"], "cuda")
+        self.assertEqual(devices["fusion__compact"], "cuda")
+        self.assertEqual(devices["feature_vector__logistic"], "cpu")
+        self.assertEqual(devices["feature_matrix__rocket_ridge"], "cpu")
 
 
 if __name__ == "__main__":

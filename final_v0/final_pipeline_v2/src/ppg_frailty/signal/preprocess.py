@@ -335,6 +335,9 @@ def roll_pitch_ekf_config_from_resolved(
         dynamic_observation_scale=float(
             imu_config.get("dynamic_observation_scale", defaults.dynamic_observation_scale)
         ),
+        gravity_mps2=float(
+            imu_config.get("gravity_mps2", defaults.gravity_mps2)
+        ),
         accelerometer_lowpass_hz=float(
             imu_config.get("sensor_lowpass_acc_hz", defaults.accelerometer_lowpass_hz)
         ),
@@ -445,6 +448,7 @@ def _materialize_imu_profile(
         "observation_covariance_diagonal_rad2",
         "initial_covariance_diagonal",
         "dynamic_observation_scale",
+        "gravity_mps2",
     )
     unknown = sorted(set(declared) - structural_keys - set(numeric_keys))
     if unknown:
@@ -514,6 +518,7 @@ def _materialize_imu_profile(
         ),
         "initial_covariance_diagonal": list(defaults.initial_covariance_diagonal),
         "dynamic_observation_scale": defaults.dynamic_observation_scale,
+        "gravity_mps2": defaults.gravity_mps2,
     }
     active_by_method = {
         "calibrated_roll_pitch_ekf": {
@@ -526,6 +531,7 @@ def _materialize_imu_profile(
             "observation_covariance_diagonal_rad2",
             "initial_covariance_diagonal",
             "dynamic_observation_scale",
+            "gravity_mps2",
         },
         "profile_a_lowpass_0p3hz": {
             "sensor_lowpass_acc_hz",
@@ -535,6 +541,7 @@ def _materialize_imu_profile(
             "gravity_filter_order",
             "calibration_start_s",
             "calibration_stop_s",
+            "gravity_mps2",
         },
         "quaternion_error_state_ekf": {
             "sensor_lowpass_acc_hz",
@@ -951,6 +958,7 @@ def build_signal_views(
         "observation_covariance_diagonal_rad2",
         "initial_covariance_diagonal",
         "dynamic_observation_scale",
+        "gravity_mps2",
     }
     allowed_imu_keys = common_imu_keys | calibrated_extra_keys
     unknown_imu_keys = set(imu_config) - allowed_imu_keys

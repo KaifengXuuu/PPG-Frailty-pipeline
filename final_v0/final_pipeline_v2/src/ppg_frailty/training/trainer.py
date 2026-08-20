@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import os
 import pickle
 import random
 from dataclasses import dataclass, field, replace
@@ -46,6 +47,48 @@ def _require_torch() -> None:
             "deep training requires optional dependency torch; "
             "UnifiedTrainer.fit_estimator remains available without it"
         )
+
+
+_DETERMINISTIC_CUBLAS_WORKSPACE_CONFIGS = {":16:8", ":4096:8"}
+
+
+def resolve_torch_training_device(
+    requested: str,
+    *,
+    deterministic_algorithms: bool,
+) -> Any:
+    """Resolve a Torch device and fail before model/data allocation.
+
+    Deterministic CUDA matmul requires one of the two cuBLAS workspace
+    settings documented by PyTorch.  Set the larger deterministic workspace
+    only when the caller did not provide one; reject an invalid explicit value
+    instead of silently disabling determinism or falling back to CPU.
+    """
+
+    _require_torch()
+    device = torch.device(str(requested).strip())
+    if device.type != "cuda":
+        return device
+    if deterministic_algorithms:
+        workspace = os.environ.get("CUBLAS_WORKSPACE_CONFIG")
+        if workspace is None:
+            os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+        elif workspace not in _DETERMINISTIC_CUBLAS_WORKSPACE_CONFIGS:
+            raise RuntimeError(
+                "deterministic CUDA training requires CUBLAS_WORKSPACE_CONFIG "
+                "to be :4096:8 or :16:8"
+            )
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA training was requested but torch.cuda.is_available() is false; "
+            "CPU fallback is forbidden"
+        )
+    if device.index is not None and device.index >= torch.cuda.device_count():
+        raise RuntimeError(
+            f"CUDA device index {device.index} is unavailable; "
+            f"visible device count={torch.cuda.device_count()}"
+        )
+    return device
 
 
 @dataclass(frozen=True)
@@ -1778,7 +1821,14 @@ class UnifiedTrainer:
 
     def __init__(self, config: TrainingConfig) -> None:
         self.config = config
-        self.device = torch.device(config.device) if torch is not None else None
+        self.device = (
+            resolve_torch_training_device(
+                config.device,
+                deterministic_algorithms=config.deterministic_algorithms,
+            )
+            if torch is not None
+            else None
+        )
 
     def _loader(
         self,

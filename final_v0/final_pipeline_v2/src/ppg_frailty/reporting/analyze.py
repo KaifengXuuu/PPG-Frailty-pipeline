@@ -865,6 +865,8 @@ def _validate_selected_cell_oof_provenance(
             ("training_seed", row.training_seed),
             ("config_hash", row.config_hash),
         ):
+            if field == "training_seed" and observed is None:
+                continue
             expected = selected.get(field)
             if expected in (None, ""):
                 continue

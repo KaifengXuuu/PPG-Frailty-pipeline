@@ -1137,6 +1137,7 @@ def evaluate_quality_diagnostics(
     detector_id: str | None = None,
     min_observation_sec: float = 8.0,
     min_peaks: int = 5,
+    detector_parameters: Mapping[str, object] | None = None,
 ) -> SqiDiagnostics:
     """Compute raw SQI observations without weights, thresholds, or routing.
 
@@ -1240,6 +1241,7 @@ def evaluate_quality_diagnostics(
             min_observation_sec=min_observation_sec,
             min_peaks=min_peaks,
             source_route=route,
+            detector_parameters=detector_parameters,
         )
     peak_density = ppi_fraction = ppi_cv = float("nan")
     if pulse is not None:
@@ -1374,6 +1376,7 @@ def evaluate_quality(
     detector_id: str | None = None,
     min_observation_sec: float = 8.0,
     min_peaks: int = 5,
+    detector_parameters: Mapping[str, object] | None = None,
 ) -> QualityResult:
     """公共 Q_rate/Q_morph 入口 / Public endpoint-SQI entry point."""
 
@@ -1469,6 +1472,7 @@ def evaluate_quality(
             min_observation_sec=min_observation_sec,
             min_peaks=min_peaks,
             source_route=route,
+            detector_parameters=detector_parameters,
         )
     if pulse is None:
         peak_density, ppi_plausibility, ppi_stability = (float("nan"),) * 3

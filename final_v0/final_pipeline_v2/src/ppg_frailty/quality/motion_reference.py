@@ -1,9 +1,12 @@
-"""No-callback canonical motion entries bound to authoritative source files.
+"""Canonical motion entries bound to authoritative source files.
 
 The functions in this module perform no work at import time. The internal
 entry reads and re-hashes all 261 frozen files itself. The PTT entry reads all
 66 authoritative CSV records itself and requires the exact hash-bound V2-036
 unit evidence before any unit conversion, EKF, materialization, or evaluation.
+An optional observer receives progress counters only; it cannot inject data,
+models, splits, or scientific parameters.  The training device is an explicit
+operational input and is restricted to CUDA.
 """
 
 from __future__ import annotations
@@ -14,6 +17,7 @@ import io
 import json
 import re
 from dataclasses import asdict, dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -49,34 +53,46 @@ from ..data.qc import (
     require_recording_qc_pass,
 )
 from ..provenance import stable_payload_sha256
-from ..representations.motion import MOTION_NETWORK_SCHEMA_SHA256
+from ..representations.motion import (
+    MOTION_HOP_SAMPLES,
+    MOTION_NETWORK_SCHEMA_SHA256,
+    MOTION_WINDOW_SAMPLES,
+    MOTION_WINDOW_SECONDS,
+)
 from ..signal.motion_imu import (
     PTT_STATIC_CALIBRATION_ROLE,
     RollPitchEkfConfig,
     fit_motion_imu_calibration,
     preprocess_motion_imu_calibrated_ekf,
 )
-from .motion import load_motion_fold_jobs
+from .motion import load_motion_fold_jobs, motion_activity_label
 from .motion_adapters import (
+    FormalMotionTrainerConfig,
     MotionRecordingInput,
     fit_formal_motion_model,
     load_formal_motion_model,
     materialize_motion_window_examples,
     predict_formal_motion_probability,
+    require_formal_motion_cuda,
     write_formal_motion_input_schema,
 )
 from .motion_runner import (
     MotionExternalRunResult,
     MotionInternalRunResult,
+    MotionPttTrainingRunResult,
+    ProgressCallback,
+    _notify_progress,
+    _run_internal_reverse_evaluation_impl,
     _run_internal_motion_oof_impl,
     _run_ptt_external_evaluation_impl,
+    _run_ptt_motion_training_ablation_impl,
 )
 
 
 FORMAL_INTERNAL_MOTION_ENTRY_ID = "formal_internal_motion_reference_source_bound_v2"
 FORMAL_PTT_MOTION_ENTRY_ID = "formal_ptt_motion_reference_source_bound_v2"
 FORMAL_INTERNAL_SOURCE_EVIDENCE_SCHEMA = (
-    "ppg_frailty.formal_internal_motion_source_evidence.v2"
+    "ppg_frailty.formal_internal_motion_source_evidence.v3"
 )
 PTT_IMU_UNIT_EVIDENCE_SCHEMA = "ppg_frailty.ptt_imu_unit_evidence.v3"
 PTT_UNRESOLVED_IMU_UNIT_STATUS = "declared_g_but_values_and_code_inference_conflict"
@@ -380,6 +396,59 @@ def _manifest_roster_sha256(rows: Sequence[ManifestRow]) -> str:
     )
 
 
+def _internal_materialization_eligibility(
+    rows: Sequence[ManifestRow],
+) -> dict[str, Any]:
+    """Describe complete-window eligibility without padding short records."""
+
+    excluded = {
+        row.record_id: int(row.n_samples)
+        for row in sorted(rows, key=lambda item: item.record_id)
+        if int(row.n_samples) < MOTION_WINDOW_SAMPLES
+    }
+    eligible_rows = tuple(row for row in rows if row.record_id not in excluded)
+    all_participants = {row.participant_id for row in rows}
+    eligible_participants = {row.participant_id for row in eligible_rows}
+    expected_window_count = sum(
+        1 + (int(row.n_samples) - MOTION_WINDOW_SAMPLES) // MOTION_HOP_SAMPLES
+        for row in eligible_rows
+    )
+    labels_by_participant = {
+        participant_id: {
+            motion_activity_label(row.role)
+            for row in eligible_rows
+            if row.participant_id == participant_id
+        }
+        for participant_id in sorted(all_participants)
+    }
+    return {
+        "policy_id": "complete_frozen_motion_window_only_v1",
+        "window_seconds": MOTION_WINDOW_SECONDS,
+        "window_samples": MOTION_WINDOW_SAMPLES,
+        "short_record_action": "exclude_record",
+        "padding": "none",
+        "partial_windows": False,
+        "eligible_record_count": len(rows) - len(excluded),
+        "excluded_record_count": len(excluded),
+        "excluded_record_n_samples_by_id": excluded,
+        "expected_window_count": expected_window_count,
+        "eligible_participant_count": len(eligible_participants),
+        "participants_without_eligible_records": sorted(
+            all_participants - eligible_participants
+        ),
+        "participants_missing_static_records": sorted(
+            participant_id
+            for participant_id, labels in labels_by_participant.items()
+            if 0 not in labels
+        ),
+        "participants_missing_motion_records": sorted(
+            participant_id
+            for participant_id, labels in labels_by_participant.items()
+            if 1 not in labels
+        ),
+    }
+
+
 def _resolve_bound_source(
     repository_root: Path,
     relative_path: str,
@@ -489,6 +558,7 @@ def _seal_source_evidence(payload: Mapping[str, Any]) -> dict[str, Any]:
 def _build_internal_materialization(
     repository_root: Path,
     config: RollPitchEkfConfig,
+    progress_callback: ProgressCallback | None = None,
 ) -> tuple[tuple[Any, ...], dict[str, Any]]:
     rows = tuple(load_m2_internal_manifest(repository_root, verify_sources=True))
     by_participant: dict[str, list[ManifestRow]] = {}
@@ -497,13 +567,39 @@ def _build_internal_materialization(
     if len(rows) != 261 or len(by_participant) != 29:
         raise ValueError("formal internal source roster is not the exact 261/29 snapshot")
 
+    materialization_eligibility = _internal_materialization_eligibility(rows)
+    excluded_record_ids = set(
+        materialization_eligibility["excluded_record_n_samples_by_id"]
+    )
+    eligible_record_ids = {
+        row.record_id for row in rows if row.record_id not in excluded_record_ids
+    }
+    if (
+        materialization_eligibility["eligible_participant_count"]
+        != len(by_participant)
+        or materialization_eligibility["participants_without_eligible_records"]
+        or materialization_eligibility["participants_missing_static_records"]
+        or materialization_eligibility["participants_missing_motion_records"]
+    ):
+        raise ValueError(
+            "formal internal short-record exclusions break participant/class coverage"
+        )
     recordings: list[MotionRecordingInput] = []
     calibration_hashes: dict[str, str] = {}
     calibration_records: dict[str, str] = {}
     lineage_hashes: dict[str, str] = {}
     output_hashes: dict[str, str] = {}
     physical_qc_evidence: dict[str, Mapping[str, Any]] = {}
-    for participant_id, participant_rows in sorted(by_participant.items()):
+    participant_rows_by_id = sorted(by_participant.items())
+    for participant_index, (participant_id, participant_rows) in enumerate(
+        participant_rows_by_id
+    ):
+        _notify_progress(
+            progress_callback,
+            participant_index,
+            len(participant_rows_by_id),
+            f"preprocess internal participant {participant_id}",
+        )
         baseline_rows = [row for row in participant_rows if row.role == "B"]
         if len(baseline_rows) != 1:
             raise ValueError("formal internal participant must have exactly one B source")
@@ -532,6 +628,8 @@ def _build_internal_materialization(
             else:
                 values, row_qc = _load_internal_numeric_source(repository_root, row)
                 physical_qc_evidence[row.record_id] = row_qc
+            if row.record_id in excluded_record_ids:
+                continue
             acceleration_unit, gyroscope_unit = _internal_source_units(row)
             motion = preprocess_motion_imu_calibrated_ekf(
                 values[:, 2:5],
@@ -558,8 +656,23 @@ def _build_internal_materialization(
                     fs_hz=row.fs,
                 )
             )
-
+    _notify_progress(
+        progress_callback,
+        len(participant_rows_by_id),
+        len(participant_rows_by_id),
+        "completed internal participant preprocessing",
+    )
+    _notify_progress(
+        progress_callback, 0, 1, f"materialize {len(recordings)} internal recordings"
+    )
     examples = materialize_motion_window_examples(recordings, dataset_kind="internal")
+    _notify_progress(progress_callback, 1, 1, "completed internal motion windows")
+    materialized_record_ids = {example.file_id for example in examples}
+    if (
+        materialized_record_ids != eligible_record_ids
+        or len(examples) != materialization_eligibility["expected_window_count"]
+    ):
+        raise ValueError("formal internal eligible-record materialization is incomplete")
     record_ids = {row.record_id for row in rows}
     role_counts = {
         role: sum(row.role == role for row in rows)
@@ -592,16 +705,19 @@ def _build_internal_materialization(
         "record_motion_values_sha256_by_id": output_hashes,
         "ekf_config_sha256": stable_payload_sha256(asdict(config)),
         "tensor_schema_sha256": MOTION_NETWORK_SCHEMA_SHA256,
+        "materialization_record_eligibility": materialization_eligibility,
+        "materialized_record_count": len(materialized_record_ids),
         "materialized_window_count": len(examples),
         "materialized_window_values_sha256": _materialized_examples_sha256(examples),
         "source_loader_id": (
-            "same_hashed_bytes_csv_header_shape_finite_manifest_physical_qc_v2"
+            "same_hashed_bytes_csv_header_shape_finite_manifest_physical_qc_"
+            "complete_motion_windows_v3"
         ),
     }
     if (
         set(payload["record_source_sha256_by_id"]) != record_ids
-        or set(lineage_hashes) != record_ids
-        or set(output_hashes) != record_ids
+        or set(lineage_hashes) != eligible_record_ids
+        or set(output_hashes) != eligible_record_ids
     ):
         raise ValueError("formal internal record lineage coverage is incomplete")
     return examples, _seal_source_evidence(payload)
@@ -636,6 +752,8 @@ def verify_formal_internal_source_evidence(
         "record_motion_values_sha256_by_id",
         "ekf_config_sha256",
         "tensor_schema_sha256",
+        "materialization_record_eligibility",
+        "materialized_record_count",
         "materialized_window_count",
         "materialized_window_values_sha256",
         "source_loader_id",
@@ -654,7 +772,10 @@ def verify_formal_internal_source_evidence(
         or evidence.get("tensor_schema_sha256") != MOTION_NETWORK_SCHEMA_SHA256
         or evidence.get("calibration_source_role") != "same_participant_B_only"
         or evidence.get("source_loader_id")
-        != "same_hashed_bytes_csv_header_shape_finite_manifest_physical_qc_v2"
+        != (
+            "same_hashed_bytes_csv_header_shape_finite_manifest_physical_qc_"
+            "complete_motion_windows_v3"
+        )
     ):
         reasons.append("formal_source_evidence_identity_drift")
     try:
@@ -677,6 +798,11 @@ def verify_formal_internal_source_evidence(
         role: sum(row.role == role for row in rows)
         for role in sorted({row.role for row in rows})
     }
+    expected_eligibility = _internal_materialization_eligibility(rows)
+    excluded_record_ids = set(
+        expected_eligibility["excluded_record_n_samples_by_id"]
+    )
+    eligible_record_ids = set(expected_sources) - excluded_record_ids
     if (
         evidence.get("source_manifest_path") != expected_manifest_path
         or evidence.get("record_count") != 261
@@ -688,6 +814,22 @@ def verify_formal_internal_source_evidence(
         != baseline_by_participant
     ):
         reasons.append("formal_source_manifest_or_roster_drift")
+    if (
+        evidence.get("materialization_record_eligibility") != expected_eligibility
+        or evidence.get("materialized_record_count") != len(eligible_record_ids)
+        or evidence.get("materialized_window_count")
+        != expected_eligibility["expected_window_count"]
+    ):
+        reasons.append("formal_source_materialization_eligibility_drift")
+    observed_eligibility = evidence.get("materialization_record_eligibility")
+    if (
+        not isinstance(observed_eligibility, Mapping)
+        or observed_eligibility.get("eligible_participant_count") != 29
+        or observed_eligibility.get("participants_without_eligible_records") != []
+        or observed_eligibility.get("participants_missing_static_records") != []
+        or observed_eligibility.get("participants_missing_motion_records") != []
+    ):
+        reasons.append("formal_source_materialization_training_coverage_drift")
     physical_profile = evidence.get("physical_recording_qc_profile")
     physical_by_id = evidence.get("physical_recording_qc_evidence_by_id")
     expected_qc_fields = {
@@ -738,7 +880,7 @@ def verify_formal_internal_source_evidence(
         "record_ekf_lineage_sha256_by_id",
         "record_motion_values_sha256_by_id",
     )
-    expected_keys = (set(participants), set(expected_sources), set(expected_sources))
+    expected_keys = (set(participants), eligible_record_ids, eligible_record_ids)
     for name, keys in zip(hash_maps, expected_keys, strict=True):
         value = evidence.get(name)
         if (
@@ -762,12 +904,23 @@ def run_formal_internal_motion_reference(
     repository_root: str | Path,
     *,
     output_dir: str | Path,
+    progress_callback: ProgressCallback | None = None,
+    training_device: str = "cuda",
 ) -> MotionInternalRunResult:
-    """Canonical source-bound 29-participant SGKF5 entry with no injection API."""
+    """Canonical source-bound SGKF5 entry with no scientific injection API."""
 
     repository = Path(repository_root).resolve()
+    trainer_config = FormalMotionTrainerConfig(device=str(training_device))
+    # This preflight deliberately precedes source hashing/materialization so a
+    # missing or invalid CUDA runtime fails in seconds, not after CPU-heavy
+    # preprocessing of all 29 participants.
+    require_formal_motion_cuda(trainer_config)
     config = RollPitchEkfConfig()
-    examples, source_evidence = _build_internal_materialization(repository, config)
+    examples, source_evidence = _build_internal_materialization(
+        repository,
+        config,
+        progress_callback,
+    )
     root = Path(output_dir).resolve()
     schema_path, schema_file_sha256 = write_formal_motion_input_schema(
         root / "formal_motion_input_schema.json"
@@ -777,7 +930,7 @@ def run_formal_internal_motion_reference(
     return _run_internal_motion_oof_impl(
         examples,
         jobs,
-        fit_model=fit_formal_motion_model,
+        fit_model=partial(fit_formal_motion_model, config=trainer_config),
         predict_probability=predict_formal_motion_probability,
         model_input_schema_path=schema_path,
         expected_model_input_schema_sha256=schema_file_sha256,
@@ -786,6 +939,7 @@ def run_formal_internal_motion_reference(
         execution_mode="formal",
         write_artifacts=True,
         formal_source_evidence=source_evidence,
+        progress_callback=progress_callback,
     )
 
 
@@ -932,6 +1086,7 @@ def _build_ptt_materialization(
     unit_evidence: PttImuUnitEvidence,
     unit_evidence_path: Path,
     config: RollPitchEkfConfig,
+    progress_callback: ProgressCallback | None = None,
 ) -> tuple[tuple[Any, ...], dict[str, Any]]:
     unit_evidence.validate(records)
     expected_unit_evidence_path = (
@@ -954,7 +1109,14 @@ def _build_ptt_materialization(
     source_schema_hashes: dict[str, str] = {}
     target_schema_hashes: dict[str, str] = {}
     lineage_hashes: dict[str, str] = {}
-    for subject_id, subject_rows in sorted(by_subject.items()):
+    subject_rows_by_id = sorted(by_subject.items())
+    for subject_index, (subject_id, subject_rows) in enumerate(subject_rows_by_id):
+        _notify_progress(
+            progress_callback,
+            subject_index,
+            len(subject_rows_by_id),
+            f"preprocess PTT participant {subject_id}",
+        )
         by_activity = {row.activity_raw.strip().lower(): row for row in subject_rows}
         if set(by_activity) != {"sit", "walk", "run"}:
             raise ValueError("formal PTT subject must have exactly sit/walk/run")
@@ -1018,8 +1180,17 @@ def _build_ptt_materialization(
                     fs_hz=400.0,
                 )
             )
-
+    _notify_progress(
+        progress_callback,
+        len(subject_rows_by_id),
+        len(subject_rows_by_id),
+        "completed PTT participant preprocessing",
+    )
+    _notify_progress(
+        progress_callback, 0, 1, f"materialize {len(recordings)} PTT recordings"
+    )
     examples = materialize_motion_window_examples(recordings, dataset_kind="ptt")
+    _notify_progress(progress_callback, 1, 1, "completed PTT motion windows")
     source_hashes = {
         row.record_id: row.checksum_sha256
         for row in sorted(records, key=lambda item: item.record_id)
@@ -1331,18 +1502,15 @@ def verify_formal_ptt_source_evidence(
     return tuple(dict.fromkeys(reasons))
 
 
-def run_formal_ptt_motion_reference(
-    repository_root: str | Path,
+def _materialize_formal_ptt_source(
+    repository: Path,
     *,
-    internal_evidence_path: str | Path,
-    expected_internal_evidence_sha256: str,
-    output_dir: str | Path,
-    unit_evidence_path: str | Path | None = None,
-    expected_unit_evidence_sha256: str | None = None,
-) -> MotionExternalRunResult:
-    """Canonical 66-record PTT entry using exact V2-036 unit evidence."""
+    unit_evidence_path: str | Path | None,
+    expected_unit_evidence_sha256: str | None,
+    progress_callback: ProgressCallback | None,
+) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    """Load the single registered PTT source path used by both directions."""
 
-    repository = Path(repository_root).resolve()
     records = tuple(
         row
         for row in load_m2_external_manifest(repository / M2_EXTERNAL_RELATIVE_PATH)
@@ -1366,12 +1534,34 @@ def run_formal_ptt_motion_reference(
         expected_sha256=expected_unit_evidence_sha256,
         expected_records=records,
     )
-    examples, source_evidence = _build_ptt_materialization(
+    return _build_ptt_materialization(
         repository,
         records,
         unit_evidence,
         canonical_unit_evidence_path,
         RollPitchEkfConfig(),
+        progress_callback,
+    )
+
+
+def run_formal_ptt_motion_reference(
+    repository_root: str | Path,
+    *,
+    internal_evidence_path: str | Path,
+    expected_internal_evidence_sha256: str,
+    output_dir: str | Path,
+    unit_evidence_path: str | Path | None = None,
+    expected_unit_evidence_sha256: str | None = None,
+    progress_callback: ProgressCallback | None = None,
+) -> MotionExternalRunResult:
+    """Canonical 66-record PTT entry using exact V2-036 unit evidence."""
+
+    repository = Path(repository_root).resolve()
+    examples, source_evidence = _materialize_formal_ptt_source(
+        repository,
+        unit_evidence_path=unit_evidence_path,
+        expected_unit_evidence_sha256=expected_unit_evidence_sha256,
+        progress_callback=progress_callback,
     )
     return _run_ptt_external_evaluation_impl(
         examples,
@@ -1382,6 +1572,78 @@ def run_formal_ptt_motion_reference(
         predict_probability=predict_formal_motion_probability,
         output_dir=output_dir,
         formal_source_evidence=source_evidence,
+        progress_callback=progress_callback,
+    )
+
+
+def run_formal_ptt_motion_training_ablation(
+    repository_root: str | Path,
+    *,
+    output_dir: str | Path,
+    unit_evidence_path: str | Path | None = None,
+    expected_unit_evidence_sha256: str | None = None,
+    progress_callback: ProgressCallback | None = None,
+    training_device: str = "cuda",
+) -> MotionPttTrainingRunResult:
+    """Train the registered motion model on PTT repeat-0 SGKF5 plus all 22."""
+
+    repository = Path(repository_root).resolve()
+    trainer_config = FormalMotionTrainerConfig(device=str(training_device))
+    require_formal_motion_cuda(trainer_config)
+    examples, source_evidence = _materialize_formal_ptt_source(
+        repository,
+        unit_evidence_path=unit_evidence_path,
+        expected_unit_evidence_sha256=expected_unit_evidence_sha256,
+        progress_callback=progress_callback,
+    )
+    root = Path(output_dir).resolve()
+    schema_path, schema_file_sha256 = write_formal_motion_input_schema(
+        root / "formal_motion_input_schema.json"
+    )
+    return _run_ptt_motion_training_ablation_impl(
+        examples,
+        ptt_split_csv=(repository / PTT_SPLIT_RELATIVE_PATH).resolve(),
+        fit_model=partial(fit_formal_motion_model, config=trainer_config),
+        predict_probability=predict_formal_motion_probability,
+        model_input_schema_path=schema_path,
+        expected_model_input_schema_sha256=schema_file_sha256,
+        output_dir=root,
+        formal_source_evidence=source_evidence,
+        progress_callback=progress_callback,
+    )
+
+
+def run_formal_internal_reverse_evaluation(
+    repository_root: str | Path,
+    *,
+    ptt_training_evidence_path: str | Path,
+    expected_ptt_training_evidence_sha256: str,
+    output_dir: str | Path,
+    progress_callback: ProgressCallback | None = None,
+    runtime_device: str = "cuda",
+) -> MotionExternalRunResult:
+    """Evaluate the frozen PTT-trained model once on all Frailty29 windows."""
+
+    repository = Path(repository_root).resolve()
+    runtime_config = FormalMotionTrainerConfig(device=str(runtime_device))
+    require_formal_motion_cuda(runtime_config)
+    examples, source_evidence = _build_internal_materialization(
+        repository,
+        RollPitchEkfConfig(),
+        progress_callback,
+    )
+    jobs = load_motion_fold_jobs((repository / MOTION_SPLIT_RELATIVE_PATH).resolve())
+    load_model = partial(load_formal_motion_model, runtime_device=runtime_config.device)
+    return _run_internal_reverse_evaluation_impl(
+        examples,
+        ptt_training_evidence_path=ptt_training_evidence_path,
+        expected_ptt_training_evidence_sha256=expected_ptt_training_evidence_sha256,
+        internal_fold_jobs=jobs,
+        load_frozen_model=load_model,
+        predict_probability=predict_formal_motion_probability,
+        output_dir=output_dir,
+        formal_source_evidence=source_evidence,
+        progress_callback=progress_callback,
     )
 
 
@@ -1395,6 +1657,8 @@ __all__ = [
     "PttImuUnitEvidenceRequired",
     "load_ptt_imu_unit_evidence",
     "run_formal_internal_motion_reference",
+    "run_formal_internal_reverse_evaluation",
+    "run_formal_ptt_motion_training_ablation",
     "run_formal_ptt_motion_reference",
     "verify_formal_internal_source_evidence",
     "verify_formal_ptt_source_evidence",

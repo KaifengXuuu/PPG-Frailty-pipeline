@@ -1,9 +1,10 @@
-schema_version: ppg_frailty.stage_ablation_01_static_peaks.v1
+schema_version: ppg_frailty.stage_ablation_01_static_peaks.v2
 study_type: stage_ablation_01_static_peak_detectors
-study_id: stage-ablation-01-static-peak-detectors-v1
+study_id: stage-ablation-01-static-peak-detectors-v2
 purpose: >-
-  Compare the current project Aboy-inspired detector with MSPTDfast v2 on only
-  the static PTT sit recordings before any motion-denoised dynamic comparison.
+  Compare the historical project Aboy-inspired detector, the authoritative
+  seven-step Aboy project v2 detector, and MSPTDfast v2 on only the static PTT
+  sit recordings before any motion-denoised dynamic comparison.
 
 ptt_dataset:
   dataset_id: ptt_ppg_1_1_0_local
@@ -18,12 +19,16 @@ ptt_dataset:
 
 activities: [sit]
 motion_denoiser: not_used_pure_static_experiment
+detector_input: repaired_native_ppg_each_registered_module_owns_preprocessing
 algorithms:
   - algorithm_id: aboy_project_v1
-    implementation: ppg_frailty.peaks.aboy_project
-    role: current_project_reference
+    implementation: ppg_frailty.peaks.aboy_project.detect_pulses_per_wavelength_aboy_project
+    role: historical_project_reference
+  - algorithm_id: aboy_project_v2
+    implementation: ppg_frailty.peaks.aboy_project_v2.detect_pulses_per_wavelength_aboy_project_v2
+    role: authoritative_seven_step_candidate
   - algorithm_id: msptdfast_v2_3_python_port
-    implementation: ppg_frailty.quality.stage5_pre.detect_msptdfast_v2
+    implementation: ppg_frailty.peaks.msptdfast_v2.detect_msptdfast_v2
     role: paper_method_comparator
     parity_status: equation_level_port_not_bitwise_matlab_validated
     parameters:

@@ -574,6 +574,7 @@ def _run_real_smoke(
         detector_id=report.peak_detector["detector_id"],
         min_observation_sec=report.peak_detector["min_observation_sec"],
         min_peaks=report.peak_detector["min_peaks"],
+        detector_parameters=report.peak_detector.get("parameters"),
     )
     pulse = pulses_per_wavelength[
         select_reference_wavelength(pulses_per_wavelength)
@@ -609,6 +610,7 @@ def _run_real_smoke(
             "detector_id": report.peak_detector["detector_id"],
             "min_observation_sec": report.peak_detector["min_observation_sec"],
             "min_peaks": report.peak_detector["min_peaks"],
+            "parameters": dict(report.peak_detector.get("parameters", {})),
             "reference_wavelength": pulse.wavelength,
             "per_wavelength": {
                 wavelength: {

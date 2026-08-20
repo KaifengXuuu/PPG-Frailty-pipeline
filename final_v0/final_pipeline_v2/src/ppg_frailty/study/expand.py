@@ -109,6 +109,31 @@ def _drop_model_derived_provenance(payload: dict[str, Any]) -> None:
         model.pop(str(field), None)
 
 
+def _apply_execution_device(payload: dict[str, Any], requested: str | None) -> None:
+    """Apply a plan device only to backends that can actually execute it.
+
+    CUDA is an operational control for Torch models. Estimator backends do not
+    consume a Torch device, so their effective configuration must remain the
+    truthful neutral CPU value in mixed-model studies.
+    """
+
+    if requested is None:
+        return
+    from ppg_frailty.module_registry import model_factory_contract
+
+    model = payload.get("model")
+    if not isinstance(model, Mapping) or not str(model.get("model_id", "")).strip():
+        raise ValueError("execution device requires a resolved model.model_id")
+    backend = str(model_factory_contract(str(model["model_id"]))["execution_backend"])
+    if backend not in {"torch", "estimator"}:
+        raise ValueError(f"unknown model execution backend: {backend!r}")
+    _set_dotted(
+        payload,
+        "training.device",
+        str(requested).strip() if backend == "torch" else "cpu",
+    )
+
+
 def _epoch_materialization_identity(
     *,
     base_path: Path,
@@ -634,8 +659,7 @@ def _expand_catalog_sweep(
             )
         for path, value in case.overrides.items():
             _set_dotted(payload, path, value)
-        if plan.execution.device is not None:
-            _set_dotted(payload, "training.device", plan.execution.device)
+        _apply_execution_device(payload, plan.execution.device)
         payload["config_id"] = (
             f"{payload['config_id']}__{case.screen_profile_id}"
         )
@@ -783,8 +807,8 @@ def expand_study(plan: StudyPlan, *, pipeline_root: str | Path) -> StudyExpansio
         from ppg_frailty.config import validate_config_payload
 
         base_payload = validate_config_payload(base_payload)
+        _apply_execution_device(base_payload, plan.execution.device)
         if plan.execution.device is not None:
-            _set_dotted(base_payload, "training.device", plan.execution.device)
             base_payload = validate_config_payload(base_payload)
     combinations = (
         [()]

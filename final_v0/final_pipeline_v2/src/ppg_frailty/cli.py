@@ -178,6 +178,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     motion_internal.add_argument("--repository-root", required=True)
     motion_internal.add_argument("--output-dir", required=True)
+    motion_internal.add_argument(
+        "--device",
+        default="cuda",
+        help="CUDA training device (cuda or cuda:N); CPU fallback is forbidden.",
+    )
 
     motion_ptt = subcommands.add_parser(
         "motion-evaluate-ptt",
@@ -800,6 +805,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     run_formal_internal_motion_reference(
                         repository_root,
                         output_dir=output_dir,
+                        training_device=arguments.device,
                     )
                 )
             else:

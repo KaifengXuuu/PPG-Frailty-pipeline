@@ -7,9 +7,12 @@ frozen split authority in that runner.
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import json
+import os
 import random
+import re
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -51,6 +54,7 @@ FORMAL_MOTION_ARTIFACT_SCHEMA = (
     "ppg_frailty.formal_motion_model_artifact.imu_iqr_over_1p349.v3"
 )
 FORMAL_MOTION_TRAINER_SCHEMA = "ppg_frailty.formal_motion_trainer.v2"
+_CUDA_DEVICE = re.compile(r"^cuda(?::([0-9]+))?$")
 
 
 def _sha256_file(path: Path) -> str:
@@ -187,7 +191,7 @@ class FormalMotionTrainerConfig:
     seed: int = 42
     num_workers: int = 0
     augmentation: str = "none"
-    device: str = "cpu"
+    device: str = "cuda"
     inference_warmup_iterations: int = 10
     inference_timed_iterations: int = 50
     schema_version: str = FORMAL_MOTION_TRAINER_SCHEMA
@@ -197,8 +201,15 @@ class FormalMotionTrainerConfig:
         if set(observed) != set(FORMAL_MOTION_TRAINING_CONFIG) or any(
             type(observed[name]) is not type(expected) or observed[name] != expected
             for name, expected in FORMAL_MOTION_TRAINING_CONFIG.items()
+            if name != "device"
         ):
             raise ValueError("formal motion trainer configuration drift")
+        if not isinstance(self.device, str) or (
+            self.device != "cpu" and not _CUDA_DEVICE.fullmatch(self.device)
+        ):
+            raise ValueError(
+                "formal motion artifact device must be cpu or explicit CUDA (cuda or cuda:N)"
+            )
 
 
 @dataclass
@@ -208,6 +219,7 @@ class FormalMotionRuntime:
     model: Any
     imu_transform: MotionFoldImuTransform
     device: str
+    batch_size: int = 16
 
 
 def _training_arrays(
@@ -268,6 +280,62 @@ def _require_torch() -> Any:
     return torch
 
 
+def validate_formal_motion_cuda_device(device: str) -> str:
+    """Validate a CUDA device name without importing/probing PyTorch."""
+
+    if not isinstance(device, str) or not _CUDA_DEVICE.fullmatch(device):
+        raise ValueError(
+            "formal motion training requires explicit CUDA (cuda or cuda:N); "
+            "CPU fallback is forbidden"
+        )
+    return device
+
+
+def require_formal_motion_cuda(
+    config: FormalMotionTrainerConfig = FormalMotionTrainerConfig(),
+) -> Any:
+    """Fail before materialization when the requested CUDA device is unusable."""
+
+    config.validate()
+    validate_formal_motion_cuda_device(config.device)
+    expected_workspace = ":4096:8"
+    deterministic_workspaces = {":16:8", expected_workspace}
+    observed_workspace = os.environ.get("CUBLAS_WORKSPACE_CONFIG")
+    if (
+        observed_workspace is not None
+        and observed_workspace not in deterministic_workspaces
+    ):
+        raise RuntimeError(
+            "Stage5 deterministic CUDA requires CUBLAS_WORKSPACE_CONFIG "
+            f"to be :4096:8 or :16:8; observed "
+            f"{observed_workspace!r} before CUDA initialization"
+        )
+    # PyTorch requires this variable to be present before the first cuBLAS
+    # operation when deterministic algorithms are enabled.
+    if observed_workspace is None:
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = expected_workspace
+    torch = _require_torch()
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "Stage5 motion training requires CUDA, but torch.cuda.is_available() is false"
+        )
+    requested_index = torch.device(config.device).index
+    if requested_index is not None and requested_index >= torch.cuda.device_count():
+        raise RuntimeError(
+            f"Stage5 motion training requested {config.device}, but only "
+            f"{torch.cuda.device_count()} CUDA device(s) are visible"
+        )
+    try:
+        probe = torch.empty(1, dtype=torch.float32, device=config.device)
+        torch.cuda.synchronize(config.device)
+        del probe
+    except Exception as exc:
+        raise RuntimeError(
+            f"Stage5 motion training cannot initialize requested device {config.device}"
+        ) from exc
+    return torch
+
+
 def _benchmark_inference(
     model: Any,
     sample: np.ndarray,
@@ -279,10 +347,13 @@ def _benchmark_inference(
     with torch.no_grad():
         for _ in range(config.inference_warmup_iterations):
             model(tensor)
+        torch.cuda.synchronize(config.device)
         durations_ms: list[float] = []
         for _ in range(config.inference_timed_iterations):
+            torch.cuda.synchronize(config.device)
             started = time.perf_counter()
             model(tensor)
+            torch.cuda.synchronize(config.device)
             durations_ms.append((time.perf_counter() - started) * 1000.0)
     p50 = float(np.percentile(durations_ms, 50.0))
     p95 = float(np.percentile(durations_ms, 95.0))
@@ -314,20 +385,27 @@ def fit_formal_motion_model(
     """
 
     config.validate()
+    torch = require_formal_motion_cuda(config)
     if context.training_seed != config.seed:
         raise ValueError("formal motion fit context training seed must remain 42")
     if context.model_input_schema_sha256 != MOTION_NETWORK_SCHEMA_SHA256:
         raise ValueError("formal motion fit requires the canonical semantic schema hash")
     for row in examples:
-        row.validate_internal()
+        if context.training_dataset_kind == "frailty29":
+            row.validate_internal()
+        elif context.training_dataset_kind == "ptt":
+            row.validate_ptt()
+        else:
+            raise ValueError("formal motion training dataset kind is unregistered")
     scaled, labels, transform = _training_arrays(examples, context)
     weights = _balanced_sampler_weights(examples)
 
-    torch = _require_torch()
     random.seed(config.seed)
     np.random.seed(config.seed)
     torch.manual_seed(config.seed)
+    torch.cuda.manual_seed_all(config.seed)
     torch.use_deterministic_algorithms(True)
+    torch.backends.cudnn.benchmark = False
     generator = torch.Generator()
     generator.manual_seed(config.seed)
     sampler = torch.utils.data.WeightedRandomSampler(
@@ -367,8 +445,8 @@ def fit_formal_motion_model(
         total_loss = 0.0
         total_rows = 0
         for batch_values, batch_labels in loader:
-            batch_values = batch_values.to(config.device)
-            batch_labels = batch_labels.to(config.device)
+            batch_values = batch_values.to(config.device, non_blocking=True)
+            batch_labels = batch_labels.to(config.device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
             logits = model(batch_values)
             loss = torch.nn.functional.binary_cross_entropy_with_logits(
@@ -386,7 +464,7 @@ def fit_formal_motion_model(
         observed_predictions: list[np.ndarray] = []
         with torch.no_grad():
             for batch_values, batch_labels in evaluation_loader:
-                logits = model(batch_values.to(config.device))
+                logits = model(batch_values.to(config.device, non_blocking=True))
                 observed_predictions.append(
                     (torch.sigmoid(logits) >= 0.5).to(torch.int64).cpu().numpy()
                 )
@@ -404,9 +482,10 @@ def fit_formal_motion_model(
                 "training_loss": float(final_loss),
                 "training_balanced_accuracy": float(np.mean(recalls)),
                 "data_scope": (
-                    "all_29_internal_participants"
+                    f"all_{len(context.training_participant_ids)}_"
+                    f"{context.training_dataset_kind}_participants"
                     if context.final_fit
-                    else "outer_training_participants_only"
+                    else f"outer_training_{context.training_dataset_kind}_participants_only"
                 ),
                 "outer_heldout_used": False,
                 "used_for_epoch_selection_or_checkpoint": False,
@@ -439,6 +518,7 @@ def fit_formal_motion_model(
     if artifact_path.exists():
         raise FileExistsError(f"refusing to overwrite motion model: {artifact_path}")
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    parameter_count = count_trainable_parameters(model)
     payload = {
         "schema_version": FORMAL_MOTION_ARTIFACT_SCHEMA,
         "model_id": FORMAL_MOTION_MODEL_ID,
@@ -468,11 +548,24 @@ def fit_formal_motion_model(
     metadata = {
         "artifact_sha256": artifact_sha256,
         "training_participant_ids": list(context.training_participant_ids),
-        "parameter_count": count_trainable_parameters(model),
+        "parameter_count": parameter_count,
         "inference_cost": inference_cost,
         "model_input_schema_sha256": MOTION_NETWORK_SCHEMA_SHA256,
     }
-    runtime = load_formal_motion_model(artifact_path, metadata)
+    # The full all-participant CPU tensor is no longer needed after the
+    # artifact is written.  Release every owner before loading the small
+    # deployment runtime, otherwise Python/PyTorch can retain multiple GiB
+    # until the next fit has already allocated its own window bank.
+    del evaluation_loader, loader, dataset, sampler, generator, optimizer
+    del batch_values, batch_labels, logits, loss
+    del scaled, labels, weights, model
+    gc.collect()
+    torch.cuda.empty_cache()
+    runtime = load_formal_motion_model(
+        artifact_path,
+        metadata,
+        runtime_device=config.device,
+    )
     return MotionFittedArtifact(
         runtime_model=runtime,
         model_id=FORMAL_MOTION_MODEL_ID,
@@ -495,21 +588,38 @@ def predict_formal_motion_probability(
         raise TypeError("formal motion predictor requires FormalMotionRuntime")
     if not rows:
         return np.empty(0, dtype=np.float64)
-    values = np.stack([np.asarray(row.values, dtype=np.float32) for row in rows])
-    scaled = apply_motion_fold_imu_transform(values, runtime_model.imu_transform)
     torch = _require_torch()
     runtime_model.model.eval()
-    with torch.no_grad():
-        logits = runtime_model.model(
-            torch.as_tensor(scaled, dtype=torch.float32, device=runtime_model.device)
-        )
-        probabilities = torch.sigmoid(logits).detach().cpu().numpy()
-    return np.asarray(probabilities, dtype=np.float64)
+    outputs: list[np.ndarray] = []
+    # Threshold fitting and OOF scoring can each contain tens of thousands of
+    # windows.  Keep both host and device residency bounded to one inference
+    # batch rather than stacking the complete fold/all-29 bank again.
+    with torch.inference_mode():
+        for start in range(0, len(rows), runtime_model.batch_size):
+            batch = rows[start : start + runtime_model.batch_size]
+            values = np.stack(
+                [np.asarray(row.values, dtype=np.float32) for row in batch]
+            )
+            scaled = apply_motion_fold_imu_transform(
+                values,
+                runtime_model.imu_transform,
+            )
+            logits = runtime_model.model(
+                torch.as_tensor(
+                    scaled,
+                    dtype=torch.float32,
+                    device=runtime_model.device,
+                )
+            )
+            outputs.append(torch.sigmoid(logits).detach().cpu().numpy())
+    return np.asarray(np.concatenate(outputs), dtype=np.float64)
 
 
 def load_formal_motion_model(
     artifact_path: Path,
     metadata: Mapping[str, Any],
+    *,
+    runtime_device: str | None = None,
 ) -> FormalMotionRuntime:
     """Load only the strict V2 state/scaler payload used by the PTT runner."""
 
@@ -551,6 +661,11 @@ def load_formal_motion_model(
         raise ValueError("formal motion artifact semantic identity drift")
     config = FormalMotionTrainerConfig(**dict(payload["trainer_config"]))
     config.validate()
+    selected_device = config.device if runtime_device is None else str(runtime_device)
+    if selected_device != "cpu":
+        require_formal_motion_cuda(
+            FormalMotionTrainerConfig(**{**asdict(config), "device": selected_device})
+        )
     expected_roster = tuple(
         sorted(str(value) for value in metadata["training_participant_ids"])
     )
@@ -600,8 +715,14 @@ def load_formal_motion_model(
         raise ValueError("formal motion artifact parameter-count drift")
     if dict(payload["inference_cost"]) != dict(metadata["inference_cost"]):
         raise ValueError("formal motion artifact inference-cost metadata drift")
+    model.to(selected_device)
     model.eval()
-    return FormalMotionRuntime(model=model, imu_transform=transform, device="cpu")
+    return FormalMotionRuntime(
+        model=model,
+        imu_transform=transform,
+        device=selected_device,
+        batch_size=config.batch_size,
+    )
 
 
 __all__ = [
@@ -614,5 +735,7 @@ __all__ = [
     "load_formal_motion_model",
     "materialize_motion_window_examples",
     "predict_formal_motion_probability",
+    "require_formal_motion_cuda",
+    "validate_formal_motion_cuda_device",
     "write_formal_motion_input_schema",
 ]

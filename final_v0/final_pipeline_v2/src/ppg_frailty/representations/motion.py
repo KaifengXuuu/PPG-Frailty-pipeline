@@ -303,7 +303,12 @@ def fit_motion_fold_imu_transform(
         outer_train_participant_ids,
         outer_oof_participant_ids,
     )
-    tensor = np.asarray(values, dtype=np.float64)
+    # Formal motion windows are already float32.  Keeping the full window bank
+    # in that dtype is important: the all-participant Stage5 fit contains more
+    # than 500 million values, so an eager float64 conversion alone consumes
+    # several additional GiB without changing the persisted float32 model
+    # input.
+    tensor = np.asarray(values)
     ids = tuple(str(value) for value in participant_ids)
     inferred_profile = (
         MOTION_REFERENCE_PROFILE_ID
@@ -328,10 +333,17 @@ def fit_motion_fold_imu_transform(
     scale = np.empty(imu_count, dtype=np.float64)
     count = np.empty(imu_count, dtype=np.int64)
     for channel in range(imu_count):
-        samples = tensor[selected, channel + 2, :].reshape(-1)
+        # Avoid an advanced-indexing copy in the canonical case where the
+        # supplied matrix already consists exclusively of training windows.
+        source_samples = (
+            tensor[:, channel + 2, :]
+            if bool(np.all(selected))
+            else tensor[selected, channel + 2, :]
+        )
+        samples = np.array(source_samples, dtype=np.float64, copy=True).reshape(-1)
         count[channel] = samples.size
-        center[channel] = float(np.median(samples))
-        q25, q75 = np.percentile(samples, [25.0, 75.0])
+        q25, median, q75 = np.percentile(samples, [25.0, 50.0, 75.0])
+        center[channel] = float(median)
         candidate = float(q75 - q25) / IQR_NORMAL_CONSISTENCY_DIVISOR
         if not np.isfinite(candidate) or candidate <= 1e-12:
             candidate = float(np.std(samples, ddof=0))
@@ -340,6 +352,7 @@ def fit_motion_fold_imu_transform(
             if np.isfinite(candidate) and candidate > 1e-12
             else 1.0
         )
+        del samples, source_samples
     result = MotionFoldImuTransform(
         center=center,
         scale=scale,
@@ -368,7 +381,7 @@ def apply_motion_fold_imu_transform(
 ) -> np.ndarray:
     """Scale profile IMU channels while preserving window-scaled RED/IR exactly."""
 
-    tensor = np.asarray(values, dtype=np.float64)
+    tensor = np.asarray(values)
     transform.validate()
     channel_schema, _, imu_schema, _ = _profile_components(transform.profile_id)
     if tensor.ndim != 3 or tensor.shape[1:] != (
@@ -376,13 +389,25 @@ def apply_motion_fold_imu_transform(
         MOTION_WINDOW_SAMPLES,
     ):
         raise ValueError("motion transform input shape/profile mismatch")
-    output = tensor.copy()
-    output[:, 2:, :] = (
-        tensor[:, 2:, :] - transform.center.reshape(1, len(imu_schema), 1)
-    ) / transform.scale.reshape(1, len(imu_schema), 1)
+    # The network consumes float32.  A float64 whole-bank copy plus a second
+    # broadcast temporary pushed the all-29 Stage5 fit above 20 GiB RSS.  Keep
+    # only one channel-sized float64 working array at a time, preserving the
+    # former float64 subtract/divide then float32-cast numerical path while
+    # bounding peak host memory.
+    output = np.asarray(tensor, dtype=np.float32).copy()
+    for channel in range(len(imu_schema)):
+        working = np.array(
+            tensor[:, channel + 2, :],
+            dtype=np.float64,
+            copy=True,
+        )
+        working -= float(transform.center[channel])
+        working /= float(transform.scale[channel])
+        output[:, channel + 2, :] = working.astype(np.float32)
+        del working
     if not np.isfinite(output).all():
         raise ValueError("motion fold IMU transform produced nonfinite output")
-    return output.astype(np.float32)
+    return output
 
 
 __all__ = [

@@ -25,6 +25,7 @@ from ppg_frailty.features import (
 )
 from ppg_frailty.peaks import BeatPairAudit, BeatPairingResult
 from ppg_frailty.representations import RawWindows
+from ppg_frailty.signal.motion_imu import MOTION_IMU_CALIBRATION_SCHEMA
 from ppg_frailty.signal.optical import OpticalBeatAudit
 from ppg_frailty.training import RawWindowDataset, SampleIdentity
 
@@ -194,9 +195,7 @@ class RepresentationDispatchTest(unittest.TestCase):
             }
 
         calibration = SimpleNamespace(
-            schema_version=(
-                "ppg_frailty.motion_imu_calibration.sensor_lpf_order3.v3"
-            ),
+            schema_version=MOTION_IMU_CALIBRATION_SCHEMA,
             participant_id="P01",
             file_id="P01_B",
             source_role="B",

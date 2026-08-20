@@ -19,6 +19,7 @@ from ppg_frailty.quality.stage5_pre import (
     load_motion_peak_plan,
     run_motion_peak_study,
 )
+from ppg_frailty.study import TerminalProgressSink
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -35,6 +36,15 @@ def build_parser() -> argparse.ArgumentParser:
         default="artifacts/studies/static_line_b_staged_v2",
     )
     run.add_argument("--resume")
+    run.add_argument(
+        "--device",
+        help="Stage5 motion-training CUDA device override (cuda or cuda:N).",
+    )
+    run.add_argument(
+        "--no-denoiser",
+        action="store_true",
+        help="Run Stage5 detector training/evaluation only and skip the PTT denoiser benchmark.",
+    )
     report = commands.add_parser("report", help="Rebuild report and result backup.")
     report.add_argument("--study-dir", required=True)
     return parser
@@ -53,12 +63,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "report":
         print(json.dumps(generate_motion_peak_report(args.study_dir), sort_keys=True))
         return 0
-    output = run_motion_peak_study(
-        args.plan,
-        pipeline_root=PIPELINE_ROOT,
-        output_root=args.output_root,
-        resume=args.resume,
-    )
+    progress = TerminalProgressSink()
+    try:
+        output = run_motion_peak_study(
+            args.plan,
+            pipeline_root=PIPELINE_ROOT,
+            output_root=args.output_root,
+            resume=args.resume,
+            progress_sink=progress,
+            device=args.device,
+            include_denoiser=not args.no_denoiser,
+        )
+    finally:
+        progress.close()
     print(f"Study output: {output}")
     print(f"Report: {output / 'STUDY_SUMMARY.md'}")
     print(f"Result backup: {output / 'result_backup'}")

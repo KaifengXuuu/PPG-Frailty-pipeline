@@ -1,4 +1,4 @@
-schema_version: ppg_frailty.motion_detector_contract.sensor_lpf_order3_imu_iqr_over_1p349.v4
+schema_version: ppg_frailty.motion_detector_contract.sensor_lpf_order3_imu_iqr_over_1p349.v5
 contract_id: v2_010_motion_detector_registered_not_run
 execution_status: implemented_contract_registered_not_run
 
@@ -77,6 +77,7 @@ formal_model:
   preprocessing:
     internal_acceleration_source_unit: g
     internal_acceleration_unit_conversion: g_to_m_per_s2
+    internal_acceleration_scale_factor: 9.81
     internal_gyroscope_source_unit: deg/s
     internal_gyroscope_unit_conversion: degrees_per_second_to_radians_per_second
     ptt_acceleration_source_unit_v2_036: m/s^2
@@ -85,7 +86,7 @@ formal_model:
     ptt_acceleration_multiply_9p80665: forbidden
     ptt_gyroscope_source_unit_v2_036: deg/s
     ptt_gyroscope_unit_conversion_v2_036: degrees_per_second_to_radians_per_second
-    reference_gravity_profile: calibrated_roll_pitch_ekf_sensor_lpf_order3_v3_reference
+    reference_gravity_profile: calibrated_roll_pitch_ekf_sensor_lpf_order3_v4_reference
     calibration_source_role: B
     calibration_scope: same_participant_B_file_only
     ptt_calibration_source_role: PTT_SIT_STATIC_CALIBRATION
@@ -95,12 +96,15 @@ formal_model:
     observation_covariance_diagonal_rad2: [0.5, 0.5]
     initial_covariance_diagonal: [1.0, 1.0, 0.5, 0.5, 0.5]
     dynamic_observation_scale: 3.0
+    dynamic_observation_scale_equation: 1+alpha_R*max(0,norm_acc-g)/g
+    gravity_mps2: 9.81
+    yaw_correction: unavailable_no_magnetometer_roll_pitch_only
     accelerometer_lowpass_hz: 20.0
     gyroscope_lowpass_hz: 40.0
     sensor_filter_order: 3
     calibration_interval_s: [5.0, 100.0]
     failure_action: fail_closed_no_lpf_fallback
-    lpf_profile: profile_a_sensor_lpf_order3_gravity_0p3hz_v3_ablation_only
+    lpf_profile: profile_a_sensor_lpf_order3_gravity_0p3hz_v4_ablation_only
   normalization:
     ppg: per_window_median_iqr_mad_then_one
     imu: six_physical_axes_outer_training_participant_only_median_iqr_over_1p349_population_sd_then_one
@@ -159,7 +163,7 @@ internal_training_and_oof:
     seed: 42
     num_workers: 0
     augmentation: none
-    device: cpu
+    device: cuda
     inference_warmup_iterations: 10
     inference_timed_iterations: 50
     early_stopping: forbidden_fixed_epoch_rule
@@ -175,6 +179,30 @@ threshold:
   optimize_balanced_accuracy_or_f1: false
   outer_oof_scores_allowed: false
   ptt_scores_allowed: false
+
+deployment_threshold:
+  rule_id: participant_balanced_class_median_midpoint_train_only_v1
+  score_origin: strict_outer_oof_model_predictions_only
+  fit_scope: all_training_dataset_participants_once_as_outer_oof_no_external_test
+  per_participant_center: within_class_median
+  cohort_class_center: median_across_participants
+  threshold_formula: (static_center + motion_center) / 2
+  optimize_balanced_accuracy_or_f1: false
+  strict_outer_oof_scores_required: true
+  all_participant_model_in_sample_scores_allowed: false
+  cross_dataset_scores_allowed: false
+
+ptt_training_reverse_ablation:
+  training_dataset: ptt_ppg_1_1_0_local
+  evaluation_dataset: frailty29
+  repeat_indices: [0]
+  split_seed: 42
+  n_folds: 5
+  groups: participant_id
+  final_fit: all_22_participants_fixed_10_epochs
+  deployment_threshold: strict_ptt_outer_oof_only
+  frailty29_fit_or_recalibration: false
+  downstream_role: comparison_only_training_dataset_ablation
 
 ptt_external_readiness_audit:
   status: read_only_complete_internal_formal_evidence_and_exact_v2_036_unit_artifact
@@ -204,8 +232,12 @@ ptt_external_readiness_audit:
 
 major_comparison_metrics:
   - participant_macro_balanced_accuracy
-  - worst_fold_balanced_accuracy
   - participant_macro_f1
+  - participant_macro_sensitivity
+  - participant_macro_specificity
+  - participant_macro_roc_auc
+  - participant_macro_pr_auc
+  - worst_fold_balanced_accuracy
   - ece
   - parameter_count
   - inference_cost

@@ -12,6 +12,7 @@ import sys
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import torch
@@ -37,6 +38,7 @@ from ppg_frailty.training.trainer import (
     outer_train_effective_number_weights,
     outer_train_inverse_frequency_weights,
     participant_file_window_sampling_weights,
+    resolve_torch_training_device,
 )
 
 
@@ -103,6 +105,31 @@ class TrainingIsolationTests(unittest.TestCase):
         parameters = set(inspect.signature(UnifiedTrainer.fit).parameters)
         self.assertFalse({"outer_labels", "outer_y", "outer_oof_dataset", "validation_dataset"} & parameters)
 
+    def test_cuda_device_preflight_is_deterministic_and_never_falls_back(self) -> None:
+        previous = os.environ.pop("CUBLAS_WORKSPACE_CONFIG", None)
+        self.addCleanup(
+            lambda: (
+                os.environ.__setitem__("CUBLAS_WORKSPACE_CONFIG", previous)
+                if previous is not None
+                else os.environ.pop("CUBLAS_WORKSPACE_CONFIG", None)
+            )
+        )
+        with patch.object(torch.cuda, "is_available", return_value=False):
+            with self.assertRaisesRegex(RuntimeError, "CPU fallback is forbidden"):
+                resolve_torch_training_device(
+                    "cuda", deterministic_algorithms=True
+                )
+        self.assertEqual(os.environ["CUBLAS_WORKSPACE_CONFIG"], ":4096:8")
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = "invalid"
+        with self.assertRaisesRegex(RuntimeError, "CUBLAS_WORKSPACE_CONFIG"):
+            resolve_torch_training_device("cuda", deterministic_algorithms=True)
+        self.assertEqual(
+            resolve_torch_training_device(
+                "cpu", deterministic_algorithms=True
+            ).type,
+            "cpu",
+        )
+
     def test_actual_reference_yaml_constructs_training_config(self) -> None:
         """English: Resolved YAML fields are consumed without renaming or loss.
 
@@ -143,12 +170,17 @@ class TrainingIsolationTests(unittest.TestCase):
             payload["training"].pop(field)
         effective = validate_config_payload(payload)
         resolved = TrainingConfig.from_mapping(effective["training"])
+        self.assertEqual(resolved.device, "cuda")
         result = UnifiedTrainer(
             replace(
                 resolved,
                 execution_mode="smoke",
                 epoch_profile="smoke",
                 fixed_epochs=1,
+                # This unit test verifies configuration consumption, not the
+                # host GPU.  Production reference YAML remains CUDA-first and
+                # the dedicated resolver test above covers fail-closed CUDA.
+                device="cpu",
             )
         ).fit(_TinyClassifier, self.dataset, self.split)
         self.assertEqual(result.provenance.optimizer, "adam")

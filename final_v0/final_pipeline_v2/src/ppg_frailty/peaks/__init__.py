@@ -13,18 +13,22 @@ from .pairing import (
 )
 from .resolver import (
     ABLATION_DETECTOR_ID,
+    ABOY_PROJECT_V2_DETECTOR_ID,
     CANONICAL_DETECTOR_ID,
     DEFAULT_MIN_OBSERVATION_SEC,
     DEFAULT_MIN_PEAKS,
+    MSPTDFAST_V2_DETECTOR_ID,
     REGISTERED_DETECTOR_IDS,
     detect_pulses,
     detect_pulses_per_wavelength,
     resolve_detector_id,
+    resolve_detector_parameters,
     validate_peak_detection_parameters,
 )
 
 __all__ = [
     "ABLATION_DETECTOR_ID",
+    "ABOY_PROJECT_V2_DETECTOR_ID",
     "BeatPairAudit",
     "BeatPairingResult",
     "CANONICAL_DETECTOR_ID",
@@ -33,6 +37,7 @@ __all__ = [
     "DETECTOR_NAME",
     "DUAL_WAVELENGTH_PAIRING_SCHEMA_VERSION",
     "EventMatchMetrics",
+    "MSPTDFAST_V2_DETECTOR_ID",
     "PrvResult",
     "REGISTERED_DETECTOR_IDS",
     "compute_prv",
@@ -41,6 +46,7 @@ __all__ = [
     "match_events",
     "pair_dual_wavelength_beats",
     "resolve_detector_id",
+    "resolve_detector_parameters",
     "select_reference_wavelength",
     "validate_peak_detection_parameters",
 ]

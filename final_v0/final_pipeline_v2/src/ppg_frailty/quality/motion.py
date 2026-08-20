@@ -75,7 +75,7 @@ HISTORICAL_LIGHT_CNN_CHANNELS = (
 
 MOTION_CONTRACT_SCHEMA = (
     "ppg_frailty.motion_detector_contract.sensor_lpf_order3_"
-    "imu_iqr_over_1p349.v4"
+    "imu_iqr_over_1p349.v5"
 )
 MOTION_INTERNAL_EVIDENCE_SCHEMA = (
     "ppg_frailty.motion_internal_evidence.imu_iqr_over_1p349.v3"
@@ -101,6 +101,15 @@ MOTION_TRAINING_SEED = 42
 MOTION_THRESHOLD_RULE_ID = "participant_balanced_class_median_midpoint_train_only_v1"
 MOTION_THRESHOLD_SCORE_ORIGIN = "outer_training_fit_predictions_only"
 MOTION_THRESHOLD_FIT_SCOPE = "outer_training_participants_only_no_oof_no_ptt"
+MOTION_DEPLOYMENT_THRESHOLD_SCHEMA = (
+    "ppg_frailty.motion_deployment_midpoint_threshold.strict_oof.v1"
+)
+MOTION_DEPLOYMENT_THRESHOLD_SCORE_ORIGIN = (
+    "strict_outer_oof_model_predictions_only"
+)
+MOTION_DEPLOYMENT_THRESHOLD_FIT_SCOPE = (
+    "all_training_dataset_participants_once_as_outer_oof_no_external_test"
+)
 FORMAL_MOTION_TRAINING_CONFIG = {
     "fixed_epochs": 10,
     "batch_size": 16,
@@ -116,7 +125,7 @@ FORMAL_MOTION_TRAINING_CONFIG = {
     "seed": 42,
     "num_workers": 0,
     "augmentation": "none",
-    "device": "cpu",
+    "device": "cuda",
     "inference_warmup_iterations": 10,
     "inference_timed_iterations": 50,
     "schema_version": "ppg_frailty.formal_motion_trainer.v2",
@@ -138,6 +147,18 @@ MOTION_MAJOR_METRIC_FIELDS = (
     "participant_macro_balanced_accuracy",
     "worst_fold_balanced_accuracy",
     "participant_macro_f1",
+    "ece",
+    "parameter_count",
+    "inference_cost",
+)
+MOTION_REPORT_METRIC_FIELDS = (
+    "participant_macro_balanced_accuracy",
+    "participant_macro_f1",
+    "participant_macro_sensitivity",
+    "participant_macro_specificity",
+    "participant_macro_roc_auc",
+    "participant_macro_pr_auc",
+    "worst_fold_balanced_accuracy",
     "ece",
     "parameter_count",
     "inference_cost",
@@ -625,7 +646,10 @@ def _audit_ptt_external_readiness_payload(
         reasons.append("model_input_tensor_schema_file_hash_missing")
     if evidence.get("threshold_rule_id") != MOTION_THRESHOLD_RULE_ID:
         reasons.append("midpoint_threshold_rule_drift")
-    if evidence.get("threshold_score_origin") != MOTION_THRESHOLD_SCORE_ORIGIN:
+    if evidence.get("threshold_score_origin") not in {
+        MOTION_THRESHOLD_SCORE_ORIGIN,
+        MOTION_DEPLOYMENT_THRESHOLD_SCORE_ORIGIN,
+    }:
         reasons.append("threshold_used_oof_ptt_or_unapproved_scores")
 
     cell_evidence = evidence.get("cell_evidence", [])
@@ -771,6 +795,14 @@ def motion_contract_payload() -> dict[str, Any]:
             "center_statistic": "median_of_participant_class_medians",
             "outer_oof_or_ptt_scores_allowed": False,
         },
+        "deployment_threshold": {
+            "rule_id": MOTION_THRESHOLD_RULE_ID,
+            "score_origin": MOTION_DEPLOYMENT_THRESHOLD_SCORE_ORIGIN,
+            "fit_scope": MOTION_DEPLOYMENT_THRESHOLD_FIT_SCOPE,
+            "center_statistic": "median_of_participant_class_medians",
+            "outer_oof_scores_required": True,
+            "in_sample_or_cross_dataset_scores_allowed": False,
+        },
         "external_ptt_readiness_audit": {
             "status": (
                 "read_only_complete_internal_formal_evidence_and_exact_"
@@ -799,7 +831,7 @@ def motion_contract_payload() -> dict[str, Any]:
             "action": "evaluation_only_never_fit_or_recalibrate",
             "independence_claim": "none_not_an_independent_external_test",
         },
-        "major_metrics": list(MOTION_MAJOR_METRIC_FIELDS),
+        "major_metrics": list(MOTION_REPORT_METRIC_FIELDS),
         "historical_light_cnn": asdict(HISTORICAL_LIGHT_CNN_EVIDENCE),
     }
 
@@ -816,6 +848,7 @@ __all__ = [
     "MOTION_MAJOR_METRIC_FIELDS",
     "MOTION_MIDPOINT_THRESHOLD_SCHEMA",
     "MOTION_OOF_PARTICIPANT_REPEAT_ROWS",
+    "MOTION_REPORT_METRIC_FIELDS",
     "MOTION_OPTIONS",
     "MOTION_SPLIT_CSV_SHA256",
     "MOTION_SPLIT_REGISTRY_ID",
@@ -823,6 +856,9 @@ __all__ = [
     "MOTION_SPLIT_SEED",
     "MOTION_TRAINING_SEED",
     "MOTION_THRESHOLD_FIT_SCOPE",
+    "MOTION_DEPLOYMENT_THRESHOLD_FIT_SCOPE",
+    "MOTION_DEPLOYMENT_THRESHOLD_SCHEMA",
+    "MOTION_DEPLOYMENT_THRESHOLD_SCORE_ORIGIN",
     "MOTION_THRESHOLD_RULE_ID",
     "MOTION_THRESHOLD_SCORE_ORIGIN",
     "PTT_SPLIT_CSV_SHA256",

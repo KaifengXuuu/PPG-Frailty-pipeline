@@ -15,6 +15,11 @@ from typing import Any, Mapping, Sequence
 from .analyze import StudyAnalysis, analyze_study
 from .collect import CollectedStudy, collect_study
 from .plots import clear_static_figure_artifacts, generate_static_figures
+from .reproducibility import (
+    NOT_VERIFIABLE,
+    ReproducibilityAudit,
+    audit_study_reproducibility,
+)
 
 
 def _jsonable(value: Any) -> Any:
@@ -147,12 +152,105 @@ _LEGACY_BRIDGE_EXECUTION_COLUMNS = (
     ("interpretation", "Interpretation"),
 )
 
+_REPRO_CASE_COLUMNS = (
+    ("case_id", "Case"),
+    ("selected_case_status", "Selected status"),
+    ("selected_attempt", "Selected attempt"),
+    ("excluded_attempts", "Excluded attempts"),
+    ("planned_cell_count", "Planned cells"),
+    ("observed_cell_count", "Observed cells"),
+    ("declared_seed_policies", "Declared seed policy"),
+    ("runtime_seed_policies", "Effective seed policy"),
+    ("split_seeds", "Split seeds"),
+    ("model_seeds", "Model seeds"),
+    ("training_orchestration_seeds", "Orchestration seeds"),
+    ("evaluation_statistics_seeds", "Evaluation seeds"),
+    ("audit_status", "Status"),
+)
+
+_REPRO_CELL_COLUMNS = (
+    ("case_id", "Case"),
+    ("repeat", "Repeat"),
+    ("fold", "Fold"),
+    ("status", "Cell status"),
+    ("selected_attempt", "Attempt"),
+    ("declared_seed_policy", "Declared policy"),
+    ("runtime_seed_policy", "Effective policy"),
+    ("split_seed", "Split seed"),
+    ("training_orchestration_seed", "Orchestration seed"),
+    ("training_seed", "Training seed"),
+    ("model_seed_roster", "Model/member seeds"),
+    ("member_seed_semantics", "Member-seed semantics"),
+    ("evaluation_statistics_seed", "Evaluation seed"),
+    ("epoch_rng_seed_count", "Epoch RNG rows"),
+    ("materialized_split_csv_sha256", "Split CSV SHA256"),
+    ("split_identity_sha256", "Fold membership SHA256"),
+    ("train_participant_count", "Train participants"),
+    ("oof_participant_count", "OOF participants"),
+    ("train_oof_overlap_count", "Train/OOF overlap"),
+    ("audit_status", "Status"),
+)
+
+_REPRO_SPLIT_COLUMNS = (
+    ("repeat", "Repeat"),
+    ("fold", "Fold"),
+    ("split_seed", "Split seed"),
+    ("materialized_split_csv_sha256", "Split CSV SHA256"),
+    ("declared_source_registry_json_file_sha256", "Declared authority JSON SHA256"),
+    ("declared_source_registry_payload_sha256", "Declared authority payload SHA256"),
+    ("train_participant_count", "Train participants"),
+    ("oof_participant_count", "OOF participants"),
+    ("train_oof_overlap_count", "Overlap"),
+    ("case_ids", "Matching cases"),
+    ("audit_status", "Status"),
+)
+
+_REPRO_ISSUE_COLUMNS = (
+    ("severity", "Severity"),
+    ("code", "Code"),
+    ("case_id", "Case"),
+    ("repeat", "Repeat"),
+    ("fold", "Fold"),
+    ("message", "Message"),
+)
+
+
+def _unavailable_reproducibility(message: str) -> ReproducibilityAudit:
+    return ReproducibilityAudit(
+        schema_version="ppg_frailty.reporting.reproducibility_audit.v1",
+        status=NOT_VERIFIABLE,
+        summary={
+            "audit_status": NOT_VERIFIABLE,
+            "scope": "audit_unavailable",
+            "training_or_report_gate": False,
+            "error_count": 0,
+            "not_verifiable_count": 1,
+        },
+        case_rows=(),
+        cell_rows=(),
+        split_rows=(),
+        issues=(
+            {
+                "severity": "not_verifiable",
+                "code": "reproducibility_audit_unavailable",
+                "case_id": None,
+                "repeat": None,
+                "fold": None,
+                "message": message,
+            },
+        ),
+    )
+
 
 def _report_markdown(
     collected: CollectedStudy,
     analysis: StudyAnalysis,
     figures: Sequence[Mapping[str, Any]],
+    reproducibility: ReproducibilityAudit | None = None,
 ) -> str:
+    reproducibility = reproducibility or _unavailable_reproducibility(
+        "seed/split evidence was not supplied to the report renderer"
+    )
     study = _study_info(collected)
     manifest = collected.manifest
     execution = collected.plan.get("execution", {})
@@ -202,9 +300,55 @@ def _report_markdown(
         f"{manifest.get('not_run_cell_count', 'N/A')}",
         f"- Resume-skipped passed cases: {manifest.get('resumed_case_count', 0)}",
         "",
-        "## Varied and controlled parameters",
+        "## Seed and data-split reproducibility",
+        "",
+        f"- Audit status: **{reproducibility.status}**",
+        f"- Scope: {reproducibility.summary.get('scope', 'N/A')}",
+        f"- Planned / observed selected cells: "
+        f"{reproducibility.summary.get('planned_cell_count', 'N/A')} / "
+        f"{reproducibility.summary.get('observed_cell_count', 'N/A')}",
+        f"- Split seeds by repeat: "
+        f"{_fmt(reproducibility.summary.get('split_seed_by_repeat'))}",
+        f"- Errors / not-verifiable items: "
+        f"{reproducibility.summary.get('error_count', 0)} / "
+        f"{reproducibility.summary.get('not_verifiable_count', 0)}",
+        "- This is report-only evidence; it never gates training or report generation.",
         "",
     ]
+    lines.extend(
+        _markdown_table(
+            reproducibility.case_rows,
+            _REPRO_CASE_COLUMNS,
+        )
+    )
+    lines.extend(
+        [
+            "<details><summary>Per-cell seed and split evidence</summary>",
+            "",
+        ]
+    )
+    lines.extend(
+        _markdown_table(
+            reproducibility.cell_rows,
+            _REPRO_CELL_COLUMNS,
+        )
+    )
+    lines.extend(["</details>", "", "### Frozen split roster", ""])
+    lines.extend(
+        _markdown_table(
+            reproducibility.split_rows,
+            _REPRO_SPLIT_COLUMNS,
+        )
+    )
+    if reproducibility.issues:
+        lines.extend(["### Reproducibility audit issues", ""])
+        lines.extend(
+            _markdown_table(
+                reproducibility.issues,
+                _REPRO_ISSUE_COLUMNS,
+            )
+        )
+    lines.extend(["## Varied and controlled parameters", ""])
     if axes:
         lines.extend(
             [
@@ -558,6 +702,11 @@ def _report_markdown(
             "",
             "- [outputs_index.json](outputs_index.json): machine-readable inventory",
             "- [study_summary.json](study_summary.json): report context and tables",
+            "- [tables/reproducibility_summary.csv](tables/reproducibility_summary.csv)",
+            "- [tables/reproducibility_cases.csv](tables/reproducibility_cases.csv)",
+            "- [tables/reproducibility_cells.csv](tables/reproducibility_cells.csv)",
+            "- [tables/reproducibility_splits.csv](tables/reproducibility_splits.csv)",
+            "- [tables/reproducibility_issues.csv](tables/reproducibility_issues.csv)",
             "- [tables/predictive_leaderboard.csv](tables/predictive_leaderboard.csv)",
             "- [tables/aggregation_line_comparison.csv](tables/aggregation_line_comparison.csv)",
             "- [tables/aggregation_line_repeat_metrics.csv](tables/aggregation_line_repeat_metrics.csv)",
@@ -610,7 +759,11 @@ def _report_html(
     collected: CollectedStudy,
     analysis: StudyAnalysis,
     figures: Sequence[Mapping[str, Any]],
+    reproducibility: ReproducibilityAudit | None = None,
 ) -> str:
+    reproducibility = reproducibility or _unavailable_reproducibility(
+        "seed/split evidence was not supplied to the report renderer"
+    )
     study = _study_info(collected)
     generated = [
         row
@@ -647,6 +800,23 @@ causal ablations.</p>
     _LEGACY_BRIDGE_EXECUTION_COLUMNS,
 )}
 """
+    reproducibility_issues = _html_table(
+        reproducibility.issues,
+        _REPRO_ISSUE_COLUMNS,
+    ) if reproducibility.issues else "<p>No reproducibility issue recorded.</p>"
+    reproducibility_html = f"""
+<h2>Seed and data-split reproducibility — {html.escape(reproducibility.status)}</h2>
+<p class="notice">Report-only evidence; this status never gates training or
+report generation. Planned/observed selected cells:
+{html.escape(_fmt(reproducibility.summary.get('planned_cell_count')))} /
+{html.escape(_fmt(reproducibility.summary.get('observed_cell_count')))}.</p>
+{_html_table(reproducibility.case_rows, _REPRO_CASE_COLUMNS)}
+<details><summary>Per-cell seed and split evidence</summary>
+{_html_table(reproducibility.cell_rows, _REPRO_CELL_COLUMNS)}</details>
+<h3>Frozen split roster</h3>
+{_html_table(reproducibility.split_rows, _REPRO_SPLIT_COLUMNS)}
+<h3>Reproducibility audit issues</h3>{reproducibility_issues}
+"""
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <title>V2 study — {html.escape(str(study.get("study_id", collected.root.name)))}</title>
@@ -660,6 +830,7 @@ th{{background:#f0f3f6}}img{{max-width:100%;height:auto}}figure{{margin:2rem 0}}
 <p class="notice">Descriptive manual-review report; no automatic winner is selected.</p>
 <p><strong>Purpose:</strong> {html.escape(str(study.get("purpose", "N/A")))}</p>
 <p><strong>Flow position:</strong> {html.escape(str(study.get("flow_position", "N/A")))}</p>
+{reproducibility_html}
 <h2>Predictive leaderboard</h2>
 {_html_table(analysis.predictive_leaderboard, (
     ("predictive_rank", "Rank"), ("case_id", "Case"),
@@ -983,6 +1154,12 @@ def generate_study_report(
     root = Path(study_directory).resolve()
     bundle = collected or collect_study(root)
     analysis = analyze_study(bundle)
+    try:
+        reproducibility = audit_study_reproducibility(bundle)
+    except Exception as error:  # noqa: BLE001 - preserve the primary report.
+        reproducibility = _unavailable_reproducibility(
+            f"{type(error).__name__}: {error}"
+        )
     tables = root / "tables"
     figures_dir = root / "figures"
     tables.mkdir(exist_ok=True)
@@ -1091,6 +1268,31 @@ def generate_study_report(
             "Report projection of quality diagnostics; full beat-level audits remain in each case quality_diagnostics.json",
         ),
         ("case_records", bundle.case_records, "Case pass/fail/resume records"),
+        (
+            "reproducibility_summary",
+            (reproducibility.summary,),
+            "Report-only seed and frozen-split consistency status",
+        ),
+        (
+            "reproducibility_cases",
+            reproducibility.case_rows,
+            "Selected attempt and seed/split evidence by case",
+        ),
+        (
+            "reproducibility_cells",
+            reproducibility.cell_rows,
+            "Seed and participant-split evidence for every selected cell",
+        ),
+        (
+            "reproducibility_splits",
+            reproducibility.split_rows,
+            "Frozen split roster and cross-case membership hashes",
+        ),
+        (
+            "reproducibility_issues",
+            reproducibility.issues,
+            "Contradictory or not-verifiable reproducibility evidence",
+        ),
     )
     if isinstance(bundle.plan.get("legacy_bridge"), Mapping):
         table_payloads += (
@@ -1185,6 +1387,7 @@ def generate_study_report(
         "varied_parameters": bundle.varied_parameters,
         "controlled_parameters": bundle.controlled_parameters,
         "analysis": asdict(analysis),
+        "reproducibility_audit": reproducibility.to_dict(),
         "figure_status": list(figures),
     }
     summary_json = root / "study_summary.json"
@@ -1199,7 +1402,7 @@ def generate_study_report(
     )
     markdown_path = root / "STUDY_SUMMARY.md"
     markdown_path.write_text(
-        _report_markdown(bundle, analysis, figures), encoding="utf-8"
+        _report_markdown(bundle, analysis, figures, reproducibility), encoding="utf-8"
     )
     index.append(
         _index_entry(
@@ -1213,7 +1416,7 @@ def generate_study_report(
     html_path = root / "STUDY_SUMMARY.html" if write_html else None
     if html_path is not None:
         html_path.write_text(
-            _report_html(bundle, analysis, figures), encoding="utf-8"
+            _report_html(bundle, analysis, figures, reproducibility), encoding="utf-8"
         )
         index.append(
             _index_entry(

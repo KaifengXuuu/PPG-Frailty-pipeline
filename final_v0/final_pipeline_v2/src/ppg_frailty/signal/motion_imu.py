@@ -12,7 +12,7 @@ import numpy as np
 from scipy import signal
 
 from ..provenance import stable_payload_sha256
-from .imu import STANDARD_GRAVITY, convert_acceleration, convert_gyro
+from .imu import convert_gyro
 from .views import CANONICAL_FS_HZ
 
 
@@ -39,18 +39,18 @@ MOTION_IMU_CHANNEL_UNITS = (
     "m/s^3",
 )
 CALIBRATED_ROLL_PITCH_EKF_PROFILE_ID = (
-    "calibrated_roll_pitch_ekf_sensor_lpf_order3_v3_reference"
+    "calibrated_roll_pitch_ekf_sensor_lpf_order3_v4_reference"
 )
 PROFILE_A_LPF_ID = (
-    "profile_a_sensor_lpf_order3_gravity_0p3hz_v3_ablation"
+    "profile_a_sensor_lpf_order3_gravity_0p3hz_v4_ablation"
 )
 PTT_STATIC_CALIBRATION_ROLE = "PTT_SIT_STATIC_CALIBRATION"
 FORMAL_STATIC_CALIBRATION_ROLES = ("B", PTT_STATIC_CALIBRATION_ROLE)
 MOTION_IMU_CALIBRATION_SCHEMA = (
-    "ppg_frailty.motion_imu_calibration.sensor_lpf_order3.v3"
+    "ppg_frailty.motion_imu_calibration.sensor_lpf_order3.v4"
 )
 MOTION_IMU_LINEAGE_SCHEMA = (
-    "ppg_frailty.motion_imu_lineage.sensor_lpf_order3.v3"
+    "ppg_frailty.motion_imu_lineage.sensor_lpf_order3.v4"
 )
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
@@ -89,6 +89,7 @@ class RollPitchEkfConfig:
     observation_covariance_diagonal_rad2: tuple[float, float] = (0.5, 0.5)
     initial_covariance_diagonal: tuple[float, ...] = (1.0, 1.0, 0.5, 0.5, 0.5)
     dynamic_observation_scale: float = 3.0
+    gravity_mps2: float = 9.81
     accelerometer_lowpass_hz: float = 20.0
     gyroscope_lowpass_hz: float = 40.0
     sensor_filter_order: int = 3
@@ -97,8 +98,8 @@ class RollPitchEkfConfig:
     gravity_lowpass_hz: float = 0.3
     gravity_filter_order: int = 4
     source_algorithm: str = (
-        "historical_funcs_py_roll_pitch_bias_ekf_corrected_init_"
-        "sensor_lpf_order3_v3"
+        "authoritative_calibrated_roll_pitch_bias_ekf_"
+        "one_sided_dynamic_R_sensor_lpf_order3_v4"
     )
 
     def validate(self, fs_hz: float = CANONICAL_FS_HZ) -> None:
@@ -116,6 +117,8 @@ class RollPitchEkfConfig:
             or self.dynamic_observation_scale < 0.0
         ):
             raise ValueError("dynamic observation scale cannot be negative")
+        if not np.isfinite(self.gravity_mps2) or self.gravity_mps2 <= 0.0:
+            raise ValueError("roll-pitch EKF gravity_mps2 must be finite and positive")
         if not np.isfinite(fs_hz) or fs_hz <= 0.0:
             raise ValueError("motion IMU sampling frequency must be finite and positive")
         for name, order in (
@@ -355,12 +358,39 @@ def _roll_pitch_from_acc(acceleration: np.ndarray) -> tuple[float, float]:
     )
 
 
-def _gravity_from_roll_pitch(roll: np.ndarray, pitch: np.ndarray) -> np.ndarray:
+def _gravity_from_roll_pitch(
+    roll: np.ndarray,
+    pitch: np.ndarray,
+    *,
+    gravity_mps2: float,
+) -> np.ndarray:
+    """Compute ``(Rx(phi) Ry(theta)).T @ [0, 0, g]`` sample-wise."""
+
     r = np.asarray(roll, dtype=np.float64)
     p = np.asarray(pitch, dtype=np.float64)
-    return STANDARD_GRAVITY * np.column_stack(
+    return float(gravity_mps2) * np.column_stack(
         (-np.sin(p) * np.cos(r), np.sin(r), np.cos(p) * np.cos(r))
     )
+
+
+def _convert_profile_acceleration(
+    values: np.ndarray,
+    unit: str,
+    *,
+    gravity_mps2: float,
+) -> np.ndarray:
+    """Apply the Profile-B 9.81 conversion while retaining explicit SI input."""
+
+    normalized = str(unit).strip().lower().replace("²", "2")
+    factors = {
+        "g": float(gravity_mps2),
+        "mg": float(gravity_mps2) / 1000.0,
+        "m/s2": 1.0,
+        "m/s^2": 1.0,
+    }
+    if normalized not in factors:
+        raise ValueError(f"unit_unknown:acceleration_unit={unit}")
+    return np.asarray(values, dtype=np.float64) * factors[normalized]
 
 
 def _calibration_hash(
@@ -414,7 +444,11 @@ def fit_motion_imu_calibration(
             "explicit PTT sit-static calibration"
         )
     config.validate(fs_hz)
-    acc = convert_acceleration(acceleration, acceleration_unit)
+    acc = _convert_profile_acceleration(
+        acceleration,
+        acceleration_unit,
+        gravity_mps2=config.gravity_mps2,
+    )
     gyro = convert_gyro(gyroscope, gyroscope_unit)
     if acc.ndim != 2 or gyro.shape != acc.shape or acc.shape[1] != 3:
         raise ValueError("motion calibration requires aligned samples-by-3 ACC/Gyro")
@@ -433,11 +467,15 @@ def fit_motion_imu_calibration(
     acc_mean = _robust_mean(acc_filtered)
     gyro_mean = _robust_mean(gyro_filtered)
     roll, pitch = _roll_pitch_from_acc(acc_mean)
-    gravity = _gravity_from_roll_pitch(np.asarray([roll]), np.asarray([pitch]))[0]
+    gravity = _gravity_from_roll_pitch(
+        np.asarray([roll]),
+        np.asarray([pitch]),
+        gravity_mps2=config.gravity_mps2,
+    )[0]
     acc_bias = acc_mean - gravity
     quality = {
         "acceleration_gravity_norm_error_mps2": float(
-            abs(np.linalg.norm(acc_mean - acc_bias) - STANDARD_GRAVITY)
+            abs(np.linalg.norm(acc_mean - acc_bias) - config.gravity_mps2)
         ),
         "gyroscope_rms_rads_by_axis": np.sqrt(np.mean(np.square(gyro_filtered), axis=0)).tolist(),
         "calibration_sample_count": int(stop - start),
@@ -555,7 +593,10 @@ def _run_roll_pitch_ekf(
         covariance = transition @ covariance @ transition.T + process
         measured_roll, measured_pitch = _roll_pitch_from_acc(acc[index])
         measurement = np.asarray([measured_roll, measured_pitch], dtype=np.float64)
-        deviation = abs(float(np.linalg.norm(acc[index])) - STANDARD_GRAVITY) / STANDARD_GRAVITY
+        deviation = max(
+            0.0,
+            float(np.linalg.norm(acc[index])) - config.gravity_mps2,
+        ) / config.gravity_mps2
         scale = 1.0 + config.dynamic_observation_scale * deviation
         observation_scale_min = min(observation_scale_min, scale)
         observation_scale_max = max(observation_scale_max, scale)
@@ -592,6 +633,10 @@ def _run_roll_pitch_ekf(
         ),
         "initial_covariance_diagonal": list(config.initial_covariance_diagonal),
         "dynamic_observation_scale": config.dynamic_observation_scale,
+        "gravity_mps2": config.gravity_mps2,
+        "observation_scale_equation": (
+            "1+alpha_R*max(0,norm_acc-g)/g"
+        ),
         "observed_measurement_scale_min": (
             observation_scale_min if np.isfinite(observation_scale_min) else 1.0
         ),
@@ -624,7 +669,11 @@ def _prepare_si_inputs(
         raise ValueError("motion calibration and runtime EKF config differ")
     source_acc = np.asarray(acceleration, dtype=np.float64)
     source_gyro = np.asarray(gyroscope, dtype=np.float64)
-    acc = convert_acceleration(source_acc, acceleration_unit)
+    acc = _convert_profile_acceleration(
+        source_acc,
+        acceleration_unit,
+        gravity_mps2=config.gravity_mps2,
+    )
     gyro = convert_gyro(source_gyro, gyroscope_unit)
     if acc.ndim != 2 or gyro.shape != acc.shape or acc.shape[1] != 3 or acc.shape[0] < 16:
         raise ValueError("motion IMU input must be aligned samples-by-3")
@@ -759,12 +808,17 @@ def preprocess_motion_imu_calibrated_ekf(
         initial_pitch_rad=calibration.initial_pitch_rad,
         config=config,
     )
-    gravity = _gravity_from_roll_pitch(roll, pitch)
+    gravity = _gravity_from_roll_pitch(
+        roll,
+        pitch,
+        gravity_mps2=config.gravity_mps2,
+    )
     diagnostics = {
         "profile_id": CALIBRATED_ROLL_PITCH_EKF_PROFILE_ID,
         "unit_conversion": {
             "acceleration": f"{acceleration_unit}->m/s^2",
             "gyroscope": f"{gyroscope_unit}->rad/s",
+            "g_to_mps2_factor": config.gravity_mps2,
         },
         "calibration_artifact_sha256": calibration.artifact_sha256,
         "calibration_participant_id": calibration.participant_id,
@@ -779,6 +833,11 @@ def preprocess_motion_imu_calibrated_ekf(
         },
         "silent_fallback": False,
         "fallback_profile": None,
+        "yaw_correction": "not_available_no_magnetometer_roll_pitch_only",
+        "gravity_rotation": "R_x_roll_then_R_y_pitch_transpose_times_0_0_g",
+        "profile_consistency_scope": (
+            "artifact_reduction_imu_features_time_series_input"
+        ),
         **input_lineage,
         **ekf_diagnostics,
     }
@@ -832,6 +891,7 @@ def preprocess_motion_imu_lpf_ablation(
         "unit_conversion": {
             "acceleration": f"{acceleration_unit}->m/s^2",
             "gyroscope": f"{gyroscope_unit}->rad/s",
+            "g_to_mps2_factor": config.gravity_mps2,
         },
         "calibration_artifact_sha256": calibration.artifact_sha256,
         "calibration_source_role": calibration.source_role,

@@ -18,6 +18,7 @@ from ppg_frailty.config import (
     validate_config_payload,
 )
 from ppg_frailty.contracts import SignalRoute
+from ppg_frailty.module_registry import list_modules
 from ppg_frailty.peaks import (
     ABLATION_DETECTOR_ID,
     CANONICAL_DETECTOR_ID,
@@ -33,10 +34,20 @@ from ppg_frailty.peaks.aboy_project import (
     _block_parameters,
     _clean_intervals,
     _merge_block_peaks,
+    _prepare_input as _v1_prepare_input,
     _result_for_wavelength,
     _score_peak_train,
     _upper_30_percent_mean,
 )
+from ppg_frailty.peaks.aboy_project_v2 import (
+    DETECTOR_ID as ABOY_PROJECT_V2_ID,
+    IMPLEMENTATION_PATH as ABOY_PROJECT_V2_IMPLEMENTATION_PATH,
+    _candidate as _v2_candidate,
+    _prepare_input as _v2_prepare_input,
+    _remove_ratio_outlier_peaks as _v2_remove_ratio_outlier_peaks,
+)
+from ppg_frailty.peaks.msptdfast_v2 import _prepare_input as _msptd_prepare_input
+from ppg_frailty.signal.views import CanonicalSignalViews
 
 
 FS = 400.0
@@ -58,6 +69,100 @@ def pulse_train(
 
 
 class AboyProjectDetectorTest(unittest.TestCase):
+    def test_registered_modules_select_their_own_input_view(self) -> None:
+        native = np.ones((400, 2), dtype=np.float64)
+        filtered = np.full((400, 2), 2.0, dtype=np.float64)
+        views = CanonicalSignalViews(
+            x_native=native,
+            x_filter=filtered,
+            x_analysis_rate=filtered.copy(),
+            imu_processed={},
+            metadata={"fs_hz": FS, "record_id": "fixture"},
+            source_valid_mask=np.ones((400, 2), dtype=bool),
+            repair_mask=np.zeros((400, 2), dtype=bool),
+        )
+        v1, *_ = _v1_prepare_input(views, fs_hz=FS, source_route=None)
+        v2, *_ = _v2_prepare_input(views, fs_hz=FS, source_route=None)
+        msptd, *_ = _msptd_prepare_input(views, fs_hz=FS, source_route=None)
+        np.testing.assert_array_equal(v1, filtered)
+        np.testing.assert_array_equal(v2, native)
+        np.testing.assert_array_equal(msptd, native)
+
+    def test_v2_selects_polarity_per_block_and_keeps_v1_identity_separate(self) -> None:
+        time_s = np.arange(int(20.0 * FS)) / FS
+        waveform = np.zeros(time_s.size, dtype=np.float64)
+        for event in np.arange(0.8, 9.6, 1.0):
+            waveform += np.exp(-0.5 * np.square((time_s - event) / 0.04))
+        for event in np.arange(10.8, 19.6, 1.0):
+            waveform -= np.exp(-0.5 * np.square((time_s - event) / 0.04))
+        result = detect_pulses(
+            waveform,
+            detector_id=ABOY_PROJECT_V2_ID,
+            min_peaks=3,
+        )
+        selected = [
+            (row["block_index"], row["polarity"])
+            for row in result.block_provenance
+            if row.get("polarity_selected")
+        ]
+        self.assertEqual(selected, [(0, 1), (1, -1)])
+        self.assertEqual(result.detector_id, ABOY_PROJECT_V2_ID)
+        self.assertNotEqual(result.detector_id, CANONICAL_DETECTOR_ID)
+        self.assertTrue(
+            all(
+                row.get("initial_highpass_hz") == 0.2
+                for row in result.block_provenance[:-1]
+            )
+        )
+
+    def test_v2_physically_removes_ratio_peak_before_interval_cleaning(self) -> None:
+        peaks = np.rint(np.asarray([0.0, 1.0, 1.2, 2.2, 3.2]) * FS).astype(int)
+        prominence = np.arange(peaks.size, dtype=np.float64)
+        cleaned, cleaned_prominence, reference, rejected = (
+            _v2_remove_ratio_outlier_peaks(peaks, prominence, FS)
+        )
+        self.assertAlmostEqual(reference, 1.0)
+        self.assertEqual(rejected, (2,))
+        np.testing.assert_array_equal(
+            cleaned,
+            np.rint(np.asarray([0.0, 1.0, 2.2, 3.2]) * FS).astype(int),
+        )
+        np.testing.assert_array_equal(cleaned_prominence, [0.0, 1.0, 3.0, 4.0])
+
+    def test_v2_prominence_uses_exact_top_ceil_thirty_percent(self) -> None:
+        block = np.zeros(400, dtype=np.float64)
+        block[[20, 200]] = [1.0, 3.0]
+        with (
+            patch(
+                "ppg_frailty.peaks.aboy_project_v2._bandpass",
+                side_effect=lambda values, *_args: np.asarray(values),
+            ),
+            patch(
+                "ppg_frailty.peaks.aboy_project_v2.signal.find_peaks",
+                side_effect=[
+                    (np.asarray([20, 200]), {}),
+                    (
+                        np.asarray([20, 120, 220]),
+                        {"prominences": np.ones(3)},
+                    ),
+                ],
+            ),
+        ):
+            candidate = _v2_candidate(
+                block,
+                block_index=0,
+                block_start=0,
+                polarity=1,
+                hri_in=0.0,
+                fs_hz=FS,
+            )
+        self.assertEqual(
+            candidate.provenance[
+                "upper_30_percent_preliminary_amplitude_mean"
+            ],
+            3.0,
+        )
+
     def test_public_thresholds_are_validated_and_forwarded(self) -> None:
         sentinel = {"RED": object()}
         matrix = np.zeros((4000, 1), dtype=np.float64)
@@ -610,6 +715,54 @@ class AboyProjectDetectorTest(unittest.TestCase):
                 invalid["signal"]["peak_detector"][field] = value
                 with self.assertRaisesRegex(ValueError, message):
                     validate_config_payload(invalid)
+
+    def test_msptdfast_ablation_materializes_as_registered_pipeline_module(self) -> None:
+        import tempfile
+
+        from ppg_frailty.peaks.msptdfast_v2 import (
+            DEFAULT_PARAMETERS,
+            DETECTOR_ID as MSPTDFAST_V2_ID,
+            IMPLEMENTATION_PATH,
+        )
+
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory(dir=root / "tests/signal") as directory:
+            config = materialize_formal_ablation_config(
+                root / "configs/reference_static_role_aware_v2.yaml",
+                family="peak_detector",
+                profile_id=MSPTDFAST_V2_ID,
+                output_path=Path(directory) / "msptdfast.yaml",
+                profiles_path=root / "configs/formal_ablation_profiles_v2.yaml",
+            )
+        detector = config.payload["signal"]["peak_detector"]
+        self.assertEqual(detector["detector_id"], MSPTDFAST_V2_ID)
+        self.assertEqual(detector["parameters"], DEFAULT_PARAMETERS)
+        descriptors = {
+            row["module_id"]: row for row in list_modules("peak_detector")
+        }
+        self.assertEqual(descriptors[MSPTDFAST_V2_ID]["implementation"], IMPLEMENTATION_PATH)
+
+    def test_authoritative_aboy_v2_materializes_as_parallel_module(self) -> None:
+        import tempfile
+
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory(dir=root / "tests/signal") as directory:
+            config = materialize_formal_ablation_config(
+                root / "configs/reference_static_role_aware_v2.yaml",
+                family="peak_detector",
+                profile_id=ABOY_PROJECT_V2_ID,
+                output_path=Path(directory) / "aboy_v2.yaml",
+                profiles_path=root / "configs/formal_ablation_profiles_v2.yaml",
+            )
+        detector = config.payload["signal"]["peak_detector"]
+        self.assertEqual(detector["detector_id"], ABOY_PROJECT_V2_ID)
+        descriptors = {
+            row["module_id"]: row for row in list_modules("peak_detector")
+        }
+        self.assertEqual(
+            descriptors[ABOY_PROJECT_V2_ID]["implementation"],
+            ABOY_PROJECT_V2_IMPLEMENTATION_PATH,
+        )
 
 
 if __name__ == "__main__":

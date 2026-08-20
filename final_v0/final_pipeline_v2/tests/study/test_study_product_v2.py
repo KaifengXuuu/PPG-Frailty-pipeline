@@ -487,6 +487,8 @@ class StudyProductTests(unittest.TestCase):
         self.assertTrue(report.output_index.is_file())
         summary = report.summary_markdown.read_text(encoding="utf-8")
         self.assertIn("Predictive ranking", summary)
+        self.assertIn("Seed and data-split reproducibility", summary)
+        self.assertIn("report-only evidence", summary)
         self.assertIn("Deployment measurements", summary)
         self.assertIn("Macro-F1 LCB95", summary)
         self.assertIn(
@@ -526,6 +528,24 @@ class StudyProductTests(unittest.TestCase):
         self.assertIn("tables/aggregation_line_comparison.csv", paths)
         self.assertIn("tables/aggregation_line_repeat_metrics.csv", paths)
         self.assertIn("tables/aggregation_line_per_class_metrics.csv", paths)
+        self.assertIn("tables/reproducibility_summary.csv", paths)
+        self.assertIn("tables/reproducibility_cases.csv", paths)
+        self.assertIn("tables/reproducibility_cells.csv", paths)
+        self.assertIn("tables/reproducibility_splits.csv", paths)
+        self.assertIn("tables/reproducibility_issues.csv", paths)
+        reproducibility = json.loads(
+            (
+                result.output_directory
+                / "tables"
+                / "reproducibility_summary.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(len(reproducibility), 1)
+        self.assertIn(
+            reproducibility[0]["audit_status"],
+            {"PASS", "FAIL", "NOT_VERIFIABLE"},
+        )
+        self.assertFalse(reproducibility[0]["training_or_report_gate"])
         self.assertEqual(
             len(
                 [

@@ -1575,11 +1575,18 @@ def _validate_formal_ablation_materialization(data: Mapping[str, Any]) -> None:
     elif family == "peak_detector":
         expected = {
             "aboy_project_v1": "aboy_project_v1",
+            "aboy_project_v2": "aboy_project_v2",
             "dual_polarity_prominence_v1_ablation":
                 "dual_polarity_prominence_v1_ablation",
+            "msptdfast_v2_3_python_port": "msptdfast_v2_3_python_port",
         }.get(profile_id)
         if expected is None or detector_id != expected:
             raise ValueError("peak-detector materialization identity drift")
+        if profile_id == "msptdfast_v2_3_python_port":
+            from .peaks.msptdfast_v2 import DEFAULT_PARAMETERS
+
+            if data["signal"]["peak_detector"].get("parameters") != DEFAULT_PARAMETERS:
+                raise ValueError("MSPTDfast materialization parameter drift")
     elif family == "aggregation_balance":
         expected = {
             "role_aware_equal_roles": (
@@ -1901,8 +1908,26 @@ def load_formal_ablation_profiles(path: str | Path) -> dict[str, Any]:
                 "auto_run": False,
             },
             {
+                "profile_id": "aboy_project_v2",
+                "detector_id": "aboy_project_v2",
+                "catalog_role": "ablation",
+                "auto_run": False,
+            },
+            {
                 "profile_id": "dual_polarity_prominence_v1_ablation",
                 "detector_id": "dual_polarity_prominence_v1_ablation",
+                "catalog_role": "ablation",
+                "auto_run": False,
+            },
+            {
+                "profile_id": "msptdfast_v2_3_python_port",
+                "detector_id": "msptdfast_v2_3_python_port",
+                "parameters": {
+                    "target_downsample_hz": 20.0,
+                    "minimum_heart_rate_bpm": 30.0,
+                    "window_s": 6.0,
+                    "overlap_fraction": 0.2,
+                },
                 "catalog_role": "ablation",
                 "auto_run": False,
             },
@@ -2046,6 +2071,12 @@ def materialize_formal_ablation_config(
             payload["signal"]["peak_detector"]["detector_id"] = str(
                 selected["detector_id"]
             )
+            if "parameters" in selected:
+                payload["signal"]["peak_detector"]["parameters"] = dict(
+                    selected["parameters"]
+                )
+            else:
+                payload["signal"]["peak_detector"].pop("parameters", None)
         else:
             is_line_b = selected["profile_id"] == "role_aware_equal_roles"
             payload["training"]["training_balance"] = str(

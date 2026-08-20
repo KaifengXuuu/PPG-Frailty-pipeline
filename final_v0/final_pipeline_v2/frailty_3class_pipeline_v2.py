@@ -63,6 +63,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Case-level CPU parallelism; deep-model studies are reduced to 1 by default.",
     )
     parser.add_argument(
+        "--device",
+        default="cuda",
+        help=(
+            "Torch training device (default: cuda); estimator models remain on "
+            "their executable CPU backend."
+        ),
+    )
+    parser.add_argument(
         "--measure-operational-costs",
         action="store_true",
         help="Measure per-outer-cell operational timing and memory costs.",
@@ -104,6 +112,7 @@ def plan_from_args(args: argparse.Namespace) -> StudyPlan:
             repeats=args.repeats,
             folds=args.folds,
             jobs=args.jobs,
+            device=args.device,
             measure_operational_costs=args.measure_operational_costs,
         ),
         output=OutputSpec(root=args.output_root),
