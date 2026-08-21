@@ -257,9 +257,9 @@ class FinalRefitPlan:
             object.__setattr__(self, "fixed_epochs", int(self.fixed_epochs))
         elif self.model_family == "classical_or_rocket":
             if self.epoch_rule != "not_applicable" or self.fixed_epochs is not None:
-                raise ValueError("classical/ROCKET final refit must not carry a fake epoch")
+                raise ValueError("estimator final refit must not carry a fake epoch")
             if self.model_kind != "single_model":
-                raise ValueError("classical/ROCKET final refit is not the Inception ensemble")
+                raise ValueError("estimator final refit is not the Inception ensemble")
         else:
             raise ValueError("model_family must be deep or classical_or_rocket")
         if self.representation_mode not in {
@@ -859,7 +859,7 @@ def _execute_prepared_full_cohort_refit(
         epoch_identity.get("rule") != "not_applicable"
         or epoch_identity.get("fixed_epochs") is not None
     ):
-        raise ValueError("final classical/ROCKET run provenance must use no epoch")
+        raise ValueError("final estimator run provenance must use no epoch")
     # Training balance and prediction aggregation are independent, hash-bound
     # modules.  The former controls row mass and train/inner diagnostics; the
     # latter controls the persisted participant view.  Binding both values is
@@ -901,7 +901,7 @@ def _execute_prepared_full_cohort_refit(
         result = trainer.fit(model_factory, full_dataset, scope)
     else:
         if estimator is None or model_factory is not None:
-            raise ValueError("classical/ROCKET final refit requires exactly estimator")
+            raise ValueError("estimator final refit requires exactly estimator")
         validate_resolved_architecture(estimator, declared_architecture, spec)
         result = trainer.fit_estimator(estimator, full_dataset, scope)
 

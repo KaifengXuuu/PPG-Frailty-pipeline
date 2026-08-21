@@ -1,12 +1,12 @@
 """冻结十字段注册表与显式有效性模型编码 / Frozen registry and mask encoding.
 
 English: The public builders implement a content-addressed FeatureVectorV1
-allowlist composed from complete registered feature groups and a runtime-configurable
-positive K matrix contract. Technical or unknown predictor fields are rejected
-rather than silently appended.
+allowlist composed from complete registered feature groups and the fixed
+115-by-150 engineering-matrix contract. Technical or unknown predictor fields
+are rejected rather than silently appended.
 
 中文：公共构建器以完整注册 feature groups 组合内容寻址的 FeatureVectorV1 allowlist，
-并实现运行时可配置的正整数 K；技术字段或未知 predictor 会被拒绝，而非静默追加。
+并实现固定 115×150 工程特征矩阵；技术字段或未知 predictor 会被拒绝，而非静默追加。
 """
 
 from __future__ import annotations
@@ -37,10 +37,9 @@ from .engineering import (
 DIRECT_ROUTES = (SignalRoute.DIRECT.value, SignalRoute.IDENTITY.value)
 RATE_ROUTES = DIRECT_ROUTES + (SignalRoute.ARTIFACT_RATE_ONLY.value,)
 
-# ``115`` is the width of one engineering *window* row.  It was incorrectly
-# reused in the historical file-vector and ordered-matrix identifiers.  The
-# complete file vector has 282 fields and the complete matrix has
-# 2 * (115 + 282) = 794 value/validity channels.
+# The ordered matrix is exactly the chronological 115-feature engineering
+# sequence. File-level context and validity indicators remain separate
+# provenance and are not additional predictor channels.
 FEATURE_GROUP_ORDER = (
     "ppi_basic_rate",
     "hrv_time_domain",
@@ -51,11 +50,9 @@ FEATURE_GROUP_ORDER = (
     "engineering_summary",
 )
 FORMAL_REGISTRY_VERSION = "feature_vector_282_v3"
-ORDERED_MATRIX_SCHEMA_VERSION = (
-    "ordered_feature_matrix_d794_by_32_registry-0bea68a2058d_v3"
-)
+ORDERED_MATRIX_SCHEMA_VERSION = "ordered_feature_matrix_d115_by_150_engineering_v4"
 ENGINEERING_FEATURE_COUNT = 115
-MAX_ORDERED_MATRIX_K = 4096
+MAX_ORDERED_MATRIX_K = 150  # compatibility export; the sole legal K is 150.
 MISSING_POLICY = "NaN_internal/null_JSON_with_parallel_validity_false"
 
 # These are migration documentation/profiles, not a second pair of executable
@@ -526,62 +523,43 @@ def ordered_matrix_schema_version(
     k: int,
     registry: FeatureRegistry | None = None,
 ) -> str:
-    """Return a shape-explicit schema identity for one validated K."""
+    """Return the shape-explicit identity for the sole 115-by-150 contract."""
 
     if isinstance(k, bool) or not isinstance(k, (int, np.integer)):
         raise ValueError("matrix K must be an integer")
     resolved = int(k)
-    if not 1 <= resolved <= MAX_ORDERED_MATRIX_K:
-        raise ValueError(
-            f"matrix K must lie in [1,{MAX_ORDERED_MATRIX_K}]"
-        )
-    selected = registry or default_registry()
-    selected.validate()
-    feature_count = len(selected.names)
-    channel_count = 2 * (ENGINEERING_FEATURE_COUNT + feature_count)
-    return (
-        f"ordered_feature_matrix_d{channel_count}_by_{resolved}_"
-        f"registry-{selected.sha256[:12]}_v3"
-    )
+    if resolved != 150:
+        raise ValueError("matrix K is fixed at 150")
+    # ``registry`` remains an input-compatibility argument only. The matrix is
+    # no longer coupled to the independent file-vector feature-group registry.
+    if registry is not None:
+        registry.validate()
+    return f"ordered_feature_matrix_d115_by_{resolved}_engineering_v4"
 
 
 def build_ordered_matrix(
     sequence: EngineeringExtraction,
     *,
-    context: FeatureVectorV1,
     provenance: Mapping[str, Any],
-    k: int = 32,
+    k: int = 150,
 ) -> OrderedFeatureMatrixV1:
-    """构建带显式 validity channels 的 D×K 合同 / Build formal D×K.
+    """Build the chronological 115-by-150 engineering feature matrix.
 
-    English: Values and their 0/1 validity channels both enter the model tensor.
-    Padding remains neutral zero with ``row_mask=false``. Mapping contexts and raw
-    EngineeringFeatureSequence inputs are intentionally not canonical facades.
-
-    中文：数值及其 0/1 validity channels 均进入模型 tensor。padding 保持零且
-    ``row_mask=false``；Mapping context 与裸 EngineeringFeatureSequence 不属于正式入口。
+    Missing values are neutral zero after the outer-train robust transform;
+    feature validity remains hashed provenance rather than extra predictors.
+    Padding uses zero with ``row_mask=false``.
     """
 
     if not isinstance(sequence, EngineeringExtraction):
         raise TypeError("canonical matrix builder requires EngineeringExtraction")
-    if not isinstance(context, FeatureVectorV1):
-        raise TypeError("canonical matrix builder requires a complete FeatureVectorV1 context")
-    registry = registry_for_feature_names(context.feature_names)
-    matrix_schema_version = ordered_matrix_schema_version(k, registry)
+    matrix_schema_version = ordered_matrix_schema_version(k)
     k = int(k)
     base = sequence.sequence
     validate_engineering_extraction(sequence, fold_transformed=True)
-    if tuple(context.feature_names) != registry.names:
-        raise ValueError("context must follow a complete selected feature-group registry")
-    if context.provenance.get("registry_sha256") != registry.sha256:
-        raise ValueError("context registry hash differs from the frozen formal registry")
-    if context.provenance.get("fold_standardized") is not True:
-        raise ValueError("context must declare completed fold-local standardization")
     route = sequence.route.value
-    context_route = str(context.provenance.get("route", ""))
     metadata = dict(provenance)
-    if metadata.get("route") != route or context_route != route:
-        raise ValueError("engineering, context, and matrix provenance routes must match")
+    if metadata.get("route") != route:
+        raise ValueError("engineering and matrix provenance routes must match")
 
     values = np.asarray(base.values, dtype=np.float64)
     physiological_validity = np.asarray(sequence.value_validity, dtype=bool)
@@ -598,58 +576,37 @@ def build_ordered_matrix(
     selected_rows = valid_rows[_uniform_indices(valid_rows.size, k)]
     observed = min(k, selected_rows.size)
     base_count = values.shape[1]
-    context_count = len(context.feature_names)
-    physiological_count = base_count + context_count
-    output = np.zeros((2 * physiological_count, k), dtype=np.float64)
-    physical_mask = np.zeros((physiological_count, k), dtype=bool)
+    if base_count != ENGINEERING_FEATURE_COUNT:
+        raise ValueError("matrix requires exactly 115 engineering features per window")
+    output = np.zeros((base_count, k), dtype=np.float64)
     row_mask = np.zeros(k, dtype=bool)
 
     selected_values = values[selected_rows[:observed]]
     selected_validity = (
         physiological_validity[selected_rows[:observed]] & np.isfinite(selected_values)
     )
-    output[:base_count, :observed] = np.where(selected_validity, selected_values, 0.0).T
-    output[base_count : 2 * base_count, :observed] = selected_validity.T.astype(np.float64)
-    physical_mask[:base_count, :observed] = selected_validity.T
-    context_value_offset = 2 * base_count
-    context_validity_offset = context_value_offset + context_count
-    for index, (value, valid) in enumerate(zip(context.values, context.validity)):
-        is_valid = bool(valid and np.isfinite(value))
-        if is_valid:
-            output[context_value_offset + index, :observed] = float(value)
-            physical_mask[base_count + index, :observed] = True
-        output[context_validity_offset + index, :observed] = float(is_valid)
+    output[:, :observed] = np.where(selected_validity, selected_values, 0.0).T
     row_mask[:observed] = True
 
     base_names = tuple(base.channel_schema)
-    base_validity_names = tuple(f"{name}.validity" for name in base_names)
-    context_names = tuple(context.feature_names)
-    context_validity_names = tuple(f"{name}.validity" for name in context_names)
-    channel_schema = base_names + base_validity_names + context_names + context_validity_names
-    context_schema = context_names + context_validity_names
+    channel_schema = base_names
+    context_schema: tuple[str, ...] = ()
     schema_sha = hashlib.sha256("\n".join(channel_schema).encode("utf-8")).hexdigest()
     metadata.update(
         {
             "selected_source_rows": selected_rows[:observed].tolist(),
             "matrix_k": k,
             "matrix_schema_version": matrix_schema_version,
-            "physiological_value_validity": physical_mask.tolist(),
-            "validity_encoding": "paired_explicit_0_1_channels_v1",
-            "validity_channel_map": {
-                name: f"{name}.validity" for name in base_names + context_names
-            },
-            "zero_semantics": "fold_standardized_neutral_or_invalid_or_right_padding",
-            "row_mask_policy": "right_padding_false",
-            "context_schema_sha256": hashlib.sha256(
-                "\n".join(context_schema).encode("utf-8")
+            "feature_validity_sha256": hashlib.sha256(
+                np.packbits(selected_validity, bitorder="little").tobytes()
             ).hexdigest(),
-            "context_registry_sha256": registry.sha256,
-            "context_registry_schema_version": registry.schema_version,
-            "context_enabled_groups": list(
-                canonicalize_feature_groups(
-                    tuple(item.group for item in registry.definitions)
-                )
+            "valid_feature_value_count": int(np.count_nonzero(selected_validity)),
+            "invalid_feature_value_count": int(
+                selected_validity.size - np.count_nonzero(selected_validity)
             ),
+            "validity_encoding": "provenance_only_not_predictor_channels_v1",
+            "zero_semantics": "fold_standardized_center_or_invalid_or_right_padding",
+            "row_mask_policy": "right_padding_false",
             "matrix_channel_schema_sha256": schema_sha,
             "engineering_transform_version": base.schema_version,
         }

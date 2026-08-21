@@ -21,22 +21,19 @@ class CatalogMaterializerContracts(unittest.TestCase):
                 line="line_a",
                 output_dir=target,
             )
-            self.assertEqual(manifest["config_count"], 17)
-            self.assertEqual(manifest["candidate_count"], 13)
-            self.assertEqual(manifest["matched_comparator_count"], 2)
-            self.assertEqual(manifest["ensemble_comparison_count"], 2)
-            self.assertEqual(len(tuple(target.glob("*.yaml"))), 17)
+            self.assertEqual(manifest["config_count"], 12)
+            self.assertEqual(manifest["candidate_count"], 10)
+            self.assertEqual(manifest["matched_comparator_count"], 1)
+            self.assertEqual(manifest["ensemble_comparison_count"], 1)
+            self.assertEqual(len(tuple(target.glob("*.yaml"))), 12)
             self.assertTrue(
                 (
                     target
                     / "comparison_inception_full_member0_comparator_line_a_v2.yaml"
                 ).is_file()
             )
-            self.assertTrue(
-                (
-                    target
-                    / "comparison_inception_matrix_member0_comparator_line_a_v2.yaml"
-                ).is_file()
+            self.assertFalse(
+                (target / "comparison_inception_matrix_member0_comparator_line_a_v2.yaml").exists()
             )
             self.assertTrue((target / "catalog_manifest.json").is_file())
             with self.assertRaises(FileExistsError):

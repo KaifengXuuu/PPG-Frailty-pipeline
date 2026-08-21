@@ -317,7 +317,8 @@ def require_formal_motion_cuda(
     torch = _require_torch()
     if not torch.cuda.is_available():
         raise RuntimeError(
-            "Stage5 motion training requires CUDA, but torch.cuda.is_available() is false"
+            "Stage5 formal motion runtime requires CUDA, but "
+            "torch.cuda.is_available() is false"
         )
     requested_index = torch.device(config.device).index
     if requested_index is not None and requested_index >= torch.cuda.device_count():

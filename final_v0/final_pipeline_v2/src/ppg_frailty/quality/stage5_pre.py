@@ -21,7 +21,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 import numpy as np
 import yaml
 
-from ..artifacts.router import get_reducer
+from ..artifact import get_reducer
 from ..data.external_manifest import (
     M2_EXTERNAL_RELATIVE_PATH,
     PTT_DATASET_ID,

@@ -78,10 +78,15 @@ def _strategy(value: Any, aliases: Mapping[str, str], *, name: str) -> str:
 
 @dataclass(frozen=True)
 class RawNormalizationConfig:
-    """Complete effective parameters for raw PPG and six-axis IMU scaling."""
+    """Effective parameters for the isolated DL-window tensor.
+
+    ``raw_ppg`` is the compatibility name for the per-window transform applied
+    to all eight DL channels. ``raw_imu`` is only an optional legacy/ablation
+    post-transform; ordinary execution does not alter physical IMU views.
+    """
 
     raw_ppg: str = PPG_ROBUST
-    raw_imu: str = IMU_ROBUST
+    raw_imu: str = IMU_NONE
     iqr_fallback: str = FALLBACK_STANDARD_DEVIATION
     clip_after_scale: tuple[float, float] | None = (-8.0, 8.0)
     robust_iqr_divisor: float = 1.349

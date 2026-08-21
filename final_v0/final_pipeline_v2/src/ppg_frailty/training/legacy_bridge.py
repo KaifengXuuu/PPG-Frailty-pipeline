@@ -1,7 +1,7 @@
-"""Reviewed legacy-to-V2 profiles using shared configurable training mechanics.
+"""Reviewed bridge profiles using shared configurable training mechanics.
 
-The bridge keeps its fixed L0--L7 protocol and sampling diagnostics here, while
-optimizer, sampler, and class-weight algorithms are also registered by the
+The bridge keeps its cumulative and centred-star sampling diagnostics here,
+while optimizer, sampler, and class-weight algorithms remain shared with the
 ordinary V2 trainer. Shared algorithms must not acquire bridge-only duplicates.
 """
 
@@ -56,7 +56,7 @@ BRIDGE_CLASS_WEIGHTING = frozenset(
 
 @dataclass(frozen=True)
 class LegacyBridgeTrainingConfig:
-    """Exactly the training controls varied by bridge profiles L0--L7."""
+    """Resolved training controls for a cumulative or centred-star profile."""
 
     profile_id: str
     sampler: str
@@ -89,6 +89,7 @@ class LegacyBridgeTrainingConfig:
     inner_grouped_folds: int = 0
     refit_on_all_outer_training: bool = True
     legacy_epoch_rule_alias: str | None = None
+    protocol_design: str = "cumulative_chain_v1"
 
     @property
     def class_count_basis(self) -> str:
@@ -101,8 +102,18 @@ class LegacyBridgeTrainingConfig:
         )
 
     def __post_init__(self) -> None:
-        if self.profile_id not in {f"L{value}" for value in range(8)}:
-            raise ValueError("legacy bridge profile_id must be L0..L7")
+        if not self.profile_id or not self.profile_id.replace("_", "").isalnum():
+            raise ValueError("bridge profile_id must be a non-empty safe identifier")
+        if self.protocol_design not in {
+            "cumulative_chain_v1",
+            "centered_star_v1",
+            "field_driven_followup_v1",
+        }:
+            raise ValueError("unsupported bridge protocol design")
+        if self.protocol_design == "cumulative_chain_v1" and self.profile_id not in {
+            f"L{value}" for value in range(8)
+        }:
+            raise ValueError("cumulative legacy bridge profile_id must be L0..L7")
         if self.sampler not in BRIDGE_SAMPLERS:
             raise ValueError("unsupported legacy bridge sampler")
         if self.class_weighting not in BRIDGE_CLASS_WEIGHTING:
@@ -120,8 +131,8 @@ class LegacyBridgeTrainingConfig:
             "equal_role_families",
         }:
             raise ValueError("unsupported legacy bridge training balance")
-        if self.batch_size <= 0 or self.fixed_epochs != 10:
-            raise ValueError("legacy bridge requires positive batch and fixed 10 epochs")
+        if self.batch_size <= 0 or self.fixed_epochs <= 0:
+            raise ValueError("bridge requires positive batch size and epoch count")
         if self.seed != 42:
             raise ValueError("legacy bridge training seed is frozen at 42")
         if self.outer_labels_visible_to_trainer or self.inner_grouped_folds != 0:
@@ -176,7 +187,7 @@ def sampling_diagnostics(
 
 
 class LegacyBridgeTrainer(UnifiedTrainer):
-    """UnifiedTrainer variant restricted to the nine-case bridge protocol."""
+    """UnifiedTrainer variant for hash-bound historical bridge profiles."""
 
     config: LegacyBridgeTrainingConfig
 

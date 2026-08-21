@@ -1051,9 +1051,6 @@ def run_model_comparison(
         "CompactCNN1D",
         "InceptionTimeFull",
         "InceptionTimeSmall",
-        "InceptionTimeMatrix",
-        "ROCKET",
-        "MiniROCKET",
         "LogisticRegressionL2",
         "RBFSVM",
         "ExtraTrees",
@@ -1168,26 +1165,6 @@ def run_model_comparison(
             metric = float(balanced_accuracy_score(y[27:], probability.argmax(axis=1)))
             kind = "reduced_synthetic_fit"
             parameters = None
-        elif machine_model_id in {"rocket_numpy", "minirocket_ablation"}:
-            x_matrix = rng.normal(size=(36, 6, 32)).astype(np.float32)
-            x_matrix += y[:, None, None] * 0.12
-            mask = np.ones((36, 32), dtype=bool)
-            spec = ModelInputSpec("feature_matrix", n_channels=6, n_classes=3, channel_schema=tuple(f"channel_{index}" for index in range(6)))
-            model = create_model(
-                explicit(
-                    {
-                        "model_id": machine_model_id,
-                        "seed": seed,
-                        "n_kernels": 64,
-                        "alpha": 1.0,
-                    },
-                    spec,
-                ),
-                spec,
-            )
-            model.fit(x_matrix[:27], y[:27], mask=mask[:27], participant_ids=participants[:27])
-            probability = model.predict_proba(x_matrix[27:], mask[27:])
-            metric = float(balanced_accuracy_score(y[27:], probability.argmax(axis=1)))
             kind = "reduced_synthetic_fit"
             parameters = None
         else:
@@ -1195,7 +1172,7 @@ def run_model_comparison(
 
             torch.manual_seed(seed)
             if machine_model_id == "inception_matrix":
-                spec = ModelInputSpec("feature_matrix", n_channels=6, n_classes=3)
+                spec = ModelInputSpec("feature_matrix", n_channels=115, n_classes=3)
                 model_config: dict[str, Any] = {
                     "model_id": machine_model_id,
                     "seed": seed,
@@ -1204,8 +1181,10 @@ def run_model_comparison(
                     "kernel_sizes": [39, 19, 9],
                     "dilation": 1,
                 }
-                inputs = torch.from_numpy(rng.normal(size=(2, 6, 32)).astype(np.float32))
-                mask_tensor = torch.ones((2, 32), dtype=torch.bool)
+                inputs = torch.from_numpy(
+                    rng.normal(size=(2, 115, 150)).astype(np.float32)
+                )
+                mask_tensor = torch.ones((2, 150), dtype=torch.bool)
                 model = create_model(explicit(model_config, spec), spec)
                 with torch.no_grad():
                     logits = model(inputs, mask_tensor)
@@ -1218,7 +1197,7 @@ def run_model_comparison(
                     if machine_model_id == "inception_full_five_member_ensemble"
                     else "feature_matrix"
                 )
-                ensemble_channels = 8 if ensemble_mode == "raw" else 6
+                ensemble_channels = 8 if ensemble_mode == "raw" else 115
                 spec = ModelInputSpec(
                     ensemble_mode,
                     n_channels=ensemble_channels,
@@ -1239,11 +1218,16 @@ def run_model_comparison(
                 )
                 inputs = torch.from_numpy(
                     rng.normal(
-                        size=(2, ensemble_channels, 64),
+                        size=(
+                            2,
+                            ensemble_channels,
+                            150 if ensemble_mode == "feature_matrix" else 64,
+                        ),
                     ).astype(np.float32)
                 )
                 with torch.no_grad():
-                    logits = model(inputs, torch.ones((2, 64), dtype=torch.bool))
+                    mask_length = 150 if ensemble_mode == "feature_matrix" else 64
+                    logits = model(inputs, torch.ones((2, mask_length), dtype=torch.bool))
             elif machine_model_id in {
                 "shapeformer_channel_specific_osd",
                 "shapeformer_channel_specific_scalar_distance_ablation",

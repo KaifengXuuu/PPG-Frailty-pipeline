@@ -3,9 +3,9 @@ catalog_id: formal_models_line_selectable_v2
 pipeline_generation: final_pipeline_v2
 execution_policy:
   auto_run: false
-  candidate_count: 13
-  matched_comparator_count: 2
-  ensemble_comparison_count: 2
+  candidate_count: 10
+  matched_comparator_count: 1
+  ensemble_comparison_count: 1
   default_balance_line: line_b
   selectable_balance_lines: [line_b, line_a]
   materialization_only: true
@@ -101,90 +101,6 @@ entries:
       representation_mode: raw
       residual_interval: 3
       variant: small
-- entry_id: inception_matrix
-  config_stem: formal_inception_matrix
-  representation_mode: feature_matrix
-  catalog_role: reference_candidate
-  model:
-    model_id: InceptionTimeMatrix
-    variant: full
-    input_channels: 0
-    input_channels_resolution: derive_exactly_from_frozen_matrix_channel_schema
-    n_classes: 3
-    ensemble_size: 1
-    seed_policy: outer_cv_repeat_seed_equals_split_seed
-    mask_aware_pooling: true
-    dropout: 0.2
-    kernel_sizes: [39, 19, 9]
-    dilation: 1
-    architecture_parameters:
-      bottleneck_channels: 32
-      branch_count: 4
-      classifier_dropout: 0.2
-      depth: 6
-      dilation: 1
-      global_pooling: mask_aware_global_average
-      kernel_sizes: [39, 19, 9]
-      model_id: inception_matrix
-      n_classes: 3
-      out_channels: 32
-      representation_mode: feature_matrix
-      residual_interval: 3
-      variant: full
-- entry_id: rocket_numpy
-  config_stem: formal_rocket_numpy
-  representation_mode: feature_matrix
-  catalog_role: reference_candidate
-  model:
-    model_id: ROCKET
-    variant: numpy_rocket_ridge
-    input_channels: 0
-    input_channels_resolution: derive_exactly_from_frozen_matrix_channel_schema
-    n_classes: 3
-    ensemble_size: 1
-    seed_policy: outer_cv_repeat_seed_equals_split_seed
-    n_kernels: 10000
-    alpha: 1.0
-    architecture_parameters:
-      candidate_kernel_lengths: [7, 9, 11]
-      classifier: sklearn.linear_model.RidgeClassifier
-      features_per_kernel: 2
-      implementation_algorithm_id: rocket_ridge_numpy
-      model_id: rocket_numpy
-      n_classes: 3
-      n_kernels: 10000
-      representation_mode: feature_matrix
-      ridge_alpha: 1.0
-      robust_scaler: outer_train_channel_median_iqr
-      scientific_status: reference_numpy_rocket
-      transformer: numpy_random_convolution_max_ppv
-- entry_id: minirocket_ablation
-  config_stem: formal_minirocket_ablation
-  representation_mode: feature_matrix
-  catalog_role: ablation_candidate
-  model:
-    model_id: MiniROCKET
-    variant: engineering_ablation
-    input_channels: 0
-    input_channels_resolution: derive_exactly_from_frozen_matrix_channel_schema
-    n_classes: 3
-    ensemble_size: 1
-    seed_policy: outer_cv_repeat_seed_equals_split_seed
-    n_kernels: 1000
-    alpha: 1.0
-    architecture_parameters:
-      candidate_kernel_lengths: [7, 9, 11]
-      classifier: sklearn.linear_model.RidgeClassifier
-      features_per_kernel: 2
-      implementation_algorithm_id: minirocket_engineering_ablation
-      model_id: minirocket_ablation
-      n_classes: 3
-      n_kernels: 1000
-      representation_mode: feature_matrix
-      ridge_alpha: 1.0
-      robust_scaler: outer_train_channel_median_iqr
-      scientific_status: ablation_not_reference_implementation
-      transformer: numpy_random_convolution_max_ppv
 - entry_id: logistic_regression
   config_stem: formal_logistic_regression_l2
   representation_mode: feature_vector
@@ -517,36 +433,6 @@ entries:
       representation_mode: raw
       residual_interval: 3
       variant: full
-- entry_id: inception_matrix_member0_comparator
-  config_stem: comparison_inception_matrix_member0_comparator
-  representation_mode: feature_matrix
-  catalog_role: matched_comparator
-  model:
-    model_id: InceptionTimeMatrix
-    variant: full
-    input_channels: 0
-    input_channels_resolution: derive_exactly_from_frozen_matrix_channel_schema
-    n_classes: 3
-    ensemble_size: 1
-    seed_policy: cv_fixed_member0_seed_50042_comparator
-    mask_aware_pooling: true
-    dropout: 0.2
-    kernel_sizes: [39, 19, 9]
-    dilation: 1
-    architecture_parameters:
-      bottleneck_channels: 32
-      branch_count: 4
-      classifier_dropout: 0.2
-      depth: 6
-      dilation: 1
-      global_pooling: mask_aware_global_average
-      kernel_sizes: [39, 19, 9]
-      model_id: inception_matrix
-      n_classes: 3
-      out_channels: 32
-      representation_mode: feature_matrix
-      residual_interval: 3
-      variant: full
 - entry_id: inception_full_five_member_ensemble
   config_stem: comparison_inception_full_five_member_ensemble
   representation_mode: raw
@@ -584,39 +470,3 @@ entries:
       n_classes: 3
       probability_aggregation: arithmetic_mean
       representation_mode: raw
-- entry_id: inception_matrix_five_member_ensemble
-  config_stem: comparison_inception_matrix_five_member_ensemble
-  representation_mode: feature_matrix
-  catalog_role: ensemble_comparison
-  model:
-    model_id: InceptionTimeMatrixFiveMemberEnsemble
-    variant: full_five_independent_members
-    input_channels: 0
-    input_channels_resolution: derive_exactly_from_frozen_matrix_channel_schema
-    n_classes: 3
-    ensemble_size: 5
-    member_seeds: [50042, 60042, 70042, 80042, 90042]
-    seed_policy: cv_fixed_five_member_seed_roster
-    member_seed_roster_id: cv_fixed_five_member_seed_roster
-    mask_aware_pooling: true
-    comparison_only: true
-    dropout: 0.2
-    kernel_sizes: [39, 19, 9]
-    dilation: 1
-    architecture_parameters:
-      member_bottleneck_channels: 32
-      member_branch_count: 4
-      member_classifier_dropout: 0.2
-      member_count: 5
-      member_depth: 6
-      member_dilation: 1
-      member_global_pooling: mask_aware_global_average
-      member_kernel_sizes: [39, 19, 9]
-      member_out_channels: 32
-      member_residual_interval: 3
-      member_seeds: [50042, 60042, 70042, 80042, 90042]
-      member_variant: full
-      model_id: inception_matrix_five_member_ensemble
-      n_classes: 3
-      probability_aggregation: arithmetic_mean
-      representation_mode: feature_matrix

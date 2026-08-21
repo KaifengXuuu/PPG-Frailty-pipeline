@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 import tempfile
@@ -30,7 +30,7 @@ def _load(name: str):
 
 
 class StaticLineBStagedPlanTests(unittest.TestCase):
-    def test_stage_01_has_four_canonical_representation_baselines(self) -> None:
+    def test_stage_01_defers_feature_matrix_until_model_is_selected(self) -> None:
         plan, expansion = _load("01_representation_baselines_v2.yaml")
         self.assertEqual(plan.catalog.scope, "selected_ordinary")
         self.assertEqual(
@@ -38,7 +38,6 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
             {
                 "compact_cnn",
                 "logistic_regression",
-                "rocket_numpy",
                 "fusion_compact",
             },
         )
@@ -47,7 +46,6 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
             {
                 "raw": 1,
                 "feature_vector": 1,
-                "feature_matrix": 1,
                 "fusion": 1,
             },
         )
@@ -195,7 +193,7 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
             "arithmetic_mean",
         )
 
-    def test_matched_pair_scope_rejects_cross_representation_pair(self) -> None:
+    def test_matched_pair_scope_rejects_retired_matrix_pair(self) -> None:
         plan = load_study_plan(
             PLAN_DIR / "04_selected_inception_ensemble_v2.yaml"
         )
@@ -205,7 +203,7 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
             catalog_entry="inception_matrix_five_member_ensemble",
             output_group="feature_matrix",
         )
-        with self.assertRaisesRegex(ValueError, "one representation route"):
+        with self.assertRaisesRegex(ValueError, "unknown entries"):
             StudyRunner(pipeline_root=ROOT).expand(
                 replace(plan, cases=tuple(cases))
             )
@@ -236,26 +234,78 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
                 replace(plan, cases=tuple(cases))
             )
 
-    def test_stage_05_contains_only_paired_off_and_diagnostic_modes(self) -> None:
-        _plan, expansion = _load("05_sqi_motion_finalists_v2.yaml")
-        by_entry: dict[str, list[object]] = defaultdict(list)
-        for case in expansion.cases:
-            by_entry[str(case.catalog_entry)].append(case)
-            self.assertEqual(case.config["artifact"]["reducer"], "identity")
-            self.assertFalse(case.config["artifact"]["motion_detector_enabled"])
+    def test_stage_05_is_the_five_case_feature_vector_route_screen(self) -> None:
+        plan, expansion = _load("05_sqi_motion_finalists_v2.yaml")
+        self.assertEqual(plan.study.reference_case_id, "vector_logistic__off_off")
+        self.assertEqual(plan.execution.repeats, (0,))
+        self.assertEqual(plan.execution.folds, (0, 1, 2, 3, 4))
+        self.assertEqual(plan.execution.device, "cpu")
+        self.assertEqual(len(expansion.cases), 5)
         self.assertEqual(
-            set(by_entry),
+            {str(case.catalog_entry) for case in expansion.cases},
+            {"logistic_regression"},
+        )
+        self.assertEqual(
+            {case.output_group for case in expansion.cases},
+            {"feature_vector"},
+        )
+        by_id = {case.case_id: case.config for case in expansion.cases}
+        self.assertEqual(
+            set(by_id),
             {
-                "compact_cnn",
-                "logistic_regression",
-                "rocket_numpy",
-                "fusion_compact",
+                "vector_logistic__off_off",
+                "vector_logistic__sqi_only",
+                "vector_logistic__sqi_motion_all29",
+                "vector_logistic__sqi_motion_pca",
+                "vector_logistic__sqi_motion_fastica",
             },
         )
-        for cases in by_entry.values():
-            self.assertEqual(
-                {case.config["quality"]["mode"] for case in cases},
-                {"off", "diagnostics_only"},
+        off = by_id["vector_logistic__off_off"]
+        self.assertEqual(off["quality"]["mode"], "off")
+        self.assertFalse(off["artifact"]["motion_detector_enabled"])
+        self.assertFalse(off["artifact"]["denoiser_enabled"])
+
+        sqi = by_id["vector_logistic__sqi_only"]
+        self.assertEqual(sqi["quality"]["calibrator"], "fixed_formula_thresholds_v1")
+        self.assertEqual(sqi["quality"]["rate_threshold"], 0.50)
+        self.assertEqual(sqi["quality"]["morph_threshold"], 0.65)
+        self.assertEqual(sqi["quality"]["minimum_coverage"], 0.80)
+        self.assertGreater(
+            sqi["quality"]["rate_component_weights"]["motion_energy_rms"],
+            0.0,
+        )
+
+        motion = by_id["vector_logistic__sqi_motion_all29"]["artifact"]
+        self.assertTrue(motion["motion_detector_enabled"])
+        self.assertFalse(motion["denoiser_enabled"])
+        self.assertEqual(
+            motion["motion_detector"]["expected_evidence_sha256"],
+            "10f02a9d784e06471c7109ff8dc92d28f1a8d7753f8fdf179bebce5699fb446c",
+        )
+        self.assertEqual(
+            motion["motion_detector"]["window_probability_aggregation"],
+            "median",
+        )
+        self.assertEqual(motion["motion_detector"]["device"], "cuda")
+        self.assertEqual(
+            by_id["vector_logistic__sqi_motion_pca"]["artifact"]["reducer"],
+            "pca_bss",
+        )
+        self.assertEqual(
+            by_id["vector_logistic__sqi_motion_fastica"]["artifact"]["reducer"],
+            "fastica_bss",
+        )
+
+    def test_catalog_new_leaf_override_still_rejects_unknown_parameters(self) -> None:
+        plan = load_study_plan(PLAN_DIR / "05_sqi_motion_finalists_v2.yaml")
+        cases = list(plan.cases)
+        cases[0] = replace(
+            cases[0],
+            overrides={**cases[0].overrides, "quality.invented_parameter": 1},
+        )
+        with self.assertRaisesRegex(ValueError, "quality contains unknown fields"):
+            StudyRunner(pipeline_root=ROOT).expand(
+                replace(plan, cases=tuple(cases))
             )
 
     def test_stage_06_has_one_learning_rate_axis_only(self) -> None:
@@ -326,13 +376,13 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
                 model["architecture_parameters"]["C"],
             )
 
-    def test_original_mega_study_remains_loadable_with_39_cases(self) -> None:
+    def test_original_mega_study_excludes_retired_rocket_profiles(self) -> None:
         plan = load_study_plan(ORIGINAL_PLAN)
         expansion = validate_canonical_expansion(
             StudyRunner(pipeline_root=ROOT).expand(plan)
         )
-        self.assertEqual(len(expansion.cases), 39)
-        self.assertEqual(plan.catalog.scope, "ordinary_13")
+        self.assertEqual(len(expansion.cases), 30)
+        self.assertEqual(plan.catalog.scope, "ordinary_active")
 
 
 if __name__ == "__main__":

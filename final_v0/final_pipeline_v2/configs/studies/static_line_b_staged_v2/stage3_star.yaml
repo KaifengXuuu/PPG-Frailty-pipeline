@@ -1,0 +1,309 @@
+# Stage 3 centered-star ablation: two raw architectures, one common B0, and
+# seven independent B0-to-Bk changes. The declared 16 cases contain 400 outer
+# cells (five frozen repeats x five frozen folds).
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: staged_static_03_centered_star_v1
+  kind: catalog_sweep
+  purpose: "Estimate seven single-factor B0-to-Bk effects independently for CompactCNN and InceptionTimeFull."
+  flow_position: "Restarted Stage 3 before ensemble, SQI/motion, finalist ablations, and stage-last ShapeFormer."
+  decision_role: ablation
+  reference_case_id: compact_cnn__b0_star_fixed10
+  thesis_sections:
+    - "Centered legacy-to-V2 raw-model ablation"
+    - "Architecture-specific paired-fold sensitivity"
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: "B0 is the centre. Every B1-B7 case changes only its declared factor from B0; no adjacent Bk-to-B(k+1) or cross-model contrast is permitted."
+  controlled_factors:
+    - "Frozen repeats 0-4 and frozen folds 0-4"
+    - "Training seed 42"
+    - "Ten fixed epochs without early stopping or outer-label checkpoint selection"
+    - "Identical model-neutral B profile controls for both architectures"
+  notes:
+    - "Eight profiles times two models produce 16 cases and 400 repeat/fold cells."
+    - "B7 changes only the native primary report aggregation; its training inputs and OOF window probabilities must equal B0 within each model."
+cases:
+  - case_id: compact_cnn__b0_star_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_b0_star
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN complete legacy-input fixed-10 baseline."
+    formal_profile: null
+  - case_id: inception_full__b0_star_fixed10
+    catalog_entry: inception_full
+    screen_profile_id: legacy_bridge_b0_star
+    output_group: raw
+    overrides: {}
+    rationale: "InceptionTimeFull under the identical model-neutral B0 controls."
+    formal_profile: null
+  - case_id: compact_cnn__b1_star_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_b1_star
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN B0 with only target sample rate changed from 64 to 400 Hz."
+    formal_profile: null
+  - case_id: inception_full__b1_star_fixed10
+    catalog_entry: inception_full
+    screen_profile_id: legacy_bridge_b1_star
+    output_group: raw
+    overrides: {}
+    rationale: "InceptionTimeFull B0 with only target sample rate changed from 64 to 400 Hz."
+    formal_profile: null
+  - case_id: compact_cnn__b2_star_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_b2_star
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN B0 with only the window length/hop changed to 5/2.5 seconds."
+    formal_profile: null
+  - case_id: inception_full__b2_star_fixed10
+    catalog_entry: inception_full
+    screen_profile_id: legacy_bridge_b2_star
+    output_group: raw
+    overrides: {}
+    rationale: "InceptionTimeFull B0 with only the window length/hop changed to 5/2.5 seconds."
+    formal_profile: null
+  - case_id: compact_cnn__b3_star_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_b3_star
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN B0 with only IMU semantics changed to calibrated EKF dynamic acceleration."
+    formal_profile: null
+  - case_id: inception_full__b3_star_fixed10
+    catalog_entry: inception_full
+    screen_profile_id: legacy_bridge_b3_star
+    output_group: raw
+    overrides: {}
+    rationale: "InceptionTimeFull B0 with only IMU semantics changed to calibrated EKF dynamic acceleration."
+    formal_profile: null
+  - case_id: compact_cnn__b4_star_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_b4_star
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN B0 with only normalization changed to PPG-window plus outer-train IMU-fold scaling."
+    formal_profile: null
+  - case_id: inception_full__b4_star_fixed10
+    catalog_entry: inception_full
+    screen_profile_id: legacy_bridge_b4_star
+    output_group: raw
+    overrides: {}
+    rationale: "InceptionTimeFull B0 with only normalization changed to PPG-window plus outer-train IMU-fold scaling."
+    formal_profile: null
+  - case_id: compact_cnn__b5_star_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_b5_star
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN B0 with only the sampler changed to Line B weighted sampling."
+    formal_profile: null
+  - case_id: inception_full__b5_star_fixed10
+    catalog_entry: inception_full
+    screen_profile_id: legacy_bridge_b5_star
+    output_group: raw
+    overrides: {}
+    rationale: "InceptionTimeFull B0 with only the sampler changed to Line B weighted sampling."
+    formal_profile: null
+  - case_id: compact_cnn__b6_star_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_b6_star
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN B0 with only AdamW/batch32 changed to Adam/batch64."
+    formal_profile: null
+  - case_id: inception_full__b6_star_fixed10
+    catalog_entry: inception_full
+    screen_profile_id: legacy_bridge_b6_star
+    output_group: raw
+    overrides: {}
+    rationale: "InceptionTimeFull B0 with only AdamW/batch32 changed to Adam/batch64."
+    formal_profile: null
+  - case_id: compact_cnn__b7_star_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_b7_star
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN B0 with only native reporting changed from direct-window to file/role aggregation."
+    formal_profile: null
+  - case_id: inception_full__b7_star_fixed10
+    catalog_entry: inception_full
+    screen_profile_id: legacy_bridge_b7_star
+    output_group: raw
+    overrides: {}
+    rationale: "InceptionTimeFull B0 with only native reporting changed from direct-window to file/role aggregation."
+    formal_profile: null
+legacy_bridge:
+  schema_version: ppg_frailty.legacy_v2_bridge_protocol.v1
+  design: centered_star_v1
+  protocol_id: stage3_two_model_centered_star_fixed10
+  source_specification: "inline:legacy_bridge.effective_controls"
+  source_specification_sha256: adc116fb9d80e06acc0b871d96e3ce2037ac0867d118f0198ca9efdd38691137
+  runtime_status: implemented_field_driven_centered_star_v1
+  budget:
+    case_count: 16
+    repeat_indices: [0, 1, 2, 3, 4]
+    fold_indices: [0, 1, 2, 3, 4]
+    training_seed: 42
+    fixed_epochs: 10
+    early_stopping: false
+    outer_label_checkpoint_selection: false
+    fit_count: 400
+    model_epoch_count: 4000
+    phase0_fit_count: 0
+    phase0_model_epoch_count: 0
+  execution_order:
+    - compact_cnn__B0_star_fixed10
+    - inception_full__B0_star_fixed10
+    - compact_cnn__B1_star_fixed10
+    - inception_full__B1_star_fixed10
+    - compact_cnn__B2_star_fixed10
+    - inception_full__B2_star_fixed10
+    - compact_cnn__B3_star_fixed10
+    - inception_full__B3_star_fixed10
+    - compact_cnn__B4_star_fixed10
+    - inception_full__B4_star_fixed10
+    - compact_cnn__B5_star_fixed10
+    - inception_full__B5_star_fixed10
+    - compact_cnn__B6_star_fixed10
+    - inception_full__B6_star_fixed10
+    - compact_cnn__B7_star_fixed10
+    - inception_full__B7_star_fixed10
+  baseline_controls:
+    ppg_preprocessing: legacy_detrend_bandpass_0p2_8
+    imu_preprocessing: legacy_filtered_axes
+    target_fs_hz: 64
+    window_seconds: 15.0
+    hop_seconds: 3.0
+    historical_retained_fraction: 0.9
+    max_windows_per_file: null
+    allow_short_record_padding: true
+    normalization: per_window_all_eight
+    sampler: exhaustive_shuffle_without_replacement
+    class_weighting: outer_train_window_inverse_frequency
+    optimizer: adamw
+    batch_size: 32
+    fixed_epochs: 10
+    learning_rate: 0.001
+    weight_decay: 0.0001
+    training_metric_aggregation_rule: line_a_equal_files
+    primary_report_aggregation_view: window_balanced_to_participant
+  factor_overrides:
+    B1:
+      factor_id: sampling_rate
+      overrides: {target_fs_hz: 400}
+      expected_changed_paths: [controls.target_fs_hz]
+      interpretation: "Target sample rate only: 64 to 400 Hz."
+    B2:
+      factor_id: window_plan
+      overrides: {window_seconds: 5.0, hop_seconds: 2.5}
+      expected_changed_paths: [controls.window_seconds, controls.hop_seconds]
+      interpretation: "Window plan only: 15/3 to 5/2.5 seconds; retain fraction 0.9 and no cap."
+    B3:
+      factor_id: imu_preprocessing
+      overrides: {imu_preprocessing: calibrated_ekf_adyn}
+      expected_changed_paths: [controls.imu_preprocessing]
+      interpretation: "IMU semantics only: legacy axes to calibrated EKF dynamic acceleration."
+    B4:
+      factor_id: normalization
+      overrides: {normalization: ppg_window_imu_outer_train_fold}
+      expected_changed_paths: [controls.normalization]
+      interpretation: "Normalization only: all-eight per-window to PPG-window plus outer-train IMU-fold scaling."
+    B5:
+      factor_id: sampler
+      overrides: {sampler: balance_line_weighted_v2}
+      expected_changed_paths: [controls.sampler]
+      interpretation: "Sampler only: exhaustive uniform shuffle to Line B weighted sampling."
+    B6:
+      factor_id: optimizer_and_batch_size
+      overrides: {optimizer: adam, batch_size: 64}
+      expected_changed_paths: [controls.optimizer, controls.batch_size]
+      interpretation: "Declared training bundle only: AdamW/batch32 to Adam/batch64."
+    B7:
+      factor_id: primary_aggregation
+      overrides: {primary_report_aggregation_view: line_b_equal_role_families}
+      expected_changed_paths: [controls.primary_report_aggregation_view]
+      interpretation: "Native primary reporting only: direct-window participant mean to file/role participant mean."
+  profiles:
+    - {case_id: compact_cnn__B0_star_fixed10, catalog_case_id: compact_cnn__b0_star_fixed10, model_id: CompactCNN1D, profile_id: B0}
+    - {case_id: inception_full__B0_star_fixed10, catalog_case_id: inception_full__b0_star_fixed10, model_id: InceptionTimeFull, profile_id: B0}
+    - {case_id: compact_cnn__B1_star_fixed10, catalog_case_id: compact_cnn__b1_star_fixed10, model_id: CompactCNN1D, profile_id: B1}
+    - {case_id: inception_full__B1_star_fixed10, catalog_case_id: inception_full__b1_star_fixed10, model_id: InceptionTimeFull, profile_id: B1}
+    - {case_id: compact_cnn__B2_star_fixed10, catalog_case_id: compact_cnn__b2_star_fixed10, model_id: CompactCNN1D, profile_id: B2}
+    - {case_id: inception_full__B2_star_fixed10, catalog_case_id: inception_full__b2_star_fixed10, model_id: InceptionTimeFull, profile_id: B2}
+    - {case_id: compact_cnn__B3_star_fixed10, catalog_case_id: compact_cnn__b3_star_fixed10, model_id: CompactCNN1D, profile_id: B3}
+    - {case_id: inception_full__B3_star_fixed10, catalog_case_id: inception_full__b3_star_fixed10, model_id: InceptionTimeFull, profile_id: B3}
+    - {case_id: compact_cnn__B4_star_fixed10, catalog_case_id: compact_cnn__b4_star_fixed10, model_id: CompactCNN1D, profile_id: B4}
+    - {case_id: inception_full__B4_star_fixed10, catalog_case_id: inception_full__b4_star_fixed10, model_id: InceptionTimeFull, profile_id: B4}
+    - {case_id: compact_cnn__B5_star_fixed10, catalog_case_id: compact_cnn__b5_star_fixed10, model_id: CompactCNN1D, profile_id: B5}
+    - {case_id: inception_full__B5_star_fixed10, catalog_case_id: inception_full__b5_star_fixed10, model_id: InceptionTimeFull, profile_id: B5}
+    - {case_id: compact_cnn__B6_star_fixed10, catalog_case_id: compact_cnn__b6_star_fixed10, model_id: CompactCNN1D, profile_id: B6}
+    - {case_id: inception_full__B6_star_fixed10, catalog_case_id: inception_full__b6_star_fixed10, model_id: InceptionTimeFull, profile_id: B6}
+    - {case_id: compact_cnn__B7_star_fixed10, catalog_case_id: compact_cnn__b7_star_fixed10, model_id: CompactCNN1D, profile_id: B7}
+    - {case_id: inception_full__B7_star_fixed10, catalog_case_id: inception_full__b7_star_fixed10, model_id: InceptionTimeFull, profile_id: B7}
+  aggregation_views:
+    - window_balanced_to_participant
+    - line_a_equal_files
+    - line_b_equal_role_families
+  primary_table_columns:
+    - model
+    - profile
+    - factor_id
+    - primary_aggregation_view
+    - participant_oof_balanced_accuracy
+    - participant_oof_macro_f1
+    - worst_class_f1
+    - delta_from_model_b0
+  sampling_diagnostics:
+    - dataset_row_count
+    - draw_count
+    - unique_row_draw_count
+    - duplicate_draw_fraction
+    - never_drawn_row_fraction
+    - draw_counts_by_participant
+    - draw_counts_by_class
+    - draw_counts_by_B_R_family
+    - draw_counts_by_file
+    - class_weight_vector
+    - sampler_identity
+  restrictions:
+    - no_additional_cases_repeats_models_or_hyperparameter_search
+    - only_same_model_B0_to_B1_through_B7_contrasts
+    - no_adjacent_Bk_to_Bk_plus_1_contrasts
+    - no_cross_model_ablation_contrasts
+    - all_aggregation_views_from_same_OOF_window_probabilities
+    - B0_and_B7_training_inputs_and_window_probabilities_must_match_by_model
+    - sampling_diagnostics_saved_for_every_fold_and_epoch
+  required_runtime_capabilities:
+    - explicit_profile_controls_runtime_dispatch_without_B_id_algorithm_switches
+    - legacy_and_calibrated_EKF_IMU_preprocessing_independent_of_PPG_preprocessing
+    - all_eight_per_window_and_PPG_window_plus_outer_train_IMU_fold_normalization
+    - exhaustive_shuffle_and_line_B_weighted_sampler_profiles
+    - historical_outer_train_window_count_class_weights
+    - AdamW_batch32_and_Adam_batch64_training_profiles
+    - same_OOF_window_probability_replay_for_W_line_A_and_line_B_views
+execution:
+  repeats: [0, 1, 2, 3, 4]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 1
+  device: cuda
+  parallel_level: cases
+  continue_on_error: false
+  allow_parallel_deep: false
+  measure_operational_costs: false
+output:
+  root: artifacts/studies/static_line_b_staged_v2
+report:
+  top_k: 16
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10

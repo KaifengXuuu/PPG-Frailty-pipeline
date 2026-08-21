@@ -72,27 +72,25 @@ CARDS = (
         "InceptionTimeFullFiveMemberEnsemble", "inception_full_five_member_ensemble",
         ("raw",), ("direct_x_filter", "identity_direct"),
         "optional_five_member_probability_ensemble",
-        "Five full raw members with seeds 42/10042/20042/30042/40042 are averaged at probability level.",
+        (
+            "The historical model ID is retained as a compatibility alias. Runtime cardinality is "
+            "derived from the explicit unique `member_seeds` roster (one or more members), and all "
+            "declared member probabilities are averaged exactly. The checked-in formal comparison "
+            "preset remains a five-member experiment; it does not constrain ordinary V2 configs."
+        ),
         COMMON_LIMITS + ("The reduced CPU test is not evidence that the full 5×5×5 budget ran.",),
     ),
     CardDefinition(
         "InceptionTimeMatrixFiveMemberEnsemble", "inception_matrix_five_member_ensemble",
         ("feature_matrix",), ("direct_x_filter", "identity_direct"),
         "optional_five_member_probability_ensemble",
-        "Five full feature-matrix members with the exact V2 seed roster are averaged at probability level.",
+        (
+            "The historical model ID is retained as a compatibility alias. Runtime cardinality is "
+            "derived from the explicit unique `member_seeds` roster (one or more members), and all "
+            "declared member probabilities are averaged exactly. The checked-in formal comparison "
+            "preset remains a five-member experiment; it does not constrain ordinary V2 configs."
+        ),
         COMMON_LIMITS + ("The reduced CPU test is not evidence that the full 5×5×5 budget ran.",),
-    ),
-    CardDefinition(
-        "ROCKET", "rocket_numpy", ("feature_matrix",),
-        ("direct_x_filter", "identity_direct"), "self_contained_project_rocket",
-        "A deterministic NumPy/SciPy project implementation; not an aeon/sktime parity claim.",
-        COMMON_LIMITS + ("Primary formal configuration requires 10,000 kernels and fold-local ridge.",),
-    ),
-    CardDefinition(
-        "MiniROCKET", "minirocket_ablation", ("feature_matrix",),
-        ("direct_x_filter", "identity_direct"), "named_engineering_ablation",
-        "A low-cost project ablation; it is not an exact MiniROCKET port.",
-        COMMON_LIMITS,
     ),
     CardDefinition(
         "LogisticRegressionL2", "logistic_regression", ("feature_vector",),

@@ -47,9 +47,9 @@ V2_FORMAL_ABLATION_PROFILES_SCHEMA = "ppg_frailty.formal_ablation_profiles.v2"
 V2_SPLIT_SEEDS = (42, 10042, 20042, 30042, 40042)
 FEATURE_REGISTRY_CONFIG_SCHEMA = "feature_vector_282_v3"
 FEATURE_VECTOR_CONFIG_SCHEMA = "feature_vector_282_v3"
-ENGINEERING_SEQUENCE_CONFIG_SCHEMA = "engineering_10s_hop5s_thesis_115_v2"
+ENGINEERING_SEQUENCE_CONFIG_SCHEMA = "engineering_10s_hop2s_thesis_115_v3"
 ORDERED_MATRIX_CONFIG_SCHEMA = (
-    "ordered_feature_matrix_d794_by_32_registry-0bea68a2058d_v3"
+    "ordered_feature_matrix_d115_by_150_engineering_v4"
 )
 def _strict_mapping(value: Any, name: str) -> dict[str, Any]:
     """验证对象类型 / Require a string-keyed mapping."""
@@ -207,6 +207,13 @@ def _validate_v2_quality(data: Mapping[str, Any]) -> None:
         "long_gap_max_samples",
         "flatline_duration_s",
     }
+    artifact = _strict_mapping(data["artifact"], "artifact")
+    denoiser_enabled = bool(
+        artifact.get(
+            "denoiser_enabled",
+            str(artifact.get("reducer", "identity")) != "identity",
+        )
+    )
     if mode == "route":
         expected = common | set(SqiConfig().to_dict())
         _require_exact_keys(quality, expected, context="quality")
@@ -216,9 +223,33 @@ def _validate_v2_quality(data: Mapping[str, Any]) -> None:
     elif mode == "diagnostics_only":
         diagnostic = SqiDiagnosticConfig.from_resolved({"quality": quality})
         expected = common | set(_diagnostic_quality_runtime_mapping(diagnostic))
+        if denoiser_enabled:
+            expected |= set(SqiConfig().to_dict())
         _require_exact_keys(quality, expected, context="quality")
+        if denoiser_enabled:
+            recovery_mapping = dict(quality)
+            recovery_mapping.pop("window_selection", None)
+            recovery_sqi = SqiConfig.from_quality_mapping(recovery_mapping)
+            if recovery_sqi.calibrator != "fixed_formula_thresholds_v1":
+                raise ValueError(
+                    "diagnostics-only denoiser recovery requires "
+                    "fixed_formula_thresholds_v1"
+                )
     else:
-        _require_exact_keys(quality, common, context="quality")
+        expected = (
+            common | set(SqiConfig().to_dict())
+            if denoiser_enabled
+            else common
+        )
+        _require_exact_keys(quality, expected, context="quality")
+        if denoiser_enabled:
+            sqi_quality = dict(quality)
+            sqi_quality.pop("window_selection", None)
+            recovery_sqi = SqiConfig.from_quality_mapping(sqi_quality)
+            if recovery_sqi.calibrator != "fixed_formula_thresholds_v1":
+                raise ValueError(
+                    "SQI-off denoiser recovery requires fixed_formula_thresholds_v1"
+                )
     flatline_duration_s = float(quality["flatline_duration_s"])
     if not math.isfinite(flatline_duration_s) or flatline_duration_s <= 0.0:
         raise ValueError("quality.flatline_duration_s must be positive and finite")
@@ -349,12 +380,49 @@ def _materialize_quality_defaults(data: dict[str, Any]) -> None:
     }
     if declared.get("failure_action", "fail_closed") != "fail_closed":
         raise ValueError("quality.failure_action must be fail_closed")
+    artifact = _strict_mapping(data["artifact"], "artifact")
+    denoiser_enabled = bool(
+        artifact.get(
+            "denoiser_enabled",
+            str(artifact.get("reducer", "identity")) != "identity",
+        )
+    )
+    if mode != "route" and denoiser_enabled:
+        declared.setdefault("calibrator", "fixed_formula_thresholds_v1")
     if mode == "route":
         runtime = SqiConfig.from_quality_mapping(declared).to_dict()
     elif mode == "diagnostics_only":
-        runtime = _diagnostic_quality_runtime_mapping(
+        diagnostic_runtime = _diagnostic_quality_runtime_mapping(
             SqiDiagnosticConfig.from_resolved({"quality": declared})
         )
+        if denoiser_enabled:
+            recovery_sqi = SqiConfig.from_quality_mapping(declared)
+            if recovery_sqi.calibrator != "fixed_formula_thresholds_v1":
+                raise ValueError(
+                    "diagnostics-only denoiser recovery requires "
+                    "fixed_formula_thresholds_v1"
+                )
+            runtime = {**diagnostic_runtime, **recovery_sqi.to_dict()}
+            metadata_defaults["high_quality_rule"] = (
+                "direct_diagnostics_only_post_denoise_q_rate_"
+                "fixed_formula_only"
+            )
+        else:
+            runtime = diagnostic_runtime
+    elif denoiser_enabled:
+        # Direct SQI remains off.  A successful reducer still needs one
+        # auditable fixed-formula Q_rate reassessment, so its active numerical
+        # policy is materialized into the effective config and hash.
+        recovery_sqi = SqiConfig.from_quality_mapping(declared)
+        if recovery_sqi.calibrator != "fixed_formula_thresholds_v1":
+            raise ValueError(
+                "SQI-off denoiser recovery requires fixed_formula_thresholds_v1"
+            )
+        runtime = recovery_sqi.to_dict()
+        metadata_defaults["high_quality_rule"] = (
+            "direct_sqi_off_post_denoise_q_rate_fixed_formula_only"
+        )
+        metadata_defaults["components"] = []
     else:
         # Gap repair and physical flatline admission execute independently of
         # endpoint SQI, so both parameters remain visible while SQI is off.
@@ -420,6 +488,33 @@ def _materialize_peak_detector_defaults(data: dict[str, Any]) -> None:
     signal = _strict_mapping(data["signal"], "signal")
     signal["peak_detector"] = resolve_peak_detector_config(signal)
     data["signal"] = signal
+
+
+def _materialize_artifact_defaults(data: dict[str, Any]) -> None:
+    """Persist independent denoiser and frozen motion-inference controls."""
+
+    from .quality.motion_bundle_adapter import (
+        resolve_reused_motion_detector_config,
+    )
+
+    artifact = _strict_mapping(data["artifact"], "artifact")
+    artifact.setdefault(
+        "denoiser_enabled",
+        str(artifact.get("reducer", "identity")) != "identity",
+    )
+    motion_defaults = resolve_reused_motion_detector_config().to_mapping(
+        include_enabled=False
+    )
+    declared_motion = artifact.get("motion_detector", {})
+    if declared_motion is None:
+        declared_motion = {}
+    if not isinstance(declared_motion, Mapping):
+        raise TypeError("artifact.motion_detector must be a mapping")
+    artifact["motion_detector"] = {
+        **motion_defaults,
+        **dict(declared_motion),
+    }
+    data["artifact"] = artifact
 
 
 def _materialize_aggregation_defaults(data: dict[str, Any]) -> None:
@@ -718,9 +813,10 @@ def _materialize_feature_defaults(data: dict[str, Any]) -> None:
 
     The 115-column engineering window sequence remains intact.  The independent
     file-vector registry has 282 fields by default and may be cropped by complete
-    composable feature groups; its PRV eligibility rules and ordered-matrix width
-    are runtime parameters.  The deprecated ``time_prv_min_accepted_peaks`` input
-    is translated to the unambiguous ``rate_prv_min_peaks`` effective field.
+    composable feature groups.  The ordered feature matrix is the fixed 115-by-150
+    engineering sequence; it is not a generic width parameter.  The deprecated
+    ``time_prv_min_accepted_peaks`` input is translated to the unambiguous
+    ``rate_prv_min_peaks`` effective field.
     """
 
     from .features.registry import (
@@ -739,7 +835,7 @@ def _materialize_feature_defaults(data: dict[str, Any]) -> None:
         "technical_metadata_allowed": False,
         "missing_physiology_encoding": "nan_and_validity_false",
         "file_aggregation": ["mean", "population_sd"],
-        "matrix_k": 32,
+        "matrix_k": 150,
         "enabled_groups": list(FEATURE_GROUP_ORDER),
     }
     prv_fields = {
@@ -759,8 +855,10 @@ def _materialize_feature_defaults(data: dict[str, Any]) -> None:
     matrix_k = declared.get("matrix_k", metadata_defaults["matrix_k"])
     if isinstance(matrix_k, bool) or not isinstance(matrix_k, int):
         raise ValueError("features.matrix_k must be an integer")
-    if not 1 <= matrix_k <= 4096:
-        raise ValueError("features.matrix_k must be in [1,4096]")
+    if matrix_k != 150:
+        raise ValueError(
+            "features.matrix_k is fixed at 150 by the feature-matrix contract"
+        )
     enabled_groups = canonicalize_feature_groups(
         declared.get("enabled_groups", FEATURE_GROUP_ORDER)
     )
@@ -812,8 +910,12 @@ def _validate_v2_feature_schemas(data: Mapping[str, Any]) -> None:
     if features.get("engineering_sequence_schema") != ENGINEERING_SEQUENCE_CONFIG_SCHEMA:
         raise ValueError("features.engineering_sequence_schema is not registered")
     matrix_k = features.get("matrix_k")
-    if isinstance(matrix_k, bool) or not isinstance(matrix_k, int) or not 1 <= matrix_k <= 4096:
-        raise ValueError("features.matrix_k must be an integer in [1,4096]")
+    if (
+        isinstance(matrix_k, bool)
+        or not isinstance(matrix_k, int)
+        or matrix_k != 150
+    ):
+        raise ValueError("features.matrix_k must be the fixed integer 150")
     if features.get("matrix_schema") != ordered_matrix_schema_version(matrix_k, registry):
         raise ValueError("features.matrix_schema disagrees with matrix_k")
     if features.get("technical_metadata_allowed") is not False:
@@ -828,9 +930,12 @@ def _validate_v2_feature_schemas(data: Mapping[str, Any]) -> None:
             "features.enabled_groups is not consumed by raw representation; "
             "select feature_vector, feature_matrix, or fusion"
         )
-    if mode != "feature_matrix" and matrix_k != 32:
+    if mode == "feature_matrix" and tuple(features["enabled_groups"]) != (
+        "engineering_summary",
+    ):
         raise ValueError(
-            "features.matrix_k is executable only for feature_matrix representation"
+            "feature_matrix consumes only the 115 engineering-window features; "
+            "features.enabled_groups must be [engineering_summary]"
         )
     prv_payload = PrvConfig.from_mapping(features).to_dict()
     default_prv_payload = PrvConfig().validated().to_dict()
@@ -865,12 +970,12 @@ def _validate_v2_feature_schemas(data: Mapping[str, Any]) -> None:
         f"features.{field}"
         for field, consumers in prv_parameter_consumers.items()
         if prv_payload[field] != default_prv_payload[field]
-        and (mode == "raw" or enabled_groups.isdisjoint(consumers))
+        and (mode in {"raw", "feature_matrix"} or enabled_groups.isdisjoint(consumers))
     ]
     if changed_without_consumer:
         scope = (
-            "raw representation"
-            if mode == "raw"
+            f"{mode} representation"
+            if mode in {"raw", "feature_matrix"}
             else "the enabled feature groups"
         )
         raise ValueError(
@@ -1113,7 +1218,6 @@ def _validate_v2_protocol(data: dict[str, Any]) -> None:
     _validate_v2_signal_normalization(data)
     _validate_v2_feature_schemas(data)
     from .module_registry import (
-        ARTIFACT_MODULES,
         model_factory_contract,
         resolve_artifact_config,
         resolve_peak_detector_config,
@@ -1125,24 +1229,13 @@ def _validate_v2_protocol(data: dict[str, Any]) -> None:
     resolved_artifact = resolve_artifact_config(
         _strict_mapping(data["artifact"], "artifact")
     )
-    artifact_descriptor = next(
-        item
-        for item in ARTIFACT_MODULES
-        if item.module_id == resolved_artifact["declared_reducer"]
-    )
-    if str(data["representation_mode"]) not in artifact_descriptor.representation_modes:
-        raise ValueError(
-            f"artifact reducer {artifact_descriptor.module_id!r} is not executable "
-            f"with representation_mode={data['representation_mode']!r}; supported="
-            f"{list(artifact_descriptor.representation_modes)!r}"
-        )
     if (
-        not resolved_artifact["is_identity"]
-        and _strict_mapping(data["quality"], "quality")["mode"] != "route"
+        resolved_artifact["denoiser_enabled"]
+        and str(data["representation_mode"]) != "feature_vector"
     ):
         raise ValueError(
-            "non-identity artifact reducers require quality.mode=route; "
-            "off/diagnostics_only would never execute the configured reducer"
+            "rate-recovery denoisers produce Acceptable pulse-only evidence and "
+            "are executable only with representation_mode='feature_vector'"
         )
     resolve_peak_detector_config(_strict_mapping(data["signal"], "signal"))
     data["windows"] = validate_window_profiles_for_representation(
@@ -1453,6 +1546,7 @@ def _materialize_v2_defaults(data: dict[str, Any]) -> None:
     _materialize_dl_resampling_defaults(data)
     _materialize_feature_defaults(data)
     _materialize_quality_defaults(data)
+    _materialize_artifact_defaults(data)
     _materialize_aggregation_defaults(data)
     _materialize_evaluation_defaults(data)
 
@@ -1555,7 +1649,6 @@ def _validate_formal_ablation_materialization(data: Mapping[str, Any]) -> None:
         _canonical, machine = normalize_model_id(str(model["model_id"]))
         if expected is None or machine in {
             "logistic_regression", "rbf_svm", "extra_trees",
-            "rocket_numpy", "minirocket_ablation",
         } or (training["epoch_profile"], int(training["fixed_epochs"])) != expected:
             raise ValueError("deep epoch materialization identity drift")
     elif family == "direct_filter":
@@ -1668,7 +1761,7 @@ def load_config(path: str | Path, *, allow_legacy: bool = False) -> PipelineConf
 
 
 def load_formal_experiment_catalog(path: str | Path) -> dict[str, Any]:
-    """Load 13 ordinary candidates, two matched comparators and two ensembles."""
+    """Load the declared active candidates and fixed comparison entries."""
 
     source = Path(path)
     payload = _strict_mapping(
@@ -1691,23 +1784,39 @@ def load_formal_experiment_catalog(path: str | Path) -> dict[str, Any]:
     if payload["pipeline_generation"] != "final_pipeline_v2":
         raise ValueError("formal catalog must be bound to final_pipeline_v2")
     policy = _strict_mapping(payload["execution_policy"], "execution_policy")
-    expected_policy = {
+    if set(policy) != {
+        "auto_run", "candidate_count", "matched_comparator_count",
+        "ensemble_comparison_count", "default_balance_line",
+        "selectable_balance_lines", "materialization_only",
+    } or any(
+        isinstance(policy[name], bool) or not isinstance(policy[name], int)
+        or int(policy[name]) < 0
+        for name in (
+            "candidate_count", "matched_comparator_count",
+            "ensemble_comparison_count",
+        )
+    ) or {
+        "auto_run": policy["auto_run"],
+        "default_balance_line": policy["default_balance_line"],
+        "selectable_balance_lines": policy["selectable_balance_lines"],
+        "materialization_only": policy["materialization_only"],
+    } != {
         "auto_run": False,
-        "candidate_count": 13,
-        "matched_comparator_count": 2,
-        "ensemble_comparison_count": 2,
         "default_balance_line": "line_b",
         "selectable_balance_lines": ["line_b", "line_a"],
         "materialization_only": True,
-    }
-    if policy != expected_policy:
+    }:
         raise ValueError("formal catalog execution policy drifted")
     raw_entries = payload["entries"]
-    if not isinstance(raw_entries, list) or len(raw_entries) != 17:
-        raise ValueError(
-            "formal catalog requires 13 candidates, two matched comparators "
-            "and two ensembles"
+    expected_total = sum(
+        int(policy[name])
+        for name in (
+            "candidate_count", "matched_comparator_count",
+            "ensemble_comparison_count",
         )
+    )
+    if not isinstance(raw_entries, list) or len(raw_entries) != expected_total:
+        raise ValueError("formal catalog entry count differs from execution policy")
     from .module_registry import validate_model_config
 
     entries: list[dict[str, Any]] = []
@@ -1759,7 +1868,11 @@ def load_formal_experiment_catalog(path: str | Path) -> dict[str, Any]:
     ensemble_count = sum(
         entry["catalog_role"] == "ensemble_comparison" for entry in entries
     )
-    if (ordinary_count, comparator_count, ensemble_count) != (13, 2, 2):
+    if (ordinary_count, comparator_count, ensemble_count) != (
+        int(policy["candidate_count"]),
+        int(policy["matched_comparator_count"]),
+        int(policy["ensemble_comparison_count"]),
+    ):
         raise ValueError("formal catalogue count contract drifted")
 
     by_id = {str(entry["entry_id"]): entry for entry in entries}
@@ -1768,11 +1881,6 @@ def load_formal_experiment_catalog(path: str | Path) -> dict[str, Any]:
             "inception_full",
             "comparison_inception_full_member0_comparator",
             "raw",
-        ),
-        "inception_matrix_member0_comparator": (
-            "inception_matrix",
-            "comparison_inception_matrix_member0_comparator",
-            "feature_matrix",
         ),
     }
     for comparator_id, (
@@ -2007,7 +2115,6 @@ def materialize_formal_ablation_config(
     _canonical, machine_id = normalize_model_id(str(payload["model"]["model_id"]))
     estimator_ids = {
         "logistic_regression", "rbf_svm", "extra_trees",
-        "rocket_numpy", "minirocket_ablation",
     }
     selected: dict[str, Any]
     if family == "fixed_kernel_samples":

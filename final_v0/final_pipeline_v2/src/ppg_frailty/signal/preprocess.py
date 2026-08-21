@@ -1049,6 +1049,8 @@ def build_signal_views(
                 "gyro_magnitude": motion_imu.values[:, 7],
                 "jerk_mps3": jerk_axes,
                 "jerk_magnitude": motion_imu.values[:, 8],
+                "roll_rad": motion_imu.roll_rad,
+                "pitch_rad": motion_imu.pitch_rad,
                 "imu_valid_mask": motion_imu.valid_mask,
             },
             status="success",

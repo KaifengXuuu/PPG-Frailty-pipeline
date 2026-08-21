@@ -6,7 +6,7 @@ import unittest
 
 import numpy as np
 
-from ppg_frailty.artifacts import (
+from ppg_frailty.artifact import (
     FastIcaBssReducer,
     IdentityReducer,
     NlmsConfig,
@@ -19,7 +19,7 @@ from ppg_frailty.artifacts import (
     SsaReducer,
     get_reducer,
 )
-from ppg_frailty.artifacts.bss import (
+from ppg_frailty.artifact.bss import (
     FastIcaBssConfig,
     NmfBssConfig,
     PcaBssConfig,
@@ -156,6 +156,60 @@ class ReducerTest(unittest.TestCase):
                 single = reducer.reduce(ppg[:, :1], imu)
                 self.assertEqual(single.status, "failed")
                 self.assertIsNone(single.x_ar)
+
+    def test_pca_and_fastica_share_the_registered_bss_implementation(self) -> None:
+        """Facade/factory must reuse one implementation, not copy study algorithms."""
+
+        ppg, imu = contaminated_fixture()
+        for reducer_id, reducer_type, expected_version in (
+            ("pca_bss", PcaBssReducer, "pca_component_select_v2"),
+            ("fastica_bss", FastIcaBssReducer, "fastica_component_select_v2"),
+        ):
+            with self.subTest(reducer=reducer_id):
+                first_reducer = get_reducer(reducer_id)
+                second_reducer = get_reducer(reducer_id)
+                self.assertIsInstance(first_reducer, reducer_type)
+                self.assertEqual(first_reducer.reducer_version, expected_version)
+                self.assertEqual(
+                    first_reducer.__class__.__module__,
+                    "ppg_frailty.artifacts.bss",
+                )
+                first = first_reducer.reduce(ppg, imu)
+                second = second_reducer.reduce(ppg, imu)
+                self.assertEqual(first.status, "success", first.reasons)
+                self.assertEqual(second.status, "success", second.reasons)
+                np.testing.assert_allclose(first.x_ar, second.x_ar, rtol=0.0, atol=0.0)
+
+    def test_pca_and_fastica_fail_closed_and_propagate_imu_validity(self) -> None:
+        ppg, imu = contaminated_fixture()
+        valid = np.ones(ppg.shape[0], dtype=bool)
+        valid[300:360] = False
+        imu["imu_valid_mask"] = valid
+        for reducer_id in ("pca_bss", "fastica_bss"):
+            with self.subTest(reducer=reducer_id):
+                reducer = get_reducer(reducer_id)
+                result = reducer.reduce(ppg, imu)
+                self.assertEqual(result.status, "success", result.reasons)
+                propagated = np.asarray(
+                    result.diagnostics["output_valid_mask"], dtype=bool
+                )
+                np.testing.assert_array_equal(propagated, valid)
+                self.assertAlmostEqual(
+                    result.diagnostics["output_valid_fraction"],
+                    float(np.mean(valid)),
+                )
+
+                missing_imu = reducer.reduce(ppg, None)
+                self.assertEqual(missing_imu.status, "failed")
+                self.assertIsNone(missing_imu.x_ar)
+                self.assertIn("IMU references are required", missing_imu.reasons[0])
+
+                rank_deficient = reducer.reduce(
+                    np.column_stack((ppg[:, 0], ppg[:, 0])), imu
+                )
+                self.assertEqual(rank_deficient.status, "failed")
+                self.assertIsNone(rank_deficient.x_ar)
+                self.assertIn("rank-deficient", rank_deficient.reasons[0])
 
     def test_bss_router_rejects_parameters_unused_by_selected_algorithm(self) -> None:
         with self.assertRaisesRegex(ValueError, "unknown reducer parameters"):

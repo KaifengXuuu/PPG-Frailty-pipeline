@@ -62,6 +62,24 @@ eight-channel raw/fusion tensor.
 weights or normalized threshold decisions. Failures are recorded without
 dropping a record.
 
+Routing is recording-level. With SQI enabled, a failed/unavailable Q_rate is
+Unfit. If Q_rate passes, Q_morph pass/fail maps to Excellent/Acceptable only
+when motion is disabled or low; high or unavailable motion is Unfit. With SQI
+disabled, low/high motion maps to Excellent/Unfit; with both SQI and motion
+disabled, only declared static roles are Excellent. An Unfit recording receives
+at most one configured denoiser attempt. A successful post-denoise Q_rate pass
+becomes Acceptable; every other outcome abstains. The reference endpoint uses
+Q_rate=0.50, Q_morph=0.65 and minimum sample coverage=0.80. Q_rate retains the
+configured IMU motion-energy component; setting only its weight to zero is a
+named single-factor ablation input, not the reference.
+
+The runtime motion option loads one hash-bound Stage5 all-29 bundle and its
+strict-OOF-derived deployment threshold; it never refits or recalibrates inside
+frailty CV. Because that auxiliary detector was trained on all 29 Frailty
+participants, its Frailty29 decisions are explicitly in-sample motion evidence,
+not outer-OOF motion predictions. The frailty classifier predictions remain
+held-out by their own participant folds, and reports must preserve both facts.
+
 Identity is the reference artifact reducer. Named EMD-sifting-rate-only,
 CEEMD-lite-NLMS legacy and DWT-A2 legacy reducers are selectable parallel
 modules. No fictional ANS is registered. A non-identity route is rate-only:
@@ -69,6 +87,11 @@ post-reducer morphology and amplitude-dependent fields are marked ineligible
 rather than extracted from an incompatible signal, while rate/interval and
 eligible matrix features remain available. Reducer failure cannot silently
 fall back to the direct route.
+
+For the selected rate-recovery comparison, PCA-BSS is the preferred preset and
+FastICA-BSS is the parallel single-factor ablation. Both call the same registered
+factory and use processed IMU only to select a cardiac-dominant component; study
+YAML imports these implementations rather than copying either algorithm.
 
 IMU reference units are m/s² and rad/s. Internal acceleration in g uses the
 Profile-B factor 9.81 m/s²; the hash-bound PTT m/s² source remains an identity

@@ -56,6 +56,24 @@ class CanonicalSignalViews:
     x_ar: np.ndarray | None = None
     route: SignalRoute = SignalRoute.DIRECT
 
+    @property
+    def processed_imu_physical(self) -> dict[str, np.ndarray]:
+        """Return the physical-unit IMU analysis view, never the DL tensor."""
+
+        return self.imu_processed
+
+    @property
+    def x_analysis(self) -> np.ndarray:
+        """Return the amplitude-preserving direct analysis PPG view.
+
+        This alias is deliberately distinct from ``x_analysis_rate``: the
+        latter may be replaced by a rate-only artifact-reduced signal, whereas
+        morphology, optical engineering, and the DL-window source retain the
+        amplitude-preserving ``x_filter`` samples.
+        """
+
+        return np.asarray(self.x_filter, dtype=np.float64)
+
     def validate(self) -> None:
         """验证形状、对齐、采样率和 rate-only 边界 / Validate all invariants."""
 

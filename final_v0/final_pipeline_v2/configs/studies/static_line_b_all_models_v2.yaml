@@ -2,18 +2,18 @@ schema_version: ppg_frailty.study_plan.v2
 study:
   study_id: static_line_b_all_models_v2
   kind: catalog_sweep
-  purpose: "Preliminary pure-static Line B screening of all 13 ordinary candidates with a small deterministic set of broad, model-relevant profiles."
+  purpose: "Preliminary pure-static Line B screening of the 10 active ordinary candidates with a small deterministic set of broad, model-relevant profiles."
   flow_position: "First model-family screen before deeper single-factor ablations, ensemble tests, and manual final-use-case selection."
   decision_role: screening
   reference_case_id: null
   thesis_sections:
     - "Static B/R1-R4 frailty classification"
     - "Line B role-aware aggregation"
-    - "Four representation/model branches"
+    - "Three currently model-backed representation branches; feature-matrix model pending"
 catalog:
   path: configs/formal_experiment_catalog_v2.yaml
   balance_line: line_b
-  scope: ordinary_13
+  scope: ordinary_active
 search:
   method: deterministic_sparse_profiles
   selection_seed: 42
@@ -28,16 +28,16 @@ search:
     - "Calibrated roll-pitch EKF with same-participant static calibration"
     - "Quality off; no SQI gate, supervised motion detector, route exclusion, or motion denoiser"
     - "Identity artifact reducer"
-    - "Raw windows 5 s / 2.5 s hop; engineering windows 10 s / 5 s hop"
+    - "Raw windows 5 s / 2.5 s hop; engineering windows 10 s / 2 s hop"
     - "Frailty raw input: RED, IR, A_dyn_x, A_dyn_y, A_dyn_z, GX, GY, GZ"
     - "Deep models: fixed 10 epochs, batch 64, Adam, canonical sampler/loss/class weighting"
-    - "Classical and ROCKET models do not consume epoch or Adam fields"
+    - "Classical models do not consume epoch or Adam fields"
     - "No ensemble/comparator entries and no automatic winner selection"
   notes:
     - "selection_seed documents profile design only; no parameters are sampled at runtime"
     - "CompactCNN and raw InceptionFull use registered 100/200/400-Hz profiles without optimizer changes"
     - "ShapeFormer discovery and architecture parameters remain frozen"
-    - "ordinary_13 means every non-comparator, non-ensemble catalog candidate; it includes the explicitly named MiniROCKET and fixed-ShapeFormer ablation candidates"
+    - "The active scope contains only registered non-comparator, non-ensemble candidates; ROCKET-family routes are retired."
 cases:
   - case_id: compact_cnn__fs100
     catalog_entry: compact_cnn
@@ -119,33 +119,6 @@ cases:
       training.learning_rate: 0.003
       training.weight_decay: 0.00001
     rationale: "Sparse log-scale optimizer profile; raw input remains canonical 400 Hz."
-    formal_profile: null
-  - case_id: inception_matrix__lr3e4_wd1e3
-    catalog_entry: inception_matrix
-    screen_profile_id: lr3e4_wd1e3
-    output_group: feature_matrix
-    overrides:
-      training.learning_rate: 0.0003
-      training.weight_decay: 0.001
-    rationale: "Sparse log-scale optimizer profile on the fixed engineered matrix."
-    formal_profile: null
-  - case_id: inception_matrix__lr1e3_wd1e4
-    catalog_entry: inception_matrix
-    screen_profile_id: lr1e3_wd1e4
-    output_group: feature_matrix
-    overrides:
-      training.learning_rate: 0.001
-      training.weight_decay: 0.0001
-    rationale: "Sparse log-scale optimizer profile on the fixed engineered matrix."
-    formal_profile: null
-  - case_id: inception_matrix__lr3e3_wd1e5
-    catalog_entry: inception_matrix
-    screen_profile_id: lr3e3_wd1e5
-    output_group: feature_matrix
-    overrides:
-      training.learning_rate: 0.003
-      training.weight_decay: 0.00001
-    rationale: "Sparse log-scale optimizer profile on the fixed engineered matrix."
     formal_profile: null
   - case_id: shapeformer_osd__lr1e4_wd1e3
     catalog_entry: shapeformer_channel_specific_osd
@@ -347,72 +320,6 @@ cases:
       model.architecture_parameters.max_features: 1.0
       model.architecture_parameters.min_samples_leaf: 1
     rationale: "Sparse feature-subsampling/leaf-regularization search; tree count remains 500."
-    formal_profile: null
-  - case_id: rocket__k1000_a10
-    catalog_entry: rocket_numpy
-    screen_profile_id: k1000_a10
-    output_group: feature_matrix
-    overrides:
-      model.n_kernels: 1000
-      model.alpha: 10.0
-      model.architecture_parameters.n_kernels: 1000
-      model.architecture_parameters.ridge_alpha: 10.0
-    rationale: "Sparse transform-capacity/ridge pair; matrix and kernel-length family remain fixed."
-    formal_profile: null
-  - case_id: rocket__k5000_a1
-    catalog_entry: rocket_numpy
-    screen_profile_id: k5000_a1
-    output_group: feature_matrix
-    overrides:
-      model.n_kernels: 5000
-      model.alpha: 1.0
-      model.architecture_parameters.n_kernels: 5000
-      model.architecture_parameters.ridge_alpha: 1.0
-    rationale: "Sparse transform-capacity/ridge pair; matrix and kernel-length family remain fixed."
-    formal_profile: null
-  - case_id: rocket__k10000_a0p1
-    catalog_entry: rocket_numpy
-    screen_profile_id: k10000_a0p1
-    output_group: feature_matrix
-    overrides:
-      model.n_kernels: 10000
-      model.alpha: 0.1
-      model.architecture_parameters.n_kernels: 10000
-      model.architecture_parameters.ridge_alpha: 0.1
-    rationale: "Sparse transform-capacity/ridge pair; matrix and kernel-length family remain fixed."
-    formal_profile: null
-  - case_id: minirocket__k500_a10
-    catalog_entry: minirocket_ablation
-    screen_profile_id: k500_a10
-    output_group: feature_matrix
-    overrides:
-      model.n_kernels: 500
-      model.alpha: 10.0
-      model.architecture_parameters.n_kernels: 500
-      model.architecture_parameters.ridge_alpha: 10.0
-    rationale: "Sparse transform-capacity/ridge pair; matrix and kernel-length family remain fixed."
-    formal_profile: null
-  - case_id: minirocket__k1000_a1
-    catalog_entry: minirocket_ablation
-    screen_profile_id: k1000_a1
-    output_group: feature_matrix
-    overrides:
-      model.n_kernels: 1000
-      model.alpha: 1.0
-      model.architecture_parameters.n_kernels: 1000
-      model.architecture_parameters.ridge_alpha: 1.0
-    rationale: "Sparse transform-capacity/ridge pair; matrix and kernel-length family remain fixed."
-    formal_profile: null
-  - case_id: minirocket__k5000_a0p1
-    catalog_entry: minirocket_ablation
-    screen_profile_id: k5000_a0p1
-    output_group: feature_matrix
-    overrides:
-      model.n_kernels: 5000
-      model.alpha: 0.1
-      model.architecture_parameters.n_kernels: 5000
-      model.architecture_parameters.ridge_alpha: 0.1
-    rationale: "Sparse transform-capacity/ridge pair; matrix and kernel-length family remain fixed."
     formal_profile: null
 execution:
   repeats: [0, 1, 2, 3, 4]

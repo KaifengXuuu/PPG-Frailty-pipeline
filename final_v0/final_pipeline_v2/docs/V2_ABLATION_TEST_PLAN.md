@@ -78,8 +78,8 @@
 ### U5 — windows、normalization 与 route
 
 - raw DL window/hop：5.0/2.5 s，400 Hz 下 2000 samples，仅完整 windows，每 file 上限 128。
-- engineering window/hop：10.0/5.0 s，仅完整 windows；ordered matrix `K=32`，必须带显式 mask。
-- RED/IR raw windows 使用声明的 per-window robust normalization；IMU 只使用 outer-training-participant scaler。
+- engineering window/hop：10.0/2.0 s，仅完整 windows；ordered matrix 固定 `115×150`，带显式时间位置 mask。
+- raw/fusion/ShapeFormer 的 8 个 DL channels 均逐窗口 robust normalization；SQI、motion、reducer 与 engineering 继续读取物理单位 processed IMU 并行视图。
 - reference 为 quality `off`、artifact reducer `identity`、motion override disabled。
 - raw/fusion 使用 direct `x_filter` 加 processed IMU；非 identity reducer 只返回 aligned `x_ar` rate-only route，禁止在 `x_ar` 上声称 morphology 或 waveform shape。
 - PISD/OSD、reducer、route、calibration、dependency 或 parquet 失败均不得静默切换算法。
@@ -401,33 +401,12 @@ python frailty_3class_sweep_v2.py run --plan configs/studies/single_config_v2.ya
 - **预计规模：** 3 cases、75 cells。
 - **当前状态：** logistic 有 persisted config；SVM/ExtraTrees 为 `CATALOG_ONLY`。
 
-#### Group 4C — feature-matrix reference candidates
+#### Group 4C/4D — feature-matrix model selection pending
 
-- **科学问题：** temporal Inception 与 reference ROCKET+ridge 谁更好利用相同 ordered matrix？
-- **Reference/config：** `reference_static_feature_matrix_v2.yaml`；`inception_matrix`、`rocket_numpy`。
-- **比较值：** InceptionTimeMatrix（depth6、bottleneck/out32、kernels `[39,19,9]`、dropout0.2）对 deterministic NumPy/SciPy ROCKET（10,000 kernels、lengths `[7,9,11]`、2 features/kernel、ridge alpha1.0）。
-- **并行模块开关：** feature-matrix `K=32`+mask on；每 case 恰一 classifier。
-- **固定控制：** U1–U7；同 matrix schema/hash、outer-train transform、folds/aggregation/participant metrics。
-- **适用性：** feature-matrix frailty。
-- **执行并行：** Inception `jobs=1`；ROCKET 独立 CPU case，internal threads=1。
-- **输出要求：** R0、matrix mask/shape coverage、kernel/architecture identity、parameter/feature count、cost。
-- **晋级规则：** complete cases；ROCKET 与 MiniROCKET 不得互相静默替换。
-- **预计规模：** 2 cases、50 cells。
-- **当前状态：** Inception matrix 有 persisted config；ROCKET `CATALOG_ONLY`；无 paired plan。
-
-#### Group 4D — MiniROCKET named engineering ablation
-
-- **科学问题：** 相对 10,000-kernel reference ROCKET，1,000-kernel engineering approximation 得失如何？
-- **Reference/config：** `rocket_numpy` 对 `minirocket_ablation`。
-- **唯一变量与取值：** implementation route：ROCKET 10,000 对 named MiniROCKET 1,000；ridge alpha1.0、lengths `[7,9,11]` 固定。
-- **并行模块开关：** 仅 feature-matrix；禁止 silent replacement。
-- **固定控制：** U1–U7、同 matrix/folds。
-- **适用性：** feature-matrix frailty。
-- **执行并行：** 两 CPU cases `jobs=2`，internal threads=1。
-- **输出要求：** R0、implementation ID、kernel/feature counts、runtime/memory、paired deltas。
-- **晋级规则：** 无论分数，MiniROCKET 仍标 ablation；reference claim 属于 ROCKET。
-- **预计规模：** 2 cases、50 cells。
-- **当前状态：** `CATALOG_ONLY`，无 resolved pair/plan。
+- **固定输入合同：** 10 s/2 s-hop，每窗 115 个工程特征，时间轴 K=150。
+- **当前状态：** matrix representation 可构建和验证，但尚未选定正式模型或 ablation 轴。
+- **已退役：** ROCKET/Ridge 与 MiniROCKET 不再是可执行 module、catalog case 或 study case；历史结果只能作为历史证据，不能冒充当前 115×150 合同。
+- **后续要求：** 先明确候选模型，再新增引用统一 matrix builder 的独立 plan；禁止把旧 ROCKET 实现复制进新 YAML/runner。
 
 #### Group 4E — file-level fusion candidates
 
@@ -802,8 +781,7 @@ frailty labels 绝不能训练 motion detector。内部 binary targets 是 proto
 | 3C | SQI weighting/route/legacy aggregate | 当前0 | 当前0 | runtime modules 已实现；`IMPLEMENTED_NEEDS_PLAN` |
 | 4A | raw single networks | 3 | 75 | reference 与 catalog-only 混合 |
 | 4B | vector LR/SVM/ExtraTrees | 3 | 75 | reference 与 catalog-only 混合 |
-| 4C | matrix Inception/ROCKET | 2 | 50 | reference 与 catalog-only 混合 |
-| 4D | ROCKET/MiniROCKET | 2 | 50 | `CATALOG_ONLY` |
+| 4C/4D | feature-matrix model selection | 0 | 0 | model pending; ROCKET family retired |
 | 4E | fusion Compact/Inception | 2 | 50 | reference 与 catalog-only 混合 |
 | 4F | 四 representation finalists | 4 | 100 | 依赖前序结果 |
 | 5A | faithful OSD 验收 | 1 | 25 | 已实现，待 plan/full 5×5 |

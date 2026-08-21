@@ -128,9 +128,12 @@ class RawImuTransformTests(unittest.TestCase):
                 gyro,
             )
         )
-        self.assertTrue(np.array_equal(raw.values[0, 2:], original_imu[:400].T.astype(np.float32)))
-        self.assertTrue(np.array_equal(raw.values[1, 2:], original_imu[400:].T.astype(np.float32)))
-        self.assertTrue(np.allclose(np.median(raw.values[:, :2], axis=2), 0.0, atol=1e-6))
+        self.assertTrue(np.allclose(np.median(raw.values, axis=2), 0.0, atol=1e-6))
+        np.testing.assert_array_equal(
+            views.processed_imu_physical["dynamic_acc_mps2"], dynamic
+        )
+        np.testing.assert_array_equal(views.processed_imu_physical["gyro_rads"], gyro)
+        np.testing.assert_array_equal(views.x_analysis, views.x_filter)
         self.assertEqual(raw.values.shape, (2, 8, 400))
         first_red = ppg[:400, 0]
         q25, q75 = np.percentile(first_red, [25.0, 75.0])
@@ -140,10 +143,22 @@ class RawImuTransformTests(unittest.TestCase):
             8.0,
         )
         np.testing.assert_allclose(raw.values[0, 0], expected_red, rtol=1e-6)
+        first_acc_x = original_imu[:400, 0]
+        q25, q75 = np.percentile(first_acc_x, [25.0, 75.0])
+        expected_acc_x = np.clip(
+            (first_acc_x - np.median(first_acc_x)) / ((q75 - q25) / 1.349),
+            -8.0,
+            8.0,
+        )
+        np.testing.assert_allclose(raw.values[0, 2], expected_acc_x, rtol=1e-6)
         self.assertEqual(
             raw.provenance["imu_normalization"],
-            "unscaled_si_requires_outer_train_transform",
+            "all8_per_window_then_no_post_transform",
         )
+        self.assertEqual(raw.provenance["dl_tensor_view"], "x_dl_all8_window_norm")
+        self.assertEqual(raw.provenance["dl_all8_normalization"], "per_window_robust")
+        self.assertEqual(raw.provenance["dl_clip_after_scale"], [-8.0, 8.0])
+        self.assertEqual(len(raw.provenance["dl_normalized_channels"]), 8)
         self.assertEqual(len(raw.provenance["imu_channel_schema"]), 6)
         self.assertFalse(raw.provenance["derived_motion_channels_in_frailty_tensor"])
 
@@ -183,8 +198,8 @@ class RawImuTransformTests(unittest.TestCase):
             plan,
             normalization={"clip_after_scale": [-0.5, 0.75]},
         )
-        self.assertGreaterEqual(float(clipped.values[:, :2].min()), -0.5)
-        self.assertLessEqual(float(clipped.values[:, :2].max()), 0.75)
+        self.assertGreaterEqual(float(clipped.values.min()), -0.5)
+        self.assertLessEqual(float(clipped.values.max()), 0.75)
         self.assertEqual(clipped.provenance["ppg_clip_after_scale"], [-0.5, 0.75])
 
         standard = build_raw_windows(
@@ -196,12 +211,12 @@ class RawImuTransformTests(unittest.TestCase):
             },
         )
         np.testing.assert_allclose(
-            np.mean(standard.values[:, :2], axis=2),
+            np.mean(standard.values, axis=2),
             0.0,
             atol=1e-6,
         )
         np.testing.assert_allclose(
-            np.std(standard.values[:, :2], axis=2),
+            np.std(standard.values, axis=2),
             1.0,
             atol=1e-6,
         )
@@ -219,7 +234,7 @@ class RawImuTransformTests(unittest.TestCase):
             identity.values[0, :2],
             ppg[:400].T.astype(np.float32),
         )
-        self.assertEqual(identity.provenance["ppg_normalized_channels"], [])
+        self.assertEqual(identity.provenance["dl_normalized_channels"], [])
         self.assertIsNone(identity.provenance["ppg_clip_after_scale"])
 
         legacy_aliases = build_raw_windows(
@@ -255,6 +270,7 @@ class RawImuTransformTests(unittest.TestCase):
             fitted_on_participant_ids=["train_a", "train_b"],
             outer_train_participant_ids=["train_a", "train_b"],
             outer_oof_participant_ids=["heldout"],
+            normalization={"raw_imu": "outer_train_robust"},
         )
         raw = RawWindows(
             values=values,
@@ -307,6 +323,7 @@ class RawImuTransformTests(unittest.TestCase):
             fitted_on_participant_ids=["train"],
             outer_train_participant_ids=["train"],
             outer_oof_participant_ids=[],
+            normalization={"raw_imu": "outer_train_robust"},
         )
         expected_sd = float(
             np.std(np.asarray(values[0, 2], dtype=np.float64), ddof=0)

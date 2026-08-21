@@ -148,7 +148,7 @@ class StudyCliHelpTests(unittest.TestCase):
         self.assertEqual(devices["raw__compact_cnn"], "cuda")
         self.assertEqual(devices["fusion__compact"], "cuda")
         self.assertEqual(devices["feature_vector__logistic"], "cpu")
-        self.assertEqual(devices["feature_matrix__rocket_ridge"], "cpu")
+        self.assertNotIn("feature_matrix__rocket_ridge", devices)
 
 
 if __name__ == "__main__":

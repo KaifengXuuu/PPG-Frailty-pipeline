@@ -55,10 +55,11 @@ V2 pipeline 不使用 readiness、Phase-0、C0、source-lock 或 evidence gate �
 ### 3.2 SQI 阈值、权重与 route 的科学证据
 
 - **状态**：软件已实现、可配置执行；科学比较尚未运行。
-- **已有内容**：`off`、`diagnostics_only`、七状态 A1/A2 route state machine、原始 SQI
-  components、route/role 报告。
+- **已有内容**：`off`、`diagnostics_only`、recording-level
+  Excellent/Acceptable/Unfit/Excluded 状态机、原始 SQI components、route/role 与
+  abstention-aware 报告。
 - **reference**：SQI `off`；`diagnostics_only` 不能改变 retained data、aggregation 或 prediction。
-- **执行合同**：`quality.mode=route` 直接选择 outer-train-only calibrator 与七状态 route；不存在
+- **执行合同**：`quality.mode=route` 直接选择 fixed 或 outer-train-only calibrator 与 typed route；不存在
   `supervised_route_ready`、artifact hash 或 YAML authorization boolean。
 - **尚缺内容**：在相同 frozen folds 上预注册并运行阈值、组合权重、coverage 与 downstream
   OOF 的匹配比较，证明它们是否有益。
@@ -66,15 +67,13 @@ V2 pipeline 不使用 readiness、Phase-0、C0、source-lock 或 evidence gate �
   写成“科学性能已验证”。
 - **关闭条件**：保存训练范围、阈值 provenance、完整 repeated grouped OOF 与 coverage 报告。
 
-### 3.2.1 A1/A2 segment 接线与 morphology eligibility
+### 3.2.1 Recording-level route 与 morphology eligibility
 
-- **状态**：七状态机与普通 runtime 已接线；heterogeneous segment planner 尚未实现。
-- **当前差距**：`experiment.py::_route_records` 仍把整条 recording 当成一个 segment，尚未按
-  heterogeneous segment 保存 start/end/run identity；`rate_only_direct` 又会被折叠成
-  `SignalRoute.DIRECT`。当前 runtime 另行持久化 `shape_features_eligible`，因此
-  `rate_only_direct` 不会产生 morphology、amplitude 或 dual-wavelength optical predictors。
-- **当前影响**：route 可以按 recording 粒度执行，但不能把结果描述为 heterogeneous
-  segment-level routing。
+- **状态**：用户已冻结 recording-level tier route；heterogeneous segment 不是当前合同。
+- **当前边界**：`experiment.py::_route_records` 对整条 recording 汇总 SQI 与 motion；
+  Acceptable 仅提供记录特异 pulse/PRV，不能产生 engineering、morphology、amplitude、raw、
+  IMU 或 dual-wavelength optical evidence。
+- **当前影响**：结果只能描述为 recording-level routing。
 - **关闭条件**：如研究问题需要 segment 粒度，再实现 segment planner、逐 segment
   start/end/run identity 与合法 run 内 pulse/PPI adjacency；保留现有 shape-eligibility 负例。
 
@@ -94,7 +93,8 @@ V2 pipeline 不使用 readiness、Phase-0、C0、source-lock 或 evidence gate �
 ### 3.3 Artifact reducer 最终选择
 
 - **状态**：实现或注册，但未通过正式比较选择。
-- **reference control**：`identity/no denoise`。
+- **reference control**：`identity/no denoise`；启用恢复时的首选 preset 是 PCA-BSS，FastICA-BSS
+  是同条件单因素 ablation。
 - **计划候选**：NLMS IMU-ANC、SSA、spectral mask、PCA-BSS、FastICA-BSS、NMF-BSS；
   historical EMD/CEEMD/DWT 只保留具名历史 ablation 身份。
 - **尚缺内容**：在同一 outer split、同一模型、同一输入和同一聚合下的单因素比较；
@@ -102,22 +102,23 @@ V2 pipeline 不使用 readiness、Phase-0、C0、source-lock 或 evidence gate �
 - **影响**：当前不能声称任何 reducer 是 final 或 clinical improvement。
 - **关闭条件**：完成 artifact-reducer ablation 后人工审阅；未胜出时继续保留 identity reference。
 
-### 3.4 Motion override / SQI+motion 路线
+### 3.4 Frozen motion / SQI+motion 路线
 
-- **状态**：外部 motion-evidence 路径可检查；不作为 core classifier 的授权开关。
+- **状态**：Stage5 internal/PTT study 已完成；用户已选择在 Stage05 comparison 中直接复用
+  all-29 final detector 与 strict-OOF-derived deployment threshold，不在 frailty CV 内重训。
 - **reference input**：8 通道 axes；11 通道 derived augmentation 只作为匹配 ablation。
-- **尚缺内容**：internal 29-person participant-grouped motion evidence、external PTT motion
-  benchmark、阈值/校准和 override 对 retained coverage 与 frailty OOF 的影响。
-- **影响**：motion score 可以作为 diagnostic 或显式配置的恢复依据；不能在 reference 中静默
-  覆盖 SQI、波形或预测，也不能在没有结果时声称有益。
-- **关闭条件**：先分别完成 internal 与 PTT 证据，再运行 `SQI-only`、`motion-only`、
-  `SQI+motion` 匹配比较；activation 必须是新的人工决定。
+- **尚缺内容**：Stage05 五路线对 retained coverage、abstention-aware frailty OOF 与
+  PCA/FastICA recovery 的匹配运行结果。
+- **影响**：all-29 detector 对同一 Frailty29 cohort 是 in-sample auxiliary evidence，绝不能
+  冒充 outer-OOF motion prediction；frailty classifier 的 held-out prediction边界另行报告。
+- **关闭条件**：运行并人工审阅 `05_sqi_motion_finalists_v2.yaml`；不得只按 conditional 指标选优。
 
-### 3.5 PTT external benchmark 尚未运行
+### 3.5 PTT cross-dataset benchmark
 
-- **状态**：单位、channel mapping、source identity 和 grouped 5×5 protocol 已定义；科学未运行。
+- **状态**：`20260820_225546_staged-static-05-pre-motion-ptt-v1` 已完成；结果是
+  complete cross-dataset external benchmark，不是 untouched independent validation。
 - **已解决**：ACC 使用 `m/s²` identity；gyro 依据 header 从 `deg/s` 转为 `rad/s`。
-- **尚缺内容**：真实 external PTT 运行、每 activity/subject 的完整 OOF、失败与 coverage 报告。
+- **尚缺内容**：后续科学解释、候选选择与论文级不确定性审阅，而不是重新在 PTT 拟合。
 - **证据边界**：该数据仍是 repeated grouped validation，不是独立测试队列。
 
 ### 3.6 Device-specific physical QC

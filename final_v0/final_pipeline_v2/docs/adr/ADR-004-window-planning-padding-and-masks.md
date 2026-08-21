@@ -12,7 +12,7 @@
 - engineering reference: complete 10 s windows, 5 s hop, no padding；
 - raw-DL reference: 5 s windows；10 s 为命名 ablation；
 - end alignment、overlap、window cap、short-record action 和 padding 均为配置；
-- feature matrix: K=32；长记录按进度均匀取样，短记录在 fold-local transform 后
+- feature matrix: 10 s/2 s-hop 工程窗口，固定 K=150；长记录按进度均匀取样，短记录在 fold-local transform 后
   右侧零填，且 `row_mask=false`；
 - zero 仅代表标准化中性填充值，mask 必须阻止其被解释为观察到的生理数据。
 

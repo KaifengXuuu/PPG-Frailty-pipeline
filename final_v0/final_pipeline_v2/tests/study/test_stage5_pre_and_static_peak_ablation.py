@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import numpy as np
 
+from ppg_frailty.artifact import get_reducer as canonical_get_reducer
 from ppg_frailty.peaks import detect_pulses
 from ppg_frailty.peaks.aboy_project_v2 import (
     DETECTOR_ID as ABOY_V2_ID,
@@ -28,6 +29,7 @@ from ppg_frailty.quality.stage5_pre import (
     _subject_activity_prediction_rows,
     align_and_score_beats,
     generate_motion_peak_report,
+    get_reducer as stage5_get_reducer,
     load_motion_peak_plan,
 )
 from ppg_frailty.quality.motion_adapters import (
@@ -62,6 +64,9 @@ def _cuda_available() -> bool:
 
 
 class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
+    def test_stage5_uses_the_canonical_pipeline_reducer_factory(self) -> None:
+        self.assertIs(stage5_get_reducer, canonical_get_reducer)
+
     def test_detector_auc_ties_are_order_invariant(self) -> None:
         rows = [
             {

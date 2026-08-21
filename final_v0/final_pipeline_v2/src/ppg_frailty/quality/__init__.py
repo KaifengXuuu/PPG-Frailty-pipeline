@@ -62,12 +62,14 @@ from .motion_adapters import (
 from .routing import (
     QualityMode,
     QualityModeOutcome,
-    SegmentIntegrity,
+    QualityTier,
+    QualityTierDecision,
+    RouteModuleSwitches,
     assert_quality_route,
-    finalize_rate_recovery,
     quality_mode_from_config,
     resolve_quality_mode,
-    route_segment_pre_reduction,
+    route_module_switches_from_config,
+    route_quality_tier,
     run_quality_mode,
 )
 from .window_selection import (
@@ -84,15 +86,15 @@ from .window_selection import (
 
 __all__ = [
     "QualityComponent", "QualityEndpoint", "QualityResult", "QualityState",
-    "QualityMode", "QualityModeOutcome",
-    "SegmentIntegrity",
+    "QualityMode", "QualityModeOutcome", "QualityTier", "QualityTierDecision",
+    "RouteModuleSwitches",
     "SqiCalibrator", "SqiConfig", "SqiDiagnosticComponent", "SqiDiagnosticConfig",
     "SqiDiagnostics", "assert_quality_route", "component_rows",
-    "finalize_rate_recovery",
     "evaluate_quality", "evaluate_quality_diagnostics", "fit_sqi_calibrator",
     "quality_component_scores",
     "quality_mode_from_config", "resolve_quality_mode",
-    "route_segment_pre_reduction", "run_quality_mode",
+    "route_module_switches_from_config", "route_quality_tier",
+    "run_quality_mode",
     "LEGACY_WINDOW_SCORE_ALGORITHM", "WINDOW_SELECTION_APPLICATION_SCOPES",
     "WINDOW_SELECTION_POLICIES",
     "WindowSelectionConfig", "legacy_per_file_top_fraction_mask",

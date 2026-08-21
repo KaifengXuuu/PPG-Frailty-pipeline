@@ -54,6 +54,7 @@ class _RuntimeRecord:
     final_quality: Any = None
     route: Any = None
     intended_route: Any = None
+    quality_tier: str | None = None
     shape_features_eligible: bool = True
     retained: bool = False
     reason: str | None = None
@@ -61,6 +62,7 @@ class _RuntimeRecord:
     route_artifact: dict[str, Any] = field(default_factory=dict)
     artifact_name: str = 'not_executed'
     artifact_version: str = 'not_executed'
+    direct_pulses_per_wavelength: Any = None
     vector: Any = None
     engineering: Any = None
     raw_windows: Any = None
@@ -72,6 +74,44 @@ class _RuntimeRecord:
     diagnostic_reason: str | None = None
     physical_qc_evidence: dict[str, Any] = field(default_factory=dict)
     physical_qc_profile: dict[str, Any] = field(default_factory=dict)
+
+
+def _drop_after_routing(
+    state: _RuntimeRecord,
+    *,
+    reason: str,
+    route_status: str,
+) -> None:
+    """Keep final retention and persisted route evidence synchronized."""
+
+    state.retained = False
+    state.reason = reason
+    state.route_status = route_status
+    if state.route_artifact:
+        state.route_artifact = {
+            **state.route_artifact,
+            'state': route_status,
+            'abstained': True,
+            'abstention_reason': reason,
+        }
+
+
+def _persisted_route_artifact_row(state: _RuntimeRecord) -> dict[str, Any]:
+    """Serialize final routing state even when no SQI diagnostics exist."""
+
+    return {
+        'record_id': state.row.record_id,
+        'participant_id': state.row.participant_id,
+        'role': state.row.role,
+        'retained': state.retained,
+        'route_status': state.route_status,
+        'signal_route': (
+            state.route.value if state.route is not None else None
+        ),
+        'artifact_reducer_name': state.artifact_name,
+        'artifact_reducer_version': state.artifact_version,
+        'route_artifact': state.route_artifact,
+    }
 
 
 class _ExperimentProtocolError(RuntimeError):
@@ -92,6 +132,18 @@ def _model_capability_contract(model_id: str) -> Mapping[str, Any]:
 
 def _model_uses_estimator(model_id: str) -> bool:
     return _model_capability_contract(model_id)['execution_backend'] == 'estimator'
+
+
+def _epoch_override_for_backend(
+    config: Any,
+    requested_override: int | None,
+) -> int | None:
+    """Limit the Torch-only smoke epoch override to Torch backends."""
+
+    if requested_override is None:
+        return None
+    model_id = str(config.section('model')['model_id'])
+    return None if _model_uses_estimator(model_id) else int(requested_override)
 
 
 def _model_is_ensemble(model_id: str) -> bool:
@@ -275,14 +327,16 @@ class _CellResult:
 
 @dataclass(frozen=True)
 class _LegacyBridgeExecution:
-    '''Reviewed, source-bound inputs for one isolated L0--L7 execution.'''
+    '''Hash-bound inputs for one isolated cumulative or centred-star cell.'''
 
     profile: Any
-    source_specification: str
-    source_specification_sha256: str
+    source_specification: str | None
+    source_specification_sha256: str | None
     manifest_sha256: str
     split_sha256: str
     effective_config_hash: str
+    protocol_design: str = 'cumulative_chain_v1'
+    profile_definition_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -302,7 +356,7 @@ def _runtime_imports() -> dict[str, Any]:
     import numpy as np
     from dataclasses import replace
     from ppg_frailty.artifact import run_artifact_route
-    from ppg_frailty.contracts import QualityState, RouteState, SignalRoute
+    from ppg_frailty.contracts import QualityState, SignalRoute
     from ppg_frailty.data.schema import canonicalize_role_family
     from ppg_frailty.data.windows import WindowPlan
     from ppg_frailty.features.engineering import (
@@ -354,11 +408,17 @@ def _runtime_imports() -> dict[str, Any]:
         quality_component_scores,
     )
     from ppg_frailty.quality.routing import (
-        SegmentIntegrity,
-        finalize_rate_recovery,
+        QualityTier,
         resolve_quality_mode,
-        route_segment_pre_reduction,
+        route_module_switches_from_config,
+        route_quality_tier,
         run_quality_mode,
+    )
+    from ppg_frailty.quality.motion_bundle_adapter import (
+        infer_reused_motion_recording,
+        load_reused_motion_detector,
+        motion_recording_from_signal_views,
+        resolve_reused_motion_detector_config,
     )
     from ppg_frailty.representations import (
         build_raw_windows,
@@ -379,7 +439,12 @@ def _runtime_imports() -> dict[str, Any]:
         measure_cpu_batch1_operational_metrics,
     )
     from ppg_frailty.training import SampleIdentity, TrainingConfig, UnifiedTrainer
-    from ppg_frailty.training import aggregate_hierarchy, evaluate_predictions, validate_expected_oof_roster
+    from ppg_frailty.training import (
+        aggregate_hierarchy,
+        evaluate_predictions,
+        evaluate_predictions_with_abstentions,
+        validate_expected_oof_roster,
+    )
     from ppg_frailty.training.oof import validate_role_level_oof
     return locals()
 
@@ -423,18 +488,16 @@ def _classifier_role_ids(config: Any) -> tuple[str, ...]:
     return selected
 
 
-def _preprocess_records(
+def _fit_imu_calibrations(
     states: list[_RuntimeRecord],
     config: Any,
-    maximum_seconds: float | None,
     loader: Any,
     *,
     calibration_rows: Iterable[Any] | None = None,
-) -> None:
-    '''Build direct views with one explicit role-B IMU calibration per participant.'''
+) -> tuple[dict[str, Any], dict[str, str], str]:
+    '''Fit reusable participant-B calibration objects for canonical IMU profiles.'''
 
     api = _runtime_imports()
-    build_signal_views = api['build_signal_views']
     signal = config.section('signal')
     imu = signal['imu']
     gravity_method = str(imu['gravity_method'])
@@ -494,6 +557,31 @@ def _preprocess_records(
                 calibration_errors[participant_id] = (
                     f'{type(exc).__name__}:{exc}'
                 )
+    return calibrations, calibration_errors, gravity_method
+
+
+def _preprocess_records(
+    states: list[_RuntimeRecord],
+    config: Any,
+    maximum_seconds: float | None,
+    loader: Any,
+    *,
+    calibration_rows: Iterable[Any] | None = None,
+) -> None:
+    '''Build direct views with one explicit role-B IMU calibration per participant.'''
+
+    api = _runtime_imports()
+    build_signal_views = api['build_signal_views']
+    calibrations, calibration_errors, gravity_method = _fit_imu_calibrations(
+        states,
+        config,
+        loader,
+        calibration_rows=calibration_rows,
+    )
+    calibrated_methods = {
+        'calibrated_roll_pitch_ekf',
+        'profile_a_lowpass_0p3hz',
+    }
     for state in states:
         participant_id = str(state.row.participant_id)
         if participant_id in calibration_errors:
@@ -552,19 +640,70 @@ def _preprocess_legacy_bridge_records(
     profile: Any,
     maximum_seconds: float | None,
     loader: Any,
+    *,
+    config: Any | None = None,
+    calibration_rows: Iterable[Any] | None = None,
 ) -> dict[str, Any]:
-    '''Build L0--L2 windows directly from freshly audited raw CSV bytes.'''
+    '''Build field-driven bridge windows directly from freshly audited CSV bytes.'''
 
     api = _runtime_imports()
     from .legacy_bridge import build_legacy_bridge_raw_windows
 
+    calibrations: dict[str, Any] = {}
+    calibration_errors: dict[str, str] = {}
+    if profile.requires_calibrated_imu_views:
+        if config is None:
+            raise _ExperimentProtocolError(
+                'bridge_calibrated_imu_requires_resolved_config'
+            )
+        calibrations, calibration_errors, gravity_method = _fit_imu_calibrations(
+            states,
+            config,
+            loader,
+            calibration_rows=calibration_rows,
+        )
+        if gravity_method != 'calibrated_roll_pitch_ekf':
+            raise _ExperimentProtocolError(
+                'bridge_calibrated_imu_requires_roll_pitch_ekf_config'
+            )
+
     for state in states:
+        participant_id = str(state.row.participant_id)
+        if participant_id in calibration_errors:
+            state.reason = (
+                'imu_calibration_failed:' + calibration_errors[participant_id]
+            )
+            state.route_status = 'dropped_legacy_bridge_preprocess'
+            continue
         maximum = None if maximum_seconds is None else min(
             int(state.row.n_samples),
             int(round(maximum_seconds * float(state.row.fs))),
         )
         try:
             loaded = dict(loader(state.row, maximum))
+            calibrated_views = None
+            if profile.requires_calibrated_imu_views:
+                loaded['participant_id'] = participant_id
+                calibration = calibrations.get(participant_id)
+                if calibration is None:
+                    raise RuntimeError(
+                        'same_participant_imu_calibration_unavailable'
+                    )
+                loaded['imu_calibration'] = calibration
+                calibrated_views = api['build_signal_views'](
+                    loaded,
+                    config.to_dict(),
+                )
+                state.views = calibrated_views
+                state.diagnostic_components['imu_calibration'] = {
+                    'schema_version': calibration.schema_version,
+                    'participant_id': calibration.participant_id,
+                    'file_id': calibration.file_id,
+                    'source_role': calibration.source_role,
+                    'artifact_sha256': calibration.artifact_sha256,
+                    'gravity_method': 'calibrated_roll_pitch_ekf',
+                    'fallback_used': False,
+                }
             state.physical_qc_evidence = to_strict_json_value(
                 loaded.get(
                     'recording_qc',
@@ -580,7 +719,11 @@ def _preprocess_legacy_bridge_records(
                     {'profile_id': 'not_supplied_by_injected_test_loader'},
                 )
             )
-            state.raw_windows = build_legacy_bridge_raw_windows(loaded, profile)
+            state.raw_windows = build_legacy_bridge_raw_windows(
+                loaded,
+                profile,
+                calibrated_views=calibrated_views,
+            )
             state.final_quality = None
             state.route = api['SignalRoute'].DIRECT
             state.intended_route = api['SignalRoute'].DIRECT
@@ -605,16 +748,23 @@ def _preprocess_legacy_bridge_records(
             )
             state.route_status = 'dropped_legacy_bridge_preprocess'
     return {
-        'method': 'legacy_bridge_quality_off_fresh_raw_csv',
-        'fitted_on_participant_ids': (),
+        'method': (
+            'legacy_bridge_quality_off_fresh_raw_csv'
+            if profile.protocol_design == 'cumulative_chain_v1'
+            else 'legacy_bridge_quality_off_fresh_raw_csv_field_driven'
+        ),
+        'fitted_on_participant_ids': tuple(sorted(calibrations)),
         'outer_oof_ids_absent': True,
         'classification_effect': 'none',
         'historical_cache_used_for_training': False,
     }
 
 
-def _extract_l3_bridge_raw(state: _RuntimeRecord, profile: Any) -> None:
-    '''Materialise L3 V2-semantic channels with legacy all-8 window scaling.'''
+def _extract_canonical_all_channel_bridge_raw(
+    state: _RuntimeRecord,
+    profile: Any,
+) -> None:
+    '''Materialise canonical channels with declared legacy all-8 scaling.'''
 
     if not state.retained:
         return
@@ -627,8 +777,17 @@ def _extract_l3_bridge_raw(state: _RuntimeRecord, profile: Any) -> None:
         )
     except Exception as exc:
         state.retained = False
-        state.reason = f'legacy_bridge_l3_windows_failed:{type(exc).__name__}:{exc}'
-        state.route_status = 'dropped_legacy_bridge_l3_window_failure'
+        if profile.protocol_design == 'cumulative_chain_v1':
+            state.reason = (
+                f'legacy_bridge_l3_windows_failed:{type(exc).__name__}:{exc}'
+            )
+            state.route_status = 'dropped_legacy_bridge_l3_window_failure'
+        else:
+            state.reason = (
+                'legacy_bridge_canonical_windows_failed:'
+                f'{type(exc).__name__}:{exc}'
+            )
+            state.route_status = 'dropped_legacy_bridge_canonical_window_failure'
 
 
 def _peak_detection_runtime_kwargs(
@@ -644,6 +803,23 @@ def _peak_detection_runtime_kwargs(
     if 'parameters' in detector:
         resolved['detector_parameters'] = dict(detector['parameters'])
     return resolved
+
+
+def _direct_pulses_for_state(
+    state: _RuntimeRecord,
+    api: Mapping[str, Any],
+    detector: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Detect a direct recording once and reuse the exact pulse evidence."""
+
+    if state.direct_pulses_per_wavelength is None:
+        state.direct_pulses_per_wavelength = api[
+            'detect_pulses_per_wavelength'
+        ](
+            state.views,
+            **_peak_detection_runtime_kwargs(detector),
+        )
+    return state.direct_pulses_per_wavelength
 
 
 def _fit_quality_calibrator(states: list[_RuntimeRecord], config: Any, train_ids: tuple[str, ...], oof_ids: tuple[str, ...]) -> tuple[Any, Any]:
@@ -665,9 +841,12 @@ def _fit_quality_calibrator(states: list[_RuntimeRecord], config: Any, train_ids
         if state.views is None:
             continue
         try:
+            pulses = _direct_pulses_for_state(state, api, detector)
+            pulse = pulses[api['select_reference_wavelength'](pulses)]
             quality = api['evaluate_quality'](
                 state.views,
                 config=base,
+                pulse=pulse,
                 **_peak_detection_runtime_kwargs(detector),
             )
             component_rows.append(api['quality_component_scores'](quality))
@@ -839,6 +1018,77 @@ def _quality_route_provenance(
     }
 
 
+def _apply_quality_motion_routing(
+    states: list[_RuntimeRecord],
+    config: Any,
+    report: Any,
+    paths: Any,
+    *,
+    train_ids: tuple[str, ...],
+    oof_ids: tuple[str, ...],
+) -> dict[str, Any]:
+    """Execute one shared route orchestration for outer CV and final refit."""
+
+    mode = _quality_mode(config)
+    diagnostic_provenance = None
+    if mode == 'diagnostics_only':
+        diagnostic_provenance = _retain_without_quality_routing(
+            states,
+            config,
+            diagnostics_only=True,
+        )
+    sqi_config = None
+    calibrator = None
+    if mode == 'route':
+        sqi_config, calibrator = _fit_quality_calibrator(
+            states,
+            config,
+            train_ids,
+            oof_ids,
+        )
+    motion_detector = _load_reused_motion_detector_for_config(config, paths)
+    _route_records(
+        states,
+        config,
+        report,
+        sqi_config,
+        calibrator,
+        motion_detector=motion_detector,
+    )
+    if sqi_config is not None:
+        provenance = _quality_route_provenance(
+            sqi_config,
+            calibrator,
+            oof_ids,
+        )
+    else:
+        provenance = {
+            'method': 'not_applied_' + mode,
+            'fitted_on_participant_ids': (),
+            'outer_oof_ids_absent': True,
+            'classification_effect': 'sqi_disabled_tier_routing',
+            'runtime_parameters': None,
+        }
+    artifact = config.section('artifact')
+    provenance.update(
+        {
+            'state_machine': 'authoritative_sqi_motion_tiers_v1',
+            'motion_detector': _compact_motion_provenance(motion_detector),
+            'denoiser': {
+                'enabled': bool(artifact['denoiser_enabled']),
+                'configured_reducer': str(artifact['reducer']),
+                'attempt_policy': 'at_most_once_per_unfit_record',
+                'successful_output_tier': 'acceptable_rate_only',
+            },
+            'acceptable_representation_contract': (
+                'pulse_derived_feature_vector_only'
+            ),
+            'diagnostics_only_provenance': diagnostic_provenance,
+        }
+    )
+    return to_strict_json_value(provenance)
+
+
 def _reason_counts(rows: Iterable[Any]) -> dict[str, int]:
     '''Count diagnostic reason codes without retaining one row per beat.'''
 
@@ -938,112 +1188,264 @@ def _compact_dual_optical_diagnostics(
         }
 
 
-def _motion_recovery_decision(
-    quality: Any,
-    *,
-    detector_enabled: bool,
-    degraded_policy: str,
-) -> tuple[bool, dict[str, Any]]:
-    '''Resolve motion-assisted recovery from signal evidence, never role labels.'''
+def _load_reused_motion_detector_for_config(
+    config: Any,
+    paths: Any,
+) -> Any | None:
+    """Load one immutable all-29 detector per cell, never fit inside CV."""
 
-    component = getattr(quality, 'components', {}).get('rate.motion_energy_rms')
-    component_state = getattr(getattr(component, 'state', None), 'value', None)
-    detected = bool(detector_enabled and component_state == 'fail')
-    reducer_requested = degraded_policy == 'denoise_then_extract_rate_features'
-    recoverable = bool(
-        reducer_requested and (detected if detector_enabled else True)
-    )
-    return recoverable, {
-        'enabled': bool(detector_enabled),
-        'source': 'rate.motion_energy_rms_component',
-        'component_state': component_state,
-        'raw_value': getattr(component, 'raw_value', None),
-        'normalized_value': getattr(component, 'normalized_value', None),
-        'motion_detected': detected,
-        'recovery_candidate': recoverable,
+    api = _runtime_imports()
+    artifact = config.section('artifact')
+    if not bool(artifact['motion_detector_enabled']):
+        return None
+    payload = dict(artifact['motion_detector'])
+    declared_path = payload.get('evidence_path')
+    if declared_path is None:
+        raise _ExperimentProtocolError(
+            'enabled_motion_detector_requires_evidence_path'
+        )
+    payload['evidence_path'] = paths.input_path(str(declared_path))
+    payload['enabled'] = True
+    try:
+        detector_config = api['resolve_reused_motion_detector_config'](payload)
+        return api['load_reused_motion_detector'](detector_config)
+    except Exception as exc:
+        raise _ExperimentProtocolError(
+            f'motion_detector_bundle_invalid:{type(exc).__name__}:{exc}'
+        ) from exc
+
+
+def _compact_motion_provenance(detector: Any | None) -> dict[str, Any]:
+    if detector is None:
+        return {
+            'enabled': False,
+            'training_scope': 'not_applicable',
+            'valid_outer_oof_claim': False,
+        }
+    source = dict(detector.provenance)
+    return {
+        'enabled': True,
+        'execution': source['execution'],
+        'training_scope': source['training_scope'],
+        'reuse_scope': source['reuse_scope'],
+        'frailty29_evaluation_relation': source[
+            'frailty29_evaluation_relation'
+        ],
+        'valid_outer_oof_claim': source['valid_outer_oof_claim'],
+        'evidence_path': source['evidence_path'],
+        'evidence_sha256': source['evidence_sha256'],
+        'model_artifact_sha256': source['model_artifact_sha256'],
+        'ekf_config_sha256': source['ekf_config_sha256'],
+        'frozen_bundle_threshold_sha256': source[
+            'frozen_bundle_threshold_sha256'
+        ],
+        'threshold_source': source['threshold_source'],
+        'runtime_device': source['runtime_device'],
+        'window_probability_aggregation': source[
+            'window_probability_aggregation'
+        ],
     }
 
 
-def _route_records(states: list[_RuntimeRecord], config: Any, report: Any, sqi_config: Any, calibrator: Any) -> None:
-    '''direct SQI 后执行 motion override 与 drop XOR reducer / Apply locked routing.'''
+def _route_records(
+    states: list[_RuntimeRecord],
+    config: Any,
+    report: Any,
+    sqi_config: Any | None,
+    calibrator: Any | None,
+    *,
+    motion_detector: Any | None = None,
+) -> None:
+    """Apply the authoritative SQI/motion tiers and one optional recovery."""
 
     api = _runtime_imports()
     QualityState = api['QualityState']
-    RouteState = api['RouteState']
+    QualityTier = api['QualityTier']
     SignalRoute = api['SignalRoute']
     artifact = config.section('artifact')
-    detector = api['resolve_peak_detector_config'](
-        config.section('signal')
+    switches = api['route_module_switches_from_config'](config.to_dict())
+    detector = api['resolve_peak_detector_config'](config.section('signal'))
+    representation_mode = str(
+        getattr(config, 'representation_mode', 'feature_vector')
     )
-    policy = str(artifact['degraded_policy'])
-    if policy not in {'drop', 'denoise_then_extract_rate_features'}:
-        raise _ExperimentProtocolError(f'unsupported_degraded_policy:{policy}')
+    if switches.motion_detector_enabled != (motion_detector is not None):
+        raise _ExperimentProtocolError(
+            'motion_detector_switch_and_loaded_runtime_disagree'
+        )
+    if switches.denoiser_enabled and sqi_config is None:
+        sqi_payload = config.to_dict()
+        sqi_payload['quality'].pop('window_selection', None)
+        sqi_config = api['SqiConfig'].from_resolved(sqi_payload)
+        if sqi_config.calibrator != 'fixed_formula_thresholds_v1':
+            raise _ExperimentProtocolError(
+                'sqi_off_recovery_requires_fixed_formula_thresholds'
+            )
+    compact_motion = _compact_motion_provenance(motion_detector)
+
     for state in states:
         state.intended_route = SignalRoute.DIRECT
+        state.retained = False
+        state.shape_features_eligible = False
         if state.views is None:
             continue
         try:
-            direct_outcome = api['run_quality_mode'](
-                state.views,
-                mode='route',
-                evaluator=api['evaluate_quality'],
-                config=sqi_config,
-                calibrator=calibrator,
-                **_peak_detection_runtime_kwargs(detector),
+            direct = None
+            if switches.sqi_enabled:
+                pulses = _direct_pulses_for_state(state, api, detector)
+                pulse = pulses[api['select_reference_wavelength'](pulses)]
+                direct_outcome = api['run_quality_mode'](
+                    state.views,
+                    mode='route',
+                    evaluator=api['evaluate_quality'],
+                    config=sqi_config,
+                    calibrator=calibrator,
+                    pulse=pulse,
+                    **_peak_detection_runtime_kwargs(detector),
+                )
+                direct = direct_outcome.result
+                state.direct_quality = direct
+
+            motion_decision = None
+            motion_high: bool | None = None
+            if motion_detector is not None:
+                try:
+                    recording = api['motion_recording_from_signal_views'](
+                        state.views,
+                        detector=motion_detector,
+                        record_id=str(state.row.record_id),
+                        participant_id=str(state.row.participant_id),
+                        role=str(state.row.role),
+                    )
+                except ValueError as exc:
+                    if 'gap-repaired native PPG' not in str(exc):
+                        raise _ExperimentProtocolError(
+                            'motion_recording_contract_failed:' + str(exc)
+                        ) from exc
+                    recording = None
+                try:
+                    motion_decision = api['infer_reused_motion_recording'](
+                        motion_detector,
+                        recording,
+                    )
+                except Exception as exc:
+                    raise _ExperimentProtocolError(
+                        f'motion_inference_failed:{type(exc).__name__}:{exc}'
+                    ) from exc
+                if motion_decision.motion_state == 'low_motion':
+                    motion_high = False
+                elif motion_decision.motion_state == 'high_motion':
+                    motion_high = True
+
+            static_role = api['canonicalize_role_family'](
+                str(state.row.role)
+            ) in {'B', 'R'}
+            tier = api['route_quality_tier'](
+                sqi_enabled=switches.sqi_enabled,
+                q_rate_state=(None if direct is None else direct.q_rate.state),
+                q_morph_state=(None if direct is None else direct.q_morph.state),
+                motion_enabled=switches.motion_detector_enabled,
+                motion_high=motion_high,
+                static_role=static_role,
             )
-            direct = direct_outcome.result
-            state.direct_quality = direct
-            recoverable_motion, motion_evidence = _motion_recovery_decision(
-                direct,
-                detector_enabled=bool(artifact['motion_detector_enabled']),
-                degraded_policy=policy,
+            state.quality_tier = tier.tier.value
+            motion_state = (
+                'off'
+                if motion_decision is None
+                else motion_decision.motion_state
             )
-            if recoverable_motion:
-                state.intended_route = SignalRoute.ARTIFACT_RATE_ONLY
-            integrity = api['SegmentIntegrity'](
-                pass_=True,
-                segment_id=str(state.row.record_id),
-                start_sample=0,
-                end_sample=int(state.views.x_filter.shape[0]),
-            )
-            decision = api['route_segment_pre_reduction'](
-                integrity,
-                q_pre=direct,
-                recoverable_motion=recoverable_motion,
-                reducer_enabled=bool(
-                    policy == 'denoise_then_extract_rate_features'
+            route_artifact = {
+                'schema_version': 'ppg_frailty.sqi_motion_route.v1',
+                'segment_id': str(state.row.record_id),
+                'start_sample': 0,
+                'end_sample': int(state.views.x_filter.shape[0]),
+                'quality_mode': _quality_mode(config),
+                'quality_tier': tier.tier.value,
+                'tier_reasons': tuple(tier.reasons),
+                'direct_q_rate_state': (
+                    None if direct is None else direct.q_rate.state.value
                 ),
-            )
-            state.route_artifact = to_strict_json_value(asdict(decision))
-            state.route_artifact['motion_recovery'] = to_strict_json_value(
-                motion_evidence
-            )
-            if decision.state in {
-                RouteState.FULL_DIRECT,
-                RouteState.RATE_ONLY_DIRECT,
-            }:
+                'direct_q_rate_score': (
+                    None if direct is None else direct.q_rate.score
+                ),
+                'direct_q_rate_coverage': (
+                    None if direct is None else direct.q_rate.coverage
+                ),
+                'direct_q_morph_state': (
+                    None if direct is None else direct.q_morph.state.value
+                ),
+                'direct_q_morph_score': (
+                    None if direct is None else direct.q_morph.score
+                ),
+                'direct_q_morph_coverage': (
+                    None if direct is None else direct.q_morph.coverage
+                ),
+                'motion_state': motion_state,
+                'motion_record_probability': (
+                    None
+                    if motion_decision is None
+                    else motion_decision.record_probability
+                ),
+                'motion_threshold': (
+                    None if motion_decision is None else motion_decision.threshold
+                ),
+                'motion_window_count': (
+                    0 if motion_decision is None else motion_decision.window_count
+                ),
+                'motion_provenance': compact_motion,
+                'abstained': False,
+                'abstention_reason': None,
+                'denoiser_attempted': False,
+                'denoiser_id': str(artifact['reducer']),
+                'denoiser_status': 'not_attempted',
+            }
+
+            if tier.tier in {QualityTier.EXCELLENT, QualityTier.ACCEPTABLE}:
+                excellent = tier.tier is QualityTier.EXCELLENT
                 state.final_quality = direct
                 state.route = SignalRoute.DIRECT
-                state.intended_route = SignalRoute.DIRECT
-                state.shape_features_eligible = (
-                    decision.state is RouteState.FULL_DIRECT
-                )
-                state.retained = True
-                state.route_status = str(decision.state.value)
+                state.shape_features_eligible = excellent
                 state.artifact_name = 'identity'
                 state.artifact_version = 'identity_v1'
-                state.route_artifact['configured_reducer_not_executed'] = str(
+                state.route_status = (
+                    'full_direct' if excellent else 'rate_only_direct'
+                )
+                route_artifact['state'] = state.route_status
+                route_artifact['configured_reducer_not_executed'] = str(
                     artifact['reducer']
                 )
+                if excellent or representation_mode == 'feature_vector':
+                    state.retained = True
+                else:
+                    state.reason = (
+                        'acceptable_tier_requires_feature_vector_representation'
+                    )
+                    state.route_status = 'abstained_acceptable_unsupported_representation'
+                    route_artifact['abstained'] = True
+                    route_artifact['abstention_reason'] = state.reason
+                    route_artifact['state'] = state.route_status
+                state.route_artifact = to_strict_json_value(route_artifact)
                 continue
-            if decision.state is RouteState.DEGRADED_DROP:
-                state.reason = ';'.join(decision.reasons)
-                state.route_status = str(decision.state.value)
-                continue
-            if decision.state is not RouteState.RATE_RECOVERY_CANDIDATE:
-                raise _ExperimentProtocolError(
-                    f'unexpected_pre_reduction_route_state:{decision.state.value}'
+
+            motion_unavailable = (
+                motion_decision is not None
+                and motion_decision.motion_state == 'unfit'
+            )
+            if motion_unavailable or not switches.denoiser_enabled:
+                state.route = SignalRoute.DROPPED
+                state.reason = (
+                    motion_decision.reason
+                    if motion_unavailable
+                    else ';'.join(tier.reasons)
                 )
+                state.route_status = 'degraded_drop'
+                route_artifact['state'] = state.route_status
+                route_artifact['abstained'] = True
+                route_artifact['abstention_reason'] = state.reason
+                state.route_artifact = to_strict_json_value(route_artifact)
+                continue
+
+            state.intended_route = SignalRoute.ARTIFACT_RATE_ONLY
+            route_artifact['denoiser_attempted'] = True
             outcome = api['run_artifact_route'](
                 state.views,
                 report.artifact['runtime_reducer'],
@@ -1051,27 +1453,23 @@ def _route_records(states: list[_RuntimeRecord], config: Any, report: Any, sqi_c
             )
             state.artifact_name = outcome.result.reducer_id
             state.artifact_version = outcome.result.reducer_version
-            if outcome.views is None or outcome.route is not SignalRoute.ARTIFACT_RATE_ONLY:
-                if (
-                    outcome.result.status == 'success'
-                    and outcome.result.x_ar is not None
-                    and not outcome.result.is_identity
-                ):
-                    raise _ExperimentProtocolError(
-                        'artifact_success_result_missing_rate_only_views'
-                    )
-                final_route = api['finalize_rate_recovery'](
-                    decision,
-                    reduction=outcome.result,
-                    q_rate_post=None,
+            route_artifact['denoiser_id'] = state.artifact_name
+            route_artifact['denoiser_status'] = outcome.result.status
+            if (
+                outcome.views is None
+                or outcome.route is not SignalRoute.ARTIFACT_RATE_ONLY
+            ):
+                state.route = SignalRoute.DROPPED
+                state.reason = ';'.join(
+                    tuple(tier.reasons) + tuple(outcome.result.reasons)
                 )
-                state.route_artifact = to_strict_json_value(asdict(final_route))
-                state.route_artifact['motion_recovery'] = to_strict_json_value(
-                    motion_evidence
-                )
-                state.reason = ';'.join(final_route.reasons)
-                state.route_status = str(final_route.state.value)
+                state.route_status = 'rejected_after_reduction'
+                route_artifact['state'] = state.route_status
+                route_artifact['abstained'] = True
+                route_artifact['abstention_reason'] = state.reason
+                state.route_artifact = to_strict_json_value(route_artifact)
                 continue
+
             post_outcome = api['run_quality_mode'](
                 outcome.views,
                 mode='route',
@@ -1081,31 +1479,53 @@ def _route_records(states: list[_RuntimeRecord], config: Any, report: Any, sqi_c
                 **_peak_detection_runtime_kwargs(detector),
             )
             post = post_outcome.result
-            if post.q_morph.state is not QualityState.NOT_APPLICABLE or post.q_morph.score is not None:
-                raise _ExperimentProtocolError('nonidentity_post_q_morph_contract_failed')
-            final_route = api['finalize_rate_recovery'](
-                decision,
-                reduction=outcome.result,
-                q_rate_post=post.q_rate,
-            )
-            state.route_artifact = to_strict_json_value(asdict(final_route))
-            state.route_artifact['motion_recovery'] = to_strict_json_value(
-                motion_evidence
-            )
+            if (
+                post.q_morph.state is not QualityState.NOT_APPLICABLE
+                or post.q_morph.score is not None
+            ):
+                raise _ExperimentProtocolError(
+                    'nonidentity_post_q_morph_contract_failed'
+                )
+            route_artifact['post_q_rate_state'] = post.q_rate.state.value
+            route_artifact['post_q_rate_score'] = post.q_rate.score
+            route_artifact['post_q_rate_coverage'] = post.q_rate.coverage
             state.views = outcome.views
             state.final_quality = post
             state.route = SignalRoute.ARTIFACT_RATE_ONLY
             state.shape_features_eligible = False
-            state.route_status = str(final_route.state.value)
-            if final_route.state is RouteState.RATE_ONLY_PROCESSED:
-                state.retained = True
+            if post.q_rate.state is QualityState.PASS:
+                state.quality_tier = QualityTier.ACCEPTABLE.value
+                state.route_status = 'rate_only_processed'
+                state.retained = representation_mode == 'feature_vector'
+                route_artifact['quality_tier'] = QualityTier.ACCEPTABLE.value
+                route_artifact['state'] = state.route_status
+                if not state.retained:
+                    state.reason = (
+                        'acceptable_tier_requires_feature_vector_representation'
+                    )
+                    route_artifact['abstained'] = True
+                    route_artifact['abstention_reason'] = state.reason
             else:
-                state.reason = ';'.join(final_route.reasons)
+                state.route = SignalRoute.DROPPED
+                state.quality_tier = QualityTier.EXCLUDED.value
+                state.reason = 'post_denoise_q_rate_not_pass'
+                state.route_status = 'rejected_after_reduction'
+                route_artifact['quality_tier'] = QualityTier.EXCLUDED.value
+                route_artifact['state'] = state.route_status
+                route_artifact['abstained'] = True
+                route_artifact['abstention_reason'] = state.reason
+            state.route_artifact = to_strict_json_value(route_artifact)
         except _ExperimentProtocolError:
             raise
         except Exception as exc:
-            state.reason = f'quality_route_failed:{type(exc).__name__}:{exc}'
-            state.route_status = 'dropped_quality_route_failure'
+            # Signal-level insufficiency is represented by typed SQI, motion,
+            # and reducer outcomes above.  An unexpected exception here is a
+            # code/configuration/contract failure and must not masquerade as a
+            # scientifically meaningful abstention.
+            raise _ExperimentProtocolError(
+                'quality_route_execution_failed:'
+                f'{state.row.record_id}:{type(exc).__name__}:{exc}'
+            ) from exc
 
 
 def _extract_vector(
@@ -1125,9 +1545,14 @@ def _extract_vector(
         if prv_config_type is None:  # Supports lightweight injected test APIs.
             from .signal.prv import PrvConfig as prv_config_type
         prv_config = prv_config_type.from_mapping(features_config)
-        pulses_per_wavelength = api['detect_pulses_per_wavelength'](
-            state.views,
-            **_peak_detection_runtime_kwargs(report.peak_detector),
+        pulses_per_wavelength = (
+            state.direct_pulses_per_wavelength
+            if state.route in {SignalRoute.DIRECT, SignalRoute.IDENTITY}
+            and state.direct_pulses_per_wavelength is not None
+            else api['detect_pulses_per_wavelength'](
+                state.views,
+                **_peak_detection_runtime_kwargs(report.peak_detector),
+            )
         )
         pulse = pulses_per_wavelength[
             api['select_reference_wavelength'](pulses_per_wavelength)
@@ -1144,13 +1569,22 @@ def _extract_vector(
             ),
             config=prv_config,
         )
-        plan = api['WindowPlan'](
-            source_record_id=state.row.record_id,
-            **report.window_profiles['engineering'],
-        )
-        engineering = api['extract_engineering_features'](state.views, plan=plan)
-        state.engineering = engineering
-        values, validity = api['summarize_engineering'](engineering)
+        pulse_only = state.quality_tier == 'acceptable'
+        if pulse_only:
+            values: dict[str, Any] = {}
+            validity: dict[str, bool] = {}
+            state.engineering = None
+        else:
+            plan = api['WindowPlan'](
+                source_record_id=state.row.record_id,
+                **report.window_profiles['engineering'],
+            )
+            engineering = api['extract_engineering_features'](
+                state.views,
+                plan=plan,
+            )
+            state.engineering = engineering
+            values, validity = api['summarize_engineering'](engineering)
         if state.final_quality is not None:
             values['sqi.q_rate'] = float(state.final_quality.q_rate.score)
             validity['sqi.q_rate'] = True
@@ -1252,12 +1686,21 @@ def _extract_vector(
                 'non_predictor_metadata_fields': non_predictor_names,
                 'sqi_and_coverage_predictors_excluded': True,
                 'prv_config': prv_config.to_dict(),
+                'quality_tier': state.quality_tier,
+                'acceptable_contract': (
+                    'record_specific_pulse_prv_only_nonpulse_slots_missing_'
+                    'outer_train_imputed'
+                    if pulse_only
+                    else 'full_configured_feature_groups'
+                ),
             },
         )
     except Exception as exc:
-        state.retained = False
-        state.reason = f'feature_vector_failed:{type(exc).__name__}:{exc}'
-        state.route_status = 'dropped_feature_vector_failure'
+        _drop_after_routing(
+            state,
+            reason=f'feature_vector_failed:{type(exc).__name__}:{exc}',
+            route_status='dropped_feature_vector_failure',
+        )
 
 
 def _dataset(states: Iterable[_RuntimeRecord]) -> Any:
@@ -1295,6 +1738,36 @@ def _dataset(states: Iterable[_RuntimeRecord]) -> Any:
     )
 
 
+def _extract_matrix_features(state: _RuntimeRecord, report: Any) -> None:
+    '''Extract only the physical 115-feature engineering sequence for matrices.'''
+
+    if not state.retained:
+        return
+    if state.quality_tier == 'acceptable':
+        _drop_after_routing(
+            state,
+            reason='feature_matrix_requires_excellent_full_features',
+            route_status='dropped_feature_matrix_tier_ineligible',
+        )
+        return
+    api = _runtime_imports()
+    try:
+        plan = api['WindowPlan'](
+            source_record_id=state.row.record_id,
+            **report.window_profiles['engineering'],
+        )
+        state.engineering = api['extract_engineering_features'](
+            state.views,
+            plan=plan,
+        )
+    except Exception as exc:
+        _drop_after_routing(
+            state,
+            reason=f'feature_matrix_engineering_failed:{type(exc).__name__}:{exc}',
+            route_status='dropped_feature_matrix_engineering_failure',
+        )
+
+
 def _extract_raw(
     state: _RuntimeRecord,
     report: Any,
@@ -1322,9 +1795,11 @@ def _extract_raw(
             normalization=normalization,
         )
     except Exception as exc:
-        state.retained = False
-        state.reason = f'raw_windows_failed:{type(exc).__name__}:{exc}'
-        state.route_status = 'dropped_raw_window_failure'
+        _drop_after_routing(
+            state,
+            reason=f'raw_windows_failed:{type(exc).__name__}:{exc}',
+            route_status='dropped_raw_window_failure',
+        )
 
 
 def _apply_window_quality_selection(
@@ -1548,7 +2023,8 @@ def _fit_representation_artifacts(
     oof_ids: tuple[str, ...],
     *,
     fitted_objects: dict[str, Any] | None = None,
-    matrix_k: int = 32,
+    matrix_k: int = 150,
+    raw_normalization_override: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     '''Fit and apply only the transforms required by one representation mode.
 
@@ -1582,47 +2058,67 @@ def _fit_representation_artifacts(
             if state.raw_windows.provenance.get('normalization_config') is not None
         ]
         normalization = (
-            dict(normalization_payloads[0])
-            if normalization_payloads
-            else None
+            dict(raw_normalization_override)
+            if raw_normalization_override is not None
+            else (
+                dict(normalization_payloads[0])
+                if normalization_payloads
+                else None
+            )
         )
         if any(dict(value) != normalization for value in normalization_payloads):
             raise _ExperimentProtocolError(
                 'raw_normalization_config_differs_across_outer_fold_records'
             )
-        imu_transform = api['fit_fold_imu_channel_transform'](
-            raw_values,
-            raw_participants,
-            fitted_on_participant_ids=train_ids,
-            outer_train_participant_ids=train_ids,
-            outer_oof_participant_ids=oof_ids,
-            valid_mask=raw_masks,
-            normalization=normalization,
-        )
-        if fitted_objects is not None:
-            fitted_objects['raw_imu'] = imu_transform
-        for state in raw_states:
-            state.raw_windows = api['transform_raw_windows_imu'](
-                state.raw_windows,
-                imu_transform,
-            )
-        provenance['raw_imu'] = {
-            'schema_version': imu_transform.schema_version,
-            'artifact_sha256': imu_transform.artifact_sha256,
-            'fitted_on_participant_ids': imu_transform.fitted_on_participant_ids,
-            'channel_schema': imu_transform.channel_schema,
-            'valid_count': imu_transform.valid_count.tolist(),
-            'strategy': imu_transform.strategy,
-            'parameters': {
-                'iqr_fallback': imu_transform.iqr_fallback,
-                'robust_iqr_divisor': imu_transform.robust_iqr_divisor,
-                'mad_consistency_divisor': imu_transform.mad_consistency_divisor,
-                'scale_epsilon': imu_transform.scale_epsilon,
-                'standard_ddof': imu_transform.standard_ddof,
-            },
-        }
+        from .normalization import IMU_NONE, RawNormalizationConfig
 
-    if mode in {'feature_matrix', 'fusion'}:
+        normalization_config = RawNormalizationConfig.from_mapping(normalization)
+        if normalization_config.raw_imu == IMU_NONE:
+            provenance['raw_imu'] = {
+                'schema_version': 'not_applicable_all8_window_normalized_v1',
+                'artifact_sha256': None,
+                'fitted_on_participant_ids': (),
+                'channel_schema': (
+                    'A_dyn_x', 'A_dyn_y', 'A_dyn_z', 'GX', 'GY', 'GZ'
+                ),
+                'valid_count': None,
+                'strategy': 'none_after_all8_per_window_robust',
+                'parameters': None,
+            }
+        else:
+            imu_transform = api['fit_fold_imu_channel_transform'](
+                raw_values,
+                raw_participants,
+                fitted_on_participant_ids=train_ids,
+                outer_train_participant_ids=train_ids,
+                outer_oof_participant_ids=oof_ids,
+                valid_mask=raw_masks,
+                normalization=normalization,
+            )
+            if fitted_objects is not None:
+                fitted_objects['raw_imu'] = imu_transform
+            for state in raw_states:
+                state.raw_windows = api['transform_raw_windows_imu'](
+                    state.raw_windows,
+                    imu_transform,
+                )
+            provenance['raw_imu'] = {
+                'schema_version': imu_transform.schema_version,
+                'artifact_sha256': imu_transform.artifact_sha256,
+                'fitted_on_participant_ids': imu_transform.fitted_on_participant_ids,
+                'channel_schema': imu_transform.channel_schema,
+                'valid_count': imu_transform.valid_count.tolist(),
+                'strategy': imu_transform.strategy,
+                'parameters': {
+                    'iqr_fallback': imu_transform.iqr_fallback,
+                    'robust_iqr_divisor': imu_transform.robust_iqr_divisor,
+                    'mad_consistency_divisor': imu_transform.mad_consistency_divisor,
+                    'scale_epsilon': imu_transform.scale_epsilon,
+                    'standard_ddof': imu_transform.standard_ddof,
+                },
+            }
+
+    if mode == 'fusion':
         _assert_train_payload_roster(
             states,
             train_ids,
@@ -1662,55 +2158,64 @@ def _fit_representation_artifacts(
             'fusion_tensor_schema': vector_batch.tensor_schema,
         }
 
-        if mode == 'feature_matrix':
-            train_engineering = [
-                state.engineering
-                for state in vector_states
-                if str(state.row.participant_id) in set(train_ids)
-            ]
-            engineering_transform = api['fit_fold_feature_transform'](
-                train_engineering,
-                fitted_on_participant_ids=train_ids,
-                outer_train_participant_ids=train_ids,
-                outer_oof_participant_ids=oof_ids,
-            )
-            if fitted_objects is not None:
-                fitted_objects['engineering'] = engineering_transform
-            engineering_payload = {
-                'center': engineering_transform.center.tolist(),
-                'scale': engineering_transform.scale.tolist(),
-                'feature_names': engineering_transform.feature_names,
-                'fitted_on_participant_ids': engineering_transform.fitted_on_participant_ids,
-            }
-            engineering_hash = api['stable_payload_sha256'](engineering_payload)
-            for state in vector_states:
-                try:
-                    state.transformed_engineering = api['transform_engineering'](
-                        state.engineering,
-                        engineering_transform,
-                    )
-                    state.matrix = api['build_ordered_matrix'](
-                        state.transformed_engineering,
-                        context=state.transformed_vector,
-                        provenance={
-                            'route': state.route.value,
-                            'record_id': state.row.record_id,
-                            'engineering_transform_sha256': engineering_hash,
-                            'feature_vector_transform_sha256': vector_transform.artifact_sha256,
-                        },
-                        k=matrix_k,
-                    )
-                except Exception as exc:
-                    state.retained = False
-                    state.reason = f'feature_matrix_failed:{type(exc).__name__}:{exc}'
-                    state.route_status = 'dropped_feature_matrix_failure'
-            provenance['engineering'] = {
-                **engineering_payload,
-                'artifact_sha256': engineering_hash,
-                'schema_version': 'engineering_outer_train_robust_v2',
-                'matrix_k': int(matrix_k),
-            }
-            _assert_train_payload_roster(states, train_ids, required=('matrix',))
+    if mode == 'feature_matrix':
+        _assert_train_payload_roster(states, train_ids, required=('engineering',))
+        matrix_states = [
+            state
+            for state in _retained_states(states)
+            if state.engineering is not None
+        ]
+        train_engineering = [
+            state.engineering
+            for state in matrix_states
+            if str(state.row.participant_id) in set(train_ids)
+        ]
+        engineering_transform = api['fit_fold_feature_transform'](
+            train_engineering,
+            fitted_on_participant_ids=train_ids,
+            outer_train_participant_ids=train_ids,
+            outer_oof_participant_ids=oof_ids,
+        )
+        if fitted_objects is not None:
+            fitted_objects['engineering'] = engineering_transform
+        engineering_payload = {
+            'center': engineering_transform.center.tolist(),
+            'scale': engineering_transform.scale.tolist(),
+            'feature_names': engineering_transform.feature_names,
+            'fitted_on_participant_ids': engineering_transform.fitted_on_participant_ids,
+        }
+        engineering_hash = api['stable_payload_sha256'](engineering_payload)
+        for state in matrix_states:
+            try:
+                state.transformed_engineering = api['transform_engineering'](
+                    state.engineering,
+                    engineering_transform,
+                )
+                state.matrix = api['build_ordered_matrix'](
+                    state.transformed_engineering,
+                    provenance={
+                        'route': state.route.value,
+                        'record_id': state.row.record_id,
+                        'engineering_transform_sha256': engineering_hash,
+                    },
+                    k=matrix_k,
+                )
+            except Exception as exc:
+                _drop_after_routing(
+                    state,
+                    reason=f'feature_matrix_failed:{type(exc).__name__}:{exc}',
+                    route_status='dropped_feature_matrix_failure',
+                )
+        provenance['engineering'] = {
+            **engineering_payload,
+            'artifact_sha256': engineering_hash,
+            'schema_version': 'engineering_outer_train_robust_v3',
+            'matrix_k': int(matrix_k),
+            'matrix_predictor_channels': 115,
+            'file_context_predictor_channels': 0,
+            'validity_predictor_channels': 0,
+        }
+        _assert_train_payload_roster(states, train_ids, required=('matrix',))
 
     if mode == 'fusion':
         _assert_train_payload_roster(
@@ -1736,10 +2241,25 @@ def _legacy_bridge_representation_artifacts(
             'raw',
             train_ids,
             oof_ids,
+            raw_normalization_override={'raw_imu': 'outer_train_robust'},
         )
+        if profile.protocol_design != 'cumulative_chain_v1':
+            actual_imu_schema = tuple(profile.channel_schema[2:])
+            transform_schema = tuple(provenance['raw_imu']['channel_schema'])
+            provenance['raw_imu']['actual_ordered_source_channel_schema'] = (
+                actual_imu_schema
+            )
+            provenance['raw_imu']['registry_schema_is_positional_alias_only'] = (
+                actual_imu_schema != transform_schema
+            )
+            provenance['raw_imu']['tensor_channel_order_changed_by_alias'] = False
         provenance['legacy_bridge_normalization_stage'] = {
             'profile_id': profile.profile_id,
-            'ppg': 'per_window_all_eight_builder_scales_red_ir_only_for_L4_plus',
+            'ppg': (
+                'legacy_profile_specific_window_scaling'
+                if profile.protocol_design == 'cumulative_chain_v1'
+                else 'legacy_profile_specific_window_scaling'
+            ),
             'imu': 'outer_train_axes6_fold_robust',
         }
         provenance['legacy_bridge_window_materialization'] = {
@@ -1749,7 +2269,7 @@ def _legacy_bridge_representation_artifacts(
             'cap_per_file': profile.max_windows_per_file,
         }
         return provenance
-    complete_windows_only = profile.profile_id != 'L0'
+    complete_windows_only = not profile.resolved_allow_short_record_padding
     window_materialization = {
         'end_alignment': 'include_right_aligned_if_distinct',
         'padding': (
@@ -2254,6 +2774,16 @@ def _prepare_legacy_bridge_model_factory(
     return _LegacyBridgePreparedFactory(canonical, provenance)
 
 
+def _legacy_bridge_allowed_model_ids(profile: Any) -> frozenset[str]:
+    '''Return the model family scope declared by the protocol design.'''
+
+    if profile.protocol_design != 'cumulative_chain_v1':
+        return frozenset({'compact_cnn', 'inception_full'})
+    if profile.profile_id == 'L0':
+        return frozenset({'compact_cnn', 'inception_full'})
+    return frozenset({'compact_cnn'})
+
+
 @dataclass(frozen=True)
 class _TrustedFull29Materialization:
     '''Internally materialised all-29 representation and immutable evidence.'''
@@ -2377,29 +2907,19 @@ def _materialize_trusted_full29(
         lambda row, maximum: api['_load_record'](row, paths, max_samples=maximum),
         calibration_rows=row_values,
     )
-    quality_mode = _quality_mode(config)
-    if quality_mode == 'route':
-        sqi_config, calibrator = _fit_quality_calibrator(
-            states,
-            config,
-            participant_ids,
-            (),
-        )
-        _route_records(states, config, report, sqi_config, calibrator)
-        quality_provenance = _quality_route_provenance(
-            sqi_config,
-            calibrator,
-            (),
-        )
-    else:
-        quality_provenance = _retain_without_quality_routing(
-            states,
-            config,
-            diagnostics_only=quality_mode == 'diagnostics_only',
-        )
+    quality_provenance = _apply_quality_motion_routing(
+        states,
+        config,
+        report,
+        paths,
+        train_ids=participant_ids,
+        oof_ids=(),
+    )
     for state in states:
-        if mode in {'feature_vector', 'feature_matrix', 'fusion'}:
+        if mode in {'feature_vector', 'fusion'}:
             _extract_vector(state, report, config.section('features'))
+        elif mode == 'feature_matrix':
+            _extract_matrix_features(state, report)
         if mode in {'raw', 'fusion'}:
             _extract_raw(state, report, config.section('signal'))
     window_selection_provenance = (
@@ -2427,7 +2947,7 @@ def _materialize_trusted_full29(
     required_by_mode = {
         'raw': ('raw_windows',),
         'feature_vector': ('vector',),
-        'feature_matrix': ('vector', 'engineering'),
+        'feature_matrix': ('engineering',),
         'fusion': ('vector', 'engineering', 'raw_windows'),
     }
     if mode not in required_by_mode:
@@ -2444,7 +2964,7 @@ def _materialize_trusted_full29(
         participant_ids,
         (),
         fitted_objects=fitted_objects,
-        matrix_k=config.section('features').get('matrix_k', 32),
+        matrix_k=config.section('features').get('matrix_k', 150),
     )
     if window_selection_provenance is not None:
         representation_provenance['window_quality_selection'] = (
@@ -2847,32 +3367,66 @@ def _make_oof(
     )
 
 
-def _require_retained_oof(subject_rows: Iterable[Any]) -> None:
-    '''Reject a cell with no usable participant prediction / 拒绝零可用参与者预测。'''
-
-    if not any(bool(row.retained) for row in subject_rows):
-        raise _ExperimentProtocolError('outer_oof_zero_retained_predictions')
-
-
 def _evaluate_subjects(subject_rows: tuple[Any, ...], total: int) -> dict[str, Any]:
-    '''计算 participant metrics / Compute participant-unit metrics.'''
+    '''Compute conditional and abstention-aware participant metrics.'''
 
     api = _runtime_imports()
     retained = [row for row in subject_rows if row.retained]
-    if not retained:
-        return {
+    dropped = [row for row in subject_rows if not row.retained]
+    if len(retained) + len(dropped) != total:
+        raise _ExperimentProtocolError(
+            'participant_metric_roster_does_not_match_outer_fold'
+        )
+    probability = api['np'].asarray(
+        [row.probabilities for row in retained],
+        dtype=api['np'].float64,
+    ).reshape((len(retained), 3))
+    aware = api['evaluate_predictions_with_abstentions'](
+        api['np'].asarray([row.label for row in retained]),
+        probability,
+        api['np'].asarray([row.label for row in dropped]),
+        class_order=(0, 1, 2),
+    )
+    conditional = aware.conditional_metrics
+    payload = (
+        {
             'status': 'unavailable_no_retained_participant',
+            'n_rows': 0,
             'n_total': total,
             'n_retained': 0,
+            'n_dropped': total,
             'coverage_rate': 0.0,
+            'balanced_accuracy': None,
+            'macro_f1': None,
+            'multiclass_log_loss': None,
+            'multiclass_brier': None,
+            'expected_calibration_error': None,
+            'confusion_matrix': ((0, 0, 0), (0, 0, 0), (0, 0, 0)),
+            'class_order': (0, 1, 2),
+            'per_class': (),
+            'worst_class_label': None,
+            'worst_class_precision': None,
+            'worst_class_recall': None,
+            'worst_class_f1': None,
         }
-    metrics = api['evaluate_predictions'](
-        api['np'].asarray([row.label for row in retained]),
-        api['np'].asarray([row.probabilities for row in retained]),
-        class_order=(0, 1, 2),
-        n_total=total,
+        if conditional is None
+        else asdict(conditional)
     )
-    return to_strict_json_value(asdict(metrics))
+    payload.update(
+        {
+            'abstention_aware_balanced_accuracy': aware.balanced_accuracy,
+            'abstention_aware_macro_precision': aware.macro_precision,
+            'abstention_aware_macro_recall': aware.macro_recall,
+            'abstention_aware_macro_f1': aware.macro_f1,
+            'abstention_count': aware.n_abstained,
+            'abstention_counts_by_class': aware.abstention_counts_by_class,
+            'abstention_aware_per_class': aware.per_class,
+            'abstention_probability_metrics_scope': (
+                aware.probability_metrics_scope
+            ),
+        }
+    )
+    return to_strict_json_value(payload)
 
 
 def _batch1_operational_model_input(
@@ -2920,7 +3474,11 @@ def _reserved_legacy_bridge_profile_id(config: Any) -> str | None:
             'legacy_bridge_reserved_config_identity_malformed'
         )
     suffix = config_id.split(marker, 1)[1]
-    if suffix not in {f'l{level}' for level in range(8)}:
+    if (
+        not suffix
+        or not suffix[0].isalpha()
+        or not suffix.replace('_', '').isalnum()
+    ):
         raise _ExperimentProtocolError(
             'legacy_bridge_reserved_config_identity_malformed'
         )
@@ -2941,11 +3499,15 @@ def _assert_legacy_bridge_entrypoint_contract(
             'legacy_bridge_reserved_config_requires_dedicated_entrypoint'
         )
     if legacy_bridge is not None and reserved_profile_id is not None:
-        if legacy_bridge.profile.profile_id != reserved_profile_id:
+        requested_profile_id = legacy_bridge.profile.profile_id
+        if not (
+            reserved_profile_id == requested_profile_id
+            or reserved_profile_id.startswith(f'{requested_profile_id}_')
+        ):
             raise _ExperimentProtocolError(
                 'legacy_bridge_reserved_config_profile_mismatch:'
                 f'config={reserved_profile_id}:requested='
-                f'{legacy_bridge.profile.profile_id}'
+                f'{requested_profile_id}'
             )
     if dedicated_entrypoint and legacy_bridge is not None:
         if reserved_profile_id is None:
@@ -3003,12 +3565,14 @@ def _execute_cell_unchecked(
         quality_mode = _quality_mode(config)
         if quality_mode != 'off':
             raise _ExperimentProtocolError('legacy_bridge_requires_quality_mode_off')
-        if bridge_profile.uses_legacy_preprocessing:
+        if bridge_profile.builds_windows_from_raw_record:
             quality_provenance = _preprocess_legacy_bridge_records(
                 states,
                 bridge_profile,
                 maximum_seconds,
                 actual_loader,
+                config=config,
+                calibration_rows=row_values,
             )
         else:
             _preprocess_records(
@@ -3027,36 +3591,34 @@ def _execute_cell_unchecked(
             calibration_rows=row_values,
         )
         quality_mode = _quality_mode(config)
-    if bridge_profile is not None and bridge_profile.uses_legacy_preprocessing:
+    if bridge_profile is not None and bridge_profile.builds_windows_from_raw_record:
         pass
-    elif quality_mode == 'route':
-        sqi_config, calibrator = _fit_quality_calibrator(
-            states,
-            config,
-            train_ids,
-            oof_ids,
-        )
-        _route_records(states, config, report, sqi_config, calibrator)
-        quality_provenance = _quality_route_provenance(
-            sqi_config,
-            calibrator,
-            oof_ids,
-        )
     else:
-        quality_provenance = _retain_without_quality_routing(
+        quality_provenance = _apply_quality_motion_routing(
             states,
             config,
-            diagnostics_only=quality_mode == 'diagnostics_only',
+            report,
+            paths,
+            train_ids=train_ids,
+            oof_ids=oof_ids,
         )
 
     for state in states:
-        if mode in {'feature_vector', 'feature_matrix', 'fusion'}:
+        if mode in {'feature_vector', 'fusion'}:
             _extract_vector(state, report, config.section('features'))
+        elif mode == 'feature_matrix':
+            _extract_matrix_features(state, report)
         if mode in {'raw', 'fusion'}:
-            if bridge_profile is not None and bridge_profile.uses_legacy_preprocessing:
+            if (
+                bridge_profile is not None
+                and bridge_profile.builds_windows_from_raw_record
+            ):
                 continue
-            if bridge_profile is not None and bridge_profile.profile_id == 'L3':
-                _extract_l3_bridge_raw(state, bridge_profile)
+            if (
+                bridge_profile is not None
+                and bridge_profile.uses_canonical_all_channel_window_scaling
+            ):
+                _extract_canonical_all_channel_bridge_raw(state, bridge_profile)
             else:
                 _extract_raw(state, report, config.section('signal'))
 
@@ -3086,7 +3648,7 @@ def _execute_cell_unchecked(
     required_by_mode = {
         'raw': ('raw_windows',),
         'feature_vector': ('vector',),
-        'feature_matrix': ('vector', 'engineering'),
+        'feature_matrix': ('engineering',),
         'fusion': ('vector', 'engineering', 'raw_windows'),
     }
     _assert_train_payload_roster(
@@ -3107,7 +3669,7 @@ def _execute_cell_unchecked(
             mode,
             train_ids,
             oof_ids,
-            matrix_k=config.section('features').get('matrix_k', 32),
+            matrix_k=config.section('features').get('matrix_k', 150),
         )
     )
     if window_selection_provenance is not None:
@@ -3236,11 +3798,7 @@ def _execute_cell_unchecked(
     )
     model_section = config.section('model')
     if bridge_profile is not None:
-        allowed_bridge_models = (
-            {'compact_cnn', 'inception_full'}
-            if bridge_profile.profile_id == 'L0'
-            else {'compact_cnn'}
-        )
+        allowed_bridge_models = _legacy_bridge_allowed_model_ids(bridge_profile)
         if model_id not in allowed_bridge_models:
             raise _ExperimentProtocolError(
                 f'legacy_bridge_profile_model_mismatch:{bridge_profile.profile_id}:'
@@ -3333,7 +3891,8 @@ def _execute_cell_unchecked(
             n_folds=int(training_config.inner_grouped_folds),
             seed=int(training_config.seed),
         )
-    if _model_uses_estimator(model_id):
+    uses_estimator = _model_uses_estimator(model_id)
+    if uses_estimator:
         training = trainer.fit_estimator(
             prepared(),
             train_dataset,
@@ -3414,10 +3973,10 @@ def _execute_cell_unchecked(
         model_input = _batch1_operational_model_input(
             oof_dataset,
             mode=mode,
-            estimator=model_id in estimator_ids,
+            estimator=uses_estimator,
         )
         operational_model = training.model
-        if model_id not in estimator_ids:
+        if not uses_estimator:
             import torch
 
             # The registered deployment metric is deliberately CPU batch-1.
@@ -3475,6 +4034,19 @@ def _execute_cell_unchecked(
                     'source_specification_sha256': (
                         legacy_bridge.source_specification_sha256
                     ),
+                    **(
+                        {
+                            'protocol_design': legacy_bridge.protocol_design,
+                            'profile_definition_sha256': (
+                                legacy_bridge.profile_definition_sha256
+                            ),
+                            'training_identity_sha256': (
+                                bridge_profile.training_identity_sha256
+                            ),
+                        }
+                        if legacy_bridge.protocol_design != 'cumulative_chain_v1'
+                        else {}
+                    ),
                 }
                 if bridge_profile is not None
                 else {}
@@ -3517,6 +4089,16 @@ def _execute_cell_unchecked(
                     'source_specification_sha256': (
                         legacy_bridge.source_specification_sha256
                     ),
+                    **(
+                        {
+                            'protocol_design': legacy_bridge.protocol_design,
+                            'profile_definition_sha256': (
+                                legacy_bridge.profile_definition_sha256
+                            ),
+                        }
+                        if legacy_bridge.protocol_design != 'cumulative_chain_v1'
+                        else {}
+                    ),
                 }}
                 if bridge_profile is not None
                 else {}
@@ -3544,12 +4126,12 @@ def _execute_cell_unchecked(
             'end_alignment': 'include_right_aligned_if_distinct',
             'padding': (
                 'none_complete_windows_only'
-                if bridge_profile.profile_id != 'L0'
+                if not bridge_profile.resolved_allow_short_record_padding
                 else 'zero_right_only_if_source_shorter_than_one_window'
             ),
             'min_valid_fraction': (
                 1.0
-                if bridge_profile.profile_id != 'L0'
+                if not bridge_profile.resolved_allow_short_record_padding
                 else 'all_available_source_rows_valid_before_optional_padding'
             ),
             'cap_per_file': bridge_profile.max_windows_per_file,
@@ -3679,6 +4261,15 @@ def _execute_cell_unchecked(
                 {
                     'balance_line': balance_line,
                     'profile_id': bridge_profile.profile_id,
+                    **(
+                        {
+                            'primary_report_aggregation_view': (
+                                bridge_profile.resolved_primary_report_aggregation_view
+                            ),
+                        }
+                        if bridge_profile.protocol_design != 'cumulative_chain_v1'
+                        else {}
+                    ),
                 }
                 if bridge_profile is not None
                 else dict(aggregation_section)
@@ -3690,13 +4281,30 @@ def _execute_cell_unchecked(
         }
     if bridge_profile is not None:
         frozen_run_provenance = {
-            'schema_version': 'ppg_frailty.legacy_bridge_frozen_model_run.v1',
+            'schema_version': (
+                'ppg_frailty.legacy_bridge_frozen_model_run.v1'
+                if legacy_bridge.protocol_design == 'cumulative_chain_v1'
+                else 'ppg_frailty.legacy_bridge_frozen_model_run.v2'
+            ),
             'canonical_v2_validator_modified_or_relaxed': False,
             'canonical_v2_validator_applied_to_noncanonical_profile': False,
             'profile': bridge_profile.to_dict(),
             'source_specification': legacy_bridge.source_specification,
             'source_specification_sha256': (
                 legacy_bridge.source_specification_sha256
+            ),
+            **(
+                {
+                    'protocol_design': legacy_bridge.protocol_design,
+                    'profile_definition_sha256': (
+                        legacy_bridge.profile_definition_sha256
+                    ),
+                    'training_identity_sha256': (
+                        bridge_profile.training_identity_sha256
+                    ),
+                }
+                if legacy_bridge.protocol_design != 'cumulative_chain_v1'
+                else {}
             ),
             'manifest_sha256': legacy_bridge.manifest_sha256,
             'split_sha256': legacy_bridge.split_sha256,
@@ -3824,6 +4432,31 @@ def _execute_cell_unchecked(
                 config.section('aggregation')['quality_weight_source']
             ),
         )
+    bridge_window_probability_sha256 = (
+        api['stable_payload_sha256'](
+            [
+                {
+                    'participant_id': row.participant_id,
+                    'file_id': row.file_id,
+                    'role': row.role,
+                    'label': int(row.label),
+                    'window_id': row.window_id,
+                    'probabilities': tuple(float(value) for value in row.probabilities),
+                }
+                for row in sorted(
+                    window_rows,
+                    key=lambda value: (
+                        value.participant_id,
+                        value.file_id,
+                        value.role,
+                        str(value.window_id),
+                    ),
+                )
+            ]
+        )
+        if bridge_profile is not None
+        else None
+    )
     api['validate_expected_oof_roster'](
         (*member_rows, *subject_rows),
         {
@@ -3837,7 +4470,6 @@ def _execute_cell_unchecked(
         expected_member_count=len(ensemble_member_seeds) if is_ensemble else 1,
         expect_ensemble=is_ensemble,
     )
-    _require_retained_oof(subject_rows)
     metrics = _evaluate_subjects(subject_rows, len(oof_ids))
     archived_training_history: list[dict[str, Any]] = []
     sampling_diagnostic_rows: list[dict[str, Any]] = []
@@ -3923,7 +4555,11 @@ def _execute_cell_unchecked(
                     sampling_diagnostic_rows
                 ),
                 'legacy_bridge': {
-                    'schema_version': 'ppg_frailty.legacy_bridge_execution.v1',
+                    'schema_version': (
+                        'ppg_frailty.legacy_bridge_execution.v1'
+                        if legacy_bridge.protocol_design == 'cumulative_chain_v1'
+                        else 'ppg_frailty.legacy_bridge_execution.v2'
+                    ),
                     'profile': bridge_profile.to_dict(),
                     'source_specification': legacy_bridge.source_specification,
                     'source_specification_sha256': (
@@ -3935,6 +4571,28 @@ def _execute_cell_unchecked(
                     'effective_config_hash': legacy_bridge.effective_config_hash,
                     'fresh_current_raw_csv_training_input': True,
                     'historical_cache_used_for_training': False,
+                    **(
+                        {
+                            'protocol_design': legacy_bridge.protocol_design,
+                            'profile_definition_sha256': (
+                                legacy_bridge.profile_definition_sha256
+                            ),
+                            'training_identity_sha256': (
+                                bridge_profile.training_identity_sha256
+                            ),
+                            'primary_report_aggregation_view': (
+                                bridge_profile.resolved_primary_report_aggregation_view
+                            ),
+                            'train_dataset_binding_hash': (
+                                training.provenance.dataset_binding_hash
+                            ),
+                            'oof_window_probability_sha256': (
+                                bridge_window_probability_sha256
+                            ),
+                        }
+                        if legacy_bridge.protocol_design != 'cumulative_chain_v1'
+                        else {}
+                    ),
                     'resolved_dropout_comparison': (
                         resolved_dropout_comparison
                     ),
@@ -3946,7 +4604,7 @@ def _execute_cell_unchecked(
         'learning_curve_contract': {
             'status': (
                 'not_applicable_non_iterative_estimator'
-                if not training.history and model_id in estimator_ids
+                if not training.history and uses_estimator
                 else (
                     'outer_train_loss_and_participant_ba_fixed_epoch'
                     if any(
@@ -4016,17 +4674,7 @@ def _execute_cell_unchecked(
             if state.diagnostic_components or state.diagnostic_reason is not None
         ],
         'route_artifacts': [
-            {
-                'record_id': state.row.record_id,
-                'participant_id': state.row.participant_id,
-                'role': state.row.role,
-                'retained': state.retained,
-                'route_status': state.route_status,
-                'artifact_reducer_name': state.artifact_name,
-                'artifact_reducer_version': state.artifact_version,
-                'route_artifact': state.route_artifact,
-            }
-            for state in states
+            _persisted_route_artifact_row(state) for state in states
         ],
         'physical_recording_qc': [
             {
@@ -4429,52 +5077,82 @@ def _resolve_legacy_bridge_execution(
     config: Any,
     *,
     profile_id: str,
-    source_specification: str,
-    source_specification_sha256: str,
+    source_specification: str | None = None,
+    source_specification_sha256: str | None = None,
+    protocol_design: str = 'cumulative_chain_v1',
+    profile_definition: Mapping[str, Any] | None = None,
+    profile_definition_sha256: str | None = None,
 ) -> _LegacyBridgeExecution:
     '''Bind bridge execution only to algorithm inputs, never to audit status.'''
 
     from .legacy_bridge import resolve_legacy_bridge_profile
     from .provenance import stable_payload_sha256
 
-    relative = Path(str(source_specification))
-    if relative.is_absolute() or relative.as_posix() != (
-        _LEGACY_BRIDGE_SOURCE_SPECIFICATION
-    ):
+    design = str(protocol_design)
+    relative: Path | None = None
+    observed_sha256: str | None = None
+    if design == 'cumulative_chain_v1':
+        if source_specification is None or source_specification_sha256 is None:
+            raise _ExperimentProtocolError(
+                'legacy_bridge_cumulative_source_specification_required'
+            )
+        relative = Path(str(source_specification))
+        if relative.is_absolute() or relative.as_posix() != (
+            _LEGACY_BRIDGE_SOURCE_SPECIFICATION
+        ):
+            raise _ExperimentProtocolError(
+                'legacy_bridge_source_specification_path_not_reviewed'
+            )
+        source_path = (paths.repository_root / relative).resolve()
+        try:
+            source_path.relative_to(paths.repository_root.resolve())
+        except ValueError as exc:
+            raise _ExperimentProtocolError(
+                'legacy_bridge_source_specification_escapes_repository'
+            ) from exc
+        if not source_path.is_file():
+            raise _ExperimentProtocolError(
+                f'legacy_bridge_source_specification_missing:{relative.as_posix()}'
+            )
+        declared_sha256 = str(source_specification_sha256)
+        if (
+            len(declared_sha256) != 64
+            or any(value not in '0123456789abcdef' for value in declared_sha256)
+        ):
+            raise _ExperimentProtocolError(
+                'legacy_bridge_source_specification_sha256_invalid'
+            )
+        observed_sha256 = hashlib.sha256(source_path.read_bytes()).hexdigest()
+        if observed_sha256 != declared_sha256:
+            raise _ExperimentProtocolError(
+                'legacy_bridge_source_specification_sha256_mismatch:'
+                f'expected={declared_sha256}:observed={observed_sha256}'
+            )
+    elif design in {'centered_star_v1', 'field_driven_followup_v1'}:
+        if source_specification is not None or source_specification_sha256 is not None:
+            raise _ExperimentProtocolError(
+                'field_driven_bridge_uses_inline_profile_not_legacy_source_specification'
+            )
+    else:
         raise _ExperimentProtocolError(
-            'legacy_bridge_source_specification_path_not_reviewed'
-        )
-    source_path = (paths.repository_root / relative).resolve()
-    try:
-        source_path.relative_to(paths.repository_root.resolve())
-    except ValueError as exc:
-        raise _ExperimentProtocolError(
-            'legacy_bridge_source_specification_escapes_repository'
-        ) from exc
-    if not source_path.is_file():
-        raise _ExperimentProtocolError(
-            f'legacy_bridge_source_specification_missing:{relative.as_posix()}'
-        )
-    declared_sha256 = str(source_specification_sha256)
-    if (
-        len(declared_sha256) != 64
-        or any(value not in '0123456789abcdef' for value in declared_sha256)
-    ):
-        raise _ExperimentProtocolError(
-            'legacy_bridge_source_specification_sha256_invalid'
-        )
-    observed_sha256 = hashlib.sha256(source_path.read_bytes()).hexdigest()
-    if observed_sha256 != declared_sha256:
-        raise _ExperimentProtocolError(
-            'legacy_bridge_source_specification_sha256_mismatch:'
-            f'expected={declared_sha256}:observed={observed_sha256}'
+            f'legacy_bridge_protocol_design_unsupported:{design}'
         )
     manifest_path = paths.input_path(config.section('manifest')['path'])
     split_path = paths.input_path(config.section('splits')['path'])
     manifest_sha256 = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
     split_sha256 = hashlib.sha256(split_path.read_bytes()).hexdigest()
-    profile = resolve_legacy_bridge_profile(profile_id)
-    effective_config_hash = stable_payload_sha256(
+    try:
+        profile = resolve_legacy_bridge_profile(
+            profile_id,
+            protocol_design=design,
+            profile_definition=profile_definition,
+            profile_definition_sha256=profile_definition_sha256,
+        )
+    except (TypeError, ValueError) as exc:
+        raise _ExperimentProtocolError(
+            f'legacy_bridge_profile_definition_invalid:{exc}'
+        ) from exc
+    effective_payload = (
         {
             'schema_version': 'ppg_frailty.legacy_bridge_effective_config.v2',
             'canonical_config_hash': config.sha256,
@@ -4484,14 +5162,27 @@ def _resolve_legacy_bridge_execution(
             'manifest_sha256': manifest_sha256,
             'split_sha256': split_sha256,
         }
+        if design == 'cumulative_chain_v1'
+        else {
+            'schema_version': 'ppg_frailty.legacy_bridge_effective_config.v3',
+            'canonical_config_hash': config.sha256,
+            'protocol_design': design,
+            'profile': profile.to_dict(),
+            'profile_definition_sha256': profile.profile_definition_sha256,
+            'manifest_sha256': manifest_sha256,
+            'split_sha256': split_sha256,
+        }
     )
+    effective_config_hash = stable_payload_sha256(effective_payload)
     return _LegacyBridgeExecution(
         profile=profile,
-        source_specification=relative.as_posix(),
+        source_specification=(None if relative is None else relative.as_posix()),
         source_specification_sha256=observed_sha256,
         manifest_sha256=manifest_sha256,
         split_sha256=split_sha256,
         effective_config_hash=effective_config_hash,
+        protocol_design=design,
+        profile_definition_sha256=profile.profile_definition_sha256,
     )
 
 
@@ -4510,6 +5201,9 @@ def _run_one_outer_cell(
     legacy_bridge_profile_id: str | None = None,
     legacy_bridge_source_specification: str | None = None,
     legacy_bridge_source_specification_sha256: str | None = None,
+    legacy_bridge_protocol_design: str = 'cumulative_chain_v1',
+    legacy_bridge_profile_definition: Mapping[str, Any] | None = None,
+    legacy_bridge_profile_definition_sha256: str | None = None,
 ) -> ExperimentResult:
     if repeat_index not in range(5) or fold_index not in range(5):
         raise ValueError("repeat_index and fold_index must lie in 0..4")
@@ -4520,26 +5214,36 @@ def _run_one_outer_cell(
         mode="full",
         paths=paths,
     )
-    bridge_values = (
-        legacy_bridge_profile_id,
-        legacy_bridge_source_specification,
-        legacy_bridge_source_specification_sha256,
+    effective_epoch_override = _epoch_override_for_backend(
+        config,
+        epoch_override,
     )
-    if any(value is not None for value in bridge_values) and not all(
-        value is not None for value in bridge_values
+    bridge_requested = legacy_bridge_profile_id is not None
+    if not bridge_requested and (
+        legacy_bridge_protocol_design != 'cumulative_chain_v1'
+        or any(
+            value is not None
+            for value in (
+                legacy_bridge_source_specification,
+                legacy_bridge_source_specification_sha256,
+                legacy_bridge_profile_definition,
+                legacy_bridge_profile_definition_sha256,
+            )
+        )
     ):
-        raise ValueError('legacy bridge execution requires profile, source path and SHA')
+        raise ValueError('legacy bridge metadata requires a profile identifier')
     legacy_bridge = (
         _resolve_legacy_bridge_execution(
             paths,
             config,
             profile_id=str(legacy_bridge_profile_id),
-            source_specification=str(legacy_bridge_source_specification),
-            source_specification_sha256=str(
-                legacy_bridge_source_specification_sha256
-            ),
+            source_specification=legacy_bridge_source_specification,
+            source_specification_sha256=legacy_bridge_source_specification_sha256,
+            protocol_design=str(legacy_bridge_protocol_design),
+            profile_definition=legacy_bridge_profile_definition,
+            profile_definition_sha256=legacy_bridge_profile_definition_sha256,
         )
-        if all(value is not None for value in bridge_values)
+        if bridge_requested
         else None
     )
     _assert_legacy_bridge_entrypoint_contract(
@@ -4570,7 +5274,7 @@ def _run_one_outer_cell(
                 fold_index=fold_index,
                 maximum_seconds=maximum_seconds,
                 record_cap=record_cap,
-                epoch_override=epoch_override,
+                epoch_override=effective_epoch_override,
                 measure_operational_costs=bool(measure_operational_costs),
                 legacy_bridge=legacy_bridge,
             )
@@ -4597,7 +5301,7 @@ def _run_one_outer_cell(
                     "frozen_outer_split": True,
                     "record_seconds_cap": maximum_seconds,
                     "record_cap_per_participant": record_cap,
-                    "fixed_epochs_override": epoch_override,
+                    "fixed_epochs_override": effective_epoch_override,
                     "code_version": _code_version(),
                     "source_version": _source_version(),
                     **(
@@ -4617,6 +5321,22 @@ def _run_one_outer_cell(
                             ),
                             'manifest_sha256': legacy_bridge.manifest_sha256,
                             'split_sha256': legacy_bridge.split_sha256,
+                            **(
+                                {
+                                    'protocol_design': legacy_bridge.protocol_design,
+                                    'profile_definition_sha256': (
+                                        legacy_bridge.profile_definition_sha256
+                                    ),
+                                    'training_identity_sha256': (
+                                        legacy_bridge.profile.training_identity_sha256
+                                    ),
+                                    'primary_report_aggregation_view': (
+                                        legacy_bridge.profile.resolved_primary_report_aggregation_view
+                                    ),
+                                }
+                                if legacy_bridge.protocol_design != 'cumulative_chain_v1'
+                                else {}
+                            ),
                         }
                         if legacy_bridge is not None
                         else {}
@@ -4661,6 +5381,22 @@ def _run_one_outer_cell(
                             ),
                             'manifest_sha256': legacy_bridge.manifest_sha256,
                             'split_sha256': legacy_bridge.split_sha256,
+                            **(
+                                {
+                                    'protocol_design': legacy_bridge.protocol_design,
+                                    'profile_definition_sha256': (
+                                        legacy_bridge.profile_definition_sha256
+                                    ),
+                                    'training_identity_sha256': (
+                                        legacy_bridge.profile.training_identity_sha256
+                                    ),
+                                    'primary_report_aggregation_view': (
+                                        legacy_bridge.profile.resolved_primary_report_aggregation_view
+                                    ),
+                                }
+                                if legacy_bridge.protocol_design != 'cumulative_chain_v1'
+                                else {}
+                            ),
                         }
                         if legacy_bridge is not None
                         else {}
@@ -4731,22 +5467,29 @@ def run_legacy_bridge_outer_cell(
     output_dir: str | Path,
     *,
     profile_id: str,
-    source_specification: str,
-    source_specification_sha256: str,
+    source_specification: str | None = None,
+    source_specification_sha256: str | None = None,
+    protocol_design: str = 'cumulative_chain_v1',
+    profile_definition: Mapping[str, Any] | None = None,
+    profile_definition_sha256: str | None = None,
     progress_callback: Any = None,
     measure_operational_costs: bool = False,
 ) -> ExperimentResult:
-    '''Run one isolated L0--L7 bridge cell from fresh raw CSV bytes.
+    '''Run one isolated source-bound or field-driven cell from fresh raw bytes.
 
-    This is intentionally a separate entry point because L0--L7 are frozen
-    historical comparison profiles.  Ordinary V2 exposes the reusable sampler,
-    weighting, preprocessing, and optimizer modules through its own configurable
-    runtime rather than treating this bridge as an authorization path.  Phase 0
-    is an advisory study audit and is not an input to this algorithm entry point.
+    This remains a separate entry point for source-bound cumulative profiles and
+    inline hash-bound profiles. Ordinary V2 exposes the reusable
+    sampler, weighting, preprocessing, and optimizer modules through its own
+    configurable runtime. Phase 0 is advisory and is not an algorithm input.
     '''
 
-    if int(repeat_index) != 0:
-        raise ValueError('legacy bridge execution is frozen to repeat_index=0')
+    if (
+        str(protocol_design) == 'cumulative_chain_v1'
+        and int(repeat_index) != 0
+    ):
+        raise ValueError(
+            'cumulative legacy bridge execution is frozen to repeat_index=0'
+        )
     return _run_one_outer_cell(
         config_path,
         repeat_index=int(repeat_index),
@@ -4759,10 +5502,11 @@ def run_legacy_bridge_outer_cell(
         progress_callback=progress_callback,
         measure_operational_costs=measure_operational_costs,
         legacy_bridge_profile_id=str(profile_id),
-        legacy_bridge_source_specification=str(source_specification),
-        legacy_bridge_source_specification_sha256=str(
-            source_specification_sha256
-        ),
+        legacy_bridge_source_specification=source_specification,
+        legacy_bridge_source_specification_sha256=source_specification_sha256,
+        legacy_bridge_protocol_design=str(protocol_design),
+        legacy_bridge_profile_definition=profile_definition,
+        legacy_bridge_profile_definition_sha256=profile_definition_sha256,
     )
 
 
@@ -5019,45 +5763,45 @@ def _registry_role_for_machine_id(machine_id: str) -> str:
 def _participant_predictions_from_subject_rows(
     rows: Iterable[Any],
 ) -> tuple[Any, ...]:
-    """Convert exact retained participant OOF rows to statistics records."""
+    """Validate and retain the complete participant OOF roster, including abstentions."""
 
-    ParticipantPrediction = _runtime_imports()['ParticipantPrediction']
     output: list[Any] = []
     keys: set[tuple[str, int]] = set()
     for row in rows:
         if row.level != 'participant':
             raise _ExperimentProtocolError('root_subject_oof_contains_nonparticipant_row')
-        if not row.retained:
+        if int(row.label) not in {0, 1, 2}:
             raise _ExperimentProtocolError(
-                f'complete_5x5_metrics_require_retained_subject:{row.participant_id}'
+                f'root_subject_oof_label_invalid:{row.participant_id}'
             )
         if row.prediction_kind not in {'single_model', 'ensemble_average'}:
             raise _ExperimentProtocolError(
                 'root_subject_oof_contains_ensemble_member_or_unknown_kind'
             )
-        if tuple(row.class_order) != (0, 1, 2):
-            raise _ExperimentProtocolError('root_subject_oof_class_order_drift')
+        if row.retained:
+            if (
+                tuple(row.class_order) != (0, 1, 2)
+                or len(row.probabilities) != 3
+            ):
+                raise _ExperimentProtocolError('root_subject_oof_class_order_drift')
+        elif row.probabilities or row.class_order:
+            raise _ExperimentProtocolError(
+                'root_abstained_subject_must_not_carry_probabilities'
+            )
         key = (str(row.participant_id), int(row.repeat))
         if key in keys:
             raise _ExperimentProtocolError(
                 f'duplicate_participant_repeat_oof:{key[0]}:{key[1]}'
             )
         keys.add(key)
-        output.append(
-            ParticipantPrediction(
-                participant_id=key[0],
-                label=int(row.label),
-                repeat=key[1],
-                probabilities=tuple(float(value) for value in row.probabilities),
-            )
-        )
+        output.append(row)
     return tuple(sorted(output, key=lambda item: (item.participant_id, item.repeat)))
 
 
 def _fold_confusions_and_rosters_from_subject_rows(
     rows: Iterable[Any],
 ) -> tuple[dict[str, tuple[tuple[int, ...], ...]], dict[str, tuple[str, ...]]]:
-    """Rebuild exact 25-fold confusion/coverage from trusted subject OOF."""
+    """Rebuild retained-only fold confusion and the complete held-out roster."""
 
     matrices = {
         f"r{repeat}f{fold}": [[0, 0, 0] for _ in range(3)]
@@ -5071,15 +5815,23 @@ def _fold_confusions_and_rosters_from_subject_rows(
         identity = (str(row.participant_id), int(row.repeat))
         if key not in matrices or identity in seen:
             raise _ExperimentProtocolError("subject_oof_fold_identity_invalid_or_duplicate")
-        if (
-            not row.retained
-            or tuple(row.class_order) != (0, 1, 2)
+        if int(row.label) not in {0, 1, 2}:
+            raise _ExperimentProtocolError("trusted_fold_metrics_require_three_class_labels")
+        if row.retained and (
+            tuple(row.class_order) != (0, 1, 2)
             or len(row.probabilities) != 3
         ):
-            raise _ExperimentProtocolError("trusted_fold_metrics_require_retained_three_class_oof")
+            raise _ExperimentProtocolError("trusted_fold_retained_oof_must_be_three_class")
+        if not row.retained and (row.probabilities or row.class_order):
+            raise _ExperimentProtocolError(
+                "trusted_fold_abstention_must_not_carry_probabilities"
+            )
         seen.add(identity)
-        predicted = max(range(3), key=lambda index: float(row.probabilities[index]))
-        matrices[key][int(row.label)][predicted] += 1
+        if row.retained:
+            predicted = max(
+                range(3), key=lambda index: float(row.probabilities[index])
+            )
+            matrices[key][int(row.label)][predicted] += 1
         rosters[key].append(str(row.participant_id))
     return (
         {
@@ -5155,6 +5907,151 @@ def _operational_metrics_from_fold_summaries(
         'exclusion_reason': 'parameter_count_and_inference_cost_not_measured',
         'status': 'not_measured_in_current_runner',
         'measurement_requested': False,
+    }
+
+
+def _abstention_aware_root_metrics(
+    rows: tuple[Any, ...],
+    summaries: tuple[Mapping[str, Any], ...],
+    *,
+    config_id: str,
+    registry_role: str,
+    fold_confusions: Mapping[str, tuple[tuple[int, ...], ...]],
+    operational: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Recompute complete-roster repeat metrics without inventing an abstention class."""
+
+    np = _runtime_imports()['np']
+    repeat_rows = [
+        {
+            'repeat': repeat,
+            **_evaluate_subjects(
+                tuple(row for row in rows if int(row.repeat) == repeat),
+                sum(int(row.repeat) == repeat for row in rows),
+            ),
+        }
+        for repeat in range(5)
+    ]
+    pooled = _evaluate_subjects(rows, len(rows))
+    confusion: dict[str, Any] = dict(fold_confusions)
+    confusion.update(
+        {f"repeat_{row['repeat']}": row['confusion_matrix'] for row in repeat_rows}
+    )
+    confusion['pooled_participant_repeat'] = pooled['confusion_matrix']
+
+    def metric_values(name: str) -> list[float]:
+        return [
+            float(row[name]) for row in repeat_rows if row.get(name) is not None
+        ]
+
+    def metric_mean(name: str) -> float | None:
+        values = [
+            float(row[name])
+            for row in repeat_rows
+            if row.get(name) is not None
+        ]
+        return None if not values else float(np.mean(values))
+
+    aware_ba = np.asarray(
+        metric_values('abstention_aware_balanced_accuracy'),
+        dtype=np.float64,
+    )
+    aware_f1 = np.asarray(
+        metric_values('abstention_aware_macro_f1'),
+        dtype=np.float64,
+    )
+    conditional_ba = metric_values('balanced_accuracy')
+    conditional_f1 = metric_values('macro_f1')
+    fold_aware_ba = [
+        float(summary['metrics']['abstention_aware_balanced_accuracy'])
+        for summary in summaries
+    ]
+    conditional_per_class = pooled.get('per_class') or ()
+    aware_per_class = pooled['abstention_aware_per_class']
+    return {
+        'config_id': config_id,
+        'registry_role': registry_role,
+        'participant_mean_balanced_accuracy': (
+            None if not conditional_ba else float(np.mean(conditional_ba))
+        ),
+        'participant_mean_macro_f1': (
+            None if not conditional_f1 else float(np.mean(conditional_f1))
+        ),
+        'participant_mean_abstention_aware_balanced_accuracy': float(
+            aware_ba.mean()
+        ),
+        'participant_mean_abstention_aware_macro_precision': metric_mean(
+            'abstention_aware_macro_precision'
+        ),
+        'participant_mean_abstention_aware_macro_recall': metric_mean(
+            'abstention_aware_macro_recall'
+        ),
+        'participant_mean_abstention_aware_macro_f1': float(aware_f1.mean()),
+        'participant_mean_coverage_rate': metric_mean('coverage_rate'),
+        'abstention_count': pooled['abstention_count'],
+        'abstention_counts_by_class': pooled['abstention_counts_by_class'],
+        'worst_fold_balanced_accuracy': (
+            min(
+                float(summary['metrics']['balanced_accuracy'])
+                for summary in summaries
+                if summary['metrics'].get('balanced_accuracy') is not None
+            )
+            if any(
+                summary['metrics'].get('balanced_accuracy') is not None
+                for summary in summaries
+            )
+            else None
+        ),
+        'worst_fold_abstention_aware_balanced_accuracy': min(fold_aware_ba),
+        'balanced_accuracy_lcb95': None,
+        'macro_f1_lcb95': None,
+        'abstention_aware_balanced_accuracy_lcb95': None,
+        'abstention_aware_macro_f1_lcb95': None,
+        'worst_class_recall': (
+            min(float(item['recall']) for item in conditional_per_class)
+            if conditional_per_class
+            else None
+        ),
+        'worst_class_f1': (
+            min(float(item['f1']) for item in conditional_per_class)
+            if conditional_per_class
+            else None
+        ),
+        'abstention_aware_worst_class_recall': min(
+            float(item['recall']) for item in aware_per_class
+        ),
+        'abstention_aware_worst_class_f1': min(
+            float(item['f1']) for item in aware_per_class
+        ),
+        'expected_calibration_error': pooled['expected_calibration_error'],
+        'probability_metrics_scope': 'retained_only',
+        'primary_ranking_metric': (
+            'participant_mean_abstention_aware_balanced_accuracy'
+        ),
+        'repeat_metrics': tuple(repeat_rows),
+        'variability': {
+            'repeat_balanced_accuracy_population_sd': (
+                0.0 if not conditional_ba else float(np.std(conditional_ba, ddof=0))
+            ),
+            'repeat_macro_f1_population_sd': (
+                0.0 if not conditional_f1 else float(np.std(conditional_f1, ddof=0))
+            ),
+            'repeat_abstention_aware_balanced_accuracy_population_sd': float(
+                aware_ba.std(ddof=0)
+            ),
+            'repeat_abstention_aware_macro_f1_population_sd': float(
+                aware_f1.std(ddof=0)
+            ),
+            'fold_abstention_aware_balanced_accuracy_population_sd': float(
+                np.std(fold_aware_ba, ddof=0)
+            ),
+        },
+        'confusion_matrices': confusion,
+        'confusion_matrix_scope': 'retained_predictions_only',
+        'inference_cost': operational['inference_cost'],
+        'parameter_count': operational['parameter_count'],
+        'eligible': operational['eligible'],
+        'exclusion_reason': operational['exclusion_reason'],
     }
 
 
@@ -5264,20 +6161,23 @@ def _trusted_config_metrics_payload(
     if tuple(split_seed_by_repeat[index] for index in range(5)) != _FORMAL_SPLIT_SEEDS:
         raise _ExperimentProtocolError('formal_split_seed_sequence_drift')
 
-    predictions = _participant_predictions_from_subject_rows(
+    subject_statistics_rows = _participant_predictions_from_subject_rows(
         row for cell in cell_values for row in cell.subject_rows
     )
-    participants = tuple(sorted({row.participant_id for row in predictions}))
-    if len(participants) != 29 or len(predictions) != 29 * 5:
+    participants = tuple(
+        sorted({row.participant_id for row in subject_statistics_rows})
+    )
+    if len(participants) != 29 or len(subject_statistics_rows) != 29 * 5:
         raise _ExperimentProtocolError(
-            f'complete_metrics_require_29x5_participant_oof:{len(participants)}:{len(predictions)}'
+            'complete_metrics_require_29x5_participant_oof:'
+            f'{len(participants)}:{len(subject_statistics_rows)}'
         )
-    if {row.repeat for row in predictions} != set(range(5)):
+    if {row.repeat for row in subject_statistics_rows} != set(range(5)):
         raise _ExperimentProtocolError('complete_metrics_repeat_roster_drift')
 
     fold_ba = {
         f"r{int(summary['repeat_index'])}f{int(summary['fold_index'])}":
-            float(summary['metrics']['balanced_accuracy'])
+            summary['metrics'].get('balanced_accuracy')
         for summary in summaries
     }
     fold_confusions, fold_rosters = _fold_confusions_and_rosters_from_subject_rows(
@@ -5290,14 +6190,83 @@ def _trusted_config_metrics_payload(
         ):
             raise _ExperimentProtocolError(f'cell_confusion_matrix_oof_drift:{key}')
     operational = _operational_metrics_from_fold_summaries(summaries)
+    registry_role = _registry_role_for_machine_id(machine_id)
+
+    if any(not bool(row.retained) for row in subject_statistics_rows):
+        metrics = _abstention_aware_root_metrics(
+            subject_statistics_rows,
+            summaries,
+            config_id=result.config_id,
+            registry_role=registry_role,
+            fold_confusions=fold_confusions,
+            operational=operational,
+        )
+        return {
+            **base,
+            'status': (
+                'passed_trusted_abstention_aware_metrics_rebuilt_from_typed_oof'
+            ),
+            'model_machine_id': machine_id,
+            'registry_role': registry_role,
+            'seeds': list(_FORMAL_SPLIT_SEEDS),
+            'training_seeds': (
+                list(ensemble_training_roster)
+                if _model_is_ensemble(machine_id)
+                else (
+                    [50042]
+                    if seed_policy == 'cv_fixed_member0_seed_50042_comparator'
+                    else sorted(
+                        {
+                            int(summary['training_seed'])
+                            for summary in summaries
+                        }
+                    )
+                )
+            ),
+            'participant_oof_coverage': {
+                'participant_count': len(participants),
+                'repeat_count': 5,
+                'participant_repeat_rows': len(subject_statistics_rows),
+                'expected_participant_repeat_rows': 145,
+                'retained_participant_repeat_rows': sum(
+                    bool(row.retained) for row in subject_statistics_rows
+                ),
+                'abstained_participant_repeat_rows': sum(
+                    not bool(row.retained) for row in subject_statistics_rows
+                ),
+                'roster_complete': True,
+            },
+            'fold_balanced_accuracies': {
+                f"r{int(summary['repeat_index'])}f{int(summary['fold_index'])}":
+                    summary['metrics'].get('balanced_accuracy')
+                for summary in summaries
+            },
+            'fold_abstention_aware_balanced_accuracies': {
+                f"r{int(summary['repeat_index'])}f{int(summary['fold_index'])}":
+                    summary['metrics']['abstention_aware_balanced_accuracy']
+                for summary in summaries
+            },
+            'operational_measurement_status': operational['status'],
+            'config_metrics': to_strict_json_value(metrics),
+            'bootstrap_results': [],
+            'bootstrap_policy': {
+                'status': 'not_available_for_abstention_aware_endpoint',
+                'requested_resamples': int(n_bootstrap_resamples),
+                'seed': int(bootstrap_seed),
+                'unit': 'participant_with_all_repeats',
+            },
+            'training_executed_by_this_writer': False,
+        }
 
     metrics, bootstrap = _runtime_imports()[
         'build_config_metrics_from_predictions_and_fold_summaries'
     ](
         config_id=result.config_id,
-        registry_role=_registry_role_for_machine_id(machine_id),
-        predictions=predictions,
-        fold_balanced_accuracies=fold_ba,
+        registry_role=registry_role,
+        predictions=subject_statistics_rows,
+        fold_balanced_accuracies={
+            key: float(value) for key, value in fold_ba.items()
+        },
         fold_confusion_matrices=fold_confusions,
         fold_participant_rosters=fold_rosters,
         inference_cost=operational['inference_cost'],
@@ -5330,7 +6299,7 @@ def _trusted_config_metrics_payload(
         'participant_oof_coverage': {
             'participant_count': len(participants),
             'repeat_count': 5,
-            'participant_repeat_rows': len(predictions),
+            'participant_repeat_rows': len(subject_statistics_rows),
             'expected_participant_repeat_rows': 145,
             'roster_complete': True,
         },

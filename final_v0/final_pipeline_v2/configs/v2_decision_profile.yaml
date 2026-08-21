@@ -194,11 +194,6 @@ confirmed_defaults:
       main_conda_ml_mutated: false
       silent_downgrade: forbidden
       vendor_patch_authorized: false
-  rocket:
-    decision_id: V2-016
-    reference: self_contained_deterministic_numpy_scipy_rocket
-    reference_kernel_count: 10000
-    minirocket: named_ablation_not_silent_replacement
   shapeformer:
     decision_ids: [V2-017, V2-029a, V2-029b]
     reference_discovery: channel_specific_osd
@@ -249,13 +244,12 @@ confirmed_defaults:
     reference_dl_fs_hz: 400
     convolution_kernel_rule: fixed_kernel_sample_counts_no_physical_time_conversion
     eligible_models: [CompactCNN1D, InceptionTimeFull]
-    ineligible_for_silent_application: [ShapeFormerChannelSpecificOSD, ShapeFormerEffectSizeFixedV1, ROCKET, MiniROCKET]
+    ineligible_for_silent_application: [ShapeFormerChannelSpecificOSD, ShapeFormerEffectSizeFixedV1]
   ensemble:
     decision_ids: [V2-020, V2-032]
     default: single_model
     comparison_lines:
     - raw_inception_time_full_five_member
-    - feature_matrix_inception_time_matrix_five_member
     repeat_split_seeds: [42, 10042, 20042, 30042, 40042]
     member_seeds: [50042, 60042, 70042, 80042, 90042]
     reference_member_seed_scope: reused_in_every_repeat_and_outer_fold

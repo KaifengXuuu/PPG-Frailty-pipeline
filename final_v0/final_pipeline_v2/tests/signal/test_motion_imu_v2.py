@@ -337,6 +337,8 @@ class MotionImuTests(unittest.TestCase):
                 "dynamic_magnitude",
                 "gyro_magnitude",
                 "jerk_magnitude",
+                "roll_rad",
+                "pitch_rad",
             }
             - set(views.imu_processed),
             set(),

@@ -998,7 +998,7 @@ def materialize_deep_epoch_config(
     machine_id = str(model_id)
     if model_factory_contract(machine_id)["execution_backend"] != "torch":
         raise ValueError(
-            "epoch 7/10/15 profiles are deep-only; classical and ROCKET models "
+            "epoch 7/10/15 profiles are deep-only; non-iterative estimators "
             "do not execute epoch controls"
         )
     try:
@@ -2195,9 +2195,9 @@ class UnifiedTrainer:
     def predict_estimator_probabilities(
         self, estimator: Any, dataset: Dataset
     ) -> tuple[np.ndarray, np.ndarray, tuple[Any, ...]]:
-        """Predict sklearn/ROCKET probabilities with the dataset mask when supported.
+        """Predict estimator probabilities with the dataset mask when supported.
 
-        通过统一公开入口预测 sklearn/ROCKET；若 estimator 声明 mask 参数，则传入
+        通过统一公开入口预测 estimator；若 estimator 声明 mask 参数，则传入
         FeatureMatrix row mask 或 raw sample mask。该方法绝不执行 fit。
         """
 
@@ -2634,9 +2634,9 @@ class UnifiedTrainer:
         outer_train_dataset: Dataset,
         frozen_split: FrozenOuterSplit | FullCohortRefitScope,
     ) -> TrainingResult:
-        """Fit sklearn/ROCKET estimators under the same membership guard.
+        """Fit estimators under the same membership guard.
 
-        在相同成员守卫下拟合 sklearn/ROCKET estimator。
+        在相同成员守卫下拟合 estimator。
         """
 
         self.config.validate_for_execution_backend("estimator")

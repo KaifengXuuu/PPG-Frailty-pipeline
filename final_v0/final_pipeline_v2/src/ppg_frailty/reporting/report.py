@@ -152,6 +152,124 @@ _LEGACY_BRIDGE_EXECUTION_COLUMNS = (
     ("interpretation", "Interpretation"),
 )
 
+
+def _is_stage3_centered_star(plan: Mapping[str, Any]) -> bool:
+    bridge = plan.get("legacy_bridge")
+    return isinstance(bridge, Mapping) and str(bridge.get("design", "")) == (
+        "centered_star_v1"
+    )
+
+
+_STAGE3_STAR_ABSOLUTE_COLUMNS = (
+    ("model", "Model"),
+    ("profile", "Profile"),
+    ("factor_id", "Factor"),
+    ("native_aggregation_view", "Native endpoint"),
+    ("native_balanced_accuracy", "Native BA"),
+    ("native_macro_f1", "Native Macro-F1"),
+    ("native_worst_class_f1", "Native worst-class F1"),
+    ("BA_W_sensitivity", "BA W"),
+    ("BA_A_sensitivity", "BA A"),
+    ("BA_B_sensitivity", "BA B"),
+    ("passed_cell_count", "Passed cells"),
+    ("single_factor_audit", "Factor audit"),
+    ("cross_model_profile_controls_match", "Cross-model controls match"),
+)
+
+
+_STAGE3_STAR_CONTRAST_COLUMNS = (
+    ("model", "Model"),
+    ("factor_id", "Factor"),
+    ("reference_profile", "Reference"),
+    ("variant_profile", "Variant"),
+    ("reference_native_aggregation_view", "Reference endpoint"),
+    ("variant_native_aggregation_view", "Variant endpoint"),
+    ("delta_native_balanced_accuracy", "Native Δ BA"),
+    ("delta_native_macro_f1", "Native Δ Macro-F1"),
+    ("delta_native_worst_class_f1", "Native Δ worst-class F1"),
+    ("delta_balanced_accuracy_W_sensitivity_only", "Sensitivity-only Δ BA W"),
+    ("delta_balanced_accuracy_A_sensitivity_only", "Sensitivity-only Δ BA A"),
+    ("delta_balanced_accuracy_B_sensitivity_only", "Sensitivity-only Δ BA B"),
+    ("actual_changed_control_paths", "Actual changed paths"),
+    ("single_factor_audit", "Factor audit"),
+    ("seed_match", "Seeds match"),
+    ("split_hash_match", "Split hashes match"),
+    ("heldout_roster_hash_match", "Held-out rosters match"),
+    ("contrast_metrics_available", "Available"),
+    ("unavailable_reasons", "N/A reasons"),
+    (
+        "report_view_factor_training_controls_identical",
+        "B0/B7 training controls identical",
+    ),
+    (
+        "report_view_factor_window_oof_probabilities_identical",
+        "B0/B7 window OOF identical",
+    ),
+    ("matched_window_oof_row_count", "B0/B7 matched window rows"),
+    ("window_oof_probability_max_abs_diff", "B0/B7 max |probability diff|"),
+    ("window_oof_identity_audit_status", "B0/B7 identity audit"),
+)
+
+
+_STAGE3_STAR_FOLD_COLUMNS = (
+    ("model", "Model"),
+    ("factor_id", "Factor"),
+    ("reference_profile", "Reference"),
+    ("variant_profile", "Variant"),
+    ("repeat", "Repeat"),
+    ("fold", "Fold"),
+    ("delta_native_balanced_accuracy", "Native Δ BA"),
+    ("delta_native_macro_f1", "Native Δ Macro-F1"),
+    ("delta_native_worst_class_f1", "Native Δ worst-class F1"),
+    ("contrast_metrics_available", "Available"),
+    ("inference", "Inference"),
+)
+
+
+_STAGE3_STAR_EXECUTION_COLUMNS = (
+    ("execution_order", "Execution order"),
+    ("model", "Model"),
+    ("profile", "Profile"),
+    ("factor_id", "Factor"),
+    ("native_aggregation_view", "Native endpoint"),
+    ("native_balanced_accuracy", "Native BA"),
+    ("native_macro_f1", "Native Macro-F1"),
+    ("native_worst_class_f1", "Native worst-class F1"),
+    ("execution_transition", "Scheduling transition"),
+    ("execution_transition_is_ablation", "Transition is ablation"),
+)
+
+_STAGE3_STAR_TABLES = (
+    (
+        "stage3_star_absolute",
+        "Stage 3 centered-star absolute endpoints",
+        "Sixteen absolute model/profile endpoints. W/A/B are same-OOF sensitivity views; each row declares its native endpoint.",
+        _STAGE3_STAR_ABSOLUTE_COLUMNS,
+        "Sixteen absolute model/profile endpoints with native and W/A/B same-OOF metrics",
+    ),
+    (
+        "stage3_star_contrasts",
+        "Stage 3 centered-star contrasts",
+        "Fourteen same-model B0→variant contrasts. Availability requires five passed cells plus matching seeds, split hashes, held-out rosters, native metrics, and exact factor paths; cross-model deltas are prohibited. B0/B7 also audits training-control and window-OOF identity.",
+        _STAGE3_STAR_CONTRAST_COLUMNS,
+        "Fourteen same-model B0-centered contrasts with factor and reproducibility audits",
+    ),
+    (
+        "stage3_star_fold_contrasts",
+        "Stage 3 centered-star matched-fold deltas",
+        "The 14×5 fold deltas are descriptive only: no CI or significance claim. Seven contrasts within each model share the same correlated B0.",
+        _STAGE3_STAR_FOLD_COLUMNS,
+        "Seventy matched-fold descriptive deltas; no CI or significance inference",
+    ),
+    (
+        "stage3_star_execution",
+        "Stage 3 centered-star execution order",
+        "Absolute scheduling rows only; neighbouring execution rows are not ablation contrasts.",
+        _STAGE3_STAR_EXECUTION_COLUMNS,
+        "Sixteen absolute results in execution order; no neighbouring execution deltas",
+    ),
+)
+
 _REPRO_CASE_COLUMNS = (
     ("case_id", "Case"),
     ("selected_case_status", "Selected status"),
@@ -399,9 +517,11 @@ def _report_markdown(
             "",
             "## Predictive ranking",
             "",
-            "Ranking is by participant-level mean balanced accuracy. Macro-F1 and "
-            "both lower-bound columns remain visible; deployment measurements do "
-            "not filter this table.",
+            "Primary ranking is by participant-level, repeat-recomputed "
+            "abstention-aware balanced accuracy, then participant coverage and "
+            "abstention-aware Macro-F1. Conditional retained-only metrics remain "
+            "visible but never lead the ranking; deployment measurements do not "
+            "filter this table.",
             "",
         ]
     )
@@ -411,22 +531,67 @@ def _report_markdown(
             (
                 ("predictive_rank", "Rank"),
                 ("case_id", "Case"),
-                ("participant_mean_balanced_accuracy", "BA"),
-                ("participant_mean_macro_f1", "Macro-F1"),
-                ("balanced_accuracy_lcb95", "BA LCB95"),
-                ("macro_f1_lcb95", "Macro-F1 LCB95"),
-                ("repeat_balanced_accuracy_ci95_low", "BA CI95 low"),
-                ("repeat_balanced_accuracy_ci95_high", "BA CI95 high"),
-                ("repeat_macro_f1_ci95_low", "Macro-F1 CI95 low"),
-                ("repeat_macro_f1_ci95_high", "Macro-F1 CI95 high"),
-                ("worst_fold_balanced_accuracy", "Worst-fold BA"),
+                (
+                    "participant_mean_abstention_aware_balanced_accuracy",
+                    "Abstention-aware BA",
+                ),
+                (
+                    "participant_mean_abstention_aware_macro_precision",
+                    "Abstention-aware precision",
+                ),
+                (
+                    "participant_mean_abstention_aware_macro_recall",
+                    "Abstention-aware recall",
+                ),
+                (
+                    "participant_mean_abstention_aware_macro_f1",
+                    "Abstention-aware Macro-F1",
+                ),
+                ("participant_mean_coverage_rate", "Participant coverage"),
+                ("abstention_count", "Abstentions"),
+                ("abstention_counts_by_class", "Abstentions by class"),
+                ("participant_mean_balanced_accuracy", "Conditional BA"),
+                ("participant_mean_macro_f1", "Conditional Macro-F1"),
+                (
+                    "repeat_abstention_aware_balanced_accuracy_ci95_low",
+                    "Aware BA CI95 low",
+                ),
+                (
+                    "repeat_abstention_aware_balanced_accuracy_ci95_high",
+                    "Aware BA CI95 high",
+                ),
+                (
+                    "repeat_abstention_aware_macro_f1_ci95_low",
+                    "Aware Macro-F1 CI95 low",
+                ),
+                (
+                    "repeat_abstention_aware_macro_f1_ci95_high",
+                    "Aware Macro-F1 CI95 high",
+                ),
+                ("balanced_accuracy_lcb95", "Conditional BA LCB95"),
+                ("macro_f1_lcb95", "Conditional Macro-F1 LCB95"),
+                (
+                    "worst_fold_abstention_aware_balanced_accuracy",
+                    "Aware worst-fold BA",
+                ),
+                ("worst_fold_balanced_accuracy", "Conditional worst-fold BA"),
                 ("worst_class_recall", "Worst recall"),
                 ("worst_class_f1", "Worst F1"),
                 ("metric_source", "Source"),
+                ("frailty_classification_evaluation_scope", "Frailty endpoint"),
+                (
+                    "auxiliary_motion_evidence_valid_outer_oof",
+                    "Motion auxiliary outer-OOF",
+                ),
+                ("ranking_interpretation", "Interpretation"),
             ),
         )
     )
-    if isinstance(collected.plan.get("legacy_bridge"), Mapping):
+    if _is_stage3_centered_star(collected.plan):
+        for name, title, notice, columns, _description in _STAGE3_STAR_TABLES:
+            lines.extend([f"## {title}", "", notice, ""])
+            lines.extend(_markdown_table(getattr(analysis, name), columns))
+    elif isinstance(collected.plan.get("legacy_bridge"), Mapping):
         lines.extend(
             [
                 "## Legacy/V2 bridge report A — numeric adjacent ablations (L0→L7)",
@@ -559,9 +724,9 @@ def _report_markdown(
         [
             "## Worst-class F1 stability review",
             "",
-            "This secondary view reorders the BA-ranked complete cases by worst-class "
-            "F1, then repeat variability. It remains descriptive and does not select "
-            "a winner.",
+            "This secondary view reorders complete cases by abstention-aware "
+            "worst-class F1, then abstention-aware repeat variability. Conditional "
+            "retained-only values remain visible for comparison.",
             "",
         ]
     )
@@ -570,13 +735,21 @@ def _report_markdown(
             analysis.worst_class_f1_stability,
             (
                 ("worst_class_f1_stability_rank", "Stability rank"),
-                ("predictive_rank", "BA rank"),
+                ("predictive_rank", "Aware-BA rank"),
                 ("case_id", "Case"),
+                ("abstention_aware_worst_class_f1", "Aware worst F1"),
+                ("abstention_aware_worst_class_recall", "Aware worst recall"),
+                (
+                    "participant_mean_abstention_aware_balanced_accuracy",
+                    "Aware mean BA",
+                ),
+                (
+                    "repeat_abstention_aware_balanced_accuracy_population_sd",
+                    "Aware repeat BA SD",
+                ),
                 ("worst_class_f1", "Worst F1"),
                 ("worst_class_recall", "Worst recall"),
-                ("participant_mean_balanced_accuracy", "Mean BA"),
-                ("repeat_balanced_accuracy_population_sd", "Repeat BA SD"),
-                ("balanced_accuracy_lcb95", "BA LCB95"),
+                ("participant_mean_balanced_accuracy", "Conditional mean BA"),
             ),
         )
     )
@@ -628,13 +801,81 @@ def _report_markdown(
             (
                 ("case_id", "Case"),
                 ("role", "Role"),
+                ("quality_tier", "Quality tier"),
+                ("motion_state", "Motion"),
                 ("route_state", "Route state"),
                 ("signal_route", "Signal route"),
                 ("retained_coverage", "Retained coverage"),
+                ("abstention_rate", "Abstention"),
+                ("abstention_reasons", "Abstention reasons"),
                 ("direct_rate_record_count", "Direct"),
                 ("processed_rate_record_count", "Processed"),
                 ("unavailable_predictor_rate", "Unavailable predictors"),
+                ("denoiser_attempt_count", "Denoiser attempts"),
+                ("denoiser_success_count", "Denoiser successes"),
                 ("reducer_failure_count", "Reducer failures"),
+            ),
+        )
+    )
+    lines.extend(
+        [
+            "## SQI state, score, and coverage provenance by each route",
+            "",
+            "Direct and post-denoiser coverage are reported separately so the "
+            "configured minimum-coverage decision remains auditable.",
+            "",
+        ]
+    )
+    lines.extend(
+        _markdown_table(
+            analysis.route_role_coverage,
+            (
+                ("case_id", "Case"),
+                ("role", "Role"),
+                ("quality_tier", "Tier"),
+                ("direct_q_rate_states", "Direct Q_rate state"),
+                ("mean_direct_q_rate_score", "Mean direct Q_rate"),
+                ("mean_direct_q_rate_coverage", "Direct Q_rate coverage"),
+                ("direct_q_morph_states", "Direct Q_morph state"),
+                ("mean_direct_q_morph_score", "Mean direct Q_morph"),
+                ("mean_direct_q_morph_coverage", "Direct Q_morph coverage"),
+                ("post_q_rate_states", "Post Q_rate state"),
+                ("mean_post_q_rate_score", "Mean post Q_rate"),
+                ("mean_post_q_rate_coverage", "Post Q_rate coverage"),
+            ),
+        )
+    )
+    lines.extend(
+        [
+            "## Frozen motion evidence used by each route",
+            "",
+            "Frailty29 reuse is in-sample auxiliary motion-preprocessing evidence, "
+            "not valid outer-OOF motion-detector evidence. The downstream frailty "
+            "classification outcome is still evaluated on each outer held-out fold.",
+            "",
+        ]
+    )
+    lines.extend(
+        _markdown_table(
+            analysis.route_role_coverage,
+            (
+                ("case_id", "Case"),
+                ("role", "Role"),
+                ("quality_tier", "Tier"),
+                ("motion_state", "Motion"),
+                ("mean_motion_record_probability", "Mean p(motion)"),
+                ("mean_motion_threshold", "Threshold"),
+                ("mean_motion_window_count", "Mean windows"),
+                ("motion_evidence_sha256", "Evidence SHA-256"),
+                ("motion_model_artifact_sha256", "Model SHA-256"),
+                ("motion_training_scope", "Training scope"),
+                ("motion_frailty29_relation", "Frailty29 relation"),
+                (
+                    "auxiliary_motion_evidence_valid_outer_oof",
+                    "Valid outer-OOF motion evidence",
+                ),
+                ("denoiser_ids", "Denoiser"),
+                ("denoiser_statuses", "Denoiser status"),
             ),
         )
     )
@@ -725,7 +966,12 @@ def _report_markdown(
             "",
         ]
     )
-    if isinstance(collected.plan.get("legacy_bridge"), Mapping):
+    if _is_stage3_centered_star(collected.plan):
+        lines.extend(
+            [f"- [tables/{name}.csv](tables/{name}.csv)" for name, *_ in _STAGE3_STAR_TABLES]
+            + [""]
+        )
+    elif isinstance(collected.plan.get("legacy_bridge"), Mapping):
         lines.extend(
             [
                 "- [tables/legacy_bridge_numeric_ablation_report.csv](tables/legacy_bridge_numeric_ablation_report.csv)",
@@ -780,7 +1026,13 @@ def _report_html(
     )
     limitations = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.notes)
     bridge_html = ""
-    if isinstance(collected.plan.get("legacy_bridge"), Mapping):
+    if _is_stage3_centered_star(collected.plan):
+        bridge_html = "".join(
+            f"<h2>{html.escape(title)}</h2><p class='notice'>{html.escape(notice)}</p>"
+            + _html_table(getattr(analysis, name), columns)
+            for name, title, notice, columns, _description in _STAGE3_STAR_TABLES
+        )
+    elif isinstance(collected.plan.get("legacy_bridge"), Mapping):
         bridge_html = f"""
 <h2>Legacy/V2 bridge report A — numeric adjacent ablations (L0→L7)</h2>
 <p class="notice">This is the causal-interpretation table. L0 is the baseline;
@@ -832,18 +1084,44 @@ th{{background:#f0f3f6}}img{{max-width:100%;height:auto}}figure{{margin:2rem 0}}
 <p><strong>Flow position:</strong> {html.escape(str(study.get("flow_position", "N/A")))}</p>
 {reproducibility_html}
 <h2>Predictive leaderboard</h2>
+<p>Primary ranking uses participant-level, repeat-recomputed abstention-aware
+balanced accuracy, then participant coverage and abstention-aware Macro-F1.
+Conditional values use retained participants only and do not lead the ranking.</p>
 {_html_table(analysis.predictive_leaderboard, (
     ("predictive_rank", "Rank"), ("case_id", "Case"),
-    ("participant_mean_balanced_accuracy", "BA"),
-    ("participant_mean_macro_f1", "Macro-F1"),
-    ("balanced_accuracy_lcb95", "BA LCB95"),
-    ("macro_f1_lcb95", "Macro-F1 LCB95"),
-    ("repeat_balanced_accuracy_ci95_low", "BA CI95 low"),
-    ("repeat_balanced_accuracy_ci95_high", "BA CI95 high"),
-    ("repeat_macro_f1_ci95_low", "Macro-F1 CI95 low"),
-    ("repeat_macro_f1_ci95_high", "Macro-F1 CI95 high"),
-    ("worst_fold_balanced_accuracy", "Worst-fold BA"),
+    (
+        "participant_mean_abstention_aware_balanced_accuracy",
+        "Abstention-aware BA",
+    ),
+    (
+        "participant_mean_abstention_aware_macro_precision",
+        "Abstention-aware precision",
+    ),
+    (
+        "participant_mean_abstention_aware_macro_recall",
+        "Abstention-aware recall",
+    ),
+    (
+        "participant_mean_abstention_aware_macro_f1",
+        "Abstention-aware Macro-F1",
+    ),
+    ("participant_mean_coverage_rate", "Participant coverage"),
+    ("abstention_count", "Abstentions"),
+    ("abstention_counts_by_class", "Abstentions by class"),
+    ("participant_mean_balanced_accuracy", "Conditional BA"),
+    ("participant_mean_macro_f1", "Conditional Macro-F1"),
+    ("repeat_abstention_aware_balanced_accuracy_ci95_low", "Aware BA CI95 low"),
+    ("repeat_abstention_aware_balanced_accuracy_ci95_high", "Aware BA CI95 high"),
+    ("repeat_abstention_aware_macro_f1_ci95_low", "Aware Macro-F1 CI95 low"),
+    ("repeat_abstention_aware_macro_f1_ci95_high", "Aware Macro-F1 CI95 high"),
+    ("balanced_accuracy_lcb95", "Conditional BA LCB95"),
+    ("macro_f1_lcb95", "Conditional Macro-F1 LCB95"),
+    ("worst_fold_abstention_aware_balanced_accuracy", "Aware worst-fold BA"),
+    ("worst_fold_balanced_accuracy", "Conditional worst-fold BA"),
     ("worst_class_f1", "Worst F1"),
+    ("frailty_classification_evaluation_scope", "Frailty endpoint"),
+    ("auxiliary_motion_evidence_valid_outer_oof", "Motion auxiliary outer-OOF"),
+    ("ranking_interpretation", "Interpretation"),
 ))}
 {bridge_html}
 <h2>Aggregation sensitivity from the same file-level OOF</h2>
@@ -895,12 +1173,18 @@ the primary leaderboard.</p>
     ("participant_count", "Participants"),
 ))}
 <h2>Worst-class F1 stability review</h2>
+<p>This secondary ordering uses abstention-aware worst-class F1 and
+abstention-aware repeat variability; conditional retained-only values are
+shown only for comparison.</p>
 {_html_table(analysis.worst_class_f1_stability, (
     ("worst_class_f1_stability_rank", "Stability rank"),
-    ("predictive_rank", "BA rank"), ("case_id", "Case"),
+    ("predictive_rank", "Aware-BA rank"), ("case_id", "Case"),
+    ("abstention_aware_worst_class_f1", "Aware worst F1"),
+    ("abstention_aware_worst_class_recall", "Aware worst recall"),
+    ("participant_mean_abstention_aware_balanced_accuracy", "Aware mean BA"),
+    ("repeat_abstention_aware_balanced_accuracy_population_sd", "Aware repeat BA SD"),
     ("worst_class_f1", "Worst F1"),
-    ("participant_mean_balanced_accuracy", "Mean BA"),
-    ("repeat_balanced_accuracy_population_sd", "Repeat BA SD"),
+    ("participant_mean_balanced_accuracy", "Conditional mean BA"),
 ))}
 <h2>Incomplete cases excluded from ranking</h2>
 {_html_table(analysis.incomplete_cases, (
@@ -918,11 +1202,49 @@ the primary leaderboard.</p>
 ))}
 <h2>Route × role coverage and feature availability</h2>
 {_html_table(analysis.route_role_coverage, (
-    ("case_id", "Case"), ("role", "Role"), ("route_state", "Route state"),
+    ("case_id", "Case"), ("role", "Role"),
+    ("quality_tier", "Quality tier"), ("motion_state", "Motion"),
+    ("route_state", "Route state"),
     ("signal_route", "Signal route"), ("retained_coverage", "Retained coverage"),
+    ("abstention_rate", "Abstention"),
+    ("abstention_reasons", "Abstention reasons"),
     ("direct_rate_record_count", "Direct"), ("processed_rate_record_count", "Processed"),
     ("unavailable_predictor_rate", "Unavailable predictors"),
+    ("denoiser_attempt_count", "Denoiser attempts"),
+    ("denoiser_success_count", "Denoiser successes"),
     ("reducer_failure_count", "Reducer failures"),
+))}
+<h2>SQI state, score, and coverage provenance by each route</h2>
+<p>Direct and post-denoiser coverage are separate so the configured
+minimum-coverage decision remains auditable.</p>
+{_html_table(analysis.route_role_coverage, (
+    ("case_id", "Case"), ("role", "Role"), ("quality_tier", "Tier"),
+    ("direct_q_rate_states", "Direct Q_rate state"),
+    ("mean_direct_q_rate_score", "Mean direct Q_rate"),
+    ("mean_direct_q_rate_coverage", "Direct Q_rate coverage"),
+    ("direct_q_morph_states", "Direct Q_morph state"),
+    ("mean_direct_q_morph_score", "Mean direct Q_morph"),
+    ("mean_direct_q_morph_coverage", "Direct Q_morph coverage"),
+    ("post_q_rate_states", "Post Q_rate state"),
+    ("mean_post_q_rate_score", "Mean post Q_rate"),
+    ("mean_post_q_rate_coverage", "Post Q_rate coverage"),
+))}
+<h2>Frozen motion evidence used by each route</h2>
+<p class="notice">Frailty29 reuse is in-sample auxiliary motion-preprocessing
+evidence, not valid outer-OOF motion-detector evidence. Downstream frailty
+classification is still evaluated on each outer held-out fold.</p>
+{_html_table(analysis.route_role_coverage, (
+    ("case_id", "Case"), ("role", "Role"), ("quality_tier", "Tier"),
+    ("motion_state", "Motion"),
+    ("mean_motion_record_probability", "Mean p(motion)"),
+    ("mean_motion_threshold", "Threshold"),
+    ("mean_motion_window_count", "Mean windows"),
+    ("motion_evidence_sha256", "Evidence SHA-256"),
+    ("motion_model_artifact_sha256", "Model SHA-256"),
+    ("motion_training_scope", "Training scope"),
+    ("motion_frailty29_relation", "Frailty29 relation"),
+    ("auxiliary_motion_evidence_valid_outer_oof", "Valid outer-OOF motion evidence"),
+    ("denoiser_ids", "Denoiser"), ("denoiser_statuses", "Denoiser status"),
 ))}
 <h2>Quality-component distributions</h2>
 {_html_table(analysis.quality_distributions, (
@@ -1243,7 +1565,7 @@ def generate_study_report(
         (
             "route_role_coverage",
             analysis.route_role_coverage,
-            "Retained/direct/processed/unavailable/reducer-failure summaries by route and role",
+            "Tier, motion provenance, abstention, retained/direct/processed, and denoiser summaries by route and role",
         ),
         (
             "quality_distributions",
@@ -1294,7 +1616,12 @@ def generate_study_report(
             "Contradictory or not-verifiable reproducibility evidence",
         ),
     )
-    if isinstance(bundle.plan.get("legacy_bridge"), Mapping):
+    if _is_stage3_centered_star(bundle.plan):
+        table_payloads += tuple(
+            (name, getattr(analysis, name), description)
+            for name, _title, _notice, _columns, description in _STAGE3_STAR_TABLES
+        )
+    elif isinstance(bundle.plan.get("legacy_bridge"), Mapping):
         table_payloads += (
             (
                 "legacy_bridge_numeric_ablation_report",

@@ -591,10 +591,12 @@ class RepresentationDispatchTest(unittest.TestCase):
             retained=True,
             route=SignalRoute.DIRECT,
             route_status="rate_only_direct",
+            quality_tier="acceptable",
             shape_features_eligible=False,
         )
         rate_only_api = {
             **api,
+            "extract_engineering_features": forbidden_shape_feature,
             "extract_morphology": forbidden_shape_feature,
             "extract_dual_optical": forbidden_shape_feature,
         }
@@ -604,6 +606,7 @@ class RepresentationDispatchTest(unittest.TestCase):
         ):
             experiment._extract_vector(rate_only_state, report, {})
         self.assertTrue(rate_only_state.retained)
+        self.assertIsNone(rate_only_state.engineering)
         self.assertFalse(
             rate_only_state.vector.validity[
                 rate_only_state.vector.feature_names.index(
@@ -701,8 +704,10 @@ class RepresentationDispatchTest(unittest.TestCase):
         raw_provenance = experiment._fit_representation_artifacts(
             raw_states, "raw", TRAIN_IDS, OOF_IDS
         )
+        self.assertEqual(raw_provenance["raw_imu"]["fitted_on_participant_ids"], ())
         self.assertEqual(
-            tuple(raw_provenance["raw_imu"]["fitted_on_participant_ids"]), TRAIN_IDS
+            raw_provenance["raw_imu"]["strategy"],
+            "none_after_all8_per_window_robust",
         )
         raw_dataset = experiment._materialize_representation_dataset(
             raw_states, OOF_IDS, "raw"
@@ -715,10 +720,7 @@ class RepresentationDispatchTest(unittest.TestCase):
         matrix_provenance = experiment._fit_representation_artifacts(
             matrix_states, "feature_matrix", TRAIN_IDS, OOF_IDS
         )
-        self.assertEqual(
-            tuple(matrix_provenance["feature_vector"]["fitted_on_participant_ids"]),
-            TRAIN_IDS,
-        )
+        self.assertNotIn("feature_vector", matrix_provenance)
         self.assertEqual(
             tuple(matrix_provenance["engineering"]["fitted_on_participant_ids"]),
             TRAIN_IDS,
@@ -728,35 +730,13 @@ class RepresentationDispatchTest(unittest.TestCase):
         )
         self.assertEqual(matrix_dataset.representation_mode, "feature_matrix")
         self.assertEqual(matrix_dataset.values.shape[0], 1)
-        self.assertEqual(matrix_dataset.values.shape[2], 32)
-
-        configurable_matrix_states = _states()
-        configurable_provenance = experiment._fit_representation_artifacts(
-            configurable_matrix_states,
-            "feature_matrix",
-            TRAIN_IDS,
-            OOF_IDS,
-            matrix_k=5,
-        )
-        configurable_dataset = experiment._materialize_representation_dataset(
-            configurable_matrix_states,
-            OOF_IDS,
-            "feature_matrix",
-        )
-        self.assertEqual(configurable_dataset.values.shape[2], 5)
-        self.assertEqual(configurable_provenance["engineering"]["matrix_k"], 5)
-        self.assertEqual(
-            configurable_matrix_states[-1].matrix.provenance["matrix_k"],
-            5,
-        )
+        self.assertEqual(matrix_dataset.values.shape[1:], (115, 150))
 
         fusion_states = _states()
         fusion_provenance = experiment._fit_representation_artifacts(
             fusion_states, "fusion", TRAIN_IDS, OOF_IDS
         )
-        self.assertEqual(
-            tuple(fusion_provenance["raw_imu"]["fitted_on_participant_ids"]), TRAIN_IDS
-        )
+        self.assertEqual(fusion_provenance["raw_imu"]["fitted_on_participant_ids"], ())
         self.assertEqual(
             tuple(fusion_provenance["feature_vector"]["fitted_on_participant_ids"]),
             TRAIN_IDS,
@@ -845,14 +825,19 @@ class RepresentationDispatchTest(unittest.TestCase):
             )
         )
 
-    def test_zero_retained_oof_fails_closed(self) -> None:
-        with self.assertRaisesRegex(
-            experiment._ExperimentProtocolError,
-            "outer_oof_zero_retained_predictions",
-        ):
-            experiment._require_retained_oof(
-                (SimpleNamespace(retained=False), SimpleNamespace(retained=False))
-            )
+    def test_zero_retained_oof_is_reported_as_complete_abstention(self) -> None:
+        metrics = experiment._evaluate_subjects(
+            tuple(
+                SimpleNamespace(retained=False, label=label)
+                for label in (0, 1, 2)
+            ),
+            total=3,
+        )
+        self.assertIsNone(metrics["balanced_accuracy"])
+        self.assertEqual(metrics["abstention_aware_balanced_accuracy"], 0.0)
+        self.assertEqual(metrics["abstention_aware_macro_f1"], 0.0)
+        self.assertEqual(metrics["coverage_rate"], 0.0)
+        self.assertEqual(metrics["abstention_count"], 3)
 
     def test_effect_size_fixed_v1_has_no_pip_parameter(self) -> None:
         section = {
@@ -950,17 +935,20 @@ class RepresentationDispatchTest(unittest.TestCase):
         self.assertEqual(payload["schema_version"], "ppg_frailty.experiment_result.v2")
         self.assertEqual(payload["pipeline_generation"], "final_pipeline_v2")
 
-    def test_public_comparison_defaults_are_thirteen_nonensemble_models(self) -> None:
+    def test_public_comparison_defaults_exclude_retired_rocket_models(self) -> None:
         """Inspect identities without running a comparison / 只检查身份，不执行比较。"""
 
         default_models = inspect.signature(
             pipeline.run_model_comparison
         ).parameters["models"].default
-        self.assertEqual(len(default_models), 13)
+        self.assertEqual(len(default_models), 10)
         self.assertIn("ShapeFormerChannelSpecificOSD", default_models)
         self.assertIn("ShapeFormerEffectSizeFixedV1", default_models)
         self.assertNotIn("InceptionTimeFullFiveMemberEnsemble", default_models)
         self.assertNotIn("InceptionTimeMatrixFiveMemberEnsemble", default_models)
+        self.assertNotIn("ROCKET", default_models)
+        self.assertNotIn("MiniROCKET", default_models)
+        self.assertNotIn("InceptionTimeMatrix", default_models)
         self.assertEqual(
             inspect.signature(pipeline.run_model_comparison)
             .parameters["ensemble_size"]
@@ -971,7 +959,7 @@ class RepresentationDispatchTest(unittest.TestCase):
         self.assertNotIn('"comparison_only": True', source)
         self.assertIn("model_factory_contract", source)
         self.assertIn("resolved_architecture_parameters", source)
-        self.assertIn('"channel_specific_osd"', source)
+        self.assertIn("PISD_DISCOVERY_METHOD", source)
         self.assertIn('"effect_size_fixed_v1"', source)
         self.assertNotIn('"ShapeFormerPISDPort"', source)
 

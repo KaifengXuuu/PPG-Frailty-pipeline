@@ -255,14 +255,39 @@ class ReportingPlotContractTests(unittest.TestCase):
             )
             analysis = SimpleNamespace(
                 notes=(),
-                predictive_leaderboard=(),
+                predictive_leaderboard=(
+                    {
+                        "case_id": "motion_case",
+                        "participant_mean_balanced_accuracy": 0.8,
+                        "participant_mean_macro_f1": 0.7,
+                        "participant_mean_abstention_aware_balanced_accuracy": 0.6,
+                        "participant_mean_abstention_aware_macro_precision": 0.65,
+                        "participant_mean_abstention_aware_macro_recall": 0.6,
+                        "participant_mean_abstention_aware_macro_f1": 0.62,
+                        "abstention_count": 2,
+                        "abstention_counts_by_class": [[0, 0], [1, 1], [2, 1]],
+                    },
+                ),
                 aggregation_line_comparison=(),
                 aggregation_view_comparison=(),
                 aggregation_hierarchy_coverage=(),
                 worst_class_f1_stability=(),
                 incomplete_cases=(),
                 deployment_table=(),
-                route_role_coverage=(),
+                route_role_coverage=(
+                    {
+                        "case_id": "motion_case",
+                        "role": "B",
+                        "quality_tier": "excellent",
+                        "motion_state": "low_motion",
+                        "motion_frailty29_relation": "in_sample_for_frailty29",
+                        "motion_evidence_sha256": "a" * 64,
+                        "abstention_rate": 0.0,
+                        "direct_q_rate_states": "pass",
+                        "mean_direct_q_rate_score": 0.8,
+                        "mean_direct_q_rate_coverage": 0.9,
+                    },
+                ),
                 quality_distributions=(),
             )
             reason = "no provenance-safe inner/train balanced-accuracy history"
@@ -285,6 +310,11 @@ class ReportingPlotContractTests(unittest.TestCase):
         )
         self.assertIn("N/A:", html)
         self.assertIn(reason, html)
+        self.assertIn("Frozen motion evidence used by each route", html)
+        self.assertIn("SQI state, score, and coverage provenance", html)
+        self.assertIn("in_sample_for_frailty29", html)
+        self.assertIn("Conditional BA", html)
+        self.assertIn("Abstention-aware Macro-F1", html)
 
 
 if __name__ == "__main__":

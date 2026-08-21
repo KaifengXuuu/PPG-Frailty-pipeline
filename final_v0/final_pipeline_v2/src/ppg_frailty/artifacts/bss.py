@@ -199,9 +199,18 @@ def _select_source(
     sources: np.ndarray,
     motion_references: np.ndarray | None,
     fs_hz: float,
+    *,
+    motion_valid_mask: np.ndarray | None = None,
 ) -> tuple[int, list[float], list[float], list[float]]:
     """按 cardiac concentration 减 motion correlation 选源 / Select a rate source."""
 
+    valid = (
+        np.ones(sources.shape[0], dtype=bool)
+        if motion_valid_mask is None
+        else np.asarray(motion_valid_mask, dtype=bool)
+    )
+    if valid.shape != (sources.shape[0],) or not np.any(valid):
+        raise ValueError("motion_valid_mask must retain aligned reference samples")
     cardiac_scores: list[float] = []
     motion_correlations: list[float] = []
     combined_scores: list[float] = []
@@ -209,11 +218,25 @@ def _select_source(
         component = sources[:, column]
         cardiac = _cardiac_fraction(component, fs_hz)
         correlation = 0.0
-        if motion_references is not None and np.std(component) > 1e-12:
+        component_for_correlation = component[valid]
+        references_for_correlation = (
+            None if motion_references is None else motion_references[valid]
+        )
+        if (
+            references_for_correlation is not None
+            and np.std(component_for_correlation) > 1e-12
+        ):
             correlations = [
-                abs(float(np.corrcoef(component, motion_references[:, index])[0, 1]))
-                for index in range(motion_references.shape[1])
-                if np.std(motion_references[:, index]) > 1e-12
+                abs(
+                    float(
+                        np.corrcoef(
+                            component_for_correlation,
+                            references_for_correlation[:, index],
+                        )[0, 1]
+                    )
+                )
+                for index in range(references_for_correlation.shape[1])
+                if np.std(references_for_correlation[:, index]) > 1e-12
             ]
             correlation = max(correlations, default=0.0)
         cardiac_scores.append(cardiac)
@@ -281,13 +304,18 @@ class _LinearBssReducer(ArtifactReducer):
             source = preliminary
             if np.linalg.matrix_rank(source - np.mean(source, axis=0)) < 2:
                 raise ValueError("dual PPG channels are rank-deficient")
-            motion, motion_names, _ = imu_reference_matrix(
+            motion, motion_names, motion_valid = imu_reference_matrix(
                 imu_processed,
                 source.shape[0],
                 profile_id=self.config.imu_reference_profile,
             )
             sources, mixing, mean, fit_diagnostics = self._fit(source)
-            selected, cardiac, correlations, combined = _select_source(sources, motion, fs_hz)
+            selected, cardiac, correlations, combined = _select_source(
+                sources,
+                motion,
+                fs_hz,
+                motion_valid_mask=motion_valid,
+            )
             output = np.outer(sources[:, selected], mixing[:, selected]) + mean
             return success_result(
                 self,
@@ -302,6 +330,8 @@ class _LinearBssReducer(ArtifactReducer):
                     "motion_correlation": correlations,
                     "motion_reference_names": motion_names,
                     "imu_reference_profile": self.config.imu_reference_profile,
+                    "output_valid_mask": motion_valid.tolist(),
+                    "output_valid_fraction": float(np.mean(motion_valid)),
                     "selection_score": combined,
                     **fit_diagnostics,
                 },
@@ -314,7 +344,7 @@ class PcaBssReducer(_LinearBssReducer):
     """双通道 PCA comparator / Dual-channel PCA comparator."""
 
     reducer_id = "pca_bss"
-    reducer_version = "pca_component_select_v1"
+    reducer_version = "pca_component_select_v2"
     method = "pca"
 
 
@@ -322,7 +352,7 @@ class FastIcaBssReducer(_LinearBssReducer):
     """固定 seed FastICA comparator / Fixed-seed FastICA comparator."""
 
     reducer_id = "fastica_bss"
-    reducer_version = "fastica_component_select_v1"
+    reducer_version = "fastica_component_select_v2"
     method = "fastica"
 
 

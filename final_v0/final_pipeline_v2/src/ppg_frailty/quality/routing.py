@@ -14,14 +14,9 @@ from enum import Enum
 from typing import Any, Callable, Mapping
 
 from ..contracts import (
-    ArtifactReductionResult,
-    QualityEndpoint,
     QualityResult,
     QualityState,
-    RouteResult,
-    RouteState,
     SignalRoute,
-    SourceSignalView,
 )
 from .endpoint_sqi import SqiDiagnostics, evaluate_quality_diagnostics
 
@@ -32,23 +27,162 @@ class QualityMode(str, Enum):
     ROUTE = "route"
 
 
+class QualityTier(str, Enum):
+    """Classifier input tier produced by the explicit SQI/motion state table."""
+
+    EXCELLENT = "excellent"
+    ACCEPTABLE = "acceptable"
+    UNFIT = "unfit"
+    EXCLUDED = "excluded"
+
+
 @dataclass(frozen=True)
-class SegmentIntegrity:
-    """Hard, segment-local integrity result evaluated before endpoint SQI."""
+class QualityTierDecision:
+    """One label-free tier decision; recovery remains a separate module."""
 
-    pass_: bool
-    segment_id: str
-    start_sample: int
-    end_sample: int
-    reasons: tuple[str, ...] = ()
+    tier: QualityTier
+    sqi_enabled: bool
+    motion_enabled: bool
+    reasons: tuple[str, ...]
 
-    def validate(self) -> None:
-        if not str(self.segment_id).strip() or self.start_sample < 0:
-            raise ValueError("segment integrity identity is invalid")
-        if self.end_sample <= self.start_sample:
-            raise ValueError("segment integrity bounds are empty or reversed")
-        if not self.pass_ and not self.reasons:
-            raise ValueError("hard-invalid integrity results require an explicit reason")
+    @property
+    def eligible_for_direct_input(self) -> bool:
+        return self.tier in {QualityTier.EXCELLENT, QualityTier.ACCEPTABLE}
+
+
+@dataclass(frozen=True)
+class RouteModuleSwitches:
+    """Three independent runtime switches used by the route orchestrator."""
+
+    sqi_enabled: bool
+    motion_detector_enabled: bool
+    denoiser_enabled: bool
+
+
+_SQI_TIER_TABLE: dict[tuple[bool, str], QualityTier] = {
+    # q_morph pass/fail, motion state.  Q_rate failure is handled before lookup.
+    (True, "off"): QualityTier.EXCELLENT,
+    (True, "low"): QualityTier.EXCELLENT,
+    (True, "high"): QualityTier.UNFIT,
+    (False, "off"): QualityTier.ACCEPTABLE,
+    (False, "low"): QualityTier.ACCEPTABLE,
+    (False, "high"): QualityTier.UNFIT,
+}
+
+
+def _endpoint_pass(state: QualityState | str | None) -> bool:
+    if state is None:
+        return False
+    try:
+        resolved = state if isinstance(state, QualityState) else QualityState(str(state))
+    except ValueError:
+        return False
+    return resolved is QualityState.PASS
+
+
+def _motion_state(*, enabled: bool, high: bool | None) -> str:
+    if not enabled:
+        return "off"
+    if high is None:
+        return "unavailable"
+    if not isinstance(high, bool):
+        raise TypeError("motion_high must be boolean or None")
+    return "high" if high else "low"
+
+
+def route_quality_tier(
+    *,
+    sqi_enabled: bool,
+    q_rate_state: QualityState | str | None,
+    q_morph_state: QualityState | str | None,
+    motion_enabled: bool,
+    motion_high: bool | None,
+    static_role: bool,
+) -> QualityTierDecision:
+    """Apply the user-authoritative SQI/motion truth table.
+
+    ``UNFIT`` is intentionally not converted to ``EXCLUDED`` here.  A caller may
+    independently enable one denoiser attempt and then reassess Q_rate; this pure
+    function neither runs nor selects a reducer.
+    """
+
+    for name, value in (
+        ("sqi_enabled", sqi_enabled),
+        ("motion_enabled", motion_enabled),
+        ("static_role", static_role),
+    ):
+        if not isinstance(value, bool):
+            raise TypeError(f"{name} must be boolean")
+    motion_state = _motion_state(enabled=motion_enabled, high=motion_high)
+    if motion_state == "unavailable":
+        return QualityTierDecision(
+            tier=QualityTier.UNFIT,
+            sqi_enabled=sqi_enabled,
+            motion_enabled=True,
+            reasons=("motion_detector_enabled_but_evidence_unavailable",),
+        )
+
+    if not sqi_enabled:
+        if motion_state == "high":
+            tier = QualityTier.UNFIT
+            reason = "sqi_off_high_motion_unfit"
+        elif motion_state == "low":
+            tier = QualityTier.EXCELLENT
+            reason = "sqi_off_low_motion_excellent"
+        elif static_role:
+            tier = QualityTier.EXCELLENT
+            reason = "sqi_and_motion_off_static_role_only"
+        else:
+            tier = QualityTier.UNFIT
+            reason = "sqi_and_motion_off_nonstatic_role_unfit"
+        return QualityTierDecision(
+            tier=tier,
+            sqi_enabled=False,
+            motion_enabled=motion_enabled,
+            reasons=(reason,),
+        )
+
+    rate_pass = _endpoint_pass(q_rate_state)
+    if not rate_pass:
+        return QualityTierDecision(
+            tier=QualityTier.UNFIT,
+            sqi_enabled=True,
+            motion_enabled=motion_enabled,
+            reasons=("q_rate_not_pass_unfit",),
+        )
+    morph_pass = _endpoint_pass(q_morph_state)
+    tier = _SQI_TIER_TABLE[(morph_pass, motion_state)]
+    return QualityTierDecision(
+        tier=tier,
+        sqi_enabled=True,
+        motion_enabled=motion_enabled,
+        reasons=(
+            "q_rate_pass",
+            "q_morph_pass" if morph_pass else "q_morph_not_pass",
+            f"motion_{motion_state}",
+            f"tier_{tier.value}",
+        ),
+    )
+
+
+def route_module_switches_from_config(config: Mapping[str, Any]) -> RouteModuleSwitches:
+    """Resolve SQI, motion-detector, and denoiser switches independently."""
+
+    artifact = config.get("artifact", {})
+    if not isinstance(artifact, Mapping):
+        raise ValueError("config['artifact'] must be a mapping")
+    motion_enabled = artifact.get("motion_detector_enabled", False)
+    if not isinstance(motion_enabled, bool):
+        raise ValueError("artifact.motion_detector_enabled must be boolean")
+    reducer = str(artifact.get("reducer", "identity"))
+    denoiser_enabled = artifact.get("denoiser_enabled", reducer != "identity")
+    if not isinstance(denoiser_enabled, bool):
+        raise ValueError("artifact.denoiser_enabled must be boolean")
+    return RouteModuleSwitches(
+        sqi_enabled=quality_mode_from_config(config) is QualityMode.ROUTE,
+        motion_detector_enabled=motion_enabled,
+        denoiser_enabled=denoiser_enabled,
+    )
 
 
 @dataclass(frozen=True)
@@ -172,157 +306,6 @@ def run_quality_mode(
     return outcome
 
 
-def route_segment_pre_reduction(
-    integrity: SegmentIntegrity,
-    *,
-    q_pre: QualityResult | None,
-    recoverable_motion: bool,
-    reducer_enabled: bool,
-) -> RouteResult:
-    """Resolve A1 through the explicit reducer-candidate transition.
-
-    This function consumes already-fitted endpoint states only. It never fits a
-    calibrator or reads labels, and therefore preserves the caller's train/OOF
-    isolation boundary.
-    """
-
-    integrity.validate()
-    if not integrity.pass_:
-        result = RouteResult(
-            state=RouteState.HARD_INVALID,
-            source_signal=None,
-            segment_id=integrity.segment_id,
-            start_sample=integrity.start_sample,
-            end_sample=integrity.end_sample,
-            reasons=integrity.reasons,
-        )
-        result.validate()
-        return result
-    if q_pre is None:
-        raise ValueError("integrity-valid segments require direct endpoint quality")
-    rate_pass = q_pre.q_rate.state is QualityState.PASS
-    shape_pass = q_pre.shape_endpoint.state is QualityState.PASS
-    if rate_pass:
-        state = RouteState.FULL_DIRECT if shape_pass else RouteState.RATE_ONLY_DIRECT
-        result = RouteResult(
-            state=state,
-            source_signal=SourceSignalView.X_FILTER,
-            segment_id=integrity.segment_id,
-            start_sample=integrity.start_sample,
-            end_sample=integrity.end_sample,
-            q_pre=q_pre,
-            reasons=(
-                ()
-                if shape_pass
-                else ("q_rate_pass_q_shape_not_pass_rate_only_direct",)
-            ),
-        )
-        result.validate()
-        return result
-    if not recoverable_motion or not reducer_enabled:
-        reason = (
-            "q_rate_fail_not_recoverable"
-            if not recoverable_motion
-            else "q_rate_fail_reducer_disabled"
-        )
-        result = RouteResult(
-            state=RouteState.DEGRADED_DROP,
-            source_signal=None,
-            segment_id=integrity.segment_id,
-            start_sample=integrity.start_sample,
-            end_sample=integrity.end_sample,
-            q_pre=q_pre,
-            reasons=(reason,),
-        )
-        result.validate()
-        return result
-    result = RouteResult(
-        state=RouteState.RATE_RECOVERY_CANDIDATE,
-        source_signal=None,
-        segment_id=integrity.segment_id,
-        start_sample=integrity.start_sample,
-        end_sample=integrity.end_sample,
-        q_pre=q_pre,
-        reasons=("q_rate_fail_recoverable_motion",),
-    )
-    result.validate()
-    return result
-
-
-def finalize_rate_recovery(
-    candidate: RouteResult,
-    *,
-    reduction: ArtifactReductionResult,
-    q_rate_post: QualityEndpoint | None,
-) -> RouteResult:
-    """Resolve A2 after one non-identity reducer attempt and Q_rate-only reassessment."""
-
-    candidate.validate()
-    if candidate.state is not RouteState.RATE_RECOVERY_CANDIDATE:
-        raise ValueError("only rate_recovery_candidate can enter reducer finalization")
-    reduction_succeeded = (
-        reduction.status == "success"
-        and reduction.x_ar is not None
-        and not reduction.is_identity
-    )
-    if not reduction_succeeded:
-        reasons = tuple(
-            dict.fromkeys(
-                (
-                    *candidate.reasons,
-                    *reduction.reasons,
-                    (
-                        "identity_reducer_cannot_create_rate_recovery"
-                        if reduction.is_identity
-                        else "artifact_reducer_failed"
-                    ),
-                )
-            )
-        )
-        result = RouteResult(
-            state=RouteState.REJECTED_AFTER_REDUCTION,
-            source_signal=None,
-            segment_id=candidate.segment_id,
-            start_sample=candidate.start_sample,
-            end_sample=candidate.end_sample,
-            q_pre=candidate.q_pre,
-            reducer_name=reduction.reducer_id,
-            reducer_status=reduction.status,
-            reasons=reasons,
-        )
-        result.validate()
-        return result
-    if q_rate_post is None:
-        raise ValueError("successful non-identity reduction requires Q_rate_post")
-    passed = q_rate_post.state is QualityState.PASS
-    result = RouteResult(
-        state=(
-            RouteState.RATE_ONLY_PROCESSED
-            if passed
-            else RouteState.REJECTED_AFTER_REDUCTION
-        ),
-        source_signal=SourceSignalView.X_AR if passed else None,
-        segment_id=candidate.segment_id,
-        start_sample=candidate.start_sample,
-        end_sample=candidate.end_sample,
-        q_pre=candidate.q_pre,
-        q_post=q_rate_post,
-        reducer_name=reduction.reducer_id,
-        reducer_status=reduction.status,
-        reasons=tuple(
-            dict.fromkeys(
-                (
-                    *candidate.reasons,
-                    "q_morph_post_not_applicable",
-                    "q_rate_post_pass" if passed else "q_rate_post_not_pass",
-                )
-            )
-        ),
-    )
-    result.validate()
-    return result
-
-
 def assert_quality_route(result: QualityResult, route: SignalRoute | str) -> None:
     """Enforce not-applicable morphology for non-identity artifact outputs."""
 
@@ -333,11 +316,13 @@ def assert_quality_route(result: QualityResult, route: SignalRoute | str) -> Non
 __all__ = [
     "QualityMode",
     "QualityModeOutcome",
-    "SegmentIntegrity",
+    "QualityTier",
+    "QualityTierDecision",
+    "RouteModuleSwitches",
     "assert_quality_route",
-    "finalize_rate_recovery",
     "quality_mode_from_config",
     "resolve_quality_mode",
-    "route_segment_pre_reduction",
+    "route_module_switches_from_config",
+    "route_quality_tier",
     "run_quality_mode",
 ]

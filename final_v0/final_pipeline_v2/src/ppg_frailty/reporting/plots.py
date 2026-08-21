@@ -20,6 +20,11 @@ LEGACY_BRIDGE_FIGURE_NAMES = (
     "legacy_bridge_execution_order_report",
 )
 
+STAGE3_STAR_FIGURE_NAMES = (
+    "stage3_star_model_deltas",
+    "stage3_star_fold_delta_heatmap",
+)
+
 
 STATIC_FIGURE_NAMES = (
     "leaderboard",
@@ -46,7 +51,15 @@ STATIC_FIGURE_NAMES = (
     "parameter_effects",
     "parameter_interaction",
     *LEGACY_BRIDGE_FIGURE_NAMES,
+    *STAGE3_STAR_FIGURE_NAMES,
 )
+
+
+def _is_stage3_centered_star(plan: Mapping[str, Any]) -> bool:
+    bridge = plan.get("legacy_bridge")
+    return isinstance(bridge, Mapping) and str(bridge.get("design", "")) == (
+        "centered_star_v1"
+    )
 
 
 def _number(value: Any) -> float | None:
@@ -222,22 +235,36 @@ def _leaderboard(analysis: StudyAnalysis, pyplot: Any) -> Any:
     rows = [
         row
         for row in analysis.predictive_leaderboard
-        if _number(row.get("participant_mean_balanced_accuracy")) is not None
+        if _number(
+            row.get("participant_mean_abstention_aware_balanced_accuracy")
+        )
+        is not None
     ]
     if not rows:
         raise ValueError("no finite case-level predictive metrics")
     labels = [str(row["case_id"]) for row in reversed(rows)]
     ba = [
-        float(row["participant_mean_balanced_accuracy"]) for row in reversed(rows)
+        float(row["participant_mean_abstention_aware_balanced_accuracy"])
+        for row in reversed(rows)
     ]
     f1 = [
-        _number(row.get("participant_mean_macro_f1")) or 0.0
+        _number(row.get("participant_mean_abstention_aware_macro_f1")) or 0.0
         for row in reversed(rows)
     ]
     positions = np.arange(len(labels), dtype=np.float64)
     figure, axis = pyplot.subplots(figsize=(9, max(3.5, len(labels) * 0.55)))
-    axis.barh(positions - 0.18, ba, height=0.34, label="Balanced accuracy")
-    axis.barh(positions + 0.18, f1, height=0.34, label="Macro-F1")
+    axis.barh(
+        positions - 0.18,
+        ba,
+        height=0.34,
+        label="Abstention-aware balanced accuracy",
+    )
+    axis.barh(
+        positions + 0.18,
+        f1,
+        height=0.34,
+        label="Abstention-aware Macro-F1",
+    )
     axis.set_yticks(positions, labels)
     axis.set_xlim(0.0, 1.0)
     axis.set_xlabel("Participant-level score")
@@ -281,10 +308,20 @@ def _worst_class_f1_stability(analysis: StudyAnalysis, pyplot: Any) -> Any:
         f"S{row['worst_class_f1_stability_rank']} · {row['case_id']}"
         for row in rows
     ]
-    worst_f1 = [float(row["worst_class_f1"]) for row in rows]
-    mean_ba = [float(row["participant_mean_balanced_accuracy"]) for row in rows]
+    worst_f1 = [
+        float(row["abstention_aware_worst_class_f1"]) for row in rows
+    ]
+    mean_ba = [
+        float(row["participant_mean_abstention_aware_balanced_accuracy"])
+        for row in rows
+    ]
     ba_sd = [
-        _number(row.get("repeat_balanced_accuracy_population_sd")) or 0.0
+        _number(
+            row.get(
+                "repeat_abstention_aware_balanced_accuracy_population_sd"
+            )
+        )
+        or 0.0
         for row in rows
     ]
     positions = np.arange(len(rows), dtype=np.float64)
@@ -293,7 +330,7 @@ def _worst_class_f1_stability(analysis: StudyAnalysis, pyplot: Any) -> Any:
         positions - 0.18,
         worst_f1,
         height=0.34,
-        label="Worst-class F1",
+        label="Abstention-aware worst-class F1",
     )
     axis.barh(
         positions + 0.18,
@@ -301,12 +338,12 @@ def _worst_class_f1_stability(analysis: StudyAnalysis, pyplot: Any) -> Any:
         height=0.34,
         xerr=ba_sd,
         capsize=3,
-        label="Mean BA ± repeat population SD",
+        label="Abstention-aware mean BA ± repeat population SD",
     )
     axis.set_yticks(positions, labels)
     axis.set_xlim(0.0, 1.0)
     axis.set_xlabel("Participant-level score")
-    axis.set_title("Worst-class F1 stability review (top 10)")
+    axis.set_title("Abstention-aware worst-class F1 stability review (top 10)")
     axis.legend(loc="lower right")
     axis.grid(axis="x", alpha=0.25)
     figure.tight_layout()
@@ -1544,6 +1581,138 @@ def _legacy_bridge_execution_order_report(
     return figure
 
 
+def _stage3_star_model_deltas(
+    analysis: StudyAnalysis,
+    pyplot: Any,
+) -> Any:
+    rows = list(analysis.stage3_star_contrasts)
+    models = sorted({str(row.get("model")) for row in rows})
+    if len(rows) != 14 or len(models) != 2:
+        raise ValueError("centered-star delta figure requires 14 rows and two models")
+    figure, axes = pyplot.subplots(
+        len(models),
+        1,
+        figsize=(12.0, 4.2 * len(models)),
+        squeeze=False,
+    )
+    drew_any = False
+    metrics = (
+        ("delta_native_balanced_accuracy", "Δ BA", "o"),
+        ("delta_native_macro_f1", "Δ Macro-F1", "s"),
+        ("delta_native_worst_class_f1", "Δ worst-class F1", "^"),
+    )
+    for axis, model in zip(axes.flat, models):
+        axis_drew = False
+        current = [row for row in rows if str(row.get("model")) == model]
+        if len(current) != 7:
+            pyplot.close(figure)
+            raise ValueError("each centered-star model requires seven contrasts")
+        labels = [
+            f"{row.get('variant_profile')}\n{row.get('factor_id')}" for row in current
+        ]
+        positions = np.arange(len(current), dtype=np.float64)
+        for field, label, marker in metrics:
+            values = [_number(row.get(field)) for row in current]
+            if any(value is not None for value in values):
+                axis.plot(
+                    positions,
+                    [np.nan if value is None else value for value in values],
+                    marker=marker,
+                    linewidth=1.5,
+                    label=label,
+                )
+                drew_any = True
+                axis_drew = True
+        axis.axhline(0.0, color="black", linewidth=0.9)
+        _set_centered_category_ticks(axis, positions, labels)
+        axis.set_ylabel("Variant − same-model B0")
+        axis.set_title(model)
+        axis.grid(axis="y", alpha=0.25)
+        if axis_drew:
+            axis.legend(fontsize="small")
+    if not drew_any:
+        pyplot.close(figure)
+        raise ValueError("no available centered-star deltas")
+    figure.suptitle(
+        "Stage 3 centered star — native participant-OOF effects "
+        "(B0 reused; contrasts correlated)"
+    )
+    figure.tight_layout()
+    return figure
+
+
+def _stage3_star_fold_delta_heatmap(
+    analysis: StudyAnalysis,
+    pyplot: Any,
+) -> Any:
+    rows = list(analysis.stage3_star_fold_contrasts)
+    contrast_keys: list[tuple[str, str, str]] = []
+    cell_keys = sorted(
+        {(int(row["repeat"]), int(row["fold"])) for row in rows}
+    )
+    for row in rows:
+        key = (
+            str(row.get("model")),
+            str(row.get("variant_profile")),
+            str(row.get("factor_id")),
+        )
+        if key not in contrast_keys:
+            contrast_keys.append(key)
+    if (
+        len(contrast_keys) != 14
+        or not cell_keys
+        or len(rows) != len(contrast_keys) * len(cell_keys)
+    ):
+        raise ValueError(
+            "centered-star fold rows do not form a complete 14×N "
+            "repeat/fold matrix"
+        )
+    matrix = np.full(
+        (len(contrast_keys), len(cell_keys)), np.nan, dtype=np.float64
+    )
+    row_index = {key: index for index, key in enumerate(contrast_keys)}
+    cell_index = {key: index for index, key in enumerate(cell_keys)}
+    for row in rows:
+        value = _number(row.get("delta_native_balanced_accuracy"))
+        if value is None:
+            continue
+        key = (
+            str(row.get("model")),
+            str(row.get("variant_profile")),
+            str(row.get("factor_id")),
+        )
+        matrix[row_index[key], cell_index[(int(row["repeat"]), int(row["fold"]))]] = value
+    if not np.isfinite(matrix).any():
+        raise ValueError("no available centered-star matched-fold deltas")
+    maximum = max(float(np.nanmax(np.abs(matrix))), 1e-9)
+    figure, axis = pyplot.subplots(
+        figsize=(max(8.5, 4.0 + 0.48 * len(cell_keys)), 8.5)
+    )
+    image = axis.imshow(
+        matrix,
+        aspect="auto",
+        cmap="coolwarm",
+        vmin=-maximum,
+        vmax=maximum,
+    )
+    axis.set_yticks(
+        range(len(contrast_keys)),
+        [f"{model} · {profile}\n{factor}" for model, profile, factor in contrast_keys],
+        fontsize="x-small",
+    )
+    axis.set_xticks(
+        range(len(cell_keys)),
+        [f"r{repeat}/f{fold}" for repeat, fold in cell_keys],
+    )
+    axis.set_title(
+        "Stage 3 centered star — matched-fold native Δ BA\n"
+        "descriptive only; no CI or significance test"
+    )
+    figure.colorbar(image, ax=axis, label="Variant − same-model B0 BA")
+    figure.tight_layout()
+    return figure
+
+
 def generate_static_figures(
     collected: CollectedStudy,
     analysis: StudyAnalysis,
@@ -1560,14 +1729,18 @@ def generate_static_figures(
         import matplotlib.pyplot as pyplot
     except Exception as error:  # noqa: BLE001
         reason = f"matplotlib unavailable: {type(error).__name__}: {error}"
-        requested_names = (
-            STATIC_FIGURE_NAMES
+        bridge_names = (
+            STAGE3_STAR_FIGURE_NAMES
+            if _is_stage3_centered_star(collected.plan)
+            else LEGACY_BRIDGE_FIGURE_NAMES
             if isinstance(collected.plan.get("legacy_bridge"), Mapping)
-            else tuple(
-                name
-                for name in STATIC_FIGURE_NAMES
-                if name not in LEGACY_BRIDGE_FIGURE_NAMES
-            )
+            else ()
+        )
+        requested_names = tuple(
+            name
+            for name in STATIC_FIGURE_NAMES
+            if name not in (*LEGACY_BRIDGE_FIGURE_NAMES, *STAGE3_STAR_FIGURE_NAMES)
+            or name in bridge_names
         )
         return tuple(
             _na(target, name, reason)
@@ -1649,7 +1822,18 @@ def generate_static_figures(
             lambda plot: _parameter_interaction(collected, analysis, plot),
         ),
     )
-    if isinstance(collected.plan.get("legacy_bridge"), Mapping):
+    if _is_stage3_centered_star(collected.plan):
+        plots += (
+            (
+                "stage3_star_model_deltas",
+                lambda plot: _stage3_star_model_deltas(analysis, plot),
+            ),
+            (
+                "stage3_star_fold_delta_heatmap",
+                lambda plot: _stage3_star_fold_delta_heatmap(analysis, plot),
+            ),
+        )
+    elif isinstance(collected.plan.get("legacy_bridge"), Mapping):
         plots += (
             (
                 "legacy_bridge_numeric_ablation_report",
@@ -1668,6 +1852,7 @@ def generate_static_figures(
         "balanced_accuracy_learning_curves",
         "top_balanced_accuracy_learning_curves",
         *LEGACY_BRIDGE_FIGURE_NAMES,
+        *STAGE3_STAR_FIGURE_NAMES,
     }
     return tuple(
         _save(
@@ -1683,6 +1868,7 @@ def generate_static_figures(
 
 __all__ = [
     "LEGACY_BRIDGE_FIGURE_NAMES",
+    "STAGE3_STAR_FIGURE_NAMES",
     "STATIC_FIGURE_NAMES",
     "clear_static_figure_artifacts",
     "generate_static_figures",

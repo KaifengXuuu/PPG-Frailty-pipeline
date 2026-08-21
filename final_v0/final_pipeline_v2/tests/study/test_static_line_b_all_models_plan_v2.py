@@ -30,7 +30,7 @@ class StaticLineBAllModelsPlanTests(unittest.TestCase):
         self.assertEqual(self.plan.study.kind, "catalog_sweep")
         self.assertEqual(self.plan.catalog.balance_line, "line_b")
         self.assertEqual(self.plan.search.runtime_sampling, False)
-        self.assertEqual(len(self.expansion.cases), 39)
+        self.assertEqual(len(self.expansion.cases), 30)
         counts = Counter(case.output_group for case in self.expansion.cases)
         self.assertEqual(
             counts,
@@ -38,7 +38,6 @@ class StaticLineBAllModelsPlanTests(unittest.TestCase):
                 "raw": 15,
                 "fusion": 6,
                 "feature_vector": 9,
-                "feature_matrix": 9,
             },
         )
         by_entry: dict[str, list[object]] = defaultdict(list)
@@ -48,13 +47,13 @@ class StaticLineBAllModelsPlanTests(unittest.TestCase):
                 case.output_group,
                 case.config["representation_mode"],
             )
-        self.assertEqual(len(by_entry), 13)
+        self.assertEqual(len(by_entry), 10)
         self.assertTrue(all(len(values) == 3 for values in by_entry.values()))
         machines = {
             normalize_model_id(str(case.config["model"]["model_id"]))[1]
             for case in self.expansion.cases
         }
-        self.assertEqual(len(machines), 13)
+        self.assertEqual(len(machines), 10)
         self.assertFalse(any(int(case.config["model"]["ensemble_size"]) > 1 for case in self.expansion.cases))
 
     def test_shared_static_line_b_controls_are_identical(self) -> None:
@@ -77,7 +76,7 @@ class StaticLineBAllModelsPlanTests(unittest.TestCase):
             self.assertEqual(config["windows"]["raw_dl"]["length_s"], 5.0)
             self.assertEqual(config["windows"]["raw_dl"]["hop_s"], 2.5)
             self.assertEqual(config["windows"]["engineering"]["length_s"], 10.0)
-            self.assertEqual(config["windows"]["engineering"]["hop_s"], 5.0)
+            self.assertEqual(config["windows"]["engineering"]["hop_s"], 2.0)
 
     def test_registered_sampling_profiles_do_not_mix_optimizer_changes(self) -> None:
         selected = [
@@ -131,8 +130,7 @@ class StaticLineBAllModelsPlanTests(unittest.TestCase):
             ),
             ("sqrt", 5),
         )
-        rocket = by_id["rocket__k10000_a0p1"]["model"]
-        self.assertEqual((rocket["n_kernels"], rocket["alpha"]), (10000, 0.1))
+        self.assertFalse(any("rocket" in case_id for case_id in by_id))
         shapeformer = by_id["shapeformer_osd__lr1e4_wd1e3"]
         self.assertEqual(shapeformer["model"]["input_fs_hz"], 400.0)
         self.assertEqual(shapeformer["training"]["learning_rate"], 0.0001)

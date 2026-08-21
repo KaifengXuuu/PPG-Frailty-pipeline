@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import tempfile
@@ -416,7 +417,7 @@ class V2ConfigurationTests(unittest.TestCase):
         )
         self.assertEqual(
             effective["signal"]["normalization"]["raw_imu"],
-            "outer_train_robust",
+            "none",
         )
         self.assertEqual(
             effective["signal"]["normalization"]["robust_iqr_divisor"],
@@ -432,7 +433,7 @@ class V2ConfigurationTests(unittest.TestCase):
             "shared_planner_version": "window_plan_v1",
             "engineering": {
                 "length_s": 10.0,
-                "hop_s": 5.0,
+                "hop_s": 2.0,
                 "end_alignment": "left_start_regular_grid",
                 "padding": "none_complete_windows_only",
                 "cap_per_file": None,
@@ -521,14 +522,13 @@ class V2ConfigurationTests(unittest.TestCase):
         )
         entries = {entry["entry_id"]: entry for entry in catalog["entries"]}
         models = {entry_id: entry["model"] for entry_id, entry in entries.items()}
-        for entry_id in ("inception_full", "inception_matrix"):
+        for entry_id in ("inception_full",):
             self.assertEqual(
                 models[entry_id]["seed_policy"],
                 "outer_cv_repeat_seed_equals_split_seed",
             )
         comparator_pairs = {
             "inception_full_member0_comparator": "inception_full",
-            "inception_matrix_member0_comparator": "inception_matrix",
         }
         for comparator_id, ordinary_id in comparator_pairs.items():
             self.assertEqual(
@@ -546,7 +546,6 @@ class V2ConfigurationTests(unittest.TestCase):
             self.assertEqual(comparator_model, models[ordinary_id])
         for entry_id in (
             "inception_full_five_member_ensemble",
-            "inception_matrix_five_member_ensemble",
         ):
             self.assertEqual(
                 models[entry_id]["seed_policy"],
@@ -696,7 +695,7 @@ class V2ConfigurationTests(unittest.TestCase):
         )
         self.assertEqual(
             canonical.payload["features"]["engineering_sequence_schema"],
-            "engineering_10s_hop5s_thesis_115_v2",
+            "engineering_10s_hop2s_thesis_115_v3",
         )
         mutated = canonical.to_dict()
         mutated["training"]["training_balance"] = "equal_files"
@@ -717,11 +716,8 @@ class V2ConfigurationTests(unittest.TestCase):
         stale_iqr["signal"]["normalization"]["raw_imu"] = (
             "outer_training_participant_only_robust_scaler_axes6"
         )
-        resolved_stale_iqr = validate_config_payload(stale_iqr)
-        self.assertEqual(
-            resolved_stale_iqr["signal"]["normalization"]["raw_imu"],
-            "outer_train_robust",
-        )
+        with self.assertRaisesRegex(ValueError, "non-default signal.normalization"):
+            validate_config_payload(stale_iqr)
 
         stale_engineering = canonical.to_dict()
         stale_engineering["features"][
@@ -729,6 +725,21 @@ class V2ConfigurationTests(unittest.TestCase):
         ] = "EngineeringFeatureSequenceV1"
         with self.assertRaisesRegex(ValueError, "engineering_sequence_schema"):
             validate_config_payload(stale_engineering)
+
+        matrix = load_config(
+            ROOT / "configs/reference_static_feature_matrix_v2.yaml"
+        ).to_dict()
+        self.assertEqual(matrix["features"]["matrix_k"], 150)
+        self.assertEqual(matrix["windows"]["engineering"]["length_s"], 10.0)
+        self.assertEqual(matrix["windows"]["engineering"]["hop_s"], 2.0)
+        wrong_k = copy.deepcopy(matrix)
+        wrong_k["features"]["matrix_k"] = 149
+        with self.assertRaisesRegex(ValueError, "fixed at 150"):
+            validate_config_payload(wrong_k)
+        wrong_hop = copy.deepcopy(matrix)
+        wrong_hop["windows"]["engineering"]["hop_s"] = 5.0
+        with self.assertRaisesRegex(ValueError, "fixed 10 s/2 s"):
+            validate_config_payload(wrong_hop)
 
         changed_feature_formula = canonical.to_dict()
         changed_feature_formula["features"]["tachogram_fs_hz"] = 8.0
@@ -798,7 +809,7 @@ class V2ConfigurationTests(unittest.TestCase):
             resolve_window_config(canonical.to_dict()["windows"]),
         )
         self.assertEqual(defaults["engineering"]["window_seconds"], 10.0)
-        self.assertEqual(defaults["engineering"]["hop_seconds"], 5.0)
+        self.assertEqual(defaults["engineering"]["hop_seconds"], 2.0)
         self.assertEqual(defaults["engineering"]["end_alignment"], "start")
         self.assertIsNone(defaults["engineering"]["max_windows"])
         self.assertEqual(defaults["engineering"]["cap_policy"], "not_applicable")
@@ -1270,8 +1281,15 @@ class V2ConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "must be boolean"):
             validate_config_payload(payload)
         payload["artifact"]["motion_detector_enabled"] = True
-        with self.assertRaisesRegex(ValueError, "denoise recovery policy"):
-            validate_config_payload(payload)
+        payload["artifact"]["motion_detector"].update(
+            {
+                "evidence_path": "artifacts/example/motion_internal_evidence.json",
+                "expected_evidence_sha256": "a" * 64,
+            }
+        )
+        resolved_motion_only = validate_config_payload(payload)
+        self.assertTrue(resolved_motion_only["artifact"]["motion_detector_enabled"])
+        self.assertFalse(resolved_motion_only["artifact"]["denoiser_enabled"])
 
         payload = load_config(
             ROOT / "configs/reference_static_feature_vector_v2.yaml"
@@ -1280,12 +1298,27 @@ class V2ConfigurationTests(unittest.TestCase):
             {
                 "reducer": "spectral_mask",
                 "reducer_version": "spectral_mask_v1",
+                "denoiser_enabled": True,
                 "degraded_policy": "denoise_then_extract_rate_features",
                 "parameters": {},
             }
         )
-        with self.assertRaisesRegex(ValueError, "would never execute"):
-            validate_config_payload(payload)
+        resolved_denoiser_only = validate_config_payload(payload)
+        self.assertTrue(resolved_denoiser_only["artifact"]["denoiser_enabled"])
+        self.assertFalse(resolved_denoiser_only["artifact"]["motion_detector_enabled"])
+        diagnostics_recovery = json.loads(json.dumps(payload))
+        diagnostics_recovery["quality"]["mode"] = "diagnostics_only"
+        resolved_diagnostics_recovery = validate_config_payload(
+            diagnostics_recovery
+        )
+        self.assertEqual(
+            resolved_diagnostics_recovery["quality"]["calibrator"],
+            "fixed_formula_thresholds_v1",
+        )
+        self.assertEqual(
+            resolved_diagnostics_recovery["quality"]["high_quality_rule"],
+            "direct_diagnostics_only_post_denoise_q_rate_fixed_formula_only",
+        )
         payload["quality"]["mode"] = "route"
         payload["quality"]["rate_threshold"] = 0.5
         payload["quality"]["morph_threshold"] = 0.5
@@ -1298,13 +1331,65 @@ class V2ConfigurationTests(unittest.TestCase):
         raw_nonidentity["artifact"].update(
             {
                 "reducer": "pca_bss",
-                "reducer_version": "pca_component_select_v1",
+                "reducer_version": "pca_component_select_v2",
+                "denoiser_enabled": True,
                 "degraded_policy": "denoise_then_extract_rate_features",
                 "parameters": {},
             }
         )
-        with self.assertRaisesRegex(ValueError, "not executable.*representation_mode"):
+        with self.assertRaisesRegex(ValueError, "feature_vector"):
             validate_config_payload(raw_nonidentity)
+
+    def test_sqi_motion_and_denoiser_switches_accept_all_combinations(self) -> None:
+        for sqi_enabled in (False, True):
+            for motion_enabled in (False, True):
+                for denoiser_enabled in (False, True):
+                    with self.subTest(
+                        sqi=sqi_enabled,
+                        motion=motion_enabled,
+                        denoiser=denoiser_enabled,
+                    ):
+                        payload = load_config(
+                            ROOT / "configs/reference_static_feature_vector_v2.yaml"
+                        ).to_dict()
+                        if sqi_enabled:
+                            payload["quality"].update(
+                                {
+                                    "mode": "route",
+                                    "rate_threshold": 0.50,
+                                    "morph_threshold": 0.65,
+                                }
+                            )
+                        payload["artifact"]["motion_detector_enabled"] = motion_enabled
+                        if motion_enabled:
+                            payload["artifact"]["motion_detector"].update(
+                                {
+                                    "evidence_path": "artifacts/example/motion_internal_evidence.json",
+                                    "expected_evidence_sha256": "a" * 64,
+                                }
+                            )
+                        payload["artifact"]["denoiser_enabled"] = denoiser_enabled
+                        if denoiser_enabled:
+                            payload["artifact"].update(
+                                {
+                                    "reducer": "pca_bss",
+                                    "reducer_version": "pca_component_select_v2",
+                                    "degraded_policy": "denoise_then_extract_rate_features",
+                                    "parameters": {},
+                                }
+                            )
+                        resolved = validate_config_payload(payload)
+                        self.assertEqual(
+                            resolved["quality"]["mode"] == "route", sqi_enabled
+                        )
+                        self.assertIs(
+                            resolved["artifact"]["motion_detector_enabled"],
+                            motion_enabled,
+                        )
+                        self.assertIs(
+                            resolved["artifact"]["denoiser_enabled"],
+                            denoiser_enabled,
+                        )
 
     def test_mandatory_output_contract_is_not_exposed_as_fake_switches(self) -> None:
         reference = load_config(
@@ -1330,18 +1415,35 @@ class V2ConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "ensemble capability"):
             validate_config_payload(member_toggle)
 
-    def test_external_motion_evidence_is_not_a_core_selectable_module(self) -> None:
+    def test_motion_evidence_distinguishes_runtime_bundle_from_external_audits(self) -> None:
         evidence = list_modules("motion_evidence")
         self.assertEqual(
             {row["module_id"] for row in evidence},
             {
+                "reused_frailty29_all29_bundle",
                 "sqi_only",
                 "sqi_plus_motion_override",
                 "historical_light_cnn_backup",
             },
         )
+        by_id = {row["module_id"]: row for row in evidence}
+        self.assertEqual(
+            set(by_id["reused_frailty29_all29_bundle"]["representation_modes"]),
+            {"raw", "feature_vector", "feature_matrix", "fusion"},
+        )
+        self.assertIn(
+            "in-sample auxiliary evidence",
+            by_id["reused_frailty29_all29_bundle"]["notes"],
+        )
         self.assertTrue(
-            all(not row["representation_modes"] for row in evidence)
+            all(
+                not by_id[module_id]["representation_modes"]
+                for module_id in (
+                    "sqi_only",
+                    "sqi_plus_motion_override",
+                    "historical_light_cnn_backup",
+                )
+            )
         )
         with self.assertRaisesRegex(ValueError, "unknown module family"):
             list_modules("motion_option")

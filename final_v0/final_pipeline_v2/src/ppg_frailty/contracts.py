@@ -27,25 +27,6 @@ class SignalRoute(str, Enum):
     DROPPED = "dropped"
 
 
-class RouteState(str, Enum):
-    """A1/A2 segment states, including the explicit reducer transition."""
-
-    HARD_INVALID = "hard_invalid"
-    FULL_DIRECT = "full_direct"
-    RATE_ONLY_DIRECT = "rate_only_direct"
-    RATE_RECOVERY_CANDIDATE = "rate_recovery_candidate"
-    RATE_ONLY_PROCESSED = "rate_only_processed"
-    DEGRADED_DROP = "degraded_drop"
-    REJECTED_AFTER_REDUCTION = "rejected_after_reduction"
-
-
-class SourceSignalView(str, Enum):
-    """Only amplitude-preserving direct and rate-only processed source views."""
-
-    X_FILTER = "x_filter"
-    X_AR = "x_ar"
-
-
 class QualityState(str, Enum):
     """Endpoint 质量状态；not_applicable 不等于 pass/fail。"""
 
@@ -294,75 +275,6 @@ class ArtifactReductionResult:
     channel_available: tuple[bool, bool]
     alignment: dict[str, Any]
     reasons: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class RouteResult:
-    """Typed, segment-local A1/A2 routing decision with auditable endpoints."""
-
-    state: RouteState
-    source_signal: SourceSignalView | None
-    segment_id: str
-    start_sample: int
-    end_sample: int
-    q_pre: QualityResult | None = None
-    q_post: QualityEndpoint | None = None
-    reducer_name: str = ""
-    reducer_status: str = "not_run"
-    reasons: tuple[str, ...] = ()
-
-    @property
-    def is_terminal(self) -> bool:
-        """The reducer candidate is the sole non-terminal transition state."""
-
-        return self.state is not RouteState.RATE_RECOVERY_CANDIDATE
-
-    @property
-    def signal_route(self) -> SignalRoute:
-        """Map a terminal state to the public signal-route contract."""
-
-        if self.state is RouteState.RATE_RECOVERY_CANDIDATE:
-            raise ValueError("non-terminal rate_recovery_candidate has no signal route")
-        if self.state in {RouteState.FULL_DIRECT, RouteState.RATE_ONLY_DIRECT}:
-            return SignalRoute.DIRECT
-        if self.state is RouteState.RATE_ONLY_PROCESSED:
-            return SignalRoute.ARTIFACT_RATE_ONLY
-        return SignalRoute.DROPPED
-
-    def validate(self) -> None:
-        """Fail closed on impossible state/source/endpoint combinations."""
-
-        if not str(self.segment_id).strip() or self.start_sample < 0:
-            raise ValueError("RouteResult segment identity is invalid")
-        if self.end_sample <= self.start_sample:
-            raise ValueError("RouteResult segment bounds are empty or reversed")
-        direct_states = {RouteState.FULL_DIRECT, RouteState.RATE_ONLY_DIRECT}
-        no_source_states = {
-            RouteState.HARD_INVALID,
-            RouteState.RATE_RECOVERY_CANDIDATE,
-            RouteState.DEGRADED_DROP,
-            RouteState.REJECTED_AFTER_REDUCTION,
-        }
-        if self.state in direct_states and self.source_signal is not SourceSignalView.X_FILTER:
-            raise ValueError("direct route states require source_signal=x_filter")
-        if self.state is RouteState.RATE_ONLY_PROCESSED and self.source_signal is not SourceSignalView.X_AR:
-            raise ValueError("processed rate route requires source_signal=x_ar")
-        if self.state in no_source_states and self.source_signal is not None:
-            raise ValueError("non-predictive route states cannot expose a source signal")
-        if self.state is RouteState.HARD_INVALID and self.q_pre is not None:
-            raise ValueError("hard-invalid segments must stop before endpoint SQI")
-        if self.state is not RouteState.HARD_INVALID and self.q_pre is None:
-            raise ValueError("integrity-valid route states require q_pre")
-        if self.q_post is not None and self.state not in {
-            RouteState.RATE_ONLY_PROCESSED,
-            RouteState.REJECTED_AFTER_REDUCTION,
-        }:
-            raise ValueError("post-reducer quality is legal only after reduction")
-        if self.state is RouteState.RATE_ONLY_PROCESSED:
-            if self.q_post is None or self.q_post.state is not QualityState.PASS:
-                raise ValueError("rate_only_processed requires passing Q_rate_post")
-            if not self.reducer_name or self.reducer_status != "success":
-                raise ValueError("rate_only_processed requires an explicit successful reducer")
 
 
 @dataclass(frozen=True)

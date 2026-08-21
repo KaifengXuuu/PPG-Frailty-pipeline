@@ -63,12 +63,12 @@ class RawWindows:
         object.__setattr__(self, "window_aggregation_mask", aggregation_mask)
 
 
-def _fallback_ppg_scale(
+def _fallback_channel_scale(
     values: np.ndarray,
     *,
     config: RawNormalizationConfig,
 ) -> np.ndarray:
-    """Return the configured fallback scale for two optical channels."""
+    """Return the configured fallback scale for every DL input channel."""
 
     if config.iqr_fallback == FALLBACK_ONE:
         return np.ones(values.shape[1], dtype=np.float64)
@@ -82,12 +82,12 @@ def _fallback_ppg_scale(
     return np.std(values, axis=0, ddof=config.standard_ddof)
 
 
-def _normalize_ppg(
+def _normalize_dl_window(
     values: np.ndarray,
     *,
     config: RawNormalizationConfig,
 ) -> np.ndarray:
-    """Execute the selected per-window optical normalization strategy."""
+    """Normalize every channel of one DL window without mutating source views."""
 
     source = np.asarray(values, dtype=np.float64)
     if config.raw_ppg == PPG_NONE:
@@ -103,7 +103,7 @@ def _normalize_ppg(
         center = np.median(source, axis=0)
         q25, q75 = np.percentile(source, [25.0, 75.0], axis=0)
         scale = (q75 - q25) / float(config.robust_iqr_divisor)
-        fallback = _fallback_ppg_scale(source, config=config)
+        fallback = _fallback_channel_scale(source, config=config)
         scale = np.where(
             np.isfinite(scale) & (scale > config.scale_epsilon),
             scale,
@@ -133,12 +133,14 @@ def build_raw_windows(
     """按唯一计划生成 8 通道窗口 / Build 8-channel windows from the sole plan.
 
     中文：PPG 始终从 amplitude-preserving x_filter 取值；非恒等 x_ar 仅可进入
-    rate/PPI/PRV 路径。IMU 取 dynamic acceleration 与 gyro。
-    完整窗口是默认；显式启用 padding 时只在有效前缀上计算 PPG 归一化，
+    rate/PPI/PRV 路径。IMU 从 physical-unit processed view 复制 dynamic
+    acceleration 与 gyro。八通道仅在 DL 窗口副本内逐通道归一化，上游视图
+    不会被覆盖。完整窗口是默认；显式启用 padding 时只在有效前缀上归一化，
     padded 后缀保持中性零值并由 valid_mask 从模型池化和 fold 变换中排除。
-    English: PPG comes from the legal analysis route; IMU uses dynamic acceleration
-    and gyro. Complete windows are the default; explicitly padded samples are
-    neutral zeros accompanied by a false validity mask.
+    English: PPG comes from the amplitude-preserving direct analysis view; IMU
+    comes from the physical dynamic-acceleration and gyroscope view. Complete
+    windows are the default; explicitly padded samples are neutral zeros
+    accompanied by a false validity mask.
     """
 
     views.validate()
@@ -150,7 +152,7 @@ def build_raw_windows(
     gyro = np.asarray(views.imu_processed["gyro_rads"], dtype=np.float64)
     matrix = np.column_stack(
         (
-            views.x_filter,
+            views.x_analysis,
             dynamic,
             gyro,
         )
@@ -180,14 +182,11 @@ def build_raw_windows(
         if not np.all(valid_rows) or not np.isfinite(segment).all():
             dropped_invalid += 1
             continue
-        # 中文：所选每窗口策略只作用于 RED/IR；六个 IMU SI 通道保持原值，
-        # 等待所选 outer-train-only fold 策略。English: Apply the selected
-        # per-window strategy only to RED/IR; keep all six SI-unit IMU axes
-        # untouched for the selected outer-train transform.
+        # This temporary matrix is the sole DL branch. CanonicalSignalViews
+        # retains amplitude-preserving PPG and physical-unit processed IMU.
         normalized = np.zeros((item.window_length, matrix.shape[1]), dtype=np.float64)
-        normalized[:item.valid_length] = segment
-        normalized[:item.valid_length, :2] = _normalize_ppg(
-            segment[:, :2], config=normalization_config
+        normalized[:item.valid_length] = _normalize_dl_window(
+            segment, config=normalization_config
         )
         rows.append(normalized.T.astype(np.float32))
         masks.append(~np.asarray(item.padding_mask, dtype=bool))
@@ -202,11 +201,20 @@ def build_raw_windows(
         dropped_invalid_count=dropped_invalid,
         provenance={
             "ppg_source_view": "x_filter",
+            "analysis_source_view": "x_analysis_amplitude_preserving",
+            "processed_imu_source_view": "processed_imu_physical",
+            "dl_tensor_view": "x_dl_all8_window_norm",
             "non_identity_x_ar_eligible_for_raw_predictor": False,
             "normalization_config": normalization_config.to_mapping(),
+            "dl_all8_normalization": normalization_config.raw_ppg,
             "ppg_normalization": normalization_config.raw_ppg,
-            "ppg_normalized_channels": (
-                [] if normalization_config.raw_ppg == PPG_NONE else ["RED", "IR"]
+            "dl_normalized_channels": (
+                []
+                if normalization_config.raw_ppg == PPG_NONE
+                else [
+                    "RED", "IR", "A_dyn_x", "A_dyn_y", "A_dyn_z",
+                    "GX", "GY", "GZ",
+                ]
             ),
             "ppg_clip_after_scale": (
                 None
@@ -214,10 +222,16 @@ def build_raw_windows(
                 or normalization_config.clip_after_scale is None
                 else list(normalization_config.clip_after_scale)
             ),
+            "dl_clip_after_scale": (
+                None
+                if normalization_config.raw_ppg == PPG_NONE
+                or normalization_config.clip_after_scale is None
+                else list(normalization_config.clip_after_scale)
+            ),
             "imu_normalization": (
-                "unscaled_si_pending_outer_train_identity_artifact"
+                "all8_per_window_then_no_post_transform"
                 if normalization_config.raw_imu == IMU_NONE
-                else "unscaled_si_requires_outer_train_transform"
+                else "all8_per_window_then_explicit_legacy_outer_train_transform"
             ),
             "imu_normalization_requested": normalization_config.raw_imu,
             "imu_channel_schema": [

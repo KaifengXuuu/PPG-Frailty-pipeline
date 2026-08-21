@@ -90,6 +90,11 @@ def _cell_rows(case_id: str, result: Mapping[str, Any], case_directory: Path) ->
         for name in (
             "balanced_accuracy",
             "macro_f1",
+            "abstention_aware_balanced_accuracy",
+            "abstention_aware_macro_precision",
+            "abstention_aware_macro_recall",
+            "abstention_aware_macro_f1",
+            "abstention_count",
             "multiclass_log_loss",
             "multiclass_brier",
             "expected_calibration_error",
@@ -105,6 +110,16 @@ def _cell_rows(case_id: str, result: Mapping[str, Any], case_directory: Path) ->
         row["confusion_matrix"] = metrics.get("confusion_matrix")
         row["class_order"] = metrics.get("class_order", cell.get("class_order"))
         row["per_class"] = metrics.get("per_class")
+        row["abstention_counts_by_class"] = metrics.get(
+            "abstention_counts_by_class",
+            metrics.get("per_class_abstention"),
+        )
+        row["abstention_aware_per_class"] = metrics.get(
+            "abstention_aware_per_class"
+        )
+        row["abstention_probability_metrics_scope"] = metrics.get(
+            "abstention_probability_metrics_scope"
+        )
         operational = cell.get("operational_metrics")
         if isinstance(operational, Mapping):
             row["operational_status"] = operational.get("status")
@@ -302,32 +317,58 @@ def _resolved_aggregation_config(
 
 
 def _quality_rows(case_id: str, case_directory: Path) -> list[dict[str, Any]]:
-    targets = _shallowest(case_directory.rglob("quality_diagnostics.json"))
-    if not targets:
-        return []
-    rows: list[dict[str, Any]] = []
-
-    def projected(item: Mapping[str, Any], target: Path) -> dict[str, Any]:
+    def projected(
+        item: Mapping[str, Any],
+        target: Path,
+        *,
+        artifact_field: str,
+    ) -> dict[str, Any]:
         value = dict(item)
         components = (
             value.get("components")
             if isinstance(value.get("components"), Mapping)
-            else {}
+            else None
         )
-        value["components"] = {
-            name: dict(components[name])
-            for name in ("predictor_availability", "non_predictor_features")
-            if isinstance(components.get(name), Mapping)
-        }
-        value["full_detail_artifact"] = target.relative_to(
+        if components is not None:
+            value["components"] = {
+                name: dict(components[name])
+                for name in ("predictor_availability", "non_predictor_features")
+                if isinstance(components.get(name), Mapping)
+            }
+        value[artifact_field] = target.relative_to(
             case_directory
         ).as_posix()
         return value
 
-    for target in targets:
-        payload = _read_json(target)
-        if isinstance(payload, Mapping) and isinstance(payload.get("cells"), list):
-            for cell in payload["cells"]:
+    def artifact_rows(filename: str, artifact_field: str) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for target in _shallowest(case_directory.rglob(filename)):
+            payload = _read_json(target)
+            if not isinstance(payload, Mapping):
+                continue
+            cells = payload.get("cells")
+            if not isinstance(cells, list):
+                repeat = payload.get("repeat_index")
+                fold = payload.get("fold_index")
+                directory_parts = target.parent.name.split("_")
+                if (
+                    len(directory_parts) == 4
+                    and directory_parts[0] == "repeat"
+                    and directory_parts[2] == "fold"
+                ):
+                    repeat = (
+                        repeat if repeat is not None else int(directory_parts[1])
+                    )
+                    fold = fold if fold is not None else int(directory_parts[3])
+                cells = (
+                    {
+                        "repeat_index": repeat,
+                        "fold_index": fold,
+                        "quality_mode": payload.get("quality_mode"),
+                        "rows": payload.get("rows", ()),
+                    },
+                )
+            for cell in cells:
                 if not isinstance(cell, Mapping):
                     continue
                 for item in cell.get("rows", ()):
@@ -338,19 +379,44 @@ def _quality_rows(case_id: str, case_directory: Path) -> list[dict[str, Any]]:
                                 "repeat": cell.get("repeat_index"),
                                 "fold": cell.get("fold_index"),
                                 "quality_mode": cell.get("quality_mode"),
-                                **projected(item, target),
+                                **projected(
+                                    item,
+                                    target,
+                                    artifact_field=artifact_field,
+                                ),
                             }
                         )
-        elif isinstance(payload, Mapping):
-            for item in payload.get("rows", ()):
-                if isinstance(item, Mapping):
-                    rows.append(
-                        {
-                            "case_id": case_id,
-                            **projected(item, target),
-                        }
-                    )
-    return rows
+        return rows
+
+    diagnostics = artifact_rows(
+        "quality_diagnostics.json",
+        "quality_diagnostics_artifact",
+    )
+    routes = artifact_rows("route_artifacts.json", "route_artifacts_artifact")
+    merged = list(diagnostics)
+    by_record = {
+        (row.get("repeat"), row.get("fold"), row.get("record_id")): index
+        for index, row in enumerate(merged)
+        if row.get("record_id") is not None
+    }
+    for route in routes:
+        key = (route.get("repeat"), route.get("fold"), route.get("record_id"))
+        existing_index = (
+            by_record.get(key) if route.get("record_id") is not None else None
+        )
+        if existing_index is None:
+            if route.get("record_id") is not None:
+                by_record[key] = len(merged)
+            merged.append(route)
+            continue
+        diagnostic = merged[existing_index]
+        combined = {**diagnostic, **route}
+        if route.get("quality_mode") is None:
+            combined["quality_mode"] = diagnostic.get("quality_mode")
+        if "components" in diagnostic and "components" not in route:
+            combined["components"] = diagnostic["components"]
+        merged[existing_index] = combined
+    return merged
 
 
 def _config_metrics(case_id: str, case_directory: Path) -> dict[str, Any] | None:

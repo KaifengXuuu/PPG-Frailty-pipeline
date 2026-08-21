@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,7 +17,7 @@ _DECISION_ROLES = frozenset(
 )
 _CATALOG_BALANCE_LINES = frozenset({"line_a", "line_b"})
 _CATALOG_SCOPES = frozenset(
-    {"ordinary_13", "selected_ordinary", "matched_ensemble_pair"}
+    {"ordinary_active", "ordinary_13", "selected_ordinary", "matched_ensemble_pair"}
 )
 _CATALOG_OUTPUT_GROUPS = frozenset(
     {"raw", "fusion", "feature_vector", "feature_matrix"}
@@ -27,6 +29,14 @@ _SAFE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,127}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _BRIDGE_INCEPTION_L0 = "inception_full__L0_legacy64_w15_fixed10"
 _BRIDGE_STUDY_ID = "staged_static_03_legacy_v2_bridge_v2"
+_BRIDGE_STAR_STUDY_ID = "staged_static_03_centered_star_v1"
+_BRIDGE_V3_STUDY_ID = "staged_static_03_v3_b1_b2_followup_v1"
+_FIELD_DRIVEN_BRIDGE_DESIGNS = frozenset(
+    {"centered_star_v1", "field_driven_followup_v1"}
+)
+_BRIDGE_DESIGNS = frozenset(
+    {"cumulative_chain_v1", *_FIELD_DRIVEN_BRIDGE_DESIGNS}
+)
 _BRIDGE_COMPACT_BY_LEVEL = {
     0: "compact_cnn__L0_legacy64_w15_fixed10",
     1: "compact_cnn__L1_legacy64_w5_fixed10",
@@ -56,6 +66,25 @@ _BRIDGE_ADJACENT_COMPARISONS = tuple(
     f"{_BRIDGE_COMPACT_BY_LEVEL[level]}->{_BRIDGE_COMPACT_BY_LEVEL[level + 1]}"
     for level in range(7)
 )
+_STAR_CONTROL_KEYS = frozenset(
+    "ppg_preprocessing imu_preprocessing target_fs_hz window_seconds hop_seconds "
+    "historical_retained_fraction max_windows_per_file allow_short_record_padding "
+    "normalization sampler class_weighting optimizer batch_size fixed_epochs "
+    "learning_rate weight_decay training_metric_aggregation_rule "
+    "primary_report_aggregation_view".split()
+)
+_STAR_FACTORS = {
+    "B1": ("sampling_rate", frozenset({"target_fs_hz"})),
+    "B2": ("window_plan", frozenset({"window_seconds", "hop_seconds"})),
+    "B3": ("imu_preprocessing", frozenset({"imu_preprocessing"})),
+    "B4": ("normalization", frozenset({"normalization"})),
+    "B5": ("sampler", frozenset({"sampler"})),
+    "B6": (
+        "optimizer_and_batch_size",
+        frozenset({"optimizer", "batch_size"}),
+    ),
+    "B7": ("primary_aggregation", frozenset({"primary_report_aggregation_view"})),
+}
 
 
 def _strict_mapping(
@@ -130,6 +159,378 @@ def _string_tuple(values: Any, *, label: str) -> tuple[str, ...]:
     return result
 
 
+def _canonical_sha256(value: Any) -> str:
+    """Hash JSON-compatible protocol data without YAML formatting ambiguity."""
+
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _validate_star_controls(value: Any, *, label: str) -> dict[str, Any]:
+    controls = _strict_mapping(value, label=label, required=_STAR_CONTROL_KEYS)
+    _canonical_sha256(controls)  # Reject non-finite/non-JSON parameters.
+    numeric = ("target_fs_hz", "window_seconds", "hop_seconds", "learning_rate")
+    integers = ("target_fs_hz", "batch_size", "fixed_epochs")
+    if any(
+        isinstance(controls[key], bool)
+        or not isinstance(controls[key], (int, float))
+        or controls[key] <= 0
+        for key in numeric
+    ):
+        raise ValueError(f"{label} rates, windows, and learning_rate must be positive")
+    if any(
+        isinstance(controls[key], bool)
+        or not isinstance(controls[key], int)
+        or controls[key] <= 0
+        for key in integers
+    ):
+        raise ValueError(
+            f"{label} target_fs_hz, batch_size, and fixed_epochs must be "
+            "positive integers"
+        )
+    text_keys = _STAR_CONTROL_KEYS - set(numeric) - set(integers) - {
+        "historical_retained_fraction", "max_windows_per_file",
+        "allow_short_record_padding", "weight_decay",
+    }
+    if any(
+        not isinstance(controls[key], str) or not controls[key]
+        for key in text_keys
+    ):
+        raise TypeError(
+            f"{label} module and strategy controls must be non-empty strings"
+        )
+    fraction, cap, decay = (
+        controls[key]
+        for key in (
+            "historical_retained_fraction",
+            "max_windows_per_file",
+            "weight_decay",
+        )
+    )
+    if fraction is not None and (
+        isinstance(fraction, bool)
+        or not isinstance(fraction, (int, float))
+        or not 0 < fraction <= 1
+    ):
+        raise ValueError(f"{label}.historical_retained_fraction must lie in (0, 1]")
+    if cap is not None and (
+        isinstance(cap, bool) or not isinstance(cap, int) or cap <= 0
+    ):
+        raise ValueError(f"{label}.max_windows_per_file must be null or positive")
+    if not isinstance(controls["allow_short_record_padding"], bool):
+        raise TypeError(f"{label}.allow_short_record_padding must be boolean")
+    if isinstance(decay, bool) or not isinstance(decay, (int, float)) or decay < 0:
+        raise ValueError(f"{label}.weight_decay must be non-negative")
+    return copy.deepcopy(controls)
+
+
+def _materialize_centered_star_contract(
+    baseline_value: Any,
+    factors_value: Any,
+    profiles_value: Any,
+) -> tuple[
+    dict[str, Any],
+    dict[str, Mapping[str, Any]],
+    tuple[Mapping[str, Any], ...],
+    dict[str, Mapping[str, Any]],
+]:
+    """Validate one star declaration and materialize model-neutral controls."""
+
+    baseline = _validate_star_controls(
+        baseline_value, label="legacy_bridge.baseline_controls"
+    )
+    raw_factors = _strict_mapping(
+        factors_value,
+        label="legacy_bridge.factor_overrides",
+        required=frozenset({f"B{index}" for index in range(1, 8)}),
+    )
+    factors: dict[str, Mapping[str, Any]] = {}
+    effective: dict[str, Mapping[str, Any]] = {"B0": baseline}
+    for profile_id, value in raw_factors.items():
+        row = _strict_mapping(
+            value,
+            label=f"legacy_bridge.factor_overrides.{profile_id}",
+            required=frozenset(
+                {"factor_id", "overrides", "expected_changed_paths", "interpretation"}
+            ),
+        )
+        factor_id = str(row["factor_id"])
+        expected_factor_id, expected_keys = _STAR_FACTORS[profile_id]
+        overrides = _strict_mapping(
+            row["overrides"],
+            label=f"legacy_bridge.factor_overrides.{profile_id}.overrides",
+            required=frozenset(),
+            optional=_STAR_CONTROL_KEYS,
+        )
+        paths = _string_tuple(
+            row["expected_changed_paths"],
+            label=f"legacy_bridge.factor_overrides.{profile_id}.expected_changed_paths",
+        )
+        if (
+            factor_id != expected_factor_id
+            or set(overrides) != set(expected_keys)
+            or set(paths) != {f"controls.{key}" for key in overrides}
+        ):
+            raise ValueError(
+                f"centered-star {profile_id}/{factor_id} is not its declared "
+                "single-factor change"
+            )
+        if not isinstance(row["interpretation"], str) or not row[
+            "interpretation"
+        ].strip():
+            raise ValueError("centered-star factor interpretation must be non-empty")
+        controls = copy.deepcopy(baseline)
+        controls.update(copy.deepcopy(overrides))
+        controls = _validate_star_controls(
+            controls, label=f"legacy_bridge.effective_controls.{profile_id}"
+        )
+        if {key for key in controls if controls[key] != baseline[key]} != set(
+            overrides
+        ):
+            raise ValueError(f"centered-star {profile_id} contains a no-op override")
+        factors[profile_id] = {
+            "factor_id": factor_id,
+            "overrides": copy.deepcopy(overrides),
+            "expected_changed_paths": list(paths),
+            "interpretation": row["interpretation"],
+        }
+        effective[profile_id] = controls
+    if isinstance(profiles_value, (str, bytes, Mapping)) or not isinstance(
+        profiles_value, (list, tuple)
+    ):
+        raise TypeError("legacy_bridge.profiles must be a list")
+    compact: list[dict[str, Any]] = []
+    optional = frozenset(
+        {
+            "factor_id",
+            "reference_case_id",
+            "changed_control_paths",
+            "controls",
+            "controls_sha256",
+            "interpretation",
+        }
+    )
+    for index, value in enumerate(profiles_value):
+        row = _strict_mapping(
+            value,
+            label=f"legacy_bridge.profiles[{index}]",
+            required=frozenset(
+                {"case_id", "catalog_case_id", "model_id", "profile_id"}
+            ),
+            optional=optional,
+        )
+        if not isinstance(row["case_id"], str) or not row["case_id"].strip():
+            raise ValueError("centered-star profile case_id must be non-empty")
+        _safe_identifier(
+            row["catalog_case_id"], label="centered-star profile catalog_case_id"
+        )
+        if row["model_id"] not in {"CompactCNN1D", "InceptionTimeFull"}:
+            raise ValueError("centered-star model_id is unsupported")
+        if row["profile_id"] not in effective:
+            raise ValueError("centered-star profile_id must be B0..B7")
+        compact.append(row)
+    roster = tuple(
+        (model_id, f"B{index}")
+        for index in range(8)
+        for model_id in ("CompactCNN1D", "InceptionTimeFull")
+    )
+    if tuple((row["model_id"], row["profile_id"]) for row in compact) != roster:
+        raise ValueError(
+            "centered-star profiles must be profile-major paired "
+            "CompactCNN/InceptionTime B0..B7"
+        )
+    b0_case = {
+        row["model_id"]: row["case_id"] for row in compact if row["profile_id"] == "B0"
+    }
+    profiles: list[Mapping[str, Any]] = []
+    for index, row in enumerate(compact):
+        profile_id = str(row["profile_id"])
+        factor = factors.get(profile_id)
+        materialized = {
+            "case_id": row["case_id"],
+            "catalog_case_id": row["catalog_case_id"],
+            "model_id": row["model_id"],
+            "profile_id": profile_id,
+            "factor_id": "baseline" if factor is None else factor["factor_id"],
+            "reference_case_id": (
+                None if profile_id == "B0" else b0_case[row["model_id"]]
+            ),
+            "changed_control_paths": (
+                [] if factor is None else list(factor["expected_changed_paths"])
+            ),
+            "controls": copy.deepcopy(effective[profile_id]),
+            "controls_sha256": _canonical_sha256(effective[profile_id]),
+            "interpretation": row.get(
+                "interpretation",
+                "complete legacy baseline"
+                if factor is None
+                else factor["interpretation"],
+            ),
+        }
+        for key in optional - {"interpretation"}:
+            if key in row and row[key] != materialized[key]:
+                raise ValueError(
+                    f"legacy_bridge.profiles[{index}].{key} differs from "
+                    "materialized centered-star controls"
+                )
+        if not isinstance(materialized["interpretation"], str) or not materialized[
+            "interpretation"
+        ].strip():
+            raise ValueError("centered-star profile interpretation must be non-empty")
+        profiles.append(materialized)
+    return baseline, factors, tuple(profiles), effective
+
+
+def _materialize_field_driven_followup_contract(
+    baseline_value: Any,
+    factors_value: Any,
+    profiles_value: Any,
+) -> tuple[
+    dict[str, Any],
+    dict[str, Mapping[str, Any]],
+    tuple[Mapping[str, Any], ...],
+    dict[str, Mapping[str, Any]],
+]:
+    """Materialize arbitrary reviewed combinations through the shared runtime."""
+
+    baseline = _validate_star_controls(
+        baseline_value, label="legacy_bridge.baseline_controls"
+    )
+    if not isinstance(factors_value, Mapping) or not factors_value:
+        raise ValueError("follow-up factor_overrides must be a non-empty mapping")
+    if isinstance(profiles_value, (str, bytes, Mapping)) or not isinstance(
+        profiles_value, (list, tuple)
+    ):
+        raise TypeError("legacy_bridge.profiles must be a list")
+    factors: dict[str, Mapping[str, Any]] = {}
+    effective: dict[str, Mapping[str, Any]] = {}
+    for raw_profile_id, value in factors_value.items():
+        profile_id = str(raw_profile_id)
+        if not profile_id or not profile_id.replace("_", "").isalnum():
+            raise ValueError("follow-up profile identifiers must be safe")
+        row = _strict_mapping(
+            value,
+            label=f"legacy_bridge.factor_overrides.{profile_id}",
+            required=frozenset(
+                {"factor_id", "overrides", "expected_changed_paths", "interpretation"}
+            ),
+        )
+        overrides = _strict_mapping(
+            row["overrides"],
+            label=f"legacy_bridge.factor_overrides.{profile_id}.overrides",
+            required=frozenset(),
+            optional=_STAR_CONTROL_KEYS,
+        )
+        paths = _string_tuple(
+            row["expected_changed_paths"],
+            label=(
+                f"legacy_bridge.factor_overrides.{profile_id}."
+                "expected_changed_paths"
+            ),
+        )
+        if not overrides or set(paths) != {f"controls.{key}" for key in overrides}:
+            raise ValueError(
+                f"follow-up {profile_id} must declare every changed control exactly"
+            )
+        if not isinstance(row["factor_id"], str) or not row["factor_id"].strip():
+            raise ValueError("follow-up factor_id must be non-empty")
+        if not isinstance(row["interpretation"], str) or not row[
+            "interpretation"
+        ].strip():
+            raise ValueError("follow-up interpretation must be non-empty")
+        controls = copy.deepcopy(baseline)
+        controls.update(copy.deepcopy(overrides))
+        controls = _validate_star_controls(
+            controls, label=f"legacy_bridge.effective_controls.{profile_id}"
+        )
+        changed = {key for key in controls if controls[key] != baseline[key]}
+        if changed != set(overrides):
+            raise ValueError(
+                f"follow-up {profile_id} contains a no-op or undeclared override"
+            )
+        factors[profile_id] = {
+            "factor_id": row["factor_id"],
+            "overrides": copy.deepcopy(overrides),
+            "expected_changed_paths": list(paths),
+            "interpretation": row["interpretation"],
+        }
+        effective[profile_id] = controls
+
+    compact: list[dict[str, Any]] = []
+    optional = frozenset(
+        {
+            "factor_id",
+            "reference_case_id",
+            "changed_control_paths",
+            "controls",
+            "controls_sha256",
+            "interpretation",
+        }
+    )
+    for index, value in enumerate(profiles_value):
+        row = _strict_mapping(
+            value,
+            label=f"legacy_bridge.profiles[{index}]",
+            required=frozenset(
+                {"case_id", "catalog_case_id", "model_id", "profile_id"}
+            ),
+            optional=optional,
+        )
+        if not isinstance(row["case_id"], str) or not row["case_id"].strip():
+            raise ValueError("follow-up profile case_id must be non-empty")
+        _safe_identifier(
+            row["catalog_case_id"], label="follow-up profile catalog_case_id"
+        )
+        if row["model_id"] not in {"CompactCNN1D", "InceptionTimeFull"}:
+            raise ValueError("follow-up model_id is unsupported")
+        if row["profile_id"] not in effective:
+            raise ValueError("follow-up profile_id lacks declared controls")
+        compact.append(row)
+    identities = tuple(
+        (str(row["model_id"]), str(row["profile_id"])) for row in compact
+    )
+    if not compact or len(identities) != len(set(identities)):
+        raise ValueError("follow-up model/profile identities must be non-empty and unique")
+    if {str(row["profile_id"]) for row in compact} != set(effective):
+        raise ValueError("follow-up profiles must consume every declared control set")
+
+    reference_by_model: dict[str, str] = {}
+    profiles: list[Mapping[str, Any]] = []
+    for index, row in enumerate(compact):
+        model_id = str(row["model_id"])
+        profile_id = str(row["profile_id"])
+        factor = factors[profile_id]
+        reference_case_id = reference_by_model.setdefault(model_id, row["case_id"])
+        materialized = {
+            "case_id": row["case_id"],
+            "catalog_case_id": row["catalog_case_id"],
+            "model_id": model_id,
+            "profile_id": profile_id,
+            "factor_id": factor["factor_id"],
+            "reference_case_id": (
+                None if reference_case_id == row["case_id"] else reference_case_id
+            ),
+            "changed_control_paths": list(factor["expected_changed_paths"]),
+            "controls": copy.deepcopy(effective[profile_id]),
+            "controls_sha256": _canonical_sha256(effective[profile_id]),
+            "interpretation": row.get("interpretation", factor["interpretation"]),
+        }
+        for key in optional - {"interpretation"}:
+            if key in row and row[key] != materialized[key]:
+                raise ValueError(
+                    f"legacy_bridge.profiles[{index}].{key} differs from "
+                    "materialized follow-up controls"
+                )
+        profiles.append(materialized)
+    return baseline, factors, tuple(profiles), effective
+
+
 @dataclass(frozen=True)
 class AxisSpec:
     """One dotted configuration path and its candidate values."""
@@ -156,7 +557,7 @@ class CatalogSpec:
 
     path: str
     balance_line: str = "line_b"
-    scope: str = "ordinary_13"
+    scope: str = "ordinary_active"
 
     def __post_init__(self) -> None:
         if not isinstance(self.path, str) or not self.path.strip():
@@ -242,10 +643,17 @@ class LegacyBridgeSpec:
     sampling_diagnostics: tuple[str, ...]
     restrictions: tuple[str, ...]
     required_runtime_capabilities: tuple[str, ...]
+    design: str = "cumulative_chain_v1"
+    baseline_controls: Mapping[str, Any] | None = None
+    factor_overrides: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.schema_version != "ppg_frailty.legacy_v2_bridge_protocol.v1":
             raise ValueError("unsupported legacy bridge protocol schema")
+        if self.design not in _BRIDGE_DESIGNS:
+            raise ValueError(
+                f"legacy bridge design must be one of {sorted(_BRIDGE_DESIGNS)}"
+            )
         _safe_identifier(self.protocol_id, label="legacy bridge protocol_id")
         if (
             not isinstance(self.source_specification, str)
@@ -256,15 +664,21 @@ class LegacyBridgeSpec:
             raise ValueError(
                 "legacy bridge source_specification_sha256 must be lowercase SHA-256"
             )
-        if self.runtime_status != _LEGACY_BRIDGE_RUNTIME_STATUS:
+        expected_runtime = (
+            "implemented_field_driven_centered_star_v1"
+            if self.design == "centered_star_v1"
+            else "implemented_field_driven_followup_v1"
+            if self.design == "field_driven_followup_v1"
+            else _LEGACY_BRIDGE_RUNTIME_STATUS
+        )
+        if self.runtime_status != expected_runtime:
             raise ValueError(
-                "legacy bridge runtime_status must identify the reviewed "
-                f"non-gating runtime {_LEGACY_BRIDGE_RUNTIME_STATUS!r}"
+                "legacy bridge runtime_status must identify the selected "
+                f"runtime {expected_runtime!r}"
             )
         for label, values in (
             ("execution_order", self.execution_order),
             ("numeric_profile_order", self.numeric_profile_order),
-            ("adjacent_comparisons", self.adjacent_comparisons),
             ("aggregation_views", self.aggregation_views),
             ("primary_table_columns", self.primary_table_columns),
             ("sampling_diagnostics", self.sampling_diagnostics),
@@ -279,6 +693,22 @@ class LegacyBridgeSpec:
                 )
             if len(values) != len(set(values)):
                 raise ValueError(f"legacy bridge {label} must be unique")
+        if self.design == "centered_star_v1":
+            self._validate_centered_star()
+            return
+        if self.design == "field_driven_followup_v1":
+            self._validate_field_driven_followup()
+            return
+        if self.baseline_controls is not None or self.factor_overrides:
+            raise ValueError(
+                "cumulative legacy bridge cannot define centered-star controls"
+            )
+        if not self.adjacent_comparisons or len(
+            self.adjacent_comparisons
+        ) != len(set(self.adjacent_comparisons)):
+            raise ValueError(
+                "legacy bridge adjacent_comparisons must be non-empty and unique"
+            )
         if len(self.execution_order) != 9 or len(self.profiles) != 9:
             raise ValueError("legacy bridge requires exactly 9 ordered profiles")
         if self.execution_order != _BRIDGE_EXECUTION_ORDER:
@@ -335,10 +765,178 @@ class LegacyBridgeSpec:
             if profile.get("predecessor_case_id") != expected_predecessor:
                 raise ValueError("legacy bridge numeric predecessor chain drifted")
 
+    def _validate_centered_star(self) -> None:
+        if self.source_specification != "inline:legacy_bridge.effective_controls":
+            raise ValueError(
+                "centered star source specification must identify inline controls"
+            )
+        if self.runtime_status != "implemented_field_driven_centered_star_v1":
+            raise ValueError("centered star runtime_status drifted")
+        if dict(self.phase0) != {
+            "enabled": False,
+            "advisory_only": True,
+            "mandatory": False,
+            "affects_training_execution": False,
+        }:
+            raise ValueError("centered star permanently disables legacy Phase 0")
+        if dict(self.budget) != {
+            "case_count": 16,
+            "repeat_indices": [0, 1, 2, 3, 4],
+            "fold_indices": [0, 1, 2, 3, 4],
+            "training_seed": 42,
+            "fixed_epochs": 10,
+            "early_stopping": False,
+            "outer_label_checkpoint_selection": False,
+            "fit_count": 400,
+            "model_epoch_count": 4000,
+            "phase0_fit_count": 0,
+            "phase0_model_epoch_count": 0,
+        }:
+            raise ValueError(
+                "centered star budget must be 16 cases/400 fits/4000 epochs"
+            )
+        if self.baseline_controls is None:
+            raise ValueError("centered star requires explicit baseline_controls")
+        baseline, factors, profiles, effective = (
+            _materialize_centered_star_contract(
+                self.baseline_controls,
+                self.factor_overrides,
+                self.profiles,
+            )
+        )
+        if baseline != self.baseline_controls or factors != self.factor_overrides:
+            raise ValueError("centered star stores a non-canonical factor contract")
+        if profiles != self.profiles:
+            raise ValueError("centered star profiles are not fully materialized")
+        if _canonical_sha256(effective) != self.source_specification_sha256:
+            raise ValueError("centered star inline effective-controls SHA-256 drifted")
+        fits = (
+            len(profiles)
+            * len(self.budget["repeat_indices"])
+            * len(self.budget["fold_indices"])
+        )
+        epochs = int(self.budget["fixed_epochs"])
+        if (
+            any(int(row["controls"]["fixed_epochs"]) != epochs for row in profiles)
+            or int(self.budget["fit_count"]) != fits
+            or int(self.budget["model_epoch_count"]) != fits * epochs
+        ):
+            raise ValueError(
+                "centered star fit/epoch budget is internally inconsistent"
+            )
+        if (
+            len(self.execution_order) != 16
+            or tuple(row["case_id"] for row in profiles) != self.execution_order
+            or self.numeric_profile_order != self.execution_order
+            or self.adjacent_comparisons
+        ):
+            raise ValueError("centered star execution/report order contract drifted")
+
+    def _validate_field_driven_followup(self) -> None:
+        if self.source_specification != "inline:legacy_bridge.effective_controls":
+            raise ValueError("field-driven follow-up requires inline controls")
+        if dict(self.phase0) != {
+            "enabled": False,
+            "advisory_only": True,
+            "mandatory": False,
+            "affects_training_execution": False,
+        }:
+            raise ValueError("field-driven follow-up permanently disables Phase 0")
+        if self.baseline_controls is None:
+            raise ValueError("field-driven follow-up requires baseline_controls")
+        baseline, factors, profiles, effective = (
+            _materialize_field_driven_followup_contract(
+                self.baseline_controls,
+                self.factor_overrides,
+                self.profiles,
+            )
+        )
+        if baseline != self.baseline_controls or factors != self.factor_overrides:
+            raise ValueError("field-driven follow-up stores non-canonical controls")
+        if profiles != self.profiles:
+            raise ValueError("field-driven follow-up profiles are not materialized")
+        if _canonical_sha256(effective) != self.source_specification_sha256:
+            raise ValueError("field-driven follow-up effective-controls SHA drifted")
+        required_budget = {
+            "case_count",
+            "repeat_indices",
+            "fold_indices",
+            "training_seed",
+            "fixed_epochs",
+            "early_stopping",
+            "outer_label_checkpoint_selection",
+            "fit_count",
+            "model_epoch_count",
+            "phase0_fit_count",
+            "phase0_model_epoch_count",
+        }
+        if set(self.budget) != required_budget:
+            raise ValueError("field-driven follow-up budget key set drifted")
+        repeats = _unique_int_tuple(
+            self.budget["repeat_indices"], label="legacy_bridge.budget.repeat_indices"
+        )
+        folds = _unique_int_tuple(
+            self.budget["fold_indices"], label="legacy_bridge.budget.fold_indices"
+        )
+        epochs = int(self.budget["fixed_epochs"])
+        fits = len(profiles) * len(repeats) * len(folds)
+        if (
+            int(self.budget["case_count"]) != len(profiles)
+            or int(self.budget["training_seed"]) != 42
+            or epochs <= 0
+            or self.budget["early_stopping"] is not False
+            or self.budget["outer_label_checkpoint_selection"] is not False
+            or int(self.budget["fit_count"]) != fits
+            or int(self.budget["model_epoch_count"]) != fits * epochs
+            or int(self.budget["phase0_fit_count"]) != 0
+            or int(self.budget["phase0_model_epoch_count"]) != 0
+            or any(int(row["controls"]["fixed_epochs"]) != epochs for row in profiles)
+        ):
+            raise ValueError("field-driven follow-up fit/epoch budget is inconsistent")
+        if (
+            tuple(row["case_id"] for row in profiles) != self.execution_order
+            or self.numeric_profile_order != self.execution_order
+            or self.adjacent_comparisons
+        ):
+            raise ValueError("field-driven follow-up execution/report order drifted")
+
+    @property
+    def uses_inline_profiles(self) -> bool:
+        """Whether algorithms are selected exclusively by hash-bound controls."""
+
+        return self.design in _FIELD_DRIVEN_BRIDGE_DESIGNS
+
+    @property
+    def centered_comparisons(self) -> tuple[Mapping[str, Any], ...]:
+        """Return the fourteen legal same-model B0-to-Bk contrasts."""
+
+        if self.design != "centered_star_v1":
+            return ()
+        return tuple(
+            {
+                "model_id": profile["model_id"],
+                "reference_case_id": profile["reference_case_id"],
+                "variant_case_id": profile["case_id"],
+                "profile_id": profile["profile_id"],
+                "factor_id": profile["factor_id"],
+                "changed_control_paths": list(profile["changed_control_paths"]),
+            }
+            for profile in self.profiles
+            if profile["profile_id"] != "B0"
+        )
+
+    def controls_sha256(self, profile: Mapping[str, Any]) -> str:
+        """Return the declared effective-controls identity for one profile."""
+
+        value = str(profile.get("controls_sha256", ""))
+        if not self.uses_inline_profiles or not _SHA256_RE.fullmatch(value):
+            raise ValueError("controls_sha256 requires a field-driven profile")
+        return value
+
     def to_dict(self) -> dict[str, Any]:
         """Return a detached serialization preserving the reviewed protocol."""
 
-        return {
+        result = {
             "schema_version": self.schema_version,
             "protocol_id": self.protocol_id,
             "source_specification": self.source_specification,
@@ -358,6 +956,17 @@ class LegacyBridgeSpec:
                 self.required_runtime_capabilities
             ),
         }
+        if self.uses_inline_profiles:
+            result["design"] = self.design
+            result["baseline_controls"] = copy.deepcopy(
+                dict(self.baseline_controls or {})
+            )
+            result["factor_overrides"] = copy.deepcopy(dict(self.factor_overrides))
+            if self.design == "centered_star_v1":
+                result["centered_comparisons"] = [
+                    copy.deepcopy(dict(value)) for value in self.centered_comparisons
+                ]
+        return result
 
 
 @dataclass(frozen=True)
@@ -516,16 +1125,22 @@ class StudyPlan:
     def __post_init__(self) -> None:
         if self.schema_version != "ppg_frailty.study_plan.v2":
             raise ValueError("unsupported study plan schema")
-        if (
-            self.study.study_id == _BRIDGE_STUDY_ID
-            and self.legacy_bridge is None
-        ):
+        if self.study.study_id in {
+            _BRIDGE_STUDY_ID,
+            _BRIDGE_STAR_STUDY_ID,
+            _BRIDGE_V3_STUDY_ID,
+        } and self.legacy_bridge is None:
             raise ValueError(
                 "Stage 3 legacy bridge study requires legacy bridge protocol metadata"
             )
         if (
             self.legacy_bridge is not None
-            and self.study.study_id != _BRIDGE_STUDY_ID
+            and self.study.study_id
+            not in {
+                _BRIDGE_STUDY_ID,
+                _BRIDGE_STAR_STUDY_ID,
+                _BRIDGE_V3_STUDY_ID,
+            }
         ):
             raise ValueError(
                 "legacy_bridge metadata is reserved for the registered Stage 3 study"
@@ -549,13 +1164,10 @@ class StudyPlan:
             case_ids = tuple(case.case_id for case in self.cases)
             if len(case_ids) != len(set(case_ids)):
                 raise ValueError("catalog_sweep case_id values must be unique")
-            if self.catalog.scope == "ordinary_13":
+            if self.catalog.scope in {"ordinary_active", "ordinary_13"}:
                 entries = {case.catalog_entry for case in self.cases}
-                if len(entries) != 13:
-                    raise ValueError(
-                        "ordinary_13 catalog_sweep requires 13 distinct "
-                        "catalog_entry values"
-                    )
+                if not entries:
+                    raise ValueError("ordinary catalog_sweep requires catalog entries")
             if self.catalog.scope == "matched_ensemble_pair":
                 entries = {case.catalog_entry for case in self.cases}
                 if len(self.cases) != 2 or len(entries) != 2:
@@ -578,10 +1190,24 @@ class StudyPlan:
                     raise ValueError(
                         "legacy bridge requires catalog scope=selected_ordinary"
                     )
+                expected_study_id, expected_reference = {
+                    "cumulative_chain_v1": (
+                        _BRIDGE_STUDY_ID,
+                        "compact_cnn__l0_legacy64_w15_fixed10",
+                    ),
+                    "centered_star_v1": (
+                        _BRIDGE_STAR_STUDY_ID,
+                        "compact_cnn__b0_star_fixed10",
+                    ),
+                    "field_driven_followup_v1": (
+                        _BRIDGE_V3_STUDY_ID,
+                        "compact_cnn__b0_b2_r5_fixed10",
+                    ),
+                }[self.legacy_bridge.design]
                 if (
-                    self.study.decision_role != "ablation"
-                    or self.study.reference_case_id
-                    != "compact_cnn__l0_legacy64_w15_fixed10"
+                    self.study.study_id != expected_study_id
+                    or self.study.decision_role != "ablation"
+                    or self.study.reference_case_id != expected_reference
                 ):
                     raise ValueError(
                         "legacy bridge requires the frozen ablation reference case"
@@ -606,6 +1232,15 @@ class StudyPlan:
                 if self.execution.jobs != 1 or self.execution.continue_on_error:
                     raise ValueError(
                         "legacy bridge requires serial fail-fast case execution"
+                    )
+                if self.legacy_bridge.uses_inline_profiles and (
+                    not re.fullmatch(r"cuda(?::\d+)?", str(self.execution.device))
+                    or self.execution.allow_parallel_deep
+                    or self.execution.measure_operational_costs
+                ):
+                    raise ValueError(
+                        "field-driven bridge requires one serial CUDA device and no "
+                        "operational-cost reruns"
                     )
                 profile_case_ids = tuple(
                     str(profile["catalog_case_id"])
@@ -798,7 +1433,7 @@ def catalog_spec_from_mapping(value: Mapping[str, Any]) -> CatalogSpec:
     return CatalogSpec(
         path=payload["path"],
         balance_line=payload.get("balance_line", "line_b"),
-        scope=payload.get("scope", "ordinary_13"),
+        scope=payload.get("scope", "ordinary_active"),
     )
 
 
@@ -833,10 +1468,141 @@ def sparse_search_spec_from_mapping(
     )
 
 
+def _field_driven_spec_from_mapping(
+    value: Mapping[str, Any], *, design: str
+) -> LegacyBridgeSpec:
+    payload = _strict_mapping(
+        value,
+        label="legacy_bridge",
+        required=frozenset(
+            {
+                "schema_version",
+                "design",
+                "protocol_id",
+                "source_specification",
+                "source_specification_sha256",
+                "runtime_status",
+                "budget",
+                "execution_order",
+                "profiles",
+                "baseline_controls",
+                "factor_overrides",
+                "aggregation_views",
+                "primary_table_columns",
+                "sampling_diagnostics",
+                "restrictions",
+                "required_runtime_capabilities",
+            }
+        ),
+        optional=frozenset(
+            {
+                "phase0",
+                "numeric_profile_order",
+                "adjacent_comparisons",
+                "centered_comparisons",
+            }
+        ),
+    )
+    phase0 = _strict_mapping(
+        payload.get(
+            "phase0",
+            {
+                "enabled": False,
+                "advisory_only": True,
+                "mandatory": False,
+                "affects_training_execution": False,
+            },
+        ),
+        label="legacy_bridge.phase0",
+        required=frozenset(
+            {
+                "enabled",
+                "advisory_only",
+                "mandatory",
+                "affects_training_execution",
+            }
+        ),
+    )
+    materializer = (
+        _materialize_centered_star_contract
+        if design == "centered_star_v1"
+        else _materialize_field_driven_followup_contract
+    )
+    baseline, factors, profiles, _effective = materializer(
+        payload["baseline_controls"], payload["factor_overrides"], payload["profiles"]
+    )
+    execution_order = _string_tuple(
+        payload["execution_order"],
+        label="legacy_bridge.execution_order",
+    )
+    numeric_order = _string_tuple(
+        payload.get("numeric_profile_order", list(execution_order)),
+        label="legacy_bridge.numeric_profile_order",
+    )
+    adjacent_raw = payload.get("adjacent_comparisons", [])
+    adjacent = (
+        ()
+        if adjacent_raw == []
+        else _string_tuple(
+            adjacent_raw,
+            label="legacy_bridge.adjacent_comparisons",
+        )
+    )
+    spec = LegacyBridgeSpec(
+        schema_version=payload["schema_version"],
+        protocol_id=payload["protocol_id"],
+        source_specification=payload["source_specification"],
+        source_specification_sha256=payload["source_specification_sha256"],
+        runtime_status=payload["runtime_status"],
+        phase0=copy.deepcopy(phase0),
+        budget=copy.deepcopy(dict(payload["budget"])),
+        execution_order=execution_order,
+        numeric_profile_order=numeric_order,
+        adjacent_comparisons=adjacent,
+        profiles=tuple(copy.deepcopy(profiles)),
+        aggregation_views=_string_tuple(
+            payload["aggregation_views"],
+            label="legacy_bridge.aggregation_views",
+        ),
+        primary_table_columns=_string_tuple(
+            payload["primary_table_columns"],
+            label="legacy_bridge.primary_table_columns",
+        ),
+        sampling_diagnostics=_string_tuple(
+            payload["sampling_diagnostics"],
+            label="legacy_bridge.sampling_diagnostics",
+        ),
+        restrictions=_string_tuple(
+            payload["restrictions"],
+            label="legacy_bridge.restrictions",
+        ),
+        required_runtime_capabilities=_string_tuple(
+            payload["required_runtime_capabilities"],
+            label="legacy_bridge.required_runtime_capabilities",
+        ),
+        design=design,
+        baseline_controls=copy.deepcopy(baseline),
+        factor_overrides=copy.deepcopy(factors),
+    )
+    if "centered_comparisons" in payload:
+        if design != "centered_star_v1" or payload[
+            "centered_comparisons"
+        ] != [dict(value) for value in spec.centered_comparisons]:
+            raise ValueError("legacy bridge centered_comparisons drifted")
+    return spec
+
+
 def legacy_bridge_spec_from_mapping(
     value: Mapping[str, Any],
 ) -> LegacyBridgeSpec:
     """Parse the strict executable legacy/V2 bridge protocol metadata."""
+
+    if isinstance(value, Mapping) and value.get("design") in (
+        _FIELD_DRIVEN_BRIDGE_DESIGNS
+    ):
+        return _field_driven_spec_from_mapping(
+            value, design=str(value["design"])
+        )
 
     payload = _strict_mapping(
         value,

@@ -35,7 +35,7 @@ class ModuleDescriptor:
 REPRESENTATION_MODULES = (
     ModuleDescriptor("raw", "representation", "ppg_frailty.representations.raw", ("raw",), "reference", "integration", "Line A window->file->participant; Line B window->file->role_family->participant"),
     ModuleDescriptor("feature_vector", "representation", "ppg_frailty.representations.feature_vector", ("feature_vector",), "reference", "integration", "one vector per recording"),
-    ModuleDescriptor("feature_matrix", "representation", "ppg_frailty.representations.feature_matrix", ("feature_matrix",), "reference", "integration", "one registry-derived D-by-configured-K matrix per recording"),
+    ModuleDescriptor("feature_matrix", "representation", "ppg_frailty.representations.feature_matrix", ("feature_matrix",), "reference", "integration", "one chronological 115-by-150 engineering matrix per recording; model selection pending"),
     ModuleDescriptor("fusion", "representation", "ppg_frailty.representations.fusion", ("fusion",), "reference", "integration", "file-level window pooling then one vector concatenation"),
 )
 
@@ -272,6 +272,40 @@ QUALITY_MODE_MODULES = tuple(
     for module_id in ("off", "diagnostics_only", "route")
 )
 
+MOTION_DETECTOR_SWITCH_MODULES = tuple(
+    ModuleDescriptor(
+        module_id,
+        "motion_detector_switch",
+        "ppg_frailty.quality.routing.route_module_switches_from_config",
+        _ALL_REPRESENTATION_MODES,
+        "runtime_selectable_independent_switch",
+        "quality",
+        "artifact.motion_detector_enabled is independent of SQI and denoiser selection",
+    )
+    for module_id in ("disabled", "enabled")
+)
+
+DENOISER_SWITCH_MODULES = (
+    ModuleDescriptor(
+        "disabled",
+        "denoiser_switch",
+        "ppg_frailty.quality.routing.route_module_switches_from_config",
+        _ALL_REPRESENTATION_MODES,
+        "runtime_selectable_independent_switch",
+        "quality",
+        "artifact.denoiser_enabled is independent of SQI and motion detection",
+    ),
+    ModuleDescriptor(
+        "enabled",
+        "denoiser_switch",
+        "ppg_frailty.quality.routing.route_module_switches_from_config",
+        ("feature_vector",),
+        "runtime_selectable_independent_switch",
+        "quality",
+        "one configured non-identity rate-recovery reducer is executed only after Unfit; recovered Acceptable evidence is pulse-vector only",
+    ),
+)
+
 WINDOW_QUALITY_SELECTION_MODULES = (
     ModuleDescriptor(
         "none",
@@ -381,15 +415,15 @@ FEATURE_GROUP_MODULES = tuple(
 
 ARTIFACT_MODULES = (
     ModuleDescriptor("identity", "artifact", "ppg_frailty.artifact.identity.IdentityReducer", ("raw", "feature_vector", "feature_matrix", "fusion"), "direct_control", "artifacts", "exact no-op; morphology remains eligible"),
-    ModuleDescriptor("nlms_imu_anc", "artifact", "ppg_frailty.artifact.nlms.NlmsReducer", ("feature_vector", "feature_matrix"), "comparison_rate_only", "artifacts", "ANC assumption may remove physiological response; rate-only endpoints enter vector or ordered-matrix validity channels"),
-    ModuleDescriptor("ssa_decomposition", "artifact", "ppg_frailty.artifact.decomposition.SsaReducer", ("feature_vector", "feature_matrix"), "comparison_rate_only", "artifacts", "non-stationary decomposition comparator; rate-only endpoints enter vector or ordered-matrix validity channels"),
-    ModuleDescriptor("spectral_mask", "artifact", "ppg_frailty.artifact.spectral.SpectralMaskReducer", ("feature_vector", "feature_matrix"), "comparison_rate_only", "artifacts", "formal STFT plus IMU soft mask; rate-only endpoints enter vector or ordered-matrix validity channels"),
-    ModuleDescriptor("pca_bss", "artifact", "ppg_frailty.artifact.bss.PcaBssReducer", ("feature_vector", "feature_matrix"), "comparison_rate_only", "artifacts", "two-wavelength BSS comparator; rate-only endpoints enter vector or ordered-matrix validity channels"),
-    ModuleDescriptor("fastica_bss", "artifact", "ppg_frailty.artifact.bss.FastIcaBssReducer", ("feature_vector", "feature_matrix"), "comparison_rate_only", "artifacts", "two-wavelength BSS comparator; rate-only endpoints enter vector or ordered-matrix validity channels"),
-    ModuleDescriptor("nmf_bss", "artifact", "ppg_frailty.artifact.bss.NmfBssReducer", ("feature_vector", "feature_matrix"), "comparison_rate_only", "artifacts", "two-wavelength spectral BSS comparator; rate-only endpoints enter vector or ordered-matrix validity channels"),
-    ModuleDescriptor("emd_sifting_rate_only", "artifact", "ppg_frailty.artifact.legacy.EmdSiftingRateOnlyReducer", ("feature_vector", "feature_matrix"), "comparison_rate_only", "artifacts", "named EMD sifting ablation; never morphology-preserving; rate-only endpoints enter vector or ordered-matrix validity channels"),
-    ModuleDescriptor("ceemd_lite_nlms_legacy", "artifact", "ppg_frailty.artifact.legacy.CeemdLiteNlmsLegacyReducer", ("feature_vector", "feature_matrix"), "comparison_rate_only", "artifacts", "named CEEMD-lite plus NLMS legacy ablation; rate-only endpoints enter vector or ordered-matrix validity channels"),
-    ModuleDescriptor("dwt_a2_legacy", "artifact", "ppg_frailty.artifact.legacy.DwtA2LegacyReducer", ("feature_vector", "feature_matrix"), "comparison_rate_only", "artifacts", "named DWT A2 legacy ablation; PyWavelets is optional; rate-only endpoints enter vector or ordered-matrix validity channels"),
+    ModuleDescriptor("nlms_imu_anc", "artifact", "ppg_frailty.artifact.nlms.NlmsReducer", ("feature_vector",), "comparison_rate_only", "artifacts", "ANC assumption may remove physiological response; recovered rate-only endpoints enter pulse-derived vectors"),
+    ModuleDescriptor("ssa_decomposition", "artifact", "ppg_frailty.artifact.decomposition.SsaReducer", ("feature_vector",), "comparison_rate_only", "artifacts", "non-stationary decomposition comparator; recovered rate-only endpoints enter pulse-derived vectors"),
+    ModuleDescriptor("spectral_mask", "artifact", "ppg_frailty.artifact.spectral.SpectralMaskReducer", ("feature_vector",), "comparison_rate_only", "artifacts", "formal STFT plus IMU soft mask; recovered rate-only endpoints enter pulse-derived vectors"),
+    ModuleDescriptor("pca_bss", "artifact", "ppg_frailty.artifact.bss.PcaBssReducer", ("feature_vector",), "preferred_rate_recovery", "artifacts", "preferred two-wavelength PCA BSS reducer in Stage05; recovered rate-only endpoints enter pulse-derived vectors"),
+    ModuleDescriptor("fastica_bss", "artifact", "ppg_frailty.artifact.bss.FastIcaBssReducer", ("feature_vector",), "parallel_rate_recovery_ablation", "artifacts", "parallel two-wavelength FastICA BSS ablation; recovered rate-only endpoints enter pulse-derived vectors"),
+    ModuleDescriptor("nmf_bss", "artifact", "ppg_frailty.artifact.bss.NmfBssReducer", ("feature_vector",), "comparison_rate_only", "artifacts", "two-wavelength spectral BSS comparator; recovered rate-only endpoints enter pulse-derived vectors"),
+    ModuleDescriptor("emd_sifting_rate_only", "artifact", "ppg_frailty.artifact.legacy.EmdSiftingRateOnlyReducer", ("feature_vector",), "comparison_rate_only", "artifacts", "named EMD sifting ablation; never morphology-preserving; recovered rate-only endpoints enter pulse-derived vectors"),
+    ModuleDescriptor("ceemd_lite_nlms_legacy", "artifact", "ppg_frailty.artifact.legacy.CeemdLiteNlmsLegacyReducer", ("feature_vector",), "comparison_rate_only", "artifacts", "named CEEMD-lite plus NLMS legacy ablation; recovered rate-only endpoints enter pulse-derived vectors"),
+    ModuleDescriptor("dwt_a2_legacy", "artifact", "ppg_frailty.artifact.legacy.DwtA2LegacyReducer", ("feature_vector",), "comparison_rate_only", "artifacts", "named DWT A2 legacy ablation; PyWavelets is optional; recovered rate-only endpoints enter pulse-derived vectors"),
 )
 
 PRV_BACKEND_MODULES = (
@@ -438,6 +472,15 @@ PEAK_DETECTOR_MODULES = (
 )
 
 MOTION_EVIDENCE_MODULES = (
+    ModuleDescriptor(
+        "reused_frailty29_all29_bundle",
+        "motion_evidence",
+        "ppg_frailty.quality.motion_bundle_adapter.load_reused_motion_detector",
+        _ALL_REPRESENTATION_MODES,
+        "runtime_selectable_inference_only",
+        "quality",
+        "frozen Stage5 all-29 model and OOF-derived threshold; no CV refit or recalibration, and Frailty29 use is explicitly in-sample auxiliary evidence",
+    ),
     ModuleDescriptor("sqi_only", "motion_evidence", "ppg_frailty.quality.motion.resolve_motion_option", (), "external_audit_control_not_classifier_runtime", "motion_contract", "V2-010 external evidence control; core quality behavior is configured through quality.mode"),
     ModuleDescriptor("sqi_plus_motion_override", "motion_evidence", "ppg_frailty.quality.motion.resolve_motion_option", (), "external_ptt_evidence_protocol_not_classifier_runtime", "motion_contract", "independent motion/PTT audit API only; never a core classifier-pipeline selector"),
     ModuleDescriptor("historical_light_cnn_backup", "motion_evidence", "ppg_frailty.quality.motion.HISTORICAL_LIGHT_CNN_EVIDENCE", (), "historical_frozen_evidence_not_classifier_runtime", "motion_contract", "archived SIM evidence only; never a V2 classifier or PTT result"),
@@ -534,8 +577,6 @@ MODEL_MODULES = (
     ModuleDescriptor("InceptionTimeMatrix", "model", "ppg_frailty.models.inception_time_port.InceptionTimeSingleNetwork", ("feature_matrix",), "single_network", "models", "mask-aware registry-derived D-by-K input", ("torch",)),
     ModuleDescriptor("InceptionTimeFullFiveMemberEnsemble", "model", "ppg_frailty.models.inception_ensemble.InceptionTimeFiveMemberProbabilityEnsemble", ("raw",), "configurable_probability_ensemble_legacy_name", "models", "one or more independently seeded full raw models and exact probability mean; canonical name retained for compatibility", ("torch",)),
     ModuleDescriptor("InceptionTimeMatrixFiveMemberEnsemble", "model", "ppg_frailty.models.inception_ensemble.InceptionTimeFiveMemberProbabilityEnsemble", ("feature_matrix",), "configurable_probability_ensemble_legacy_name", "models", "one or more independently seeded full matrix models and exact probability mean; canonical name retained for compatibility", ("torch",)),
-    ModuleDescriptor("ROCKET", "model", "ppg_frailty.models.rocket_ridge.RocketRidgeClassifier", ("feature_matrix",), "reference_10000_kernels", "models", "fold-local scaler, kernels and ridge"),
-    ModuleDescriptor("MiniROCKET", "model", "ppg_frailty.models.rocket_ridge.MiniRocketAblation", ("feature_matrix",), "engineering_ablation_not_reference_port", "models", "cannot replace ROCKET silently"),
     ModuleDescriptor("LogisticRegressionL2", "model", "ppg_frailty.models.feature_models.FeatureVectorBaseline", ("feature_vector",), "reference", "models", "fold-local imputer and scaler"),
     ModuleDescriptor("RBFSVM", "model", "ppg_frailty.models.feature_models.FeatureVectorBaseline", ("feature_vector",), "reference", "models", "fold-local imputer and scaler"),
     ModuleDescriptor("ExtraTrees", "model", "ppg_frailty.models.feature_models.FeatureVectorBaseline", ("feature_vector",), "reference", "models", "fold-local imputer"),
@@ -564,6 +605,8 @@ ALL_MODULES = (
     + TRAINING_BALANCE_MODULES
     + EPOCH_SELECTION_MODULES
     + QUALITY_MODE_MODULES
+    + MOTION_DETECTOR_SWITCH_MODULES
+    + DENOISER_SWITCH_MODULES
     + WINDOW_QUALITY_SELECTION_MODULES
     + SHAPEFORMER_DISCOVERY_BALANCE_MODULES
     + AGGREGATION_MODULES
@@ -712,10 +755,22 @@ def resolve_artifact_config(section: Mapping[str, Any]) -> dict[str, Any]:
     """
 
     data = dict(section)
+    declared = str(data.get("reducer", "identity"))
+    data.setdefault("denoiser_enabled", declared != "identity")
+    from .quality.motion_bundle_adapter import (
+        resolve_reused_motion_detector_config,
+    )
+
+    neutral_motion = resolve_reused_motion_detector_config()
+    data.setdefault(
+        "motion_detector",
+        neutral_motion.to_mapping(include_enabled=False),
+    )
     required = {
         "reducer", "reducer_version", "selection_scope", "degraded_policy",
-        "motion_detector_enabled", "non_identity_output_contract", "failure_action",
-        "parameters",
+        "motion_detector_enabled", "denoiser_enabled",
+        "motion_detector",
+        "non_identity_output_contract", "failure_action", "parameters",
     }
     if set(data) != required:
         raise ValueError(
@@ -734,23 +789,52 @@ def resolve_artifact_config(section: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("artifact failures must not silently fall back")
     if not isinstance(data["motion_detector_enabled"], bool):
         raise ValueError("artifact.motion_detector_enabled must be boolean")
+    if not isinstance(data["denoiser_enabled"], bool):
+        raise ValueError("artifact.denoiser_enabled must be boolean")
+    motion_mapping = data["motion_detector"]
+    if not isinstance(motion_mapping, Mapping):
+        raise ValueError("artifact.motion_detector must be a mapping")
+    if "enabled" in motion_mapping:
+        raise ValueError(
+            "artifact.motion_detector.enabled is a duplicate switch; use only "
+            "artifact.motion_detector_enabled"
+        )
+    resolved_motion = resolve_reused_motion_detector_config(
+        {
+            **dict(motion_mapping),
+            "enabled": bool(data["motion_detector_enabled"]),
+        }
+    )
+    if (
+        not bool(data["motion_detector_enabled"])
+        and resolved_motion != neutral_motion
+    ):
+        raise ValueError(
+            "disabled artifact.motion_detector cannot carry active overrides"
+        )
     policy = str(data["degraded_policy"])
     if policy not in {"drop", "denoise_then_extract_rate_features"}:
         raise ValueError(
             "artifact.degraded_policy must be drop or "
             "denoise_then_extract_rate_features"
         )
+    denoiser_enabled = bool(data["denoiser_enabled"])
+    if denoiser_enabled and declared == "identity":
+        raise ValueError(
+            "artifact.denoiser_enabled=true requires a registered non-identity reducer"
+        )
+    if not denoiser_enabled and declared != "identity":
+        raise ValueError(
+            "artifact.denoiser_enabled=false requires reducer='identity'; "
+            "inactive non-identity parameters may not alter runtime identity"
+        )
     expected_policy = (
-        "drop" if declared == "identity" else "denoise_then_extract_rate_features"
+        "denoise_then_extract_rate_features" if denoiser_enabled else "drop"
     )
     if policy != expected_policy:
         raise ValueError(
-            f"artifact reducer {declared!r} is executable only with "
+            f"artifact.denoiser_enabled={denoiser_enabled!r} requires "
             f"degraded_policy={expected_policy!r}"
-        )
-    if policy == "drop" and data["motion_detector_enabled"]:
-        raise ValueError(
-            "artifact.motion_detector_enabled requires an executable denoise recovery policy"
         )
     if data["non_identity_output_contract"] != "rate_only":
         raise ValueError("non-identity artifact output must be rate_only")
@@ -786,6 +870,9 @@ def resolve_artifact_config(section: Mapping[str, Any]) -> dict[str, Any]:
             declared_version != runtime_version
         ),
         "is_identity": bool(reducer.is_identity),
+        "motion_detector_enabled": bool(data["motion_detector_enabled"]),
+        "motion_detector": resolved_motion.to_mapping(include_enabled=False),
+        "denoiser_enabled": denoiser_enabled,
         "parameters": dict(parameters),
     }
 
@@ -797,8 +884,6 @@ _MODEL_MODES = {
     "InceptionTimeMatrix": {"feature_matrix"},
     "InceptionTimeFullFiveMemberEnsemble": {"raw"},
     "InceptionTimeMatrixFiveMemberEnsemble": {"feature_matrix"},
-    "ROCKET": {"feature_matrix"},
-    "MiniROCKET": {"feature_matrix"},
     "LogisticRegressionL2": {"feature_vector"},
     "RBFSVM": {"feature_vector"},
     "ExtraTrees": {"feature_vector"},
@@ -856,8 +941,6 @@ _MODEL_SPECIFIC_FIELDS = {
         "pool_size", "out_channels", "bottleneck_channels", "depth",
         "residual_interval", "member_variant", "mask_aware_pooling",
     },
-    "ROCKET": {"seed_policy", "n_kernels", "alpha"},
-    "MiniROCKET": {"seed_policy", "n_kernels", "alpha"},
     "LogisticRegressionL2": {
         "seed_policy", "class_weight", "logistic_c", "logistic_max_iter",
         "logistic_solver",
@@ -1047,8 +1130,6 @@ _MODEL_VARIANT_LEGACY_ALIASES = {
     "InceptionTimeSmall": {"small_single_network"},
     "InceptionTimeFullFiveMemberEnsemble": {"full_five_independent_members"},
     "InceptionTimeMatrixFiveMemberEnsemble": {"full_five_independent_members"},
-    "ROCKET": {"numpy_rocket_ridge"},
-    "MiniROCKET": {"engineering_ablation"},
     "LogisticRegressionL2": {"l2_lbfgs", "reference_file_vector"},
     "RBFSVM": {"rbf_probability"},
     "ExtraTrees": {"500_trees"},
@@ -1916,7 +1997,7 @@ def validate_model_config(section: Mapping[str, Any], representation_mode: str) 
 _WINDOW_PROFILE_DEFAULTS: dict[str, dict[str, Any]] = {
     "engineering": {
         "length_s": 10.0,
-        "hop_s": 5.0,
+        "hop_s": 2.0,
         "end_alignment": "left_start_regular_grid",
         "padding": "none_complete_windows_only",
         "cap_per_file": None,
@@ -2057,6 +2138,17 @@ def validate_window_profiles_for_representation(
     if not isinstance(enabled_feature_groups, (list, tuple)):
         raise ValueError("enabled_feature_groups must be a list or tuple")
     groups = tuple(str(value) for value in enabled_feature_groups)
+    if mode == "feature_matrix":
+        engineering = normalized["engineering"]
+        expected = _WINDOW_PROFILE_DEFAULTS["engineering"]
+        changed = sorted(
+            name for name, value in expected.items() if engineering[name] != value
+        )
+        if changed:
+            raise ValueError(
+                "feature_matrix requires the fixed 10 s/2 s engineering-window "
+                f"contract; changed fields: {changed}"
+            )
     inactive_profiles: list[str] = []
     if mode == "raw":
         inactive_profiles.append("engineering")
@@ -2087,7 +2179,7 @@ def validate_window_profiles_for_representation(
 def resolve_window_config(section: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     """Resolve configurable physical windows to the shared ``WindowPlan``.
 
-    Omitted fields receive the preceding V2 defaults (engineering 10/5 seconds
+    Omitted fields receive the preceding V2 defaults (engineering 10/2 seconds
     on a left-start grid without a cap; raw 5/2.5 seconds on the same start grid
     plus a distinct right-edge window, capped at 128). Explicit durations may be
     any finite positive values; the planner subsequently verifies that they map
@@ -2138,7 +2230,8 @@ __all__ = [
     "AGGREGATION_MODULES", "ALL_MODULES", "ARTIFACT_MODULES",
     "CLASS_COUNT_BASIS_MODULES", "CLASS_WEIGHTING_MODULES",
     "COMPARISON_PROFILE_MODULES", "EPOCH_SELECTION_MODULES",
-    "FEATURE_GROUP_MODULES", "LOSS_MODULES", "MODEL_MODULES",
+    "DENOISER_SWITCH_MODULES", "FEATURE_GROUP_MODULES", "LOSS_MODULES",
+    "MODEL_MODULES", "MOTION_DETECTOR_SWITCH_MODULES",
     "MOTION_EVIDENCE_MODULES", "NORMALIZATION_MODULES", "OPTIMIZER_MODULES",
     "PRV_BACKEND_MODULES", "QUALITY_MODE_MODULES",
     "QUALITY_WEIGHT_SOURCE_MODULES", "REPRESENTATION_MODULES",

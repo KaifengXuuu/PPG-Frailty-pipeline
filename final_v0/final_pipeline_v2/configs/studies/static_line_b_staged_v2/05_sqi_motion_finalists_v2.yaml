@@ -1,28 +1,18 @@
-# Stage 5 intentionally contains only quality off versus diagnostics_only for
-# manually retained finalists; diagnostics_only must not change retention or
-# predictions. The registered SQI route, window-selection/weighting and reducer
-# modules are executable through explicit configs/studies, but this file does
-# not silently add them. Motion evidence, formal motion 5x5, A3 and A4 remain
-# separate scientific comparisons rather than core-runtime permissions.
-# The planned motion sequence is deliberately non-Cartesian:
-# 5B) 8-channel axes+EKF reference versus 11-channel derived augmentation;
-# 5C) selected channel profile with EKF versus Profile-A LPF;
-# 5D) reducer off versus one selected denoiser;
-# 5E) selected motion branch versus the paired pure-static finalist.
-#
-# Before running, replace or delete the example finalist blocks below so that
-# only models retained by Stages 1-4 remain.
+# One feature-vector finalist and five predeclared module compositions. SQI,
+# the frozen all-29 motion detector, and rate-recovery reducers are imported
+# through their ordinary V2 registries; this plan contains no algorithm copy.
 schema_version: ppg_frailty.study_plan.v2
 study:
-  study_id: staged_static_05_sqi_diagnostics_finalists_v2
+  study_id: staged_static_05_sqi_motion_feature_vector_v3
   kind: catalog_sweep
-  purpose: "Check SQI diagnostic observability on retained static finalists while preserving identical prediction behavior."
-  flow_position: "Stage 5 diagnostic-only slice; executable route/reducer comparisons require their own explicit cases."
+  purpose: "Compare explicit SQI/motion tiers and one-attempt PCA/FastICA rate recovery on one feature-vector finalist."
+  flow_position: "Stage 5 route-composition screen after ordinary-model selection."
   decision_role: robustness
-  reference_case_id: null
+  reference_case_id: vector_logistic__off_off
   thesis_sections:
-    - "SQI diagnostics without classification effect"
-    - "Separately configured motion-evidence and reducer branches"
+    - "SQI tier routing and abstention"
+    - "Frozen Frailty29 motion-model reuse"
+    - "PCA versus FastICA one-attempt rate recovery"
 catalog:
   path: configs/formal_experiment_catalog_v2.yaml
   balance_line: line_b
@@ -31,95 +21,113 @@ search:
   method: deterministic_sparse_profiles
   selection_seed: 42
   runtime_sampling: false
-  interpretation: "Paired off/diagnostics-only checks per example finalist; this is not a motion-efficacy comparison."
+  interpretation: "Five predeclared compositions, not a Cartesian search and not automatic model selection."
   controlled_factors:
-    - "Static model, representation, participants, folds and training parameters are identical within each pair"
-    - "Artifact reducer remains identity and motion override remains disabled"
-    - "diagnostics_only has classification_effect none"
+    - "Logistic Regression feature-vector route, participants, folds, split/training seeds and Line B aggregation"
+    - "Fixed-formula SQI uses Q_rate >= 0.50, Q_morph >= 0.65 and coverage >= 0.80"
+    - "Motion cases reuse one frozen all-29 model and its strict-OOF-derived deployment threshold without refit or recalibration"
+    - "Each Unfit record receives at most one configured reducer attempt"
   notes:
-    - "Predictions, retention and participant OOF rows must match within each pair."
-    - "quality.mode=route is executable but intentionally absent from these diagnostics-only pairs."
-    - "Planned motion comparisons are 8-channel EKF reference versus 11-channel augmentation, and EKF versus Profile-A LPF."
-    - "After those single-factor choices, compare reducer off with one selected denoiser, then compare the selected motion branch with pure static."
-    - "Formal motion 5x5, reducer selection, A3/A4 runners and motion override remain deferred."
+    - "The reused motion model was trained on all Frailty29 participants; its decisions are in-sample preprocessing evidence and are not valid outer-OOF motion predictions."
+    - "The 20260820_182324 bundle is intentionally not used because its older final threshold does not satisfy the strict OOF deployment-threshold contract."
+    - "PCA is preferred; FastICA is the parallel single-factor algorithm ablation."
+    - "The sklearn Logistic Regression estimator runs on CPU; only frozen motion-bundle inference uses CUDA."
 cases:
-  - case_id: raw_compact__quality_off
-    catalog_entry: compact_cnn
-    screen_profile_id: quality_off
-    output_group: raw
-    overrides:
-      quality.mode: "off"
-    rationale: "Example raw finalist static reference."
-    formal_profile: null
-  - case_id: raw_compact__quality_diagnostics
-    catalog_entry: compact_cnn
-    screen_profile_id: quality_diagnostics
-    output_group: raw
-    overrides:
-      quality.mode: diagnostics_only
-    rationale: "Example raw finalist with non-causal SQI diagnostics."
-    formal_profile: null
-  - case_id: vector_logistic__quality_off
+  - case_id: vector_logistic__off_off
     catalog_entry: logistic_regression
-    screen_profile_id: quality_off
+    screen_profile_id: sqi_motion_off
     output_group: feature_vector
     overrides:
       quality.mode: "off"
-    rationale: "Example feature-vector finalist static reference."
+      artifact.motion_detector_enabled: false
+      artifact.denoiser_enabled: false
+      artifact.reducer: identity
+      artifact.reducer_version: identity_v1
+      artifact.degraded_policy: drop
+      artifact.parameters: {}
+    rationale: "SQI-off, motion-off, denoiser-off static reference."
     formal_profile: null
-  - case_id: vector_logistic__quality_diagnostics
+
+  - case_id: vector_logistic__sqi_only
     catalog_entry: logistic_regression
-    screen_profile_id: quality_diagnostics
+    screen_profile_id: sqi_only_fixed_thresholds
+    output_group: feature_vector
+    overrides: &sqi_only
+      quality.mode: route
+      quality.calibrator: fixed_formula_thresholds_v1
+      quality.rate_threshold: 0.50
+      quality.morph_threshold: 0.65
+      quality.minimum_coverage: 0.80
+      artifact.motion_detector_enabled: false
+      artifact.denoiser_enabled: false
+      artifact.reducer: identity
+      artifact.reducer_version: identity_v1
+      artifact.degraded_policy: drop
+      artifact.parameters: {}
+    rationale: "SQI-only tier routing with the reference thresholds."
+    formal_profile: null
+
+  - case_id: vector_logistic__sqi_motion_all29
+    catalog_entry: logistic_regression
+    screen_profile_id: sqi_plus_reused_all29_motion
+    output_group: feature_vector
+    overrides: &sqi_motion_all29
+      <<: *sqi_only
+      artifact.motion_detector_enabled: true
+      artifact.motion_detector.evidence_path: artifacts/studies/static_line_b_staged_v2/20260820_225546_staged-static-05-pre-motion-ptt-v1/motion_internal/motion_internal_evidence.json
+      artifact.motion_detector.expected_evidence_sha256: 10f02a9d784e06471c7109ff8dc92d28f1a8d7753f8fdf179bebce5699fb446c
+      artifact.motion_detector.device: cuda
+      artifact.motion_detector.batch_size: 64
+      artifact.motion_detector.window_probability_aggregation: median
+      artifact.motion_detector.threshold_source: bundle_frozen
+    rationale: "SQI plus frozen all-29 motion inference; no denoiser."
+    formal_profile: null
+
+  - case_id: vector_logistic__sqi_motion_pca
+    catalog_entry: logistic_regression
+    screen_profile_id: sqi_motion_pca_rate_recovery
     output_group: feature_vector
     overrides:
-      quality.mode: diagnostics_only
-    rationale: "Example feature-vector finalist with non-causal SQI diagnostics."
+      <<: *sqi_motion_all29
+      artifact.denoiser_enabled: true
+      artifact.reducer: pca_bss
+      artifact.reducer_version: pca_component_select_v2
+      artifact.degraded_policy: denoise_then_extract_rate_features
+      artifact.parameters:
+        imu_reference_profile: imu_axes6_reference_v2
+    rationale: "Preferred deterministic PCA BSS one-attempt rate recovery."
     formal_profile: null
-  - case_id: matrix_rocket__quality_off
-    catalog_entry: rocket_numpy
-    screen_profile_id: quality_off
-    output_group: feature_matrix
+
+  - case_id: vector_logistic__sqi_motion_fastica
+    catalog_entry: logistic_regression
+    screen_profile_id: sqi_motion_fastica_ablation
+    output_group: feature_vector
     overrides:
-      quality.mode: "off"
-    rationale: "Example feature-matrix finalist static reference."
-    formal_profile: null
-  - case_id: matrix_rocket__quality_diagnostics
-    catalog_entry: rocket_numpy
-    screen_profile_id: quality_diagnostics
-    output_group: feature_matrix
-    overrides:
-      quality.mode: diagnostics_only
-    rationale: "Example feature-matrix finalist with non-causal SQI diagnostics."
-    formal_profile: null
-  - case_id: fusion_compact__quality_off
-    catalog_entry: fusion_compact
-    screen_profile_id: quality_off
-    output_group: fusion
-    overrides:
-      quality.mode: "off"
-    rationale: "Example fusion finalist static reference."
-    formal_profile: null
-  - case_id: fusion_compact__quality_diagnostics
-    catalog_entry: fusion_compact
-    screen_profile_id: quality_diagnostics
-    output_group: fusion
-    overrides:
-      quality.mode: diagnostics_only
-    rationale: "Example fusion finalist with non-causal SQI diagnostics."
+      <<: *sqi_motion_all29
+      artifact.denoiser_enabled: true
+      artifact.reducer: fastica_bss
+      artifact.reducer_version: fastica_component_select_v2
+      artifact.degraded_policy: denoise_then_extract_rate_features
+      artifact.parameters:
+        random_state: 42
+        max_iter: 1000
+        tolerance: 0.00001
+        imu_reference_profile: imu_axes6_reference_v2
+    rationale: "FastICA BSS algorithm ablation under the same one-attempt route."
     formal_profile: null
 execution:
-  repeats: [0, 1, 2, 3, 4]
+  repeats: [0]
   folds: [0, 1, 2, 3, 4]
   jobs: 1
-  device: cuda
+  device: cpu
   parallel_level: cases
   continue_on_error: true
   allow_parallel_deep: false
-  measure_operational_costs: true
+  measure_operational_costs: false
 output:
   root: artifacts/studies/static_line_b_staged_v2
 report:
-  top_k: 8
+  top_k: 5
   write_html: true
   write_static_figures: true
   calibration_bins: 10

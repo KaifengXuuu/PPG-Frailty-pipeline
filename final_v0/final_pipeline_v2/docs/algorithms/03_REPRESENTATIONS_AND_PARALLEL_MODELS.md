@@ -4,23 +4,24 @@ Four representation modes share one manifest, fold registry, label mapping,
 OOF schema and aggregation contract:
 
 - raw: canonical 8-channel windows plus mask, ordered as RED, IR,
-  A_dyn_x/y/z, GX/GY/GZ;
+  A_dyn_x/y/z, GX/GY/GZ; every channel is independently robust-scaled inside
+  each DL window, while the physical-unit analysis views remain unchanged;
 - feature-vector: one ordered file vector (282 fields with all groups enabled);
-- feature-matrix: ordered feature rows/columns plus mask (794×K with all
-  groups: paired value/validity channels for 115 engineering rows and 282
-  file-context fields);
+- feature-matrix: chronological 10 s/2 s-hop engineering rows plus mask,
+  exactly 115×150; feature validity is provenance, not predictor channels;
 - fusion: a pooled raw-file embedding concatenated once with its selected file
   vector and paired validity channels.
 
 `features.enabled_groups` selects any non-empty composition of basic PPI/rate,
 HRV time-domain, HRV spectral, HRV nonlinear, morphology, dual optical, and
 engineering-summary modules. Selection is canonicalized before hashing and the
-same content-addressed registry is consumed by extraction, fold transforms,
-matrix/fusion construction, validators, outer experiments, and final refit.
+same content-addressed registry is consumed by vector/fusion extraction, fold
+transforms, validators, outer experiments, and final refit. Feature-matrix is a
+separate fixed engineering-only 115×150 contract.
 
 The formal catalogue carries explicit architecture parameters and training
-fields. It includes classical, ROCKET, Compact/Inception, fusion, two explicit
-five-member ensemble comparisons, and separately named ShapeFormer routes.
+fields. It includes classical, Compact/Inception, fusion, one explicit raw
+five-member ensemble comparison, and separately named ShapeFormer routes.
 Role-aware Line B (window -> file -> role -> participant) is the canonical
 reference. Equal-files Line A is a separately named ablation. Catalogue
 materialization never fits or ranks a model.
@@ -30,7 +31,13 @@ one source channel; discovery and best-fit distance search use that channel.
 The faithful downstream implementation is
 `LiteratureShapeFormerChannelSpecificOSD`; it is executable and high-compute,
 not gated. ShapeFormer, its generic branch, raw CNNs, and fusion all receive the
-same canonical 8-channel tensor directly; there is no model-specific projection.
+same `x_dl_all8_window_norm` tensor. SQI, motion detection, denoising, and
+engineering continue to consume `processed_imu_physical`; peaks and optical
+features consume amplitude-preserving `x_analysis`/`x_native`.
+
+ROCKET/Ridge and MiniROCKET are retired from the executable registry, catalog,
+and studies. The 115×150 feature-matrix representation remains available while
+its next model is selected explicitly.
 
 The optional `FileBagFusion` composer selects its `signal_encoder` as a nested
 runtime module. CompactCNN, full/small Inception, faithful channel-specific OSD,

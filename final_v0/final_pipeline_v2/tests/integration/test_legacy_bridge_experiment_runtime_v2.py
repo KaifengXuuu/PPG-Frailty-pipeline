@@ -138,7 +138,142 @@ def _bridge_execution(profile_id: str, config: PipelineConfig) -> object:
     )
 
 
+def _star_controls(**overrides: object) -> dict[str, object]:
+    controls: dict[str, object] = {
+        "ppg_preprocessing": "legacy_detrend_bandpass_0p2_8",
+        "imu_preprocessing": "legacy_filtered_axes",
+        "target_fs_hz": 64.0,
+        "window_seconds": 15.0,
+        "hop_seconds": 3.0,
+        "historical_retained_fraction": 0.9,
+        "max_windows_per_file": None,
+        "allow_short_record_padding": True,
+        "normalization": "per_window_all_eight",
+        "sampler": "exhaustive_shuffle_without_replacement",
+        "class_weighting": "outer_train_window_inverse_frequency",
+        "optimizer": "adamw",
+        "batch_size": 32,
+        "fixed_epochs": 10,
+        "learning_rate": 0.001,
+        "weight_decay": 0.0001,
+        "training_metric_aggregation_rule": "line_a_equal_files",
+        "primary_report_aggregation_view": "window_balanced_to_participant",
+    }
+    controls.update(overrides)
+    return controls
+
+
+def _star_bridge_execution(
+    profile_id: str,
+    config: PipelineConfig,
+    **overrides: object,
+) -> object:
+    controls = _star_controls(**overrides)
+    return experiment._resolve_legacy_bridge_execution(
+        SimpleNamespace(
+            repository_root=REPOSITORY_ROOT,
+            input_path=lambda relative: PIPELINE_ROOT / relative,
+        ),
+        config,
+        profile_id=profile_id,
+        protocol_design="centered_star_v1",
+        profile_definition={"profile_id": profile_id, "controls": controls},
+        profile_definition_sha256=stable_payload_sha256(controls),
+    )
+
+
 class LegacyBridgeExperimentRuntimeTest(unittest.TestCase):
+    def test_centered_star_uses_inline_profile_and_b0_b7_outputs_are_identical(
+        self,
+    ) -> None:
+        # Production centered-star configs append the screen suffix to the
+        # reserved profile marker. Exercise that exact B0_STAR/B7_STAR shape.
+        b0_config = _reserved_bridge_config("B0_star")
+        b7_config = _reserved_bridge_config("B7_star")
+        b0 = _star_bridge_execution("B0", b0_config)
+        b7 = _star_bridge_execution(
+            "B7",
+            b7_config,
+            primary_report_aggregation_view="line_b_equal_role_families",
+        )
+        self.assertIsNone(b0.source_specification)
+        self.assertEqual(b0.protocol_design, "centered_star_v1")
+        self.assertEqual(
+            b0.profile.training_identity_sha256,
+            b7.profile.training_identity_sha256,
+        )
+        report = SimpleNamespace(
+            fold_hash="f" * 64,
+            manifest_hash="a" * 64,
+            window_profiles={},
+        )
+        cells = []
+        for config, bridge in ((b0_config, b0), (b7_config, b7)):
+            cells.append(
+                experiment._execute_cell_unchecked(
+                    report,
+                    config,
+                    _runtime_rows(),
+                    _Registry(),
+                    SimpleNamespace(),
+                    repeat_index=0,
+                    fold_index=0,
+                    maximum_seconds=None,
+                    record_cap=None,
+                    epoch_override=None,
+                    loader=_raw_record,
+                    legacy_bridge=bridge,
+                )
+            )
+        left = cells[0].summary["legacy_bridge"]
+        right = cells[1].summary["legacy_bridge"]
+        self.assertEqual(
+            left["train_dataset_binding_hash"],
+            right["train_dataset_binding_hash"],
+        )
+        self.assertEqual(
+            left["oof_window_probability_sha256"],
+            right["oof_window_probability_sha256"],
+        )
+        self.assertEqual(
+            cells[0].summary["model_hash"],
+            cells[1].summary["model_hash"],
+        )
+        self.assertEqual(
+            cells[1].summary["balance_line"],
+            "line_a_equal_files",
+        )
+        self.assertEqual(
+            right["primary_report_aggregation_view"],
+            "line_b_equal_role_families",
+        )
+
+    def test_centered_star_reserved_marker_still_rejects_wrong_profile(
+        self,
+    ) -> None:
+        config = _reserved_bridge_config("B1_star")
+        bridge = _star_bridge_execution("B0", config)
+        with self.assertRaisesRegex(
+            experiment._ExperimentProtocolError,
+            "reserved_config_profile_mismatch",
+        ):
+            experiment._assert_legacy_bridge_entrypoint_contract(
+                config,
+                bridge,
+                dedicated_entrypoint=True,
+            )
+
+    def test_both_requested_deep_models_are_allowed_for_every_star_arm(self) -> None:
+        for level in range(8):
+            profile = _star_bridge_execution(
+                f"B{level}",
+                _reserved_bridge_config(f"B{level}"),
+            ).profile
+            self.assertEqual(
+                experiment._legacy_bridge_allowed_model_ids(profile),
+                frozenset({"compact_cnn", "inception_full"}),
+            )
+
     def test_large_record_tables_are_externalized_with_resolvable_index_paths(
         self,
     ) -> None:
@@ -361,7 +496,7 @@ class LegacyBridgeExperimentRuntimeTest(unittest.TestCase):
             views=views,
             retained=True,
         )
-        experiment._extract_l3_bridge_raw(
+        experiment._extract_canonical_all_channel_bridge_raw(
             l3_state,
             resolve_legacy_bridge_profile("L3"),
         )

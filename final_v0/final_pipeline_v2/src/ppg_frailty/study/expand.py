@@ -210,7 +210,13 @@ def flatten_mapping(value: Mapping[str, Any], prefix: str = "") -> dict[str, Any
     return flattened
 
 
-def _set_dotted(payload: dict[str, Any], path: str, value: Any) -> None:
+def _set_dotted(
+    payload: dict[str, Any],
+    path: str,
+    value: Any,
+    *,
+    allow_new_leaf: bool = False,
+) -> None:
     fields = path.split(".")
     cursor: dict[str, Any] = payload
     for field in fields[:-1]:
@@ -219,7 +225,7 @@ def _set_dotted(payload: dict[str, Any], path: str, value: Any) -> None:
             raise KeyError(f"unknown nested configuration path: {path}")
         cursor = existing
     leaf = fields[-1]
-    if leaf not in cursor:
+    if leaf not in cursor and not allow_new_leaf:
         raise KeyError(f"unknown configuration field: {path}")
     cursor[leaf] = copy.deepcopy(value)
 
@@ -577,8 +583,8 @@ def _expand_catalog_sweep(
         for entry_id, row in entry_by_id.items()
         if row["catalog_role"] in {"reference_candidate", "ablation_candidate"}
     }
-    if len(ordinary_ids) != 13:
-        raise RuntimeError("formal catalog no longer contains exactly 13 ordinary candidates")
+    if not ordinary_ids:
+        raise RuntimeError("formal catalog contains no active ordinary candidates")
     requested_ids = {case.catalog_entry for case in plan.cases}
     unknown_ids = requested_ids - set(entry_by_id)
     if unknown_ids:
@@ -586,9 +592,9 @@ def _expand_catalog_sweep(
             "catalog cases contain unknown entries: "
             f"{sorted(unknown_ids)}"
         )
-    if plan.catalog.scope == "ordinary_13" and requested_ids != ordinary_ids:
+    if plan.catalog.scope in {"ordinary_active", "ordinary_13"} and requested_ids != ordinary_ids:
         raise ValueError(
-            "ordinary_13 cases must cover the exact registered candidate set: "
+            "ordinary cases must cover the exact active registered candidate set: "
             f"missing={sorted(ordinary_ids-requested_ids)}, "
             f"unknown={sorted(requested_ids-ordinary_ids)}"
         )
@@ -658,7 +664,10 @@ def _expand_catalog_sweep(
                 catalog_entry=case.catalog_entry,
             )
         for path, value in case.overrides.items():
-            _set_dotted(payload, path, value)
+            # Inactive module parameters are intentionally absent from resolved
+            # base configs. The strict pipeline validator below remains the
+            # authority for whether a newly supplied leaf is registered.
+            _set_dotted(payload, path, value, allow_new_leaf=True)
         _apply_execution_device(payload, plan.execution.device)
         payload["config_id"] = (
             f"{payload['config_id']}__{case.screen_profile_id}"
@@ -686,6 +695,11 @@ def _expand_catalog_sweep(
             changed["study.legacy_bridge_runtime"] = (
                 plan.legacy_bridge.runtime_status
             )
+            changed["study.legacy_bridge_design"] = plan.legacy_bridge.design
+            if plan.legacy_bridge.uses_inline_profiles:
+                changed["study.legacy_bridge_profile_definition_sha256"] = (
+                    plan.legacy_bridge.controls_sha256(profile_matches[0])
+                )
         changed.update(copy.deepcopy(dict(case.overrides)))
         if case.formal_profile is not None:
             changed["study.formal_profile"] = (

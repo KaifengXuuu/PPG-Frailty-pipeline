@@ -142,7 +142,6 @@ class CanonicalFacadeTests(unittest.TestCase):
             "ppg_frailty.models.inception_ensemble",
             "ppg_frailty.models.shapeformer_port",
             "ppg_frailty.models.feature_models",
-            "ppg_frailty.models.rocket_ridge",
             "ppg_frailty.models.file_fusion",
         )
         for name in modules:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import csv
 import gc
 import inspect
@@ -379,12 +380,26 @@ def default_experiment_executor(
         if bridge is None
         else str(case.changed_values.get("study.legacy_bridge_profile", ""))
     )
-    if bridge is not None and bridge_profile_id not in {
-        f"L{level}" for level in range(8)
-    }:
-        raise ValueError(
-            f"{case.case_id} lacks one frozen Legacy Bridge L0..L7 profile"
+    bridge_profile_definition: Mapping[str, Any] | None = None
+    if bridge is not None:
+        allowed_profiles = {
+            str(profile["profile_id"]) for profile in bridge.profiles
+        }
+        if bridge_profile_id not in allowed_profiles:
+            raise ValueError(
+                f"{case.case_id} lacks one frozen Legacy Bridge profile for "
+                f"design={bridge.design}"
+            )
+        matches = tuple(
+            profile
+            for profile in bridge.profiles
+            if str(profile["catalog_case_id"]) == case.case_id
         )
+        if len(matches) != 1:
+            raise ValueError(
+                f"{case.case_id} must bind exactly one Legacy Bridge profile"
+            )
+        bridge_profile_definition = matches[0]
     for repeat in plan.execution.repeats:
         for fold in plan.execution.folds:
             call_kwargs: dict[str, Any] = {
@@ -400,15 +415,31 @@ def default_experiment_executor(
                 ),
             }
             if bridge is not None:
-                call_kwargs.update(
-                    {
-                        "profile_id": bridge_profile_id,
-                        "source_specification": bridge.source_specification,
-                        "source_specification_sha256": (
-                            bridge.source_specification_sha256
-                        ),
-                    }
-                )
+                call_kwargs["profile_id"] = bridge_profile_id
+                if bridge.uses_inline_profiles:
+                    assert bridge_profile_definition is not None
+                    call_kwargs.update(
+                        {
+                            "protocol_design": bridge.design,
+                            "profile_definition": copy.deepcopy(
+                                dict(bridge_profile_definition)
+                            ),
+                            "profile_definition_sha256": (
+                                bridge.controls_sha256(
+                                    bridge_profile_definition
+                                )
+                            ),
+                        }
+                    )
+                else:
+                    call_kwargs.update(
+                        {
+                            "source_specification": bridge.source_specification,
+                            "source_specification_sha256": (
+                                bridge.source_specification_sha256
+                            ),
+                        }
+                    )
             raw_result = _invoke_with_supported_kwargs(cell_runner, **call_kwargs)
             cell_result = _compact_experiment_result(raw_result)
             del raw_result

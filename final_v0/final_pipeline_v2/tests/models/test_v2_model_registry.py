@@ -28,9 +28,6 @@ EXPECTED_IDS = (
     "compact_cnn",
     "inception_full",
     "inception_small",
-    "inception_matrix",
-    "rocket_numpy",
-    "minirocket_ablation",
     "logistic_regression",
     "rbf_svm",
     "extra_trees",
@@ -187,11 +184,11 @@ def test_file_bag_split_binding_includes_temporal_sample_masks() -> None:
         split.assert_training_dataset(changed, exact=True)
 
 
-def test_exact_13_candidate_registry_and_separate_ensemble() -> None:
+def test_active_candidate_registry_and_separate_ensemble() -> None:
     assert tuple(item.machine_id for item in NONENSEMBLE_MODEL_CANDIDATES) == EXPECTED_IDS
-    assert len(NONENSEMBLE_MODEL_CANDIDATES) == 13
-    assert sum(item.registry_role == "reference" for item in NONENSEMBLE_MODEL_CANDIDATES) == 11
-    assert sum(item.registry_role == "ablation" for item in NONENSEMBLE_MODEL_CANDIDATES) == 2
+    assert len(NONENSEMBLE_MODEL_CANDIDATES) == 10
+    assert sum(item.registry_role == "reference" for item in NONENSEMBLE_MODEL_CANDIDATES) == 9
+    assert sum(item.registry_role == "ablation" for item in NONENSEMBLE_MODEL_CANDIDATES) == 1
     by_id = {item.machine_id: item for item in NONENSEMBLE_MODEL_CANDIDATES}
     assert by_id["shapeformer_channel_specific_osd"].registry_role == "reference"
     assert by_id["shapeformer_effect_size_fixed_v1"].registry_role == "ablation"
@@ -199,9 +196,9 @@ def test_exact_13_candidate_registry_and_separate_ensemble() -> None:
     assert all(item.registry_role == "comparison" for item in FIVE_MEMBER_ENSEMBLE_COMPARISONS)
 
 
-@pytest.mark.parametrize("model_id", ["logistic_regression", "rocket_numpy"])
-def test_classical_and_rocket_epoch_requests_fail_closed(model_id: str) -> None:
-    mode = "feature_vector" if model_id == "logistic_regression" else "feature_matrix"
+@pytest.mark.parametrize("model_id", ["logistic_regression"])
+def test_classical_epoch_requests_fail_closed(model_id: str) -> None:
+    mode = "feature_vector"
     with pytest.raises(ValueError, match="do not accept epoch settings"):
         create_model(
             {"model_id": model_id, "epoch_profile": "ablation_7"},

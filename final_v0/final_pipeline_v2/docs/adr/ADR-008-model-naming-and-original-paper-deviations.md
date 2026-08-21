@@ -15,6 +15,6 @@
   不设运行门禁；其他发现或downstream方法必须使用独立ablation ID，禁止宣称
   PISD parity。可选 `FileBagFusion` 只组合已注册raw encoder，并保持fold-local
   discovery与file-feature transform隔离；
-- ROCKET reference 为 10,000 random kernels + ridge；MiniROCKET 是独立消融。
+- ROCKET/Ridge 与 MiniROCKET 已从当前可执行 pipeline、catalog 和 study 中退役；历史名称不得被复用为其他 matrix 模型。
 
 Architecture snapshot 和 model card 是必需追溯材料；名称不能随结果表现改变。

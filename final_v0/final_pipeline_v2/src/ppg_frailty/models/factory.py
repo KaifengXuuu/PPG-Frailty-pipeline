@@ -17,7 +17,6 @@ import numpy as np
 
 from ..contracts import RepresentationMode
 from .feature_baselines import FeatureVectorBaseline
-from .rocket import MiniRocketAblation, RocketRidgeClassifier
 
 
 # English: The optional deep profile is the confirmed V2 dependency layer. Each
@@ -445,8 +444,6 @@ CANONICAL_MODEL_REGISTRY: dict[str, str] = {
     "InceptionTimeMatrix": "inception_matrix",
     "InceptionTimeFullFiveMemberEnsemble": "inception_full_five_member_ensemble",
     "InceptionTimeMatrixFiveMemberEnsemble": "inception_matrix_five_member_ensemble",
-    "ROCKET": "rocket_numpy",
-    "MiniROCKET": "minirocket_ablation",
     "LogisticRegressionL2": "logistic_regression",
     "RBFSVM": "rbf_svm",
     "ExtraTrees": "extra_trees",
@@ -479,9 +476,6 @@ NONENSEMBLE_MODEL_CANDIDATES: tuple[ModelCandidate, ...] = (
     ModelCandidate("CompactCNN1D", "compact_cnn", "raw", "reference", "compact"),
     ModelCandidate("InceptionTimeFull", "inception_full", "raw", "reference", "inception"),
     ModelCandidate("InceptionTimeSmall", "inception_small", "raw", "reference", "inception"),
-    ModelCandidate("InceptionTimeMatrix", "inception_matrix", "feature_matrix", "reference", "inception"),
-    ModelCandidate("ROCKET", "rocket_numpy", "feature_matrix", "reference", "rocket"),
-    ModelCandidate("MiniROCKET", "minirocket_ablation", "feature_matrix", "ablation", "rocket"),
     ModelCandidate("LogisticRegressionL2", "logistic_regression", "feature_vector", "reference", "classical"),
     ModelCandidate("RBFSVM", "rbf_svm", "feature_vector", "reference", "classical"),
     ModelCandidate("ExtraTrees", "extra_trees", "feature_vector", "reference", "classical"),
@@ -589,15 +583,13 @@ def normalize_model_config(model_config: Mapping[str, Any]) -> dict[str, Any]:
         "logistic_regression",
         "rbf_svm",
         "extra_trees",
-        "rocket_numpy",
-        "minirocket_ablation",
     }:
         requested = sorted(
             {"epochs", "fixed_epochs", "epoch_profile", "epoch_rule"} & set(config)
         )
         if requested:
             raise ValueError(
-                "classical and ROCKET candidates do not accept epoch settings; "
+                "non-iterative estimator candidates do not accept epoch settings; "
                 f"remove {requested}"
             )
     config.pop("model_name", None)
@@ -887,22 +879,6 @@ def resolved_architecture_parameters(
                     "min_samples_leaf": model.extra_trees_min_samples_leaf,
                 }
             )
-    elif model_id in {"rocket_numpy", "minirocket_ablation"}:
-        base.update(
-            {
-                "implementation_algorithm_id": str(model.implementation_algorithm_id),
-                "scientific_status": str(
-                    getattr(model, "scientific_status", "reference_numpy_rocket")
-                ),
-                "robust_scaler": "outer_train_channel_median_iqr",
-                "transformer": "numpy_random_convolution_max_ppv",
-                "candidate_kernel_lengths": (7, 9, 11),
-                "n_kernels": int(model.n_kernels),
-                "features_per_kernel": 2,
-                "classifier": "sklearn.linear_model.RidgeClassifier",
-                "ridge_alpha": float(model.alpha),
-            }
-        )
     elif model_id == "shapeformer_legacy_effect_size_port":
         base.update(
             {
@@ -1391,29 +1367,6 @@ def materialize_architecture_parameters(
                     ),
                 }
             )
-    elif model_id in {"rocket_numpy", "minirocket_ablation"}:
-        reference = model_id == "rocket_numpy"
-        base.update(
-            {
-                "implementation_algorithm_id": (
-                    "rocket_ridge_numpy"
-                    if reference
-                    else "minirocket_engineering_ablation"
-                ),
-                "scientific_status": (
-                    "reference_numpy_rocket"
-                    if reference
-                    else "ablation_not_reference_implementation"
-                ),
-                "robust_scaler": "outer_train_channel_median_iqr",
-                "transformer": "numpy_random_convolution_max_ppv",
-                "candidate_kernel_lengths": (7, 9, 11),
-                "n_kernels": int(config["n_kernels"]),
-                "features_per_kernel": 2,
-                "classifier": "sklearn.linear_model.RidgeClassifier",
-                "ridge_alpha": float(config["alpha"]),
-            }
-        )
     elif model_id == "shapeformer_legacy_effect_size_port":
         from .shapeformer_legacy import (
             LEGACY_DISCOVERY_BALANCE,
@@ -3134,25 +3087,6 @@ def create_model(
         if config:
             raise ValueError(f"unknown feature baseline options: {sorted(config)}")
         model = FeatureVectorBaseline(model_id, spec.feature_names, seed=seed, **options)
-        model.canonical_model_name = canonical_model_name
-        return _finalize_model(model, declared_architecture, spec)
-
-    if model_id in {"rocket_numpy", "minirocket_ablation"}:
-        if mode is not RepresentationMode.FEATURE_MATRIX:
-            raise ValueError("canonical ROCKET and MiniROCKET require feature_matrix representation")
-        if spec.n_channels <= 0:
-            raise ValueError("feature_matrix channel count D must be resolved before model creation")
-        missing_options = sorted({"n_kernels", "alpha"} - set(config))
-        if missing_options:
-            raise ValueError(f"{model_id} missing explicit options: {missing_options}")
-        n_kernels = int(config.pop("n_kernels"))
-        alpha = float(config.pop("alpha"))
-        if config:
-            raise ValueError(f"unknown ROCKET options: {sorted(config)}")
-        constructor = RocketRidgeClassifier if model_id == "rocket_numpy" else MiniRocketAblation
-        model = constructor(n_kernels=n_kernels, alpha=alpha, seed=seed)
-        model.implementation_algorithm_id = str(getattr(model, "model_id", type(model).__name__))
-        model.model_id = model_id
         model.canonical_model_name = canonical_model_name
         return _finalize_model(model, declared_architecture, spec)
 

@@ -13,8 +13,13 @@ from unittest.mock import patch
 import yaml
 
 from ppg_frailty.reporting import generate_study_report
-from ppg_frailty.reporting.analyze import analyze_study
-from ppg_frailty.reporting.collect import CollectedStudy, _oof_rows
+from ppg_frailty.reporting.analyze import _cell_repeat_rows, analyze_study
+from ppg_frailty.reporting.collect import (
+    CollectedStudy,
+    _cell_rows,
+    _oof_rows,
+    _quality_rows,
+)
 from ppg_frailty.experiment import _artifact_index_cell_summary
 from ppg_frailty.training.aggregation import (
     LINE_A_EQUAL_FILES,
@@ -105,6 +110,263 @@ class StudyProductTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
+
+    def test_primary_ranking_recomputes_complete_roster_abstention_metrics(self) -> None:
+        labels = (0, 0, 1, 1, 2, 2)
+        folds = (0, 1, 0, 1, 0, 1)
+
+        def probability(prediction: int) -> list[float]:
+            values = [0.0, 0.0, 0.0]
+            values[prediction] = 1.0
+            return values
+
+        case_rows: list[dict[str, Any]] = []
+        predictions = {
+            "complete": (0, 0, 1, 0, 2, 0),
+            "selective": (0, None, 1, None, 2, None),
+            "all_abstain": (None, None, None, None, None, None),
+        }
+        for case_id, case_predictions in predictions.items():
+            for index, (label, fold, predicted) in enumerate(
+                zip(labels, folds, case_predictions)
+            ):
+                retained = predicted is not None
+                case_rows.append(
+                    {
+                        "case_id": case_id,
+                        "participant_id": f"P{index}",
+                        "label": label,
+                        "repeat": 0,
+                        "fold": fold,
+                        "retained": retained,
+                        "probabilities": (
+                            probability(int(predicted)) if retained else []
+                        ),
+                        "class_order": [0, 1, 2] if retained else [],
+                    }
+                )
+        cells = tuple(
+            {
+                "case_id": case_id,
+                "status": "passed",
+                "repeat": 0,
+                "fold": fold,
+                # These deliberately misleading fold means must not override
+                # complete participant-OOF recomputation.
+                "balanced_accuracy": 0.99,
+                "macro_f1": 0.99,
+                "abstention_aware_balanced_accuracy": 0.99,
+                "abstention_aware_macro_f1": 0.99,
+            }
+            for case_id in predictions
+            for fold in (0, 1)
+        )
+        bundle = CollectedStudy(
+            root=self.root,
+            plan={
+                "execution": {"repeats": [0], "folds": [0, 1]},
+                "report": {"top_k": 3},
+            },
+            manifest={
+                "cases": [
+                    {"case_id": case_id, "is_reference": case_id == "complete"}
+                    for case_id in predictions
+                ],
+                "reference_case_id": "complete",
+            },
+            case_records=tuple(
+                {"case_id": case_id, "status": "passed"}
+                for case_id in predictions
+            ),
+            varied_parameters=(),
+            controlled_parameters=(),
+            cell_rows=cells,
+            history_rows=(),
+            file_oof_rows=(),
+            subject_oof_rows=tuple(case_rows),
+            role_oof_rows=(),
+            quality_rows=(
+                {
+                    "case_id": "selective",
+                    "route_artifact": {
+                        "motion_provenance": {
+                            "enabled": True,
+                            "valid_outer_oof_claim": False,
+                            "frailty29_evaluation_relation": (
+                                "in_sample_for_frailty29"
+                            ),
+                        }
+                    },
+                },
+            ),
+            trusted_config_metrics=(),
+            limitations=(),
+        )
+
+        analysis = analyze_study(bundle)
+
+        self.assertEqual(
+            [row["case_id"] for row in analysis.predictive_leaderboard],
+            ["complete", "selective", "all_abstain"],
+        )
+        summaries = {row["case_id"]: row for row in analysis.case_summary}
+        self.assertAlmostEqual(
+            summaries["complete"][
+                "participant_mean_abstention_aware_balanced_accuracy"
+            ],
+            2.0 / 3.0,
+        )
+        self.assertEqual(
+            summaries["selective"]["participant_mean_balanced_accuracy"], 1.0
+        )
+        self.assertEqual(
+            summaries["selective"][
+                "participant_mean_abstention_aware_balanced_accuracy"
+            ],
+            0.5,
+        )
+        self.assertEqual(
+            summaries["all_abstain"][
+                "participant_mean_abstention_aware_balanced_accuracy"
+            ],
+            0.0,
+        )
+        self.assertIsNone(
+            summaries["all_abstain"]["participant_mean_balanced_accuracy"]
+        )
+        self.assertTrue(
+            summaries["all_abstain"]["complete_for_requested_execution"]
+        )
+        self.assertFalse(
+            summaries["selective"][
+                "auxiliary_motion_evidence_valid_outer_oof"
+            ]
+        )
+        self.assertEqual(
+            summaries["selective"]["ranking_interpretation"],
+            "comparison_only_in_sample_auxiliary",
+        )
+        self.assertEqual(
+            summaries["selective"]["frailty_classification_evaluation_scope"],
+            "outer_heldout_participant_oof",
+        )
+        self.assertIsNone(
+            summaries["complete"][
+                "auxiliary_motion_evidence_valid_outer_oof"
+            ]
+        )
+        self.assertEqual(
+            summaries["complete"]["ranking_interpretation"],
+            "not_applicable_no_auxiliary_motion_evidence",
+        )
+
+    def test_abstention_metrics_are_projected_beside_conditional_metrics(self) -> None:
+        rows = _cell_rows(
+            "case_001",
+            {
+                "cell_results": [
+                    {
+                        "status": "passed",
+                        "repeat_index": 0,
+                        "fold_index": fold,
+                        "metrics": {
+                            "balanced_accuracy": 0.8 + fold * 0.1,
+                            "macro_f1": 0.7 + fold * 0.1,
+                            "abstention_aware_balanced_accuracy": 0.6 + fold * 0.1,
+                            "abstention_aware_macro_precision": 0.65,
+                            "abstention_aware_macro_recall": 0.6 + fold * 0.1,
+                            "abstention_aware_macro_f1": 0.62 + fold * 0.1,
+                            "abstention_count": fold + 1,
+                            "abstention_counts_by_class": [[0, fold], [2, 1]],
+                            "abstention_probability_metrics_scope": "retained_only",
+                        },
+                    }
+                    for fold in (0, 1)
+                ]
+            },
+            self.root,
+        )
+        repeats, folds = _cell_repeat_rows(rows)
+        self.assertEqual(len(folds), 2)
+        self.assertAlmostEqual(float(repeats[0]["balanced_accuracy"]), 0.85)
+        self.assertAlmostEqual(
+            float(repeats[0]["abstention_aware_balanced_accuracy"]),
+            0.65,
+        )
+        self.assertEqual(repeats[0]["abstention_count"], 3)
+        self.assertEqual(
+            repeats[0]["abstention_counts_by_class"],
+            [[0, 1], [2, 2]],
+        )
+
+    def test_quality_collection_merges_authoritative_route_artifacts(self) -> None:
+        cell = self.root / "case" / "repeat_00_fold_01"
+        cell.mkdir(parents=True)
+        (cell / "quality_diagnostics.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "ppg_frailty.quality_diagnostics.v2",
+                    "quality_mode": "route",
+                    "rows": [
+                        {
+                            "record_id": "record_a",
+                            "role": "B",
+                            "components": {
+                                "non_predictor_features": {
+                                    "sqi.q_rate": {"value": 0.8, "valid": True}
+                                }
+                            },
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (cell / "route_artifacts.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "ppg_frailty.route_artifacts.v2",
+                    "repeat_index": 0,
+                    "fold_index": 1,
+                    "rows": [
+                        {
+                            "record_id": "record_a",
+                            "role": "B",
+                            "route_artifact": {
+                                "quality_tier": "excellent",
+                                "motion_state": "low_motion",
+                            },
+                        },
+                        {
+                            "record_id": "record_b",
+                            "role": "R1",
+                            "route_artifact": {
+                                "quality_tier": "unfit",
+                                "motion_state": "high_motion",
+                                "abstained": True,
+                            },
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        rows = _quality_rows("case_001", self.root / "case")
+        self.assertEqual(len(rows), 2)
+        by_record = {row["record_id"]: row for row in rows}
+        self.assertEqual(by_record["record_a"]["repeat"], 0)
+        self.assertEqual(by_record["record_a"]["fold"], 1)
+        self.assertEqual(by_record["record_a"]["quality_mode"], "route")
+        self.assertIn("components", by_record["record_a"])
+        self.assertEqual(
+            by_record["record_a"]["route_artifact"]["quality_tier"],
+            "excellent",
+        )
+        self.assertEqual(
+            by_record["record_b"]["route_artifact"]["motion_state"],
+            "high_motion",
+        )
+        self.assertIn("route_artifacts_artifact", by_record["record_b"])
 
     def plan(self, *, ensemble: bool = False):
         if ensemble:
@@ -1510,6 +1772,28 @@ class StudyProductTests(unittest.TestCase):
                     "route_artifact": {
                         "state": "full_direct",
                         "source_signal": "x_filter",
+                        "quality_tier": "excellent",
+                        "motion_state": "low_motion",
+                        "motion_record_probability": 0.2,
+                        "motion_threshold": 0.5,
+                        "motion_window_count": 4,
+                        "motion_provenance": {
+                            "enabled": True,
+                            "evidence_sha256": "a" * 64,
+                            "model_artifact_sha256": "b" * 64,
+                            "training_scope": "frailty29_all_participants",
+                            "frailty29_evaluation_relation": (
+                                "in_sample_for_frailty29"
+                            ),
+                        },
+                        "abstained": False,
+                        "denoiser_attempted": False,
+                        "direct_q_rate_state": "pass",
+                        "direct_q_rate_score": 0.8,
+                        "direct_q_rate_coverage": 0.9,
+                        "direct_q_morph_state": "pass",
+                        "direct_q_morph_score": 0.7,
+                        "direct_q_morph_coverage": 0.85,
                     },
                 },
                 {
@@ -1522,6 +1806,34 @@ class StudyProductTests(unittest.TestCase):
                         "state": "rejected_after_reduction",
                         "source_signal": "x_ar",
                         "reducer_status": "failed",
+                        "quality_tier": "unfit",
+                        "motion_state": "high_motion",
+                        "motion_record_probability": 0.8,
+                        "motion_threshold": 0.5,
+                        "motion_window_count": 4,
+                        "motion_provenance": {
+                            "enabled": True,
+                            "evidence_sha256": "a" * 64,
+                            "model_artifact_sha256": "b" * 64,
+                            "training_scope": "frailty29_all_participants",
+                            "frailty29_evaluation_relation": (
+                                "in_sample_for_frailty29"
+                            ),
+                        },
+                        "abstained": True,
+                        "abstention_reason": "denoiser_failed",
+                        "denoiser_attempted": True,
+                        "denoiser_id": "pca_bss",
+                        "denoiser_status": "failed",
+                        "direct_q_rate_state": "pass",
+                        "direct_q_rate_score": 0.6,
+                        "direct_q_rate_coverage": 0.7,
+                        "direct_q_morph_state": "fail",
+                        "direct_q_morph_score": 0.4,
+                        "direct_q_morph_coverage": 0.6,
+                        "post_q_rate_state": "fail",
+                        "post_q_rate_score": 0.3,
+                        "post_q_rate_coverage": 0.75,
                     },
                 },
             ),
@@ -1531,9 +1843,25 @@ class StudyProductTests(unittest.TestCase):
         analysis = analyze_study(bundle)
         by_role = {row["role"]: row for row in analysis.route_role_coverage}
         self.assertEqual(by_role["B"]["retained_coverage"], 1.0)
+        self.assertEqual(by_role["B"]["quality_tier"], "excellent")
+        self.assertEqual(by_role["B"]["motion_state"], "low_motion")
+        self.assertEqual(by_role["B"]["abstention_rate"], 0.0)
+        self.assertEqual(by_role["B"]["mean_motion_record_probability"], 0.2)
+        self.assertEqual(by_role["B"]["motion_evidence_sha256"], "a" * 64)
+        self.assertEqual(by_role["B"]["direct_q_rate_states"], "pass")
+        self.assertEqual(by_role["B"]["mean_direct_q_rate_coverage"], 0.9)
+        self.assertEqual(
+            by_role["B"]["motion_frailty29_relation"],
+            "in_sample_for_frailty29",
+        )
         self.assertEqual(by_role["B"]["unavailable_predictor_rate"], 0.2)
         self.assertEqual(by_role["B"]["role_oof_prediction_count"], 1)
         self.assertEqual(by_role["R1"]["retained_coverage"], 0.0)
+        self.assertEqual(by_role["R1"]["abstention_rate"], 1.0)
+        self.assertEqual(by_role["R1"]["denoiser_attempt_count"], 1)
+        self.assertEqual(by_role["R1"]["denoiser_ids"], "pca_bss")
+        self.assertEqual(by_role["R1"]["post_q_rate_states"], "fail")
+        self.assertEqual(by_role["R1"]["mean_post_q_rate_coverage"], 0.75)
         self.assertEqual(by_role["R1"]["reducer_failure_count"], 1)
         distributions = {
             (row["role"], row["component"]): row

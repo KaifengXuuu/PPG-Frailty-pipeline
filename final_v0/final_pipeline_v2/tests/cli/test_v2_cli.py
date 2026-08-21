@@ -99,9 +99,9 @@ class V2CliTests(unittest.TestCase):
     def test_catalog_inspection_includes_profiles_but_executes_nothing(self) -> None:
         code, payload = self._call(["catalog", "--line", "line_a"])
         self.assertEqual(code, 0)
-        self.assertEqual(payload["candidate_count"], 13)
-        self.assertEqual(payload["matched_comparator_count"], 2)
-        self.assertEqual(payload["ensemble_comparison_count"], 2)
+        self.assertEqual(payload["candidate_count"], 10)
+        self.assertEqual(payload["matched_comparator_count"], 1)
+        self.assertEqual(payload["ensemble_comparison_count"], 1)
         entries = {row["entry_id"]: row for row in payload["entries"]}
         self.assertEqual(
             entries["inception_full"]["seed_policy"],

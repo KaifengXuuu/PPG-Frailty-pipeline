@@ -73,7 +73,7 @@ def resolved_catalog_payloads(
     line: str,
     catalog_path: str | Path | None = None,
 ) -> tuple[dict[str, Any], ...]:
-    """Return all 17 fully resolved and validated catalog configurations."""
+    """Return every active fully resolved and validated catalog configuration."""
 
     root = Path(pipeline_root).resolve()
     source = (
@@ -123,8 +123,9 @@ def resolved_catalog_payloads(
                 "scientific_execution_completed": False,
             }
         output.append(validate_config_payload(payload))
-    if len(output) != 17 or len({row["config_id"] for row in output}) != 17:
-        raise RuntimeError("formal catalog did not resolve to 17 unique configs")
+    expected = len(catalog["entries"])
+    if len(output) != expected or len({row["config_id"] for row in output}) != expected:
+        raise RuntimeError("formal catalog did not resolve to unique active configs")
     return tuple(output)
 
 

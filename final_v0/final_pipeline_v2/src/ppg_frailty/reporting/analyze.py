@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import asdict, dataclass, fields, replace
 from statistics import fmean, pstdev
@@ -17,6 +18,7 @@ from sklearn.metrics import (
 )
 
 from ..data.schema import CANONICAL_CLASS_NAMES
+from ..provenance import stable_payload_sha256
 from ..training.aggregation import (
     BALANCE_LINES,
     LINE_A_EQUAL_FILES,
@@ -27,6 +29,7 @@ from ..training.aggregation import (
     aggregate_hierarchy,
 )
 from ..training.oof import OofPredictionRow
+from ..training.evaluator import evaluate_predictions_with_abstentions
 from .collect import CollectedStudy
 
 
@@ -35,6 +38,13 @@ AGGREGATION_REPORT_VIEWS = (
     WINDOW_BALANCED_TO_PARTICIPANT,
     LINE_A_EQUAL_FILES,
     LINE_B_EQUAL_ROLE_FAMILIES,
+)
+
+_ABSTENTION_AWARE_METRICS = (
+    "abstention_aware_balanced_accuracy",
+    "abstention_aware_macro_precision",
+    "abstention_aware_macro_recall",
+    "abstention_aware_macro_f1",
 )
 
 
@@ -134,6 +144,42 @@ def _number(value: Any) -> float | None:
 def _mean(values: Iterable[Any]) -> float | None:
     clean = [value for raw in values if (value := _number(raw)) is not None]
     return float(fmean(clean)) if clean else None
+
+
+def _sum_numbers(values: Iterable[Any]) -> int | None:
+    clean = [value for raw in values if (value := _number(raw)) is not None]
+    return int(sum(clean)) if clean else None
+
+
+def _sum_abstention_counts(values: Iterable[Any]) -> list[list[Any]] | None:
+    """Normalize and sum persisted per-class abstention count encodings."""
+
+    totals: dict[Any, int] = {}
+    for raw in values:
+        if isinstance(raw, Mapping):
+            items = raw.items()
+        elif isinstance(raw, (list, tuple)):
+            items = []
+            for item in raw:
+                if isinstance(item, Mapping):
+                    label = item.get("class_label", item.get("label"))
+                    count = item.get("abstention_count", item.get("count"))
+                    items.append((label, count))
+                elif isinstance(item, (list, tuple)) and len(item) == 2:
+                    items.append((item[0], item[1]))
+        else:
+            continue
+        for label, raw_count in items:
+            count = _number(raw_count)
+            if label is None or count is None:
+                continue
+            totals[label] = totals.get(label, 0) + int(count)
+    if not totals:
+        return None
+    return [
+        [label, totals[label]]
+        for label in sorted(totals, key=lambda value: str(value))
+    ]
 
 
 def _sd(values: Iterable[Any]) -> float | None:
@@ -288,6 +334,75 @@ def _oof_metric_row(
     }
 
 
+def _oof_abstention_metric_row(
+    case_id: str,
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    repeat: int | None,
+) -> dict[str, Any] | None:
+    """Recompute complete-roster participant metrics for one repeat or pool."""
+
+    if not rows:
+        return None
+    class_order = tuple(sorted(int(value) for value in CANONICAL_CLASS_NAMES))
+    retained, dropped = [], []
+    for row in rows:
+        try:
+            label = int(row["label"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        if label not in class_order:
+            return None
+        if not _as_bool(row.get("retained", True)):
+            dropped.append(label)
+            continue
+        try:
+            probability = np.asarray(
+                row.get("probabilities"), dtype=np.float64
+            )
+        except (TypeError, ValueError):
+            return None
+        raw_order = row.get("class_order")
+        order = (
+            tuple(int(value) for value in raw_order)
+            if isinstance(raw_order, (list, tuple)) and raw_order
+            else class_order
+        )
+        if (
+            order != class_order
+            or probability.shape != (len(class_order),)
+            or not np.isfinite(probability).all()
+            or np.any(probability < 0.0)
+            or not np.isclose(probability.sum(), 1.0, atol=1e-6)
+        ):
+            return None
+        retained.append((label, probability))
+    probability = np.asarray(
+        [value for _, value in retained], dtype=np.float64
+    ).reshape((len(retained), len(class_order)))
+    metric = evaluate_predictions_with_abstentions(
+        np.asarray([label for label, _ in retained], dtype=np.int64),
+        probability,
+        np.asarray(dropped, dtype=np.int64),
+        class_order=class_order,
+    )
+    return {
+        "case_id": case_id,
+        "repeat": repeat,
+        "abstention_aware_balanced_accuracy": metric.balanced_accuracy,
+        "abstention_aware_macro_precision": metric.macro_precision,
+        "abstention_aware_macro_recall": metric.macro_recall,
+        "abstention_aware_macro_f1": metric.macro_f1,
+        "abstention_count": metric.n_abstained,
+        "abstention_counts_by_class": metric.abstention_counts_by_class,
+        "abstention_aware_per_class": tuple(
+            asdict(value) for value in metric.per_class
+        ),
+        "coverage_rate": metric.coverage_rate,
+        "abstention_probability_metrics_scope": metric.probability_metrics_scope,
+    }
+
+
 def _calibration_rows(
     case_id: str,
     rows: Sequence[Mapping[str, Any]],
@@ -408,6 +523,20 @@ def _cell_repeat_rows(
             "fold": int(fold),
             "balanced_accuracy": _number(cell.get("balanced_accuracy")),
             "macro_f1": _number(cell.get("macro_f1")),
+            **{
+                name: _number(cell.get(name))
+                for name in _ABSTENTION_AWARE_METRICS
+            },
+            "abstention_count": _number(cell.get("abstention_count")),
+            "abstention_counts_by_class": cell.get(
+                "abstention_counts_by_class"
+            ),
+            "abstention_aware_per_class": cell.get(
+                "abstention_aware_per_class"
+            ),
+            "abstention_probability_metrics_scope": cell.get(
+                "abstention_probability_metrics_scope"
+            ),
             "coverage_rate": _number(cell.get("coverage_rate")),
             "expected_calibration_error": _number(
                 cell.get("expected_calibration_error")
@@ -427,6 +556,16 @@ def _cell_repeat_rows(
                 row.get("balanced_accuracy") for row in values
             ),
             "macro_f1": _mean(row.get("macro_f1") for row in values),
+            **{
+                name: _mean(row.get(name) for row in values)
+                for name in _ABSTENTION_AWARE_METRICS
+            },
+            "abstention_count": _sum_numbers(
+                row.get("abstention_count") for row in values
+            ),
+            "abstention_counts_by_class": _sum_abstention_counts(
+                row.get("abstention_counts_by_class") for row in values
+            ),
             "coverage_rate": _mean(row.get("coverage_rate") for row in values),
             "metric_source": "mean_cell_metrics_fallback",
         }
@@ -550,10 +689,57 @@ def _as_bool(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "retained"}
 
 
+def _joined_text(values: Iterable[Any], *, default: str = "not_reported") -> str:
+    observed = sorted(
+        {
+            str(value)
+            for value in values
+            if value is not None and str(value).strip()
+        }
+    )
+    return " | ".join(observed) if observed else default
+
+
+def _case_motion_evidence_scope(
+    collected: CollectedStudy,
+    case_id: str,
+) -> tuple[bool | None, str]:
+    """Separate auxiliary motion provenance from frailty-label OOF validity."""
+
+    provenances: list[Mapping[str, Any]] = []
+    for row in collected.quality_rows:
+        if str(row.get("case_id")) != case_id:
+            continue
+        artifact = row.get("route_artifact")
+        if not isinstance(artifact, Mapping):
+            continue
+        provenance = artifact.get("motion_provenance")
+        if isinstance(provenance, Mapping) and _as_bool(
+            provenance.get("enabled", False)
+        ):
+            provenances.append(provenance)
+    if not provenances:
+        return None, "not_applicable_no_auxiliary_motion_evidence"
+    valid = all(
+        _as_bool(row.get("valid_outer_oof_claim", False))
+        and str(row.get("frailty29_evaluation_relation", ""))
+        != "in_sample_for_frailty29"
+        for row in provenances
+    )
+    return (
+        valid,
+        (
+            "outer_oof_auxiliary_motion_evidence"
+            if valid
+            else "comparison_only_in_sample_auxiliary"
+        ),
+    )
+
+
 def _route_role_quality_tables(
     collected: CollectedStudy,
 ) -> tuple[list[Mapping[str, Any]], list[Mapping[str, Any]]]:
-    groups: dict[tuple[str, str, str, str], list[Mapping[str, Any]]] = {}
+    groups: dict[tuple[str, str, str, str, str, str], list[Mapping[str, Any]]] = {}
     component_groups: dict[
         tuple[str, str, str, str], list[tuple[float | None, bool]]
     ] = {}
@@ -584,8 +770,25 @@ def _route_role_quality_tables(
             or artifact.get("source_signal")
             or "not_reported"
         )
+        quality_tier = str(
+            artifact.get("quality_tier")
+            or row.get("quality_tier")
+            or "not_reported"
+        )
+        motion_state = str(
+            artifact.get("motion_state")
+            or row.get("motion_state")
+            or "not_reported"
+        )
         groups.setdefault(
-            (case_id, role, route_state, signal_route), []
+            (
+                case_id,
+                role,
+                route_state,
+                signal_route,
+                quality_tier,
+                motion_state,
+            ), []
         ).append(row)
         components = (
             row.get("components")
@@ -606,7 +809,14 @@ def _route_role_quality_tables(
             ).append((value, valid))
 
     coverage: list[Mapping[str, Any]] = []
-    for (case_id, role, route_state, signal_route), rows in sorted(groups.items()):
+    for (
+        case_id,
+        role,
+        route_state,
+        signal_route,
+        quality_tier,
+        motion_state,
+    ), rows in sorted(groups.items()):
         retained_count = sum(_as_bool(row.get("retained", True)) for row in rows)
         direct_count = sum(
             str(
@@ -634,6 +844,35 @@ def _route_role_quality_tables(
         )
         predictor_counts: list[float] = []
         unavailable_counts: list[float] = []
+        motion_probabilities: list[float] = []
+        motion_thresholds: list[float] = []
+        motion_window_counts: list[float] = []
+        motion_provenance_rows: list[Mapping[str, Any]] = []
+        sqi_states: dict[str, list[Any]] = {
+            name: []
+            for name in (
+                "direct_q_rate_state",
+                "direct_q_morph_state",
+                "post_q_rate_state",
+            )
+        }
+        sqi_values: dict[str, list[float]] = {
+            name: []
+            for name in (
+                "direct_q_rate_score",
+                "direct_q_rate_coverage",
+                "direct_q_morph_score",
+                "direct_q_morph_coverage",
+                "post_q_rate_score",
+                "post_q_rate_coverage",
+            )
+        }
+        abstention_reasons: list[Any] = []
+        denoiser_ids: list[Any] = []
+        denoiser_statuses: list[Any] = []
+        abstention_count = 0
+        denoiser_attempt_count = 0
+        denoiser_success_count = 0
         reducer_failures = 0
         for row in rows:
             components = (
@@ -657,6 +896,39 @@ def _route_role_quality_tables(
                 if isinstance(row.get("route_artifact"), Mapping)
                 else {}
             )
+            for source, target in (
+                (artifact.get("motion_record_probability"), motion_probabilities),
+                (artifact.get("motion_threshold"), motion_thresholds),
+                (artifact.get("motion_window_count"), motion_window_counts),
+            ):
+                if (value := _number(source)) is not None:
+                    target.append(value)
+            provenance = artifact.get("motion_provenance")
+            if isinstance(provenance, Mapping) and _as_bool(
+                provenance.get("enabled", False)
+            ):
+                motion_provenance_rows.append(provenance)
+            for name, values in sqi_states.items():
+                if artifact.get(name) is not None:
+                    values.append(artifact[name])
+            for name, values in sqi_values.items():
+                if (value := _number(artifact.get(name))) is not None:
+                    values.append(value)
+            # Final representation eligibility is authoritative.  The route
+            # artifact describes the earlier SQI/motion decision and may have
+            # preceded a later feature/window construction failure.
+            if not _as_bool(row.get("retained", True)):
+                abstention_count += 1
+                abstention_reasons.append(
+                    row.get("reason") or artifact.get("abstention_reason")
+                )
+            if _as_bool(artifact.get("denoiser_attempted", False)):
+                denoiser_attempt_count += 1
+                denoiser_ids.append(artifact.get("denoiser_id"))
+                denoiser_status = artifact.get("denoiser_status")
+                denoiser_statuses.append(denoiser_status)
+                if str(denoiser_status).lower() == "success":
+                    denoiser_success_count += 1
             reducer_status = str(
                 artifact.get("reducer_status")
                 or artifact.get("artifact_reducer_status")
@@ -680,12 +952,69 @@ def _route_role_quality_tables(
                 "role": role,
                 "route_state": route_state,
                 "signal_route": signal_route,
+                "quality_tier": quality_tier,
+                "motion_state": motion_state,
                 "record_count": len(rows),
                 "retained_record_count": retained_count,
                 "retained_coverage": retained_count / len(rows),
                 "direct_rate_record_count": direct_count,
                 "processed_rate_record_count": processed_count,
                 "dropped_record_count": len(rows) - retained_count,
+                "abstention_count": abstention_count,
+                "abstention_rate": abstention_count / len(rows),
+                "abstention_reasons": _joined_text(abstention_reasons),
+                "mean_motion_record_probability": (
+                    float(np.mean(motion_probabilities))
+                    if motion_probabilities else None
+                ),
+                "mean_motion_threshold": (
+                    float(np.mean(motion_thresholds))
+                    if motion_thresholds else None
+                ),
+                "mean_motion_window_count": (
+                    float(np.mean(motion_window_counts))
+                    if motion_window_counts else None
+                ),
+                "motion_evidence_sha256": _joined_text(
+                    row.get("evidence_sha256")
+                    for row in motion_provenance_rows
+                ),
+                "motion_model_artifact_sha256": _joined_text(
+                    row.get("model_artifact_sha256")
+                    for row in motion_provenance_rows
+                ),
+                "motion_training_scope": _joined_text(
+                    row.get("training_scope")
+                    for row in motion_provenance_rows
+                ),
+                "motion_frailty29_relation": _joined_text(
+                    row.get("frailty29_evaluation_relation")
+                    for row in motion_provenance_rows
+                ),
+                "auxiliary_motion_evidence_valid_outer_oof": (
+                    all(
+                        _as_bool(row.get("valid_outer_oof_claim", False))
+                        and str(row.get("frailty29_evaluation_relation", ""))
+                        != "in_sample_for_frailty29"
+                        for row in motion_provenance_rows
+                    )
+                    if motion_provenance_rows
+                    else None
+                ),
+                **{
+                    f"{name}s": _joined_text(values)
+                    for name, values in sqi_states.items()
+                },
+                **{
+                    f"mean_{name}": (
+                        float(np.mean(values)) if values else None
+                    )
+                    for name, values in sqi_values.items()
+                },
+                "denoiser_attempt_count": denoiser_attempt_count,
+                "denoiser_success_count": denoiser_success_count,
+                "denoiser_ids": _joined_text(denoiser_ids),
+                "denoiser_statuses": _joined_text(denoiser_statuses),
                 "mean_unavailable_predictor_count": (
                     float(np.mean(unavailable_counts))
                     if unavailable_counts
@@ -1124,6 +1453,7 @@ def _aggregation_report_view_tables(
     list[Mapping[str, Any]],
     list[Mapping[str, Any]],
     list[Mapping[str, Any]],
+    list[Mapping[str, Any]],
     list[str],
 ]:
     """Build three report-only participant views from the same fitted OOF."""
@@ -1144,6 +1474,7 @@ def _aggregation_report_view_tables(
     bins = int(collected.plan.get("report", {}).get("calibration_bins", 10))
     summaries: list[Mapping[str, Any]] = []
     repeat_metrics: list[Mapping[str, Any]] = []
+    fold_metrics: list[Mapping[str, Any]] = []
     per_class_metrics: list[Mapping[str, Any]] = []
     confusion_matrices: list[Mapping[str, Any]] = []
     notes: list[str] = []
@@ -1207,6 +1538,11 @@ def _aggregation_report_view_tables(
             participant_maps = [
                 {"case_id": case_id, **asdict(row)} for row in participant_rows
             ]
+            by_cell: dict[tuple[int, int], list[Mapping[str, Any]]] = {}
+            for row in participant_maps:
+                by_cell.setdefault(
+                    (int(row["repeat"]), int(row["fold"])), []
+                ).append(row)
             by_repeat: dict[int, list[Mapping[str, Any]]] = {}
             for row in participant_maps:
                 by_repeat.setdefault(int(row["repeat"]), []).append(row)
@@ -1226,6 +1562,23 @@ def _aggregation_report_view_tables(
                 if view_quality_weighted and replay_semantics is not None
                 else QUALITY_WEIGHT_SOURCE_NONE
             )
+            for (repeat, fold), rows in sorted(by_cell.items()):
+                metric = _oof_metric_row(case_id, rows, repeat=repeat)
+                if metric is None:
+                    continue
+                fold_metrics.append(
+                    {
+                        key: value
+                        for key, value in metric.items()
+                        if key not in {"per_class", "confusion_matrix"}
+                    }
+                    | {
+                        "fold": fold,
+                        "aggregation_view": view,
+                        "declared_source_line": source_line,
+                        "metric_source": "same_fitted_oof_report_reaggregation",
+                    }
+                )
             for repeat, rows in sorted(by_repeat.items()):
                 metric = _oof_metric_row(case_id, rows, repeat=repeat)
                 if metric is None:
@@ -1334,6 +1687,7 @@ def _aggregation_report_view_tables(
     return (
         summaries,
         repeat_metrics,
+        fold_metrics,
         per_class_metrics,
         confusion_matrices,
         _aggregation_hierarchy_coverage(collected),
@@ -1634,6 +1988,10 @@ def _legacy_bridge_report_tables(
     raw_bridge = collected.plan.get("legacy_bridge")
     if not isinstance(raw_bridge, Mapping):
         return [], [], []
+    if str(raw_bridge.get("design", "cumulative_chain_v1")) != (
+        "cumulative_chain_v1"
+    ):
+        return [], [], []
 
     try:
         profiles = raw_bridge.get("profiles")
@@ -1887,6 +2245,559 @@ def _legacy_bridge_report_tables(
     return numeric_rows, execution_rows, notes
 
 
+_STAGE3_STAR_DESIGN = "centered_star_v1"
+_STAGE3_STAR_VIEWS = {
+    WINDOW_BALANCED_TO_PARTICIPANT: "W",
+    LINE_A_EQUAL_FILES: "A",
+    LINE_B_EQUAL_ROLE_FAMILIES: "B",
+}
+_STAGE3_STAR_METRICS = (
+    ("balanced_accuracy", "BA", "participant_mean_balanced_accuracy"),
+    ("macro_f1", "macroF1", "participant_mean_macro_f1"),
+    ("worst_class_f1", "worst_class_F1", "worst_class_f1"),
+)
+_STAGE3_STAR_IDENTITY_FIELDS = (
+    "repeat", "fold", "split_seed", "training_seed", "participant_id",
+    "file_id", "role", "window_id", "window_start_sample", "label",
+    "retained", "class_order", "prediction_kind", "member_index",
+)
+
+
+def _flatten_control_paths(
+    value: Any, *, prefix: str = "controls"
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {prefix: value}
+    output: dict[str, Any] = {}
+    for key, item in sorted(value.items(), key=lambda pair: str(pair[0])):
+        path = f"{prefix}.{key}"
+        output.update(
+            _flatten_control_paths(item, prefix=path)
+            if isinstance(item, Mapping)
+            else {path: item}
+        )
+    return output
+
+
+def _normalized_control_paths(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, (list, tuple)):
+        return ()
+    return tuple(sorted({
+        path if path.startswith("controls.") else f"controls.{path}"
+        for raw in value if (path := str(raw).strip())
+    }))
+
+
+def _changed_control_paths(
+    reference: Mapping[str, Any], variant: Mapping[str, Any]
+) -> tuple[str, ...]:
+    left, right = _flatten_control_paths(reference), _flatten_control_paths(variant)
+    missing = object()
+    return tuple(sorted(
+        path for path in set(left) | set(right)
+        if left.get(path, missing) != right.get(path, missing)
+    ))
+
+
+def _cell_groups(
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[tuple[int, int], list[Mapping[str, Any]]]:
+    output: dict[tuple[int, int], list[Mapping[str, Any]]] = {}
+    for row in rows:
+        if row.get("repeat") is not None and row.get("fold") is not None:
+            output.setdefault((int(row["repeat"]), int(row["fold"])), []).append(row)
+    return output
+
+
+def _star_cell_evidence(
+    cell_rows: Sequence[Mapping[str, Any]],
+    oof_rows: Sequence[Mapping[str, Any]],
+    expected: Sequence[tuple[int, int]],
+) -> dict[tuple[int, int], Mapping[str, Any]]:
+    cells, oof = _cell_groups(cell_rows), _cell_groups(oof_rows)
+    unexpected = len((set(cells) | set(oof)) - set(expected))
+    result: dict[tuple[int, int], Mapping[str, Any]] = {}
+    for key in expected:
+        current_cells, current_oof = cells.get(key, ()), oof.get(key, ())
+
+        def unique(field: str, include_cell: bool = False) -> str | None:
+            sources = (*current_oof, *current_cells) if include_cell else current_oof
+            values = {
+                str(row[field]) for row in sources
+                if row.get(field) not in (None, "")
+            }
+            return next(iter(values)) if len(values) == 1 else None
+
+        participants = sorted({
+            str(row["participant_id"]) for row in current_oof
+            if row.get("participant_id") not in (None, "")
+        })
+        result[key] = {
+            "cell_passed": len(current_cells) == 1
+            and str(current_cells[0].get("status")) == "passed",
+            "oof_present": bool(current_oof),
+            "split_seed": unique("split_seed", True),
+            "training_seed": unique("training_seed", True),
+            "manifest_hash": unique("manifest_hash"),
+            "fold_hash": unique("fold_hash"),
+            "roster_hash": stable_payload_sha256(participants) if participants else None,
+            "unexpected_cell_count": unexpected,
+        }
+    return result
+
+
+def _star_probability_audit(
+    reference_rows: Sequence[Mapping[str, Any]],
+    variant_rows: Sequence[Mapping[str, Any]],
+    expected: Sequence[tuple[int, int]],
+) -> Mapping[str, Any]:
+    expected_set = set(expected)
+
+    def index(
+        rows: Sequence[Mapping[str, Any]],
+    ) -> tuple[dict[str, np.ndarray], bool, int]:
+        observed = {
+            (int(row["repeat"]), int(row["fold"])) for row in rows
+            if row.get("repeat") is not None and row.get("fold") is not None
+        }
+        values: dict[str, np.ndarray] = {}
+        duplicate = False
+        for row in rows:
+            if row.get("repeat") is None or row.get("fold") is None:
+                continue
+            identity = {field: row.get(field) for field in _STAGE3_STAR_IDENTITY_FIELDS}
+            key = json.dumps(identity, sort_keys=True, separators=(",", ":"), default=str)
+            duplicate |= key in values
+            values[key] = np.asarray(row.get("probabilities"), dtype=np.float64)
+        return values, observed == expected_set and not duplicate, len(rows)
+
+    reference, reference_valid, reference_count = index(reference_rows)
+    variant, variant_valid, variant_count = index(variant_rows)
+    common = sorted(set(reference) & set(variant))
+    differences = [
+        float(np.max(np.abs(reference[key] - variant[key])))
+        for key in common if reference[key].shape == variant[key].shape
+    ]
+
+    def hashes(values: Mapping[str, np.ndarray]) -> tuple[str | None, str | None]:
+        keys = sorted(values)
+        if not keys:
+            return None, None
+        return (
+            stable_payload_sha256(keys),
+            stable_payload_sha256([[key, values[key].tolist()] for key in keys]),
+        )
+
+    reference_identity, reference_probability = hashes(reference)
+    variant_identity, variant_probability = hashes(variant)
+    exact = bool(
+        reference_valid and variant_valid
+        and reference.keys() == variant.keys()
+        and len(differences) == len(reference)
+        and differences and max(differences) == 0.0
+    )
+    return {
+        "reference_window_oof_row_count": reference_count,
+        "variant_window_oof_row_count": variant_count,
+        "matched_window_oof_row_count": len(common),
+        "window_oof_probability_max_abs_diff": max(differences, default=None),
+        "reference_window_oof_identity_sha256": reference_identity,
+        "variant_window_oof_identity_sha256": variant_identity,
+        "reference_window_oof_probability_sha256": reference_probability,
+        "variant_window_oof_probability_sha256": variant_probability,
+        "report_view_factor_window_oof_probabilities_identical": exact,
+        "window_oof_identity_audit_status": (
+            "exact_row_identity_and_bitwise_probability_match"
+            if exact else "mismatch_or_incomplete"
+        ),
+    }
+
+
+def _stage3_star_report_tables(
+    collected: CollectedStudy,
+    case_summary: Sequence[Mapping[str, Any]],
+    aggregation_view_comparison: Sequence[Mapping[str, Any]],
+    aggregation_view_fold_metrics: Sequence[Mapping[str, Any]],
+) -> tuple[
+    list[Mapping[str, Any]], list[Mapping[str, Any]],
+    list[Mapping[str, Any]], list[Mapping[str, Any]], list[str],
+]:
+    """Build 16 absolutes and only the 14 legal same-model B0 contrasts."""
+
+    bridge = collected.plan.get("legacy_bridge")
+    if not isinstance(bridge, Mapping) or bridge.get("design") != _STAGE3_STAR_DESIGN:
+        return [], [], [], [], []
+    try:
+        profiles = [
+            dict(row) for row in bridge.get("profiles", ())
+            if isinstance(row, Mapping)
+        ]
+        by_display = {str(row.get("case_id")): row for row in profiles}
+        catalog_ids = {str(row.get("catalog_case_id")) for row in profiles}
+        execution = tuple(map(str, bridge.get("execution_order", ())))
+        budget = bridge.get("budget")
+        if not isinstance(budget, Mapping):
+            raise ValueError("centered star requires a budget")
+        expected = tuple(
+            (int(repeat), int(fold))
+            for repeat in budget.get("repeat_indices", ())
+            for fold in budget.get("fold_indices", ())
+        )
+        if (
+            len(profiles) != 16 or len(by_display) != 16
+            or len(catalog_ids) != 16 or "" in catalog_ids
+            or not expected or len(set(expected)) != len(expected)
+            or len(execution) != 16 or set(execution) != set(by_display)
+        ):
+            raise ValueError(
+                "centered star requires 16 unique cases and a non-empty unique "
+                "repeat/fold budget"
+            )
+        if any(
+            not isinstance(row.get("controls"), Mapping)
+            or row["controls"].get("primary_report_aggregation_view")
+            not in (WINDOW_BALANCED_TO_PARTICIPANT, LINE_B_EQUAL_ROLE_FAMILIES)
+            for row in profiles
+        ):
+            raise ValueError("every profile requires full controls and a W/B native view")
+        references = [row for row in profiles if row.get("reference_case_id") is None]
+        variants = [row for row in profiles if row.get("reference_case_id") is not None]
+        models = {str(row.get("model_id")) for row in profiles}
+        required_profiles = {f"B{level}" for level in range(8)}
+        if (
+            len(references) != 2 or len(variants) != 14 or len(models) != 2
+            or {str(row.get("profile_id")) for row in references} != {"B0"}
+            or any(
+                {str(row.get("profile_id")) for row in profiles if str(row.get("model_id")) == model}
+                != required_profiles for model in models
+            )
+            or any(
+                str(row.get("reference_case_id")) not in by_display
+                or by_display[str(row["reference_case_id"])].get("model_id") != row.get("model_id")
+                for row in variants
+            )
+        ):
+            raise ValueError("centered-star contrasts must be B0-centred within each model")
+        declared = bridge.get("centered_comparisons")
+        expected_comparisons = [{
+            "model_id": row.get("model_id"),
+            "reference_case_id": row.get("reference_case_id"),
+            "variant_case_id": row.get("case_id"),
+            "profile_id": row.get("profile_id"),
+            "factor_id": row.get("factor_id"),
+            "changed_control_paths": list(row.get("changed_control_paths", ())),
+        } for row in variants]
+        if (
+            not isinstance(declared, (list, tuple))
+            or [dict(row) for row in declared] != expected_comparisons
+        ):
+            raise ValueError("centered_comparisons disagrees with profiles")
+    except (KeyError, TypeError, ValueError) as error:
+        return [], [], [], [], [
+            "Stage-3 centered-star reports are N/A because the materialized "
+            f"design contract is invalid: {type(error).__name__}: {error}"
+        ]
+
+    summary = {str(row.get("case_id")): row for row in case_summary}
+    views = {
+        (str(row.get("case_id")), str(row.get("aggregation_view"))): row
+        for row in aggregation_view_comparison
+    }
+    fold_views = {
+        (
+            str(row.get("case_id")), str(row.get("aggregation_view")),
+            int(row.get("repeat", -1)), int(row.get("fold", -1)),
+        ): row for row in aggregation_view_fold_metrics
+    }
+
+    def by_case(rows: Sequence[Mapping[str, Any]]) -> dict[str, list[Mapping[str, Any]]]:
+        output: dict[str, list[Mapping[str, Any]]] = {}
+        for row in rows:
+            output.setdefault(str(row.get("case_id")), []).append(row)
+        return output
+
+    cell_rows = by_case(collected.cell_rows)
+    windows = by_case(collected.window_oof_rows)
+    files = by_case(collected.file_oof_rows)
+    evidence = {}
+    for profile in profiles:
+        catalog = str(profile["catalog_case_id"])
+        oof = windows.get(catalog) or files.get(catalog, [])
+        evidence[str(profile["case_id"])] = _star_cell_evidence(
+            cell_rows.get(catalog, []), oof, expected
+        )
+    cross_model_controls = {}
+    for profile in profiles:
+        peers = [
+            row for row in profiles
+            if row.get("profile_id") == profile.get("profile_id")
+        ]
+        cross_model_controls[str(profile["case_id"])] = (
+            len(peers) == 2
+            and len({stable_payload_sha256(row["controls"]) for row in peers}) == 1
+        )
+
+    absolute: list[dict[str, Any]] = []
+    for profile in profiles:
+        case_id, catalog = str(profile["case_id"]), str(profile["catalog_case_id"])
+        controls = profile["controls"]
+        reference = (
+            profile if profile.get("reference_case_id") is None
+            else by_display[str(profile["reference_case_id"])]
+        )
+        actual_paths = (
+            () if reference is profile
+            else _changed_control_paths(reference["controls"], controls)
+        )
+        declared_paths = _normalized_control_paths(profile.get("changed_control_paths"))
+        calculated_hash = stable_payload_sha256(controls)
+        declared_hash = profile.get("controls_sha256")
+        current_summary, current_evidence = summary.get(catalog, {}), evidence[case_id]
+        row: dict[str, Any] = {
+            "model": profile.get("model_id"),
+            "profile": profile.get("profile_id"),
+            "factor_id": profile.get("factor_id"),
+            "case_id": case_id,
+            "catalog_case_id": catalog,
+            "reference_case_id": profile.get("reference_case_id"),
+            "native_aggregation_view": controls["primary_report_aggregation_view"],
+            "case_status": current_summary.get("status", "not_run"),
+            "complete_for_requested_execution": bool(
+                current_summary.get("complete_for_requested_execution", False)
+            ),
+            "expected_cell_count": len(expected),
+            "passed_cell_count": sum(
+                bool(value["cell_passed"]) for value in current_evidence.values()
+            ),
+            "declared_changed_control_paths": declared_paths,
+            "actual_changed_control_paths": actual_paths,
+            "single_factor_audit": (
+                "baseline_no_contrast" if reference is profile
+                else "pass_exact_declared_paths"
+                if actual_paths == declared_paths and actual_paths
+                else "fail_changed_paths_mismatch"
+            ),
+            "controls_sha256": calculated_hash,
+            "declared_controls_sha256": declared_hash,
+            "declared_controls_hash_matches": bool(
+                isinstance(declared_hash, str) and len(declared_hash) == 64
+                and set(declared_hash.lower()) <= set("0123456789abcdef")
+                and declared_hash == calculated_hash
+            ),
+            "cross_model_profile_controls_match": cross_model_controls[case_id],
+            "interpretation": profile.get("interpretation"),
+        }
+        for view, short in _STAGE3_STAR_VIEWS.items():
+            metric_row = views.get((catalog, view), {})
+            for metric, prefix, source in _STAGE3_STAR_METRICS:
+                del metric
+                row[f"{prefix}_{short}_sensitivity"] = _number(metric_row.get(source))
+        native_short = _STAGE3_STAR_VIEWS[row["native_aggregation_view"]]
+        for metric, prefix, _source in _STAGE3_STAR_METRICS:
+            row[f"native_{metric}"] = row[f"{prefix}_{native_short}_sensitivity"]
+        row["native_metrics_available"] = all(
+            row[f"native_{metric}"] is not None
+            for metric, _prefix, _source in _STAGE3_STAR_METRICS
+        )
+        absolute.append(row)
+
+    absolute_by_case = {str(row["case_id"]): row for row in absolute}
+    contrasts: list[dict[str, Any]] = []
+    fold_contrasts: list[dict[str, Any]] = []
+    reason_codes = {
+        "all_requested_cells": "not_all_requested_cells_passed_with_oof",
+        "seed_match": "seed_mismatch_or_missing",
+        "split_hash_match": "split_hash_mismatch_or_missing",
+        "heldout_roster_hash_match": "heldout_roster_mismatch_or_missing",
+        "single_factor_match": "single_factor_path_audit_failed",
+        "controls_integrity_match": "controls_hash_or_cross_model_profile_mismatch",
+        "all_requested_native_fold_metrics_available": "native_fold_metrics_incomplete",
+        "cases_complete": "case_not_passed_or_incomplete",
+    }
+    for variant in variants:
+        variant_id, reference_id = str(variant["case_id"]), str(variant["reference_case_id"])
+        reference, left_abs, right_abs = (
+            by_display[reference_id], absolute_by_case[reference_id], absolute_by_case[variant_id]
+        )
+        left_evidence, right_evidence = evidence[reference_id], evidence[variant_id]
+        actual_paths = tuple(right_abs["actual_changed_control_paths"])
+        declared_paths = tuple(right_abs["declared_changed_control_paths"])
+        complete = all(
+            left_evidence[key]["cell_passed"] and right_evidence[key]["cell_passed"]
+            and left_evidence[key]["oof_present"] and right_evidence[key]["oof_present"]
+            and left_evidence[key]["unexpected_cell_count"] == 0
+            and right_evidence[key]["unexpected_cell_count"] == 0
+            for key in expected
+        )
+
+        def match(fields: Sequence[str]) -> bool:
+            return bool(complete and all(
+                left_evidence[key][field] is not None
+                and left_evidence[key][field] == right_evidence[key][field]
+                for key in expected for field in fields
+            ))
+
+        reference_view = str(reference["controls"]["primary_report_aggregation_view"])
+        variant_view = str(variant["controls"]["primary_report_aggregation_view"])
+        pairs = {
+            key: (
+                fold_views.get((str(reference["catalog_case_id"]), reference_view, *key)),
+                fold_views.get((str(variant["catalog_case_id"]), variant_view, *key)),
+            ) for key in expected
+        }
+        native_folds = all(
+            left is not None and right is not None
+            and all(
+                _number(side.get(metric)) is not None
+                for side in (left, right)
+                for metric, _prefix, _source in _STAGE3_STAR_METRICS
+            )
+            for left, right in pairs.values()
+        )
+        checks = {
+            "all_requested_cells": complete,
+            "seed_match": match(("split_seed", "training_seed")),
+            "split_hash_match": match(("manifest_hash", "fold_hash")),
+            "heldout_roster_hash_match": match(("roster_hash",)),
+            "single_factor_match": actual_paths == declared_paths and bool(actual_paths),
+            "controls_integrity_match": bool(
+                left_abs["declared_controls_hash_matches"]
+                and right_abs["declared_controls_hash_matches"]
+                and left_abs["cross_model_profile_controls_match"]
+                and right_abs["cross_model_profile_controls_match"]
+            ),
+            "all_requested_native_fold_metrics_available": native_folds,
+            "cases_complete": bool(
+                left_abs["case_status"] == right_abs["case_status"] == "passed"
+                and left_abs["complete_for_requested_execution"]
+                and right_abs["complete_for_requested_execution"]
+                and left_abs["native_metrics_available"]
+                and right_abs["native_metrics_available"]
+            ),
+        }
+        is_report_view_factor = actual_paths == (
+            "controls.primary_report_aggregation_view",
+        )
+        probability_audit: Mapping[str, Any] = {
+            "window_oof_identity_audit_status": "not_applicable_non_report_view_factor"
+        }
+        training_identity = None
+        if is_report_view_factor:
+            blocked = set(actual_paths)
+            training_identity = (
+                {key: value for key, value in _flatten_control_paths(reference["controls"]).items() if key not in blocked}
+                == {key: value for key, value in _flatten_control_paths(variant["controls"]).items() if key not in blocked}
+            )
+            probability_audit = _star_probability_audit(
+                windows.get(str(reference["catalog_case_id"]), []),
+                windows.get(str(variant["catalog_case_id"]), []),
+                expected,
+            )
+            checks["report_view_factor_training_controls_identical"] = training_identity
+            checks["report_view_factor_window_oof_probabilities_identical"] = bool(
+                probability_audit["report_view_factor_window_oof_probabilities_identical"]
+            )
+        available = all(checks.values())
+        reasons = [
+            reason_codes.get(name, name) for name, passed in checks.items() if not passed
+        ]
+        contrast: dict[str, Any] = {
+            "model": variant.get("model_id"),
+            "factor_id": variant.get("factor_id"),
+            "reference_profile": reference.get("profile_id"),
+            "variant_profile": variant.get("profile_id"),
+            "reference_case_id": reference_id,
+            "variant_case_id": variant_id,
+            "reference_catalog_case_id": reference.get("catalog_case_id"),
+            "variant_catalog_case_id": variant.get("catalog_case_id"),
+            "reference_native_aggregation_view": reference_view,
+            "variant_native_aggregation_view": variant_view,
+            "native_comparison_semantics": (
+                "B0_window_endpoint_to_variant_line_b_endpoint"
+                if is_report_view_factor else "same_window_balanced_endpoint"
+            ),
+            "declared_changed_control_paths": declared_paths,
+            "actual_changed_control_paths": actual_paths,
+            "single_factor_audit": (
+                "pass_exact_declared_paths"
+                if checks["single_factor_match"] else "fail_changed_paths_mismatch"
+            ),
+            **checks,
+            "contrast_metrics_available": available,
+            "unavailable_reasons": reasons,
+            "fold_delta_inference": "descriptive_only_no_ci_no_significance",
+            "shared_reference_warning": "same_model_B0_is_reused_across_seven_correlated_contrasts",
+            "report_view_factor_training_controls_identical": training_identity,
+            **probability_audit,
+        }
+        for metric, prefix, _source in _STAGE3_STAR_METRICS:
+            left, right = left_abs[f"native_{metric}"], right_abs[f"native_{metric}"]
+            contrast[f"reference_native_{metric}"] = left
+            contrast[f"variant_native_{metric}"] = right
+            contrast[f"delta_native_{metric}"] = right - left if available else None
+            for short in _STAGE3_STAR_VIEWS.values():
+                left_view = _number(left_abs.get(f"{prefix}_{short}_sensitivity"))
+                right_view = _number(right_abs.get(f"{prefix}_{short}_sensitivity"))
+                contrast[f"delta_{metric}_{short}_sensitivity_only"] = (
+                    right_view - left_view
+                    if available and left_view is not None and right_view is not None
+                    else None
+                )
+        contrasts.append(contrast)
+        for repeat, fold in expected:
+            pair = pairs[(repeat, fold)]
+            fold_row: dict[str, Any] = {
+                "model": variant.get("model_id"),
+                "factor_id": variant.get("factor_id"),
+                "reference_profile": reference.get("profile_id"),
+                "variant_profile": variant.get("profile_id"),
+                "reference_case_id": reference_id,
+                "variant_case_id": variant_id,
+                "repeat": repeat,
+                "fold": fold,
+                "reference_native_aggregation_view": reference_view,
+                "variant_native_aggregation_view": variant_view,
+                "contrast_metrics_available": available,
+                "inference": "descriptive_only_no_ci_no_significance",
+            }
+            for metric, _prefix, _source in _STAGE3_STAR_METRICS:
+                left = None if pair[0] is None else _number(pair[0].get(metric))
+                right = None if pair[1] is None else _number(pair[1].get(metric))
+                fold_row[f"reference_native_{metric}"] = left
+                fold_row[f"variant_native_{metric}"] = right
+                fold_row[f"delta_native_{metric}"] = (
+                    right - left
+                    if available and left is not None and right is not None
+                    else None
+                )
+            fold_contrasts.append(fold_row)
+
+    execution_rows = []
+    previous = None
+    for index, case_id in enumerate(execution, start=1):
+        execution_rows.append({
+            "execution_order": index,
+            **absolute_by_case[case_id],
+            "previous_execution_case_id": previous,
+            "execution_transition": "start" if previous is None else f"{previous}->{case_id}",
+            "execution_transition_is_ablation": False,
+            "execution_interpretation": "absolute_metrics_only_no_execution_order_delta",
+        })
+        previous = case_id
+    repeat_count = len({repeat for repeat, _fold in expected})
+    fold_count = len({fold for _repeat, fold in expected})
+    notes = [
+        f"Stage-3 has {repeat_count} repeat(s) and {fold_count} grouped folds; "
+        "fold deltas are descriptive only, with no per-fold independence or "
+        "significance claim.",
+        "Each model reuses one B0 across seven correlated contrasts.",
+        "B7 compares the B0 W endpoint with Line B; W/A/B same-view deltas remain sensitivity-only.",
+        "B0/B7 OOF uses sorted row identities and zero probability tolerance, not Parquet bytes or row order.",
+        f"The 16-case two-model B0-B7 design contains "
+        f"{16 * len(expected)} repeat/fold cells.",
+    ]
+    return absolute, contrasts, fold_contrasts, execution_rows, notes
+
 @dataclass(frozen=True)
 class StudyAnalysis:
     """All normalized tables consumed by CSV, Markdown, HTML, and plots."""
@@ -1919,6 +2830,11 @@ class StudyAnalysis:
     incomplete_cases: tuple[Mapping[str, Any], ...]
     deployment_table: tuple[Mapping[str, Any], ...]
     notes: tuple[str, ...]
+    aggregation_view_fold_metrics: tuple[Mapping[str, Any], ...] = ()
+    stage3_star_absolute: tuple[Mapping[str, Any], ...] = ()
+    stage3_star_contrasts: tuple[Mapping[str, Any], ...] = ()
+    stage3_star_fold_contrasts: tuple[Mapping[str, Any], ...] = ()
+    stage3_star_execution: tuple[Mapping[str, Any], ...] = ()
 
 
 def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
@@ -1973,17 +2889,43 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
             for row in oof_rows:
                 repeat_groups.setdefault(int(row.get("repeat", -1)), []).append(row)
             for repeat, values in sorted(repeat_groups.items()):
-                metric = _oof_metric_row(case_id, values, repeat=repeat)
-                if metric is not None:
-                    repeat_rows.append(
+                conditional = _oof_metric_row(case_id, values, repeat=repeat)
+                aware = _oof_abstention_metric_row(
+                    case_id, values, repeat=repeat
+                )
+                if aware is None:
+                    continue
+                repeat_rows.append(
+                    (
                         {
                             key: value
-                            for key, value in metric.items()
+                            for key, value in conditional.items()
                             if key not in {"per_class", "confusion_matrix"}
                         }
-                        | {"metric_source": "participant_oof"}
+                        if conditional is not None
+                        else {
+                            "case_id": case_id,
+                            "repeat": repeat,
+                            "balanced_accuracy": None,
+                            "macro_f1": None,
+                            "worst_class_recall": None,
+                            "worst_class_f1": None,
+                            "n_predictions": 0,
+                            "class_order": list(CANONICAL_CLASS_NAMES),
+                        }
                     )
+                    | aware
+                    | {
+                        "metric_source": (
+                            "participant_oof_recomputed_conditional_and_"
+                            "abstention_aware"
+                        )
+                    }
+                )
             pooled = _oof_metric_row(case_id, oof_rows, repeat=None)
+            pooled_aware = _oof_abstention_metric_row(
+                case_id, oof_rows, repeat=None
+            )
             if pooled is not None:
                 all_per_class.extend(pooled["per_class"])
                 matrices.append(
@@ -2004,6 +2946,7 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         else:
             repeat_rows = fallback_repeat_by_case.get(case_id, [])
             pooled = None
+            pooled_aware = None
             calculated_ece = None
             metric_source = "cell_metric_fallback_no_subject_oof"
             trusted_confusions = trusted_row.get("confusion_matrices")
@@ -2059,15 +3002,110 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
                                 "source_cell_count": source_cell_count,
                             }
                         )
+        cell_repeat_lookup = {
+            int(row["repeat"]): row
+            for row in fallback_repeat_by_case.get(case_id, ())
+        }
+        enriched_repeat_rows: list[Mapping[str, Any]] = []
+        for row in repeat_rows:
+            projected = dict(row)
+            fallback = cell_repeat_lookup.get(int(row["repeat"]))
+            if fallback is not None and not oof_rows:
+                for key in (
+                    *_ABSTENTION_AWARE_METRICS,
+                    "abstention_count",
+                    "abstention_counts_by_class",
+                    "coverage_rate",
+                ):
+                    if key in fallback:
+                        projected[key] = fallback[key]
+            enriched_repeat_rows.append(projected)
+        repeat_rows = enriched_repeat_rows
         all_repeat.extend(repeat_rows)
         repeat_ba = [row.get("balanced_accuracy") for row in repeat_rows]
         repeat_f1 = [row.get("macro_f1") for row in repeat_rows]
+        repeat_abstention_metrics = {
+            name: [row.get(name) for row in repeat_rows]
+            for name in _ABSTENTION_AWARE_METRICS
+        }
+        participant_mean_coverage = _mean(
+            row.get("coverage_rate") for row in repeat_rows
+        )
+        total_abstentions = _sum_numbers(
+            row.get("abstention_count") for row in repeat_rows
+        )
         mean_ba = _number(
             trusted_row.get("participant_mean_balanced_accuracy")
         )
         mean_f1 = _number(trusted_row.get("participant_mean_macro_f1"))
+        aware_means = {
+            name: _mean(values)
+            for name, values in repeat_abstention_metrics.items()
+        }
+        for name in _ABSTENTION_AWARE_METRICS:
+            trusted_value = _number(trusted_row.get(f"participant_mean_{name}"))
+            if not oof_rows and trusted_value is not None:
+                aware_means[name] = trusted_value
+        aware_metric_source = (
+            "participant_oof_complete_roster_recomputation"
+            if oof_rows
+            else "config_metrics_v2_complete_roster_recomputation"
+            if any(
+                _number(trusted_row.get(f"participant_mean_{name}")) is not None
+                for name in _ABSTENTION_AWARE_METRICS
+            )
+            else "mean_cell_metrics_compatibility_fallback"
+            if any(value is not None for value in aware_means.values())
+            else "legacy_conditional_no_abstention_metadata"
+        )
+        if (
+            aware_means["abstention_aware_balanced_accuracy"] is None
+            and total_abstentions in {None, 0}
+        ):
+            aware_means["abstention_aware_balanced_accuracy"] = (
+                mean_ba if mean_ba is not None else _mean(repeat_ba)
+            )
+            aware_means["abstention_aware_macro_recall"] = aware_means[
+                "abstention_aware_balanced_accuracy"
+            ]
+            aware_means["abstention_aware_macro_f1"] = (
+                mean_f1 if mean_f1 is not None else _mean(repeat_f1)
+            )
         worst_recall = _number(trusted_row.get("worst_class_recall"))
         worst_f1 = _number(trusted_row.get("worst_class_f1"))
+        conditional_worst_recall = (
+            worst_recall
+            if worst_recall is not None
+            else (pooled or {}).get("worst_class_recall")
+        )
+        conditional_worst_f1 = (
+            worst_f1
+            if worst_f1 is not None
+            else (pooled or {}).get("worst_class_f1")
+        )
+        aware_worst_recall = _number(
+            trusted_row.get("abstention_aware_worst_class_recall")
+        )
+        aware_worst_f1 = _number(
+            trusted_row.get("abstention_aware_worst_class_f1")
+        )
+        if pooled_aware is not None:
+            aware_per_class = pooled_aware["abstention_aware_per_class"]
+            aware_worst_recall = min(
+                float(row["recall"]) for row in aware_per_class
+            )
+            aware_worst_f1 = min(float(row["f1"]) for row in aware_per_class)
+        elif total_abstentions in {None, 0}:
+            aware_worst_recall = (
+                aware_worst_recall
+                if aware_worst_recall is not None
+                else conditional_worst_recall
+            )
+            aware_worst_f1 = (
+                aware_worst_f1
+                if aware_worst_f1 is not None
+                else conditional_worst_f1
+            )
         ece = _number(trusted_row.get("expected_calibration_error"))
         variability = trusted_row.get("variability")
         variability = (
@@ -2075,6 +3113,12 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         )
         ba_statistics = _descriptive_statistics(repeat_ba)
         f1_statistics = _descriptive_statistics(repeat_f1)
+        aware_ba_statistics = _descriptive_statistics(
+            repeat_abstention_metrics["abstention_aware_balanced_accuracy"]
+        )
+        aware_f1_statistics = _descriptive_statistics(
+            repeat_abstention_metrics["abstention_aware_macro_f1"]
+        )
         metric_distributions.extend(
             (
                 {
@@ -2089,9 +3133,24 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
                     "metric_source": metric_source,
                     **f1_statistics,
                 },
+                {
+                    "case_id": case_id,
+                    "metric": "abstention_aware_balanced_accuracy",
+                    "metric_source": metric_source,
+                    **aware_ba_statistics,
+                },
+                {
+                    "case_id": case_id,
+                    "metric": "abstention_aware_macro_f1",
+                    "metric_source": metric_source,
+                    **aware_f1_statistics,
+                },
             )
         )
         status = statuses.get(case_id, "not_run")
+        auxiliary_motion_valid_oof, motion_ranking_interpretation = (
+            _case_motion_evidence_scope(collected, case_id)
+        )
         passed_fold_cell_count = sum(
             str(row.get("status")) == "passed" for row in case_folds
         )
@@ -2100,11 +3159,11 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
             incompleteness_reasons.append(f"case_status={status}")
         if (
             expected_repeat_count is not None
-            and int(ba_statistics["n"]) != expected_repeat_count
+            and len(repeat_rows) != expected_repeat_count
         ):
             incompleteness_reasons.append(
                 "repeat_metric_count="
-                f"{ba_statistics['n']}/{expected_repeat_count}"
+                f"{len(repeat_rows)}/{expected_repeat_count}"
             )
         if (
             expected_fold_cell_count is not None
@@ -2134,6 +3193,28 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
             ),
             "participant_mean_macro_f1": (
                 mean_f1 if mean_f1 is not None else _mean(repeat_f1)
+            ),
+            **{
+                f"participant_mean_{name}": value
+                for name, value in aware_means.items()
+            },
+            "primary_ranking_metric": (
+                "participant_mean_abstention_aware_balanced_accuracy"
+            ),
+            "primary_ranking_metric_source": aware_metric_source,
+            "frailty_classification_evaluation_scope": (
+                "outer_heldout_participant_oof"
+                if oof_rows
+                else "cell_or_config_metric_fallback"
+            ),
+            "auxiliary_motion_evidence_valid_outer_oof": (
+                auxiliary_motion_valid_oof
+            ),
+            "ranking_interpretation": motion_ranking_interpretation,
+            "participant_mean_coverage_rate": participant_mean_coverage,
+            "abstention_count": total_abstentions,
+            "abstention_counts_by_class": _sum_abstention_counts(
+                row.get("abstention_counts_by_class") for row in repeat_rows
             ),
             "balanced_accuracy_lcb95": (
                 _number(trusted_row.get("balanced_accuracy_lcb95"))
@@ -2171,6 +3252,30 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
             "repeat_macro_f1_ci95_margin": f1_statistics["ci95_margin"],
             "repeat_macro_f1_minimum": f1_statistics["minimum"],
             "repeat_macro_f1_maximum": f1_statistics["maximum"],
+            "repeat_abstention_aware_balanced_accuracy_population_sd": (
+                aware_ba_statistics["population_sd"]
+            ),
+            "repeat_abstention_aware_balanced_accuracy_sample_sd": (
+                aware_ba_statistics["sample_sd"]
+            ),
+            "repeat_abstention_aware_balanced_accuracy_ci95_low": (
+                aware_ba_statistics["ci95_low"]
+            ),
+            "repeat_abstention_aware_balanced_accuracy_ci95_high": (
+                aware_ba_statistics["ci95_high"]
+            ),
+            "repeat_abstention_aware_macro_f1_population_sd": (
+                aware_f1_statistics["population_sd"]
+            ),
+            "repeat_abstention_aware_macro_f1_sample_sd": (
+                aware_f1_statistics["sample_sd"]
+            ),
+            "repeat_abstention_aware_macro_f1_ci95_low": (
+                aware_f1_statistics["ci95_low"]
+            ),
+            "repeat_abstention_aware_macro_f1_ci95_high": (
+                aware_f1_statistics["ci95_high"]
+            ),
             "worst_fold_balanced_accuracy": (
                 _number(trusted_row.get("worst_fold_balanced_accuracy"))
                 if trusted_row
@@ -2183,16 +3288,23 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
                     default=None,
                 )
             ),
-            "worst_class_recall": (
-                worst_recall
-                if worst_recall is not None
-                else (pooled or {}).get("worst_class_recall")
+            "worst_fold_abstention_aware_balanced_accuracy": min(
+                (
+                    value
+                    for row in case_folds
+                    if (
+                        value := _number(
+                            row.get("abstention_aware_balanced_accuracy")
+                        )
+                    )
+                    is not None
+                ),
+                default=None,
             ),
-            "worst_class_f1": (
-                worst_f1
-                if worst_f1 is not None
-                else (pooled or {}).get("worst_class_f1")
-            ),
+            "worst_class_recall": conditional_worst_recall,
+            "worst_class_f1": conditional_worst_f1,
+            "abstention_aware_worst_class_recall": aware_worst_recall,
+            "abstention_aware_worst_class_f1": aware_worst_f1,
             "expected_calibration_error": (
                 ece if ece is not None else calculated_ece
             ),
@@ -2200,9 +3312,13 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
             "fold_cell_count": len(case_folds),
             "subject_oof_prediction_count": len(oof_rows),
             "ci_method": (
+                "repeat_student_t_abstention_aware_primary"
+            ),
+            "conditional_ci_method": (
                 "participant_cluster_bootstrap_config_metrics_v2"
-                if trusted_row
-                else "repeat_student_t_fallback"
+                if _number(trusted_row.get("balanced_accuracy_lcb95"))
+                is not None
+                else "repeat_student_t_conditional"
             ),
             "repeat_ci95_method": "two_sided_student_t_0.95",
         }
@@ -2236,9 +3352,41 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
             for row in summaries
             if row.get("status") == "passed"
             if bool(row.get("complete_for_requested_execution"))
-            if _number(row.get("participant_mean_balanced_accuracy")) is not None
+            if _number(
+                row.get(
+                    "participant_mean_abstention_aware_balanced_accuracy"
+                )
+            )
+            is not None
         ],
         key=lambda row: (
+            -(
+                _number(
+                    row.get(
+                        "participant_mean_abstention_aware_balanced_accuracy"
+                    )
+                )
+                if _number(
+                    row.get(
+                        "participant_mean_abstention_aware_balanced_accuracy"
+                    )
+                )
+                is not None
+                else -math.inf
+            ),
+            -(
+                _number(row.get("participant_mean_coverage_rate"))
+                if _number(row.get("participant_mean_coverage_rate")) is not None
+                else -math.inf
+            ),
+            -(
+                _number(row.get("participant_mean_abstention_aware_macro_f1"))
+                if _number(
+                    row.get("participant_mean_abstention_aware_macro_f1")
+                )
+                is not None
+                else -math.inf
+            ),
             -(
                 _number(row.get("participant_mean_balanced_accuracy"))
                 if _number(row.get("participant_mean_balanced_accuracy")) is not None
@@ -2263,18 +3411,37 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
     stability_candidates = [
         row
         for row in predictive
-        if _number(row.get("worst_class_f1")) is not None
+        if _number(row.get("abstention_aware_worst_class_f1")) is not None
     ]
     stability_candidates.sort(
         key=lambda row: (
-            -float(_number(row.get("worst_class_f1")) or 0.0),
+            -float(
+                _number(row.get("abstention_aware_worst_class_f1")) or 0.0
+            ),
             (
-                float(_number(row.get("repeat_balanced_accuracy_population_sd")))
-                if _number(row.get("repeat_balanced_accuracy_population_sd"))
+                float(
+                    _number(
+                        row.get(
+                            "repeat_abstention_aware_balanced_accuracy_population_sd"
+                        )
+                    )
+                )
+                if _number(
+                    row.get(
+                        "repeat_abstention_aware_balanced_accuracy_population_sd"
+                    )
+                )
                 is not None
                 else math.inf
             ),
-            -float(_number(row.get("participant_mean_balanced_accuracy")) or 0.0),
+            -float(
+                _number(
+                    row.get(
+                        "participant_mean_abstention_aware_balanced_accuracy"
+                    )
+                )
+                or 0.0
+            ),
             str(row.get("case_id")),
         )
     )
@@ -2283,10 +3450,22 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
             "worst_class_f1_stability_rank": index,
             "predictive_rank": row["predictive_rank"],
             "case_id": row["case_id"],
+            "abstention_aware_worst_class_f1": row.get(
+                "abstention_aware_worst_class_f1"
+            ),
+            "abstention_aware_worst_class_recall": row.get(
+                "abstention_aware_worst_class_recall"
+            ),
             "worst_class_f1": row.get("worst_class_f1"),
             "worst_class_recall": row.get("worst_class_recall"),
+            "participant_mean_abstention_aware_balanced_accuracy": row.get(
+                "participant_mean_abstention_aware_balanced_accuracy"
+            ),
             "participant_mean_balanced_accuracy": row.get(
                 "participant_mean_balanced_accuracy"
+            ),
+            "repeat_abstention_aware_balanced_accuracy_population_sd": row.get(
+                "repeat_abstention_aware_balanced_accuracy_population_sd"
             ),
             "repeat_balanced_accuracy_population_sd": row.get(
                 "repeat_balanced_accuracy_population_sd"
@@ -2332,7 +3511,11 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
 
     reference = collected.manifest.get("reference_case_id")
     paired: list[Mapping[str, Any]] = []
-    if reference:
+    bridge = collected.plan.get("legacy_bridge")
+    centered_star = isinstance(bridge, Mapping) and str(
+        bridge.get("design", "")
+    ) == _STAGE3_STAR_DESIGN
+    if reference and not centered_star:
         repeat_lookup = {
             (str(row["case_id"]), int(row["repeat"])): row
             for row in all_repeat
@@ -2367,6 +3550,10 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
                     ),
                 }
             )
+    elif centered_star:
+        notes.append(
+            "generic single-reference paired deltas are disabled for the two-model centered star; use only the fourteen same-model Stage-3 star contrasts"
+        )
     elif len(summaries) > 1:
         notes.append("paired deltas are N/A because no reference case was declared")
 
@@ -2391,6 +3578,7 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
     (
         aggregation_view_comparison,
         aggregation_view_repeat_metrics,
+        aggregation_view_fold_metrics,
         aggregation_view_per_class_metrics,
         aggregation_view_confusion_matrices,
         aggregation_hierarchy_coverage,
@@ -2404,6 +3592,19 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         },
     )
     notes.extend(aggregation_view_notes)
+    (
+        stage3_star_absolute,
+        stage3_star_contrasts,
+        stage3_star_fold_contrasts,
+        stage3_star_execution,
+        stage3_star_notes,
+    ) = _stage3_star_report_tables(
+        collected,
+        summaries,
+        aggregation_view_comparison,
+        aggregation_view_fold_metrics,
+    )
+    notes.extend(stage3_star_notes)
     (
         legacy_bridge_numeric_ablation_report,
         legacy_bridge_execution_order_report,
@@ -2432,6 +3633,7 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         ),
         aggregation_view_comparison=tuple(aggregation_view_comparison),
         aggregation_view_repeat_metrics=tuple(aggregation_view_repeat_metrics),
+        aggregation_view_fold_metrics=tuple(aggregation_view_fold_metrics),
         aggregation_view_per_class_metrics=tuple(
             aggregation_view_per_class_metrics
         ),
@@ -2453,6 +3655,10 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         incomplete_cases=tuple(incomplete_cases),
         deployment_table=tuple(deployment),
         notes=tuple(dict.fromkeys(notes)),
+        stage3_star_absolute=tuple(stage3_star_absolute),
+        stage3_star_contrasts=tuple(stage3_star_contrasts),
+        stage3_star_fold_contrasts=tuple(stage3_star_fold_contrasts),
+        stage3_star_execution=tuple(stage3_star_execution),
     )
 
 

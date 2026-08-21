@@ -26,8 +26,11 @@ source/lock/attestation gate。
 - direct PPG view 使用 0.2–8 Hz；0.5–5 Hz 是 ablation。IMU reference 为同一
   participant role-B 校准的 roll–pitch EKF，无静默 fallback；LPF 0.3 Hz 是 ablation。
 - frailty raw/fusion/ShapeFormer 输入固定为 8 通道：
-  `RED, IR, A_dyn_X, A_dyn_Y, A_dyn_Z, GX, GY, GZ`。6 个 IMU 轴只用
-  outer-train participants 拟合 scaler，不做逐窗 IMU 幅值归一。
+  `RED, IR, A_dyn_X, A_dyn_Y, A_dyn_Z, GX, GY, GZ`。DL tensor 在每个 5 s
+  window 内对八通道分别做 median/(IQR/1.349)、population-SD fallback、clip
+  `[-8,8]`。这是独立副本；SQI、motion、denoiser 和 engineering 继续读取保留
+  m/s²、rad/s、m/s³ 的 `processed_imu_physical`，peaks/PRV/morphology/optical
+  继续读取幅值保真的 `x_analysis`/`x_native`。
 - motion-model reference 同样使用上述 8 通道；加入
   `A_mag, Omega_mag, J_mag` 的 11 通道输入只属于具名 augmentation ablation，
   不进入 frailty raw-signal branch。
@@ -44,10 +47,11 @@ OOF、raw/fusion 的有序 8 通道与 400 Hz 内部信号网格）仍保持不�
 
 `features.enabled_groups` 是旧 `extra_input`/`manual_features` 的统一替代入口，可组合
 选择 basic PPI/rate、HRV time-domain、HRV spectral、HRV nonlinear、morphology、
-dual optical 与 engineering summary。默认全量 file vector 是 282 fields；engineering
-window sequence 独立保持 115 fields，故默认 ordered matrix 是
-`2 × (115 + 282) = 794` channels × `K`，数值和 validity 成对进入模型。registry、
-vector、fusion tensor 与 matrix 的 schema/count/hash 都从选择派生，不能手工伪造。
+dual optical 与 engineering summary。默认全量 file vector 是 282 fields；feature
+matrix 则是独立固定合同：10 s window、2 s hop、每窗 115 个 engineering predictors、
+K=150，即 `OrderedFeatureMatrixV1[115,150]`。逐特征 validity 仅写入 provenance，
+不再扩成 predictor channels；时间 padding 由 row mask 隔离。registry、vector、
+fusion tensor 与 matrix 的 schema/count/hash 都从真实消费者派生，不能手工伪造。
 迁移时，旧 `extra_input=PPI` 对应 `ppi_basic_rate`，旧 `HRV` 对应四个 PPI/HRV
 groups 的并集；旧 `manual_features=morphology` 对应 `morphology + dual_optical`，
 旧 `morphology_ppi_hrv_filelevel` 对应上述六组并集。旧实现中的 coverage/technical
@@ -74,7 +78,8 @@ dropout；这些参数均为可输入且进入运行架构哈希。旧 `processe
 
 - `configs/reference_static_role_aware_v2.yaml` — raw / CompactCNN reference。
 - `configs/reference_static_feature_vector_v2.yaml` — engineered feature vector。
-- `configs/reference_static_feature_matrix_v2.yaml` — ordered feature matrix。
+- `configs/reference_static_feature_matrix_v2.yaml` — 115×150 ordered feature-matrix
+  开发/合同 smoke harness；当前正式 matrix 模型待定。
 - `configs/reference_static_fusion_v2.yaml` — raw + feature fusion。
 
 ## 安装

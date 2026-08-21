@@ -62,6 +62,44 @@ class EvaluationMetrics:
 
 
 @dataclass(frozen=True)
+class AbstentionAwarePerClassMetrics:
+    """One-vs-rest participant counts with abstentions included as false negatives."""
+
+    label: int
+    precision: float
+    recall: float
+    f1: float
+    support: int
+    retained_support: int
+    abstention_count: int
+    true_positive: int
+    false_positive: int
+    false_negative: int
+
+
+@dataclass(frozen=True)
+class AbstentionAwareEvaluationMetrics:
+    """Participant metrics that separate conditional prediction from abstention cost."""
+
+    conditional_metrics: EvaluationMetrics | None
+    class_order: tuple[int, ...]
+    per_class: tuple[AbstentionAwarePerClassMetrics, ...]
+    abstention_counts_by_class: tuple[tuple[int, int], ...]
+    balanced_accuracy: float
+    macro_precision: float
+    macro_recall: float
+    macro_f1: float
+    n_total: int
+    n_retained: int
+    n_abstained: int
+    coverage_rate: float
+    probability_metrics_scope: str
+    retained_multiclass_log_loss: float | None
+    retained_multiclass_brier: float | None
+    retained_expected_calibration_error: float | None
+
+
+@dataclass(frozen=True)
 class RepeatMetricSummary:
     """Repeat-level mean, dispersion and Student-t interval.
 
@@ -211,6 +249,139 @@ def evaluate_predictions(
         n_retained=retained_count,
         n_dropped=coverage_total - retained_count,
         coverage_rate=float(retained_count / coverage_total),
+    )
+
+
+def evaluate_predictions_with_abstentions(
+    retained_labels: np.ndarray,
+    probabilities: np.ndarray,
+    dropped_labels: np.ndarray,
+    *,
+    class_order: tuple[int, ...] | list[int] | np.ndarray,
+    ece_bins: int = 10,
+) -> AbstentionAwareEvaluationMetrics:
+    """Evaluate participant predictions without assigning a fake abstention class.
+
+    Each input row must already represent one participant. Conditional confusion and
+    probability metrics use retained predictions only. For the abstention-aware
+    one-vs-rest metrics, a dropped participant is one false negative for that
+    participant's true class and is never a false positive for another class.
+    """
+
+    retained = np.asarray(retained_labels)
+    dropped = np.asarray(dropped_labels)
+    probability = np.asarray(probabilities, dtype=np.float64)
+    classes = np.asarray(class_order)
+    if (
+        retained.ndim != 1
+        or dropped.ndim != 1
+        or classes.ndim != 1
+        or classes.size == 0
+        or len(set(classes.tolist())) != classes.size
+    ):
+        raise ValueError(
+            "retained_labels, dropped_labels and a unique non-empty class_order "
+            "must be one-dimensional"
+        )
+    if probability.shape != (retained.size, classes.size):
+        raise ValueError(
+            "probabilities must be [retained participant,class] matching class_order"
+        )
+    if ece_bins <= 0:
+        raise ValueError("ece_bins must be positive")
+    declared = set(classes.tolist())
+    if not set(retained.tolist()) <= declared or not set(dropped.tolist()) <= declared:
+        raise ValueError("retained or dropped labels contain a class outside class_order")
+    total_count = int(retained.size + dropped.size)
+    if total_count == 0:
+        raise ValueError("abstention-aware evaluation requires at least one participant")
+
+    conditional: EvaluationMetrics | None
+    if retained.size:
+        conditional = evaluate_predictions(
+            retained,
+            probability,
+            class_order=classes,
+            n_total=total_count,
+            ece_bins=ece_bins,
+        )
+        predicted = classes[probability.argmax(axis=1)]
+    else:
+        conditional = None
+        predicted = np.empty(0, dtype=classes.dtype)
+
+    per_class: list[AbstentionAwarePerClassMetrics] = []
+    for label in classes:
+        retained_true = retained == label
+        dropped_true = dropped == label
+        predicted_as_label = predicted == label
+        true_positive = int(np.count_nonzero(retained_true & predicted_as_label))
+        false_positive = int(np.count_nonzero(~retained_true & predicted_as_label))
+        retained_false_negative = int(
+            np.count_nonzero(retained_true & ~predicted_as_label)
+        )
+        abstention_count = int(np.count_nonzero(dropped_true))
+        false_negative = retained_false_negative + abstention_count
+        precision_denominator = true_positive + false_positive
+        recall_denominator = true_positive + false_negative
+        precision = (
+            float(true_positive / precision_denominator)
+            if precision_denominator
+            else 0.0
+        )
+        recall = (
+            float(true_positive / recall_denominator) if recall_denominator else 0.0
+        )
+        f1 = (
+            float(2.0 * precision * recall / (precision + recall))
+            if precision + recall
+            else 0.0
+        )
+        retained_support = int(np.count_nonzero(retained_true))
+        per_class.append(
+            AbstentionAwarePerClassMetrics(
+                label=int(label),
+                precision=precision,
+                recall=recall,
+                f1=f1,
+                support=retained_support + abstention_count,
+                retained_support=retained_support,
+                abstention_count=abstention_count,
+                true_positive=true_positive,
+                false_positive=false_positive,
+                false_negative=false_negative,
+            )
+        )
+
+    precision_values = np.asarray([item.precision for item in per_class])
+    recall_values = np.asarray([item.recall for item in per_class])
+    f1_values = np.asarray([item.f1 for item in per_class])
+    abstained_count = int(dropped.size)
+    return AbstentionAwareEvaluationMetrics(
+        conditional_metrics=conditional,
+        class_order=tuple(int(value) for value in classes),
+        per_class=tuple(per_class),
+        abstention_counts_by_class=tuple(
+            (item.label, item.abstention_count) for item in per_class
+        ),
+        balanced_accuracy=float(recall_values.mean()),
+        macro_precision=float(precision_values.mean()),
+        macro_recall=float(recall_values.mean()),
+        macro_f1=float(f1_values.mean()),
+        n_total=total_count,
+        n_retained=int(retained.size),
+        n_abstained=abstained_count,
+        coverage_rate=float(retained.size / total_count),
+        probability_metrics_scope="retained_only",
+        retained_multiclass_log_loss=(
+            None if conditional is None else conditional.multiclass_log_loss
+        ),
+        retained_multiclass_brier=(
+            None if conditional is None else conditional.multiclass_brier
+        ),
+        retained_expected_calibration_error=(
+            None if conditional is None else conditional.expected_calibration_error
+        ),
     )
 
 

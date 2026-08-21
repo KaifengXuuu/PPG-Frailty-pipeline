@@ -160,6 +160,22 @@ class ExperimentRunnerTest(unittest.TestCase):
         self.assertEqual(names.count('run_full_experiment'), 1)
         self.assertNotIn('experiment_execution_contract_not_yet_satisfied', source_path.read_text())
 
+    def test_reduced_smoke_epoch_override_is_backend_specific(self) -> None:
+        estimator = SimpleNamespace(
+            section=lambda name: {
+                'model_id': 'logistic_regression'
+            } if name == 'model' else {}
+        )
+        deep = SimpleNamespace(
+            section=lambda name: {
+                'model_id': 'compact_cnn'
+            } if name == 'model' else {}
+        )
+
+        self.assertIsNone(experiment._epoch_override_for_backend(estimator, 1))
+        self.assertEqual(experiment._epoch_override_for_backend(deep, 1), 1)
+        self.assertIsNone(experiment._epoch_override_for_backend(deep, None))
+
     def test_all_missing_train_column_preserves_frozen_width_without_warning(self) -> None:
         '''Keep all registered columns through each allow-listed imputer.
 

@@ -230,8 +230,8 @@ def build_parser() -> argparse.ArgumentParser:
     catalog = subcommands.add_parser(
         "catalog",
         help=(
-            "inspect 13 candidates, two matched member-0 comparators and "
-            "two ensembles without running them"
+            "inspect active candidates and declared matched ensemble comparisons "
+            "without running them"
         ),
     )
     catalog.add_argument("--line", choices=["line_a", "line_b"], required=True)
@@ -418,13 +418,12 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         default=[
             "CompactCNN1D", "InceptionTimeFull", "InceptionTimeSmall",
-            "InceptionTimeMatrix", "ROCKET", "MiniROCKET",
             "LogisticRegressionL2", "RBFSVM", "ExtraTrees",
             "ShapeFormerChannelSpecificOSD", "ShapeFormerEffectSizeFixedV1",
             "FileBagFusionCompact", "FileBagFusionInception",
         ],
         help=(
-            "registered model identities; defaults are the 13 catalog smoke "
+            "registered model identities; defaults are the active catalog smoke "
             "candidates, while optional and ensemble identities are explicit"
         ),
     )

@@ -38,11 +38,11 @@
 
 ## 2. 当前结论
 
-当前 V2 已经具备清晰的核心 frailty 算法骨架：冻结 manifest 和重复分组外层划分、400 Hz 信号视图、校准 roll–pitch EKF、最终确认的八通道 frailty tensor、四种表征、经典模型与深度模型、fold-local ROCKET、channel-specific OSD ShapeFormer、role-aware 聚合、分层 OOF、参与者级指标和统计模块均有明确实现。
+当前 V2 已经具备清晰的核心 frailty 算法骨架：冻结 manifest 和重复分组外层划分、400 Hz 并行信号视图、校准 roll–pitch EKF、逐窗口 all-8 robust scaling 的 DL tensor、四种表征、经典模型与深度模型、channel-specific OSD ShapeFormer、role-aware 聚合、分层 OOF、参与者级指标和统计模块均有明确实现。Feature-matrix 固定为 115×150，但正式模型仍待选择；ROCKET family 已退役。
 
 当前最重要的未闭合点不是“再增加模型”，而是以下两类：
 
-1. A1/A2 的七状态路由目前按整条 recording 构造一个 segment，而不是对异质 segment 分段；runtime 已用独立 <code>shape_features_eligible</code> 阻止 <code>rate_only_direct</code> 进入 morphology/optical。现状可以执行 recording-level route，但不能宣称 heterogeneous segment-level routing。
+1. 当前权威合同是 recording-level Excellent/Acceptable/Unfit/Excluded 路由，不是旧 A1/A2 七状态或 heterogeneous segment route；Acceptable 的记录特异输入仅 pulse/PRV，其余 full-schema 槽保持 missing 并由 outer-train transform 处理。
 2. A3 ECG-reference endpoint benchmark 和 A4 internal dynamic report 没有完整 runner/规定产物；现有 motion 命令评估的是 activity detector，不等价于 A3/A4。
 
 ## 3. 后续人工裁决对两份权威文档的覆盖
@@ -65,12 +65,12 @@
 
 | ID | 要求 | 状态 | 当前 V2 证据 | 科学后果 | 建议闭合 |
 |---|---|---|---|---|---|
-| D1 | 统一 typed contracts：manifest、signal views、quality、route、pulse、features、matrix、artifact 和 prediction。 | MATCHED | <code>src/ppg_frailty/contracts.py:12-365</code>，包括 <code>ManifestRow</code>、<code>SignalViews</code>、<code>QualityResult</code>、<code>RouteResult</code>、<code>PulseResult</code>、<code>FeatureVectorV1</code>、<code>OrderedFeatureMatrixV1</code>。 | 降低跨模块字段漂移；为 bundle/OOF 可追溯提供基础。 | 保持接口冻结；新增字段须同步 schema/hash tests。 |
+| D1 | 统一 typed contracts：manifest、signal views、quality、pulse、features、matrix、artifact 和 prediction。 | MATCHED | <code>src/ppg_frailty/contracts.py</code>，包括 <code>ManifestRow</code>、<code>SignalViews</code>、<code>QualityResult</code>、<code>PulseResult</code>、<code>FeatureVectorV1</code>、<code>OrderedFeatureMatrixV1</code>；路由只保留 <code>quality.routing.QualityTier</code> 一套权威状态机。 | 降低跨模块字段漂移；为 bundle/OOF 可追溯提供基础。 | 保持接口冻结；新增字段须同步 schema/hash tests。 |
 | D2 | 标签、角色、文件身份必须来自版本化 manifest，不从文件名临时推断；重复记录和集合完整性 fail closed。 | MATCHED | <code>data/manifest.py::convert_m2_source_row</code>、<code>::validate_manifest_set</code>、<code>::load_internal_manifest</code>、<code>::audit_manifest</code>；M2 manifest/fold 均带 hash。 | 参与者标签与角色不随脚本路径或命名规则变化。 | 正式运行时把 manifest/fold hash 写进每个 run summary。 |
 | D3 | 物理 QC 要有原因码；设备 ADC rail、绝对 scale、设备特定 clipping/saturation 只能在设备证据存在时启用。 | PARTIAL / DEFERRED | <code>data/qc.py::QCThresholds</code>、<code>::assess_numeric_record</code>、<code>::physical_recording_qc_thresholds_v2</code> 已覆盖解析、非有限、时长、flatline、时间轴等；<code>configs/v2_decision_profile.yaml:406-411</code> 明确 V2-006 deferred。 | 通用坏记录可以拒绝；但尚不能严谨声明设备 rail/saturation 质量门槛。 | DEFERRED：取得设备 ADC rail/absolute scale 后再新增具证据阈值；当前不得猜测。 |
 | D4 | 外层评估必须 participant-grouped、stratified、冻结并跨模型共享。 | MATCHED + DELIBERATE EXTENSION | <code>data/folds.py::M2_SEEDS</code>、<code>::FrozenFoldRegistry</code>、<code>::validate_frozen_memberships</code>；当前是 5 repeats × 5 folds 的冻结 corrected SGKF，而不是 workflow 示例中的单一 5-fold CSV。 | 匹配比较可配对到相同 held-out participants；重复划分提供 repeat-level 不确定性。 | 不在 runtime 重建 folds；报告中同时保存 split seed 和 fold hash。 |
 | D5 | 外部 PTT manifest 要锁定 roster、activity、通道、ECG reference、单位和同步关系。 | MATCHED AT ADAPTER LEVEL | <code>data/external_manifest.py::PttManifestRow</code>、<code>::audit_external_manifests</code>、PTT unit evidence；activity 覆盖检查要求 sit/walk/run。 | 外部数据身份可追溯；但这不等于 A3 endpoint runner 已完成。 | 与 E1–E3 一起闭合 benchmark grid 和规定输出。 |
-| D6 | ADR 和模型卡必须明确原论文偏离、聚合、epoch、信号视图和表征。 | MATCHED | <code>docs/adr/ADR-001</code> 至 <code>ADR-012</code>；<code>model_cards/</code> 含 single-network、five-member、ROCKET、ShapeFormer 等卡片。 | 能区分实现合同和性能证据。 | 正式运行后只由 generator 更新结果字段，避免手工改卡片。 |
+| D6 | ADR 和模型卡必须明确原论文偏离、聚合、epoch、信号视图和表征。 | MATCHED | <code>docs/adr/ADR-001</code> 至 <code>ADR-012</code>；<code>model_cards/</code> 含当前 registered single-network、ensemble、classical 与 ShapeFormer 卡片；退役模型卡已删除。 | 能区分实现合同和性能证据。 | 正式运行后只由 generator 更新结果字段，避免手工改卡片。 |
 
 ## 5. 信号预处理、IMU、窗口与归一化
 
@@ -83,19 +83,19 @@
 | S5 | Frailty raw/fusion/ShapeFormer 为 exact 8ch；PPG 逐窗 robust normalization，六个 IMU 轴仅 outer-train fold scaler；禁止 IMU 逐窗同幅归一。 | MATCHED NUMERIC IMPLEMENTATION | <code>representations/imu_transform.py::RAW_CHANNEL_SCHEMA</code> 和 <code>::IMU_CHANNEL_SCHEMA</code>；<code>::fit_fold_imu_channel_transform</code>；<code>representations/raw.py::_robust_scale_ppg</code>、<code>::build_raw_windows</code>。 | 保存 motion intensity，同时避免 held-out participant 参与缩放。 | 保留 exact order/hash tests 和 six-axis provenance assertion。 |
 | S6 | 运行配置和 provenance 必须如实描述六轴 frailty scaler。 | MATCHED IDENTITY | <code>signal/preprocess.py</code> 与四个 canonical YAML 的 <code>normalization.raw_imu</code> 均为 <code>outer_training_participant_only_median_iqr_over_1p349_population_sd_then_one_axes6</code>；11ch motion augmentation 仍有独立 nine-channel profile。 | 数值实现、config hash、run summary 和论文方法使用同一 six-axis 身份。 | 保持 config/provenance consistency test；不得重新使用旧裸-IQR或 <code>all_9</code> frailty 字符串。 |
 | S7 | PPG 每窗 median；IQR/1.349，退化时 SD，再 finite fallback；clip [-8,8]；不对 IMU 执行同样逐窗归一。 | MATCHED | <code>representations/raw.py::_robust_scale_ppg</code>；PPG 与 IMU 分支在 raw builder 中分开。 | 保护 PPG 数值稳定而不抹去运动强度。 | 保持 PPG-only 单元测试和 non-finite/zero-IQR cases。 |
-| S8 | raw 5 s / 2.5 s hop、engineering 10 s / 5 s hop 是 reference defaults；正数 length/hop、alignment、padding、绝对/比例 cap 与 DL resampling 都可配置，并在消费者能力不兼容时提前拒绝。 | MATCHED | <code>data/windows.py</code>；<code>module_registry.py::resolve_window_config</code>；<code>signal/resample.py</code>；representation tensors/masks。 | 默认比较仍可复现，同时不把 5 秒写死成 core 许可。 | 每次 study 保存完整 effective window plan。 |
+| S8 | raw 5 s/2.5 s hop、engineering 10 s/2 s hop 是 reference defaults；FeatureMatrix 固定消费 10 s/2 s 与 K=150，其他已注册消费者仍可显式选择其支持的窗口参数。 | MATCHED | <code>data/windows.py</code>；<code>module_registry.py::resolve_window_config</code> 与 <code>::validate_window_profiles_for_representation</code>；<code>signal/resample.py</code>。 | Matrix 不再接受配置后运行期失败的假 K/window 参数；其他路线保留真实可执行参数化。 | 每次 study 保存完整 effective window plan。 |
 | S9 | raw/fusion PPG reference 始终来自 <code>x_filter</code>，nonidentity <code>x_ar</code> 只能贡献 rate features，且无 silent substitution。 | MATCHED | <code>signal/views.py::CanonicalSignalViews</code>；<code>representations/raw.py</code>；<code>experiment.py</code> 的 shape eligibility；<code>docs/adr/ADR-012</code>。 | 防止 reducer 改变的波形被误解释为 morphology/amplitude。 | 保持 rate-only 的 morphology/optical 负例测试。 |
 
-## 6. SQI、A1/A2 路由与 artifact reducer
+## 6. SQI、motion tier 路由与 artifact reducer
 
 | ID | 要求 | 状态 | 当前 V2 证据 | 科学后果 | 建议闭合 |
 |---|---|---|---|---|---|
-| Q1 | A1/A2 必须为 typed 七状态纯状态机；Q_rate pass、Q_shape fail 必须是 <code>rate_only_direct</code>。 | MATCHED AT RUNTIME | <code>contracts.py</code> 的 <code>RouteState</code>；<code>quality/routing.py</code> 状态机；<code>experiment.py::_route_records</code> 的真实 dispatch。 | reducer failure 和 post-Q_rate 失败可显式表达。 | 保持状态机纯函数与 outer-train calibrator 隔离。 |
+| Q1 | SQI、motion 与 denoiser 必须是独立开关，并由 typed Excellent/Acceptable/Unfit/Excluded 状态机组合。 | MATCHED AT RUNTIME | <code>quality/routing.py::route_quality_tier</code>；<code>experiment.py::_route_records</code>。high/unavailable motion 一律 Unfit；post-denoise 仅重验 Q_rate。 | reducer failure、abstention 和 post-Q_rate 失败均显式，不用角色名推断 motion。 | 保持纯状态表、固定阈值/outer-train calibrator 与模型执行分离。 |
 | Q2 | SQI 配置不得通过伪 readiness 字段授权，也不得使用 outer-holdout 拟合。 | MATCHED SOFTWARE / SCIENCE NOT RUN | <code>quality.mode</code> 直接选择 off/diagnostics/route；route calibrator 只用 outer train；retired <code>supervised_route_ready</code> 从 effective config 删除。 | 可运行不等于阈值有效；reference off 不变。 | 用 frozen folds 报告阈值 provenance、coverage 与 OOF，而不是恢复门禁。 |
-| Q3 | A1 路由必须在 heterogeneous segment 粒度执行，而不是把整条 recording 当一个 segment。 | PARTIAL | <code>experiment.py::_route_records</code> 已调用公共状态机，但当前每条 recording 只构造一个覆盖全长的 <code>SegmentIntegrity</code>，没有多 segment 切分与重组。 | 同一文件内短暂 motion/failure 会被整条记录单一状态掩盖；coverage 和 route-by-segment 不能按 workflow 解释。 | P0 before A1 claim：建立 segment planner，逐 segment 路由、保留 start/end/run identity，再按合法 run 聚合 pulse/features。 |
-| Q4 | <code>rate_only_direct</code> 不得产生 morphology、amplitude 或 dual-wavelength optical predictors。 | MATCHED | runtime record 持久化 <code>shape_features_eligible</code>；只有 full-direct/identity 路径调用 shape extractors，定向负例覆盖 rate-only。 | Q_shape 失败不会泄入形态与双光 predictor。 | segment planner 扩展时继续逐 segment 传递该字段。 |
+| Q3 | 当前路由粒度必须明确且不可伪称 segment-level。 | DECIDED RECORDING-LEVEL | <code>experiment.py::_route_records</code> 对完整 recording 汇总 SQI 与 8 s motion probabilities（median）；route artifact 保存全长边界。 | 短时异质 motion 会被 recording median 汇总；当前结果只能作 recording-level claim。 | 如研究 segment route，另建预声明 ablation，不修改本合同语义。 |
+| Q4 | Acceptable 不得产生 morphology、amplitude、engineering、raw 或 IMU 的记录特异 predictor。 | MATCHED | runtime record 持久化 <code>quality_tier</code>/<code>shape_features_eligible</code>；Acceptable 仅计算 pulse-derived PRV，其余统一 schema 槽为 missing 并只由 outer-train transform 填充。 | Q_morph 失败或恢复后的信号不会伪装成形态/波形证据。 | 报告须表述为“记录特异信息仅 pulse/PRV”，不能称独立 PRV-only 模型。 |
 | Q5 | reducer failure 和 PISD failure 都必须显式；不得静默回退另一算法。 | MATCHED | artifact router/status contracts；<code>quality/routing.py</code> 显式 <code>FAILED_REDUCER</code>；<code>models/pisd_port.py:719,851-854</code> 禁止 effect-size fallback。 | 模型身份不会因错误路径无声改变。 | 把失败原因汇入 A3/A4 输出；不新增 silent rescue。 |
-| Q6 | 外部 motion evidence 与 core quality routing 必须解耦。 | MATCHED SOFTWARE / EVIDENCE NOT RUN | motion options 注册为独立 <code>motion_evidence</code> family；core route 只消费配置化 SQI motion component，不以角色名或外部 gate 授权。 | 普通 pipeline 不受外部 evidence gate 控制；未运行证据仍不能支持优越性结论。 | 需要 scientific claim 时再运行 internal/PTT matched comparison。 |
+| Q6 | Frozen motion evidence 与 SQI/denoiser 开关必须独立，且不得在 frailty CV 内重训或重标定。 | MATCHED SOFTWARE / COMPARISON REQUIRED | <code>quality/motion_bundle_adapter.py</code> hash-bind Stage5 model、EKF、strict-OOF threshold；<code>artifact.motion_detector_enabled</code> 独立选择。 | all-29 detector 在 Frailty29 上属于 in-sample auxiliary evidence，不能冒充 outer-OOF motion；frailty label predictor仍按其outer fold评估。 | 以 Stage05 五路线报告比较，同时保留 <code>valid_outer_oof_claim=false</code> 限制。 |
 | Q7 | SQI、coverage、route/reducer identity、技术元数据默认不进入 predictor allowlist。 | MATCHED | <code>features/registry.py:261-308</code>，provenance 明确 <code>sqi_and_coverage_predictors_excluded</code>；experiment 只把它们写 metadata/OOF。 | 减少技术状态捷径和数据质量代理变量导致的偏倚。 | 若未来比较，必须单独命名 ablation。 |
 
 ## 7. Pulse、PRV、morphology、optical 与 engineering features
@@ -105,8 +105,8 @@
 | F1 | PulseResult 必须保存真实时间、PPI validity、原始 adjacency 和 detection run identity。 | MATCHED | <code>peaks/resolver.py::detect_pulses</code>、<code>::detect_pulses_per_wavelength</code>；<code>peaks/aboy_project.py</code>；<code>contracts.py::PulseResult</code>；<code>signal/prv.py</code> 使用 <code>detection_run_id</code>、ordinals 与 adjacency。 | 拒绝 interval 不会把 gap 两侧错误拼成相邻 PPI；RED/IR 保持独立 detector provenance。 | Q3 分段后确保不同 route runs 不跨 run 连接。 |
 | F2 | PRV 需显式资格：time-domain 60 s/80% coverage；frequency-domain static+contiguous 300 s/200 intervals；SampEn 至少 200 intervals。 | MATCHED | <code>signal/prv.py:112-309</code>，包含相邻 pair、最长连续 run、Lomb–Scargle 与逐字段 validity/reasons。 | 缺数据时为 invalid/NaN，而不是补出貌似有效 PRV。 | 保持 local manual 为 formal backend；Aura/rhenan仅固定 PPI comparison。 |
 | F3 | Morphology 和 dual-wavelength optical 只允许 amplitude-preserving、Q_shape 合格的 direct branch。 | PARTIAL | <code>signal/morphology.py</code>、<code>signal/optical.py</code> 独立实现；当前 experiment 只检查 DIRECT/IDENTITY，未区分 <code>rate_only_direct</code>。 | 模块算法存在，但正式 route 打开后会触发 Q4 风险。 | 与 Q4 同一补丁闭合，不单独添加启发式。 |
-| F4 | Engineering 10 s/5 s 必须冻结为 115 列/window、230 个 file summaries；RED/IR/A/Omega/J 有 7 time+4 spectral+family bands，六轴仅 7 time；Welch 为 Hann、1600/800。 | MATCHED IMPLEMENTATION / NOT SCIENTIFICALLY RUN | <code>features/engineering.py::engineering_feature_names</code>、<code>::engineering_welch_parameters</code>、<code>::extract_engineering_features</code>；A/Omega/J 取 canonical processed outputs，raw/fusion tensor 仍为 8ch。 | Engineering descriptors 与 eight-channel raw tensor 是不同 representation，不再错误地从 engineering 中删去 derived scalar summaries，也不把它们加入 raw tensor。 | 正式运行继续校验 115/230 schema、registry hash 和旧 94-column stale rejection。 |
-| F5 | FeatureVector 必须是显式 ordered allowlist；FeatureMatrix 为 D×K，含 validity channels、padding mask 和 schema hash。 | MATCHED | <code>features/registry.py::registry_for_groups</code>、<code>::build_feature_vector</code>、<code>::build_ordered_matrix</code>；默认 file vector 为 282 fields，默认 matrix 为 794×32；engineering window sequence 独立保持 115。 | 所有 fold/model 使用同一 selected registry；缺失不被默认为生理零，任意非空 group 组合均派生独立 count/schema/hash。 | 正式 bundle round-trip 继续校验 schema hash。 |
+| F4 | Engineering 10 s/2 s 必须冻结为 115 列/window；RED/IR/A/Omega/J 有 7 time+4 spectral+family bands，六轴仅 7 time；Welch 为 Hann、1600/800。 | MATCHED IMPLEMENTATION / NOT SCIENTIFICALLY RUN | <code>features/engineering.py::engineering_feature_names</code>、<code>::engineering_welch_parameters</code>、<code>::extract_engineering_features</code>；A/Omega/J 取 canonical physical processed outputs，DL tensor 的 all-8 window normalization 是独立副本。 | Engineering descriptors 与 eight-channel raw tensor 是不同 representation，物理单位视图不会被 DL normalization 覆盖。 | 正式运行继续校验 115-column schema、registry hash 和旧 94-column stale rejection。 |
+| F5 | FeatureVector 必须是显式 ordered allowlist；FeatureMatrix 固定为 115×150，含时间位置 mask 和 schema hash。 | MATCHED | <code>features/registry.py::registry_for_groups</code>、<code>::build_feature_vector</code>、<code>::build_ordered_matrix</code>；file vector 默认 282 fields；matrix 只含 115 个工程 predictor channels，逐特征 validity 仅哈希进 provenance。 | 避免把 validity/context 膨胀成 predictor；短序列零 padding 由时间 mask 隔离。 | 正式 bundle round-trip 继续校验 schema hash。 |
 | F6 | Canonical peak detector 必须统一用于 internal/A3，版本、wavelength 和 polarity 持久化。 | MATCHED MODULES / NEW ABLATION PENDING | <code>peaks/aboy_project.py</code> 保留历史 v1；<code>peaks/aboy_project_v2.py</code> 实现新的七步权威合同并作为独立 ablation；<code>peaks/resolver.py</code> 同时注册旧 prominence comparator 与 <code>peaks/msptdfast_v2.py</code>，Stage YAML 只引用这些共享模块。 | 旧 PTT static endpoint 结果只覆盖 v1/MSPTDfast；v2 尚未运行，不能据此替换默认。MSPTDfast 仍是 equation-level Python port，尚非 bitwise MATLAB parity。 | 运行 Stage-ablation-01 v2 后按配对 participant 证据决定默认；dynamic/denoised endpoint 继续复用同一 registry。 |
 | F7 | Aura 1.0.2 与兼容 nolds 只作为隔离比较。 | MATCHED | <code>requirements/requirements-prv-aura-compare.txt</code> 固定 hrv-analysis 1.0.2、nolds 0.6.2；<code>features/prv_backend_compare.py</code> 接收未经再清洗的相同 PPI。 | 不污染主环境或主 predictor，且保留函数级对照。 | 无需将 Aura 加入 canonical dependencies。 |
 
@@ -114,9 +114,9 @@
 
 | ID | 要求 | 状态 | 当前 V2 证据 | 科学后果 | 建议闭合 |
 |---|---|---|---|---|---|
-| R1 | 四种 representation：raw、feature_vector、feature_matrix、fusion，使用共同 manifest/folds/Trainer/Evaluator。 | MATCHED | <code>representations/</code>；<code>models/factory.py</code>；formal catalog 覆盖四类。 | 模型比较可在同一数据与评估层级进行。 | 正式 study 中每次只改变声明的 ablation factor。 |
+| R1 | 四种 representation：raw、feature_vector、feature_matrix、fusion，使用共同 manifest/folds/Trainer/Evaluator。 | MATCHED REPRESENTATIONS | <code>representations/</code>；<code>models/factory.py</code>；feature-matrix builder 可执行，但当前 formal catalog 不选择 matrix model。 | 表征合同可统一比较；matrix 模型选择仍是后续科学决策。 | 正式 study 中每次只改变声明的 ablation factor。 |
 | R2 | CompactCNN、Inception full/small、matrix Inception 的结构身份和参数量可复核。 | MATCHED AT CODE/SAFE-SUITE LEVEL | <code>models/compact_cnn.py</code>、<code>models/inception.py</code>、factory architecture materialization；<code>tests/models/test_architectures.py:45-53</code> 锁定 exact 8ch counts：Compact 79,139，Inception full 456,579，small 57,027；合并后 conda-ml safe suite 295/295 通过。 | 避免把 small/full/single/ensemble 混名。 | 实现合同已验证；仍不得把 safe suite 当作真实数据性能证据。 |
-| R3 | ROCKET reference 为 fold-local 10,000 kernels + ridge；MiniROCKET 只能具名 ablation。 | MATCHED | <code>models/rocket.py::RocketTransformer</code> 默认 10,000；<code>models/rocket_ridge.py</code>；catalog 单独注册 MiniROCKET ablation；fit provenance 绑定 outer train。 | 不把 MiniROCKET 结果冒充 ROCKET reference，也避免 held-out fitting。 | 正式运行保存 transform/ridge serialization parity。 |
+| R3 | ROCKET/Ridge 与 MiniROCKET 不属于当前 pipeline。 | RETIRED | 实现文件、registry、catalog 和 study cases 已删除；matrix 模型保持待定。 | 减少未选定 matrix 路线的审计面。 | 未来候选必须复用统一 115×150 builder，并以新 module identity 注册。 |
 | R4 | Literature-reference ShapeFormer 为 channel-specific OSD，8ch generic branch，fold-local discovery，变量长度 candidate 和完整 shapelet provenance。 | MATCHED ALGORITHM; NOT EMPIRICALLY BENCHMARKED | <code>models/pisd_port.py</code> 的常量、<code>PisdShapelets</code>、actual-T PIP count、same-channel distance、3/class、180-window balance和显式失败；<code>models/shapeformer_literature.py</code>；catalog reference entry。 | 当前可以准确称 <code>channel_specific_osd</code> 实现；仍不能把未运行结果写成 literature parity 或性能结论。 | 保持已有 focused fidelity tests，并按正式 5×5 执行；保留每个 shapelet 的 channel/start/end seconds/length。 |
 | R5 | 固定 128 sample/stride 64 effect-size 只能叫 <code>effect_size_fixed_v1</code>；400/800 可作为额外固定长度 ablation。 | MATCHED DELIBERATE ABLATION | <code>configs/formal_experiment_catalog_v2.yaml:355-400</code> 与 effect-size discovery 模块；不会作为 OSD fallback。 | 历史 fixed candidate 不再污染 literature-reference 结论。 | 若运行 400/800，单独 config id，不写 PISDPort。 |
 | R6 | Fusion 必须先对 raw windows 做 mask-aware file pooling，再只拼接一次 file feature vector。 | MATCHED | <code>models/fusion.py::FileBagFusionClassifier</code>；factory 要求 signal channels 和 file-feature width；leakage tests 定义 file vector 不向每个 raw window广播。 | 避免同一 file feature 被窗口数重复加权。 | 正式 matched ablation 保持相同 folds/sampling。 |
@@ -127,7 +127,7 @@
 
 | ID | 要求 | 状态 | 当前 V2 证据 | 科学后果 | 建议闭合 |
 |---|---|---|---|---|---|
-| T1 | 所有 scaler、imputer、selector、ROCKET、shapelet、calibration、epoch rule 只用 outer-train；trainer 不接受 outer-OOF labels。 | MATCHED AT CONTRACT LEVEL | <code>training/trainer.py::FrozenOuterSplit</code>、<code>::UnifiedTrainer</code>、fit provenance；representation/ROCKET/ShapeFormer 各有 train-roster hash；合并后 conda-ml safe suite 295/295 通过。 | 阻断最主要的外层信息泄漏路径。 | 每个正式 cell 继续持久化 fitted participant roster/hash；后续修改保持 leakage tests 通过。 |
+| T1 | 所有 scaler、imputer、selector、shapelet、calibration、epoch rule 只用 outer-train；trainer 不接受 outer-OOF labels。 | MATCHED AT CONTRACT LEVEL | <code>training/trainer.py::FrozenOuterSplit</code>、<code>::UnifiedTrainer</code>、fit provenance；representation/ShapeFormer 各有 train-roster hash。 | 阻断最主要的外层信息泄漏路径。 | 每个正式 cell 继续持久化 fitted participant roster/hash；后续修改保持 leakage tests 通过。 |
 | T2 | Deep reference 固定 10 epochs；普通 V2 可选择任意正 fixed epoch 或 outer-train-only inner-grouped selection；禁止用 outer fold early stopping。 | MATCHED | <code>training/trainer.py::TrainingConfig</code> 与 <code>::UnifiedTrainer</code>；inner roster/hash、BA 与 selected epoch 写入 provenance，随后全 outer-train refit。 | epoch 策略可调而不接触 held-out label。 | 正式比较保存 effective epoch rule，不按 outer score 临时改动。 |
 | T3 | 单模型在 CV 中使用 repeat-specific seed；最终单模型全数据 refit 才 seed=42。 | MATCHED | <code>data/folds.py::outer_cv_single_model_training_seed</code>；catalog seed policy；<code>configs/v2_decision_profile.yaml:323-330</code>。 | 解决“final refit seed 42 被误应用到 25 cells”的表述/实现风险。 | 在结果表同时列 split_seed 与 training_seed，避免再混淆。 |
 | T4 | Ensemble roster 必须显式且 member 独立；具名五成员 comparison 保持 exact historical identity。 | MATCHED IMPLEMENTATION / SCIENCE NOT RUN | config→factory→trainer/OOF→final refit→bundle 支持任意 N≥1 唯一 uint32 roster；旧 five-member model/kind 可读。 | 普通 ensemble 不再被五成员写死；概率平均、member OOF 与 serialization 仍可审计。 | 正式 comparison 保留 member-level 与 averaged OOF。 |
@@ -165,7 +165,7 @@
 
 ### P0：在对应正式运行或 claim 前
 
-1. 若要作 heterogeneous segment-level A1/A2 claim，先完成 Q3；Q4 的 rate-only shape eligibility 已闭合。
+1. 当前只允许 recording-level route claim；若另做 heterogeneous segment route，必须作为新 ablation 预声明且不得改写现有结果语义。
 2. A3 运行前先裁决 500→400 grid conflict，再实现规定 endpoint runner 和五项输出。
 
 ### P1：完整论文复现包前
@@ -189,7 +189,7 @@ V2-006、V2-009a/b/c、V2-010、V2-012、V2-026、V2-027；以及 SQI/motion 的
 ## 13. 本审查不作出的结论
 
 - 不声称任何模型已在真实 29 人数据上达到某个 BA 或 macro-F1。
-- 不声称 ShapeFormer、ROCKET 或 ensemble 已完成正式 5×5 性能验证。
+- 不声称 ShapeFormer 或 ensemble 已完成正式 5×5 性能验证；ROCKET family 已退役。
 - 不声称 PTT activity detector 输出等价于 ECG heartbeat endpoint benchmark。
 - 不声称 artifact reducer 恢复了 clean waveform 或 morphology。
 - 不声称当前 bundle 是人工选定 winner 的最终部署 bundle。

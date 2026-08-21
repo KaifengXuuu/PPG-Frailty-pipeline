@@ -362,7 +362,7 @@ class EngineeringRegistryTest(unittest.TestCase):
         self.assertFalse(any(name.startswith("sqi.") for name in registry.names))
         self.assertNotIn("prv.coverage", registry.names)
 
-    def test_matrix_places_value_validity_channels_in_model_tensor(self) -> None:
+    def test_matrix_is_exactly_115_by_150_without_context_predictors(self) -> None:
         extraction = direct_extraction()
         transform = fit_fold_feature_transform(
             [extraction],
@@ -371,82 +371,29 @@ class EngineeringRegistryTest(unittest.TestCase):
             outer_oof_participant_ids=["heldout"],
         )
         transformed = transform_engineering(extraction, transform)
-        registry = default_registry()
-        raw_context = build_feature_vector(
-            {"prv.ppi_mean_s": 0.9},
-            feature_validity={"prv.ppi_mean_s": True},
-            provenance={"route": SignalRoute.DIRECT.value},
-        )
-        vector_transform = fit_fold_feature_vector_transform(
-            [raw_context],
-            ["train"],
-            fitted_on_participant_ids=["train"],
-            outer_train_participant_ids=["train"],
-            outer_oof_participant_ids=["heldout"],
-        )
-        context = transform_feature_vector(raw_context, vector_transform)
         matrix = build_ordered_matrix(
             transformed,
-            context=context,
             provenance={"route": SignalRoute.DIRECT.value},
         )
         self.assertIs(validate_feature_matrix(matrix), matrix)
         engineering_count = len(engineering_feature_names())
-        registry_count = len(registry.names)
-        self.assertEqual(matrix.values.shape, (2 * (engineering_count + registry_count), 32))
+        self.assertEqual(matrix.values.shape, (engineering_count, 150))
         self.assertEqual(int(np.sum(matrix.row_mask)), 3)
-        self.assertEqual(matrix.context_schema[:registry_count], registry.names)
-        self.assertEqual(
-            matrix.context_schema[registry_count:],
-            tuple(f"{name}.validity" for name in registry.names),
-        )
-        context_index = registry.names.index("prv.ppi_mean_s")
-        context_value_row = 2 * engineering_count + context_index
-        context_validity_row = (
-            2 * engineering_count + registry_count + context_index
-        )
-        self.assertTrue(np.all(matrix.values[context_value_row, :3] == 0.0))
-        self.assertTrue(np.all(matrix.values[context_validity_row, :3] == 1.0))
+        self.assertEqual(matrix.context_schema, ())
         self.assertTrue(np.all(matrix.values[:, 3:] == 0.0))
-        gyro_index = engineering_feature_names().index("gyro_y.skew_bias_corrected")
-        self.assertTrue(np.all(matrix.values[engineering_count + gyro_index, :3] == 0.0))
         self.assertEqual(
-            matrix.provenance["validity_encoding"], "paired_explicit_0_1_channels_v1"
+            matrix.provenance["validity_encoding"],
+            "provenance_only_not_predictor_channels_v1",
         )
         self.assertEqual(
             matrix.schema_version,
-            f"ordered_feature_matrix_d794_by_32_registry-{registry.sha256[:12]}_v3",
+            "ordered_feature_matrix_d115_by_150_engineering_v4",
         )
-        compact = build_ordered_matrix(
-            transformed,
-            context=context,
-            provenance={"route": SignalRoute.DIRECT.value},
-            k=2,
-        )
-        self.assertIs(validate_feature_matrix(compact), compact)
-        self.assertEqual(compact.values.shape[1], 2)
-        self.assertEqual(compact.row_mask.shape, (2,))
-        self.assertEqual(compact.provenance["matrix_k"], 2)
-        self.assertEqual(
-            compact.schema_version,
-            f"ordered_feature_matrix_d794_by_2_registry-{registry.sha256[:12]}_v3",
-        )
-        padded = build_ordered_matrix(
-            transformed,
-            context=context,
-            provenance={"route": SignalRoute.DIRECT.value},
-            k=7,
-        )
-        self.assertIs(validate_feature_matrix(padded), padded)
-        self.assertEqual(padded.values.shape[1], 7)
-        self.assertEqual(int(np.sum(padded.row_mask)), 3)
-        self.assertTrue(np.all(padded.values[:, 3:] == 0.0))
-        for invalid_k in (0, -1, True, 4097, 2.5):
+        for invalid_k in (0, -1, True, 149, 151, 4097, 2.5):
             with self.subTest(invalid_matrix_k=invalid_k):
                 with self.assertRaises(ValueError):
                     build_ordered_matrix(
                         transformed,
-                        context=context,
                         provenance={"route": SignalRoute.DIRECT.value},
                         k=invalid_k,
                     )
@@ -465,10 +412,9 @@ class EngineeringRegistryTest(unittest.TestCase):
             SignalRoute.DIRECT,
             (),
         )
-        with self.assertRaisesRegex(ValueError, "stale or inconsistent"):
+        with self.assertRaises(ValueError):
             build_ordered_matrix(
                 stale,
-                context=context,
                 provenance={"route": SignalRoute.DIRECT.value},
             )
         old_matrix = OrderedFeatureMatrixV1(
@@ -479,7 +425,7 @@ class EngineeringRegistryTest(unittest.TestCase):
             schema_version="ordered_feature_matrix_v1",
             provenance={},
         )
-        with self.assertRaisesRegex(ValueError, "stale or inconsistent"):
+        with self.assertRaises(ValueError):
             validate_feature_matrix(old_matrix)
 
     def test_artifact_route_invalidates_morphology_slot_and_unknowns_fail(self) -> None:

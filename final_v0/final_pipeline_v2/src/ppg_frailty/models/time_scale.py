@@ -303,7 +303,7 @@ def create_fixed_kernel_resampling_model(
             dilation=case.dilation,
         )
     else:
-        raise ValueError("ShapeFormer/ROCKET/small/matrix models are outside V2-019")
+        raise ValueError("ShapeFormer/small/matrix models are outside V2-019")
     model.fixed_kernel_resampling_provenance = {
         **case.__dict__,
         "reference_condition": "5_seconds_at_400_hz_dilation_1",

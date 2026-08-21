@@ -24,9 +24,6 @@ CATALOG_ENTRIES = (
     "compact_cnn",
     "inception_full",
     "inception_small",
-    "inception_matrix",
-    "rocket_numpy",
-    "minirocket_ablation",
     "logistic_regression",
     "rbf_svm",
     "extra_trees",
@@ -51,9 +48,6 @@ def _study(kind: str) -> StudyInfo:
 
 def _catalog_cases() -> tuple[CatalogCaseSpec, ...]:
     groups = {
-        "inception_matrix": "feature_matrix",
-        "rocket_numpy": "feature_matrix",
-        "minirocket_ablation": "feature_matrix",
         "logistic_regression": "feature_vector",
         "rbf_svm": "feature_vector",
         "extra_trees": "feature_vector",
@@ -119,9 +113,9 @@ class CatalogSweepSchemaTests(unittest.TestCase):
         self.assertNotIn("base_config", payload)
         self.assertNotIn("axes", payload)
         self.assertEqual(payload["catalog"]["balance_line"], "line_b")
-        self.assertEqual(payload["catalog"]["scope"], "ordinary_13")
+        self.assertEqual(payload["catalog"]["scope"], "ordinary_active")
         self.assertFalse(payload["search"]["runtime_sampling"])
-        self.assertEqual(len(payload["cases"]), 13)
+        self.assertEqual(len(payload["cases"]), 10)
         fixed = payload["cases"][0]
         self.assertEqual(fixed["overrides"], {})
         self.assertEqual(
@@ -187,8 +181,7 @@ class CatalogSweepSchemaTests(unittest.TestCase):
                     ),
                 ),
             )
-        with self.assertRaisesRegex(ValueError, "13 distinct"):
-            StudyPlan(**{**arguments, "cases": _catalog_cases()[:-1]})
+        StudyPlan(**{**arguments, "cases": _catalog_cases()[:-1]})
         duplicate = list(_catalog_cases())
         duplicate[1] = CatalogCaseSpec(
             case_id=duplicate[0].case_id,
@@ -214,7 +207,7 @@ class CatalogSweepSchemaTests(unittest.TestCase):
                 {
                     "path": "catalog.yaml",
                     "balance_line": "line_b",
-                    "scope": "ordinary_13",
+                    "scope": "ordinary_active",
                     "typo": True,
                 }
             )

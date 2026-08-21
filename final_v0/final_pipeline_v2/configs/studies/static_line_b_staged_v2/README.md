@@ -24,7 +24,20 @@ record the decision, then edit only the documented selector in the next file.
    stage. The supplemental report does not import or relabel those earlier
    artifacts, so review the separately identified evidence alongside it.
 
-3. stage3_alter.yaml
+3. stage3_star.yaml (current restart)
+   Runs CompactCNN and InceptionTimeFull for B0 plus seven independent
+   B0-to-Bk changes. Execution is profile-major and model-paired. Repeats 0-4,
+   folds 0-4, fixed 10 epochs, seed 42, serial CUDA execution produce exactly
+   16 cases / 400 outer-fold fits / 4000 model epochs. The plan has no Phase 0.
+
+   stage3_v3.yaml (repeated CompactCNN follow-up)
+   Runs only B0+B2 (64 Hz, 5/2.5 s) and B0+B1+B2 (400 Hz,
+   5/2.5 s). Each configuration uses repeats 0-4 and folds 0-4, so the
+   exact budget is 2 cases / 50 outer cells / 500 fixed epochs. B0+B2 is
+   the within-study reference; the paired difference isolates B1 conditional
+   on B2. It reuses the same field-driven bridge runtime and has no Phase 0.
+
+   stage3_alter.yaml (preserved historical chain)
    Executable specification for the revised nine-case legacy-to-V2 bridge and
    an optional, advisory Phase 0 data/source/cache audit. It freezes repeat 0,
    folds 0-4, seed 42, ten epochs, the requested execution and numeric report
@@ -40,13 +53,11 @@ record the decision, then edit only the documented selector in the next file.
    model has no registered matched ensemble.
 
 5. 05_sqi_motion_finalists_v2.yaml
-   The checked-in cases compare quality off with diagnostics_only on example
-   finalists. Prune or replace those examples first. diagnostics_only must not
-   change predictions. The ordinary V2 `quality.mode=route` state machine and
-   registered reducers are executable configuration choices, but are not
-   silently inserted into this particular staged plan. Motion evidence and a
-   formal motion 5x5 remain separate scientific studies rather than execution
-   authorization for the core route.
+   Five matched Logistic feature-vector cases compare off/off, fixed-threshold
+   SQI, SQI plus the frozen Frailty29 all-29 motion bundle, and one-attempt
+   PCA/FastICA recovery. The classifier stays on CPU; frozen motion inference
+   uses CUDA. The all-29 detector is explicitly in-sample auxiliary evidence on
+   Frailty29 and is never described as outer-OOF motion evidence.
 
 6. 06_sequential_single_factor_ablation_v2.yaml
    This is a reusable one-axis template. Replace base_config with the selected
@@ -54,8 +65,8 @@ record the decision, then edit only the documented selector in the next file.
    base, switch the only axis to batch size, then repeat for epochs. Change the
    study_id each time so each output remains separately archived.
    Classical finalists use their own single factors instead: Logistic C; SVM C
-   then gamma; ExtraTrees max_features then min_samples_leaf; ROCKET kernels
-   then ridge alpha. The YAML header lists the registered sparse values.
+   then gamma; ExtraTrees max_features then min_samples_leaf. Feature-matrix
+   model-specific axes remain pending after retirement of ROCKET/Ridge.
    If more than one parallel route remains, copy the template and run one
    within-route comparison per locked base; do not mix routes in one axis.
 
@@ -82,11 +93,24 @@ Inspect the Stage 3 protocol without expansion or training:
 
     python3 -c "import sys; sys.path.insert(0, 'src'); from ppg_frailty.study import load_study_plan; p=load_study_plan('configs/studies/static_line_b_staged_v2/stage3_alter.yaml'); print(p.legacy_bridge.to_dict())"
 
-Stage 3 expands through an isolated Legacy Bridge runtime. With the checked-in
-`legacy_bridge.phase0.enabled: true`, a `run` also executes the advisory Phase 0
-source/manifest/channel/IMU/cache/split audit. Its status is recorded but never
-blocks, changes, or selects training. Set the flag to `false` to skip the audit;
-the nine training cases and their inputs remain unchanged. The formal command is:
+Dry-run or execute the current centered-star Stage 3:
+
+    python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/stage3_star.yaml --device cuda --repeats all --folds all --jobs 1 --no-measure-operational-costs --dry-run
+
+    python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/stage3_star.yaml --device cuda --repeats all --folds all --jobs 1 --no-measure-operational-costs
+
+Dry-run or execute the repeated CompactCNN Stage 3 v3 follow-up:
+
+    python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/stage3_v3.yaml --device cuda --repeats all --folds all --jobs 1 --no-measure-operational-costs --dry-run
+
+    python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/stage3_v3.yaml --device cuda --repeats all --folds all --jobs 1 --no-measure-operational-costs
+
+The preserved historical `stage3_alter.yaml` expands through the cumulative
+Legacy Bridge runtime. With its checked-in `legacy_bridge.phase0.enabled: true`,
+a `run` also executes the advisory Phase 0 source/manifest/channel/IMU/cache/split
+audit. Its status is recorded but never blocks, changes, or selects training.
+Set the flag to `false` to skip the audit; the nine historical cases and their
+inputs remain unchanged. Its formal command is:
 
     python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/stage3_alter.yaml
 
@@ -128,12 +152,15 @@ for that run; the standalone report command can add it later without training.
 - Stage 2: 3 supplemental cases, repeat 0 with all five folds, 15 outer cells.
   The reused CompactCNN, InceptionFull and Logistic r0 evidence is not counted
   again.
-- Stage 3: exactly 9 cases, 45 fits and 450 model-epochs. The optional advisory
-  Phase 0 audit adds no fits or model-epochs and its status does not affect this
-  budget.
+- Current Stage 3 centered star: exactly 16 cases, 400 fits and 4000
+  model-epochs; no Phase 0 execution.
+- Stage 3 v3 CompactCNN follow-up: exactly 2 cases, 50 fits and 500
+  model-epochs; no Phase 0 execution.
+- Preserved historical Stage 3 cumulative chain: exactly 9 cases, 45 fits and
+  450 model-epochs. Its optional advisory Phase 0 audit adds no fits or
+  model-epochs and does not affect that historical budget.
 - Stage 4: 2 scientific cases, 50 outer cells and 150 fitted networks.
-- Stage 5: at most 8 runnable diagnostic cases, 200 outer cells; normally
-  fewer after finalist pruning. Planned motion work is not counted.
+- Stage 5: 5 matched cases, repeat 0 and all five folds, 25 outer cells.
 - Stage 6: 3 cases and 75 outer cells for each active factor.
 - Stage last (ShapeFormer): 1, then 5, then 25 outer cells.
 

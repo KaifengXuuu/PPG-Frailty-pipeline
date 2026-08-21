@@ -97,16 +97,15 @@ figures, N/A markers for unavailable views, and outputs_index.json.
 
 The ordinary checked-in plans use a one-member model. During outer CV, the reference split-seed
 schedule is [42, 10042, 20042, 30042, 40042], with one split seed shared by its
-five folds. Ordinary single models, including the ordinary raw and matrix
-Inception entries, use that repeat seed for training.
+five folds. Ordinary single models use that repeat seed for training. The
+feature-matrix model is intentionally unselected after retirement of the
+ROCKET/Ridge route.
 
-The catalog materializes two separate matched comparator config patterns:
-`comparison_inception_full_member0_comparator_{line_a|line_b}_v2` and
-`comparison_inception_matrix_member0_comparator_{line_a|line_b}_v2`. Only
-those configs use fixed member-0 seed 50042 during outer CV. Pair the raw
-comparator only with the raw five-member ensemble and the matrix comparator
-only with the matrix five-member ensemble, using the same Line A or Line B
-suffix. Every named five-member comparison reuses
+The catalog materializes the matched raw comparator pattern
+`comparison_inception_full_member0_comparator_{line_a|line_b}_v2`. Only that
+config uses fixed member-0 seed 50042 during outer CV. Pair it only with the raw
+five-member ensemble using the same Line A or Line B suffix. Every named
+five-member comparison reuses
 [50042, 60042, 70042, 80042, 90042] in every repeat and fold. Final full-data
 refit inherits the selected config's single seed or explicit ensemble roster;
 seed 42 and the five-member roster are reference/named-comparison presets, not

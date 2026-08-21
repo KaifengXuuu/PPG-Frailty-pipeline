@@ -70,7 +70,7 @@ class FeatureGroupProfileTests(unittest.TestCase):
         self.assertEqual(registry.schema_version, "feature_vector_282_v3")
         self.assertEqual(
             ORDERED_MATRIX_SCHEMA_VERSION,
-            ordered_matrix_schema_version(32, registry),
+            ordered_matrix_schema_version(150, registry),
         )
         self.assertEqual(
             canonicalize_feature_groups(
@@ -133,7 +133,7 @@ class FeatureGroupProfileTests(unittest.TestCase):
         )
         self.assertEqual(
             resolved["features"]["matrix_schema"],
-            ordered_matrix_schema_version(32, registry),
+            ordered_matrix_schema_version(150, registry),
         )
         self.assertNotEqual(resolved["features"]["registry_id"], "forged")
 
@@ -148,7 +148,7 @@ class FeatureGroupProfileTests(unittest.TestCase):
             PIPELINE_ROOT / "configs" / "reference_static_fusion_v2.yaml"
         ).to_dict()
         fusion["features"]["matrix_k"] = 7
-        with self.assertRaisesRegex(ValueError, "only for feature_matrix"):
+        with self.assertRaisesRegex(ValueError, "fixed at 150"):
             validate_config_payload(fusion)
 
     def test_prv_controls_require_a_predictor_consumer(self) -> None:
@@ -241,15 +241,13 @@ class FeatureGroupProfileTests(unittest.TestCase):
         )
         matrix = build_ordered_matrix(
             transform_engineering(engineering, engineering_transform),
-            context=batch.contexts[0],
             provenance={"route": SignalRoute.DIRECT.value},
-            k=7,
         )
         self.assertIs(validate_feature_matrix(matrix), matrix)
-        self.assertEqual(matrix.values.shape, (2 * (115 + 25), 7))
+        self.assertEqual(matrix.values.shape, (115, 150))
         self.assertEqual(
             matrix.schema_version,
-            ordered_matrix_schema_version(7, registry),
+            ordered_matrix_schema_version(150, registry),
         )
 
         states = []

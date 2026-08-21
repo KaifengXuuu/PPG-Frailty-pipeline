@@ -1,0 +1,161 @@
+# Stage 3 v3 follow-up: CompactCNN1D under two reviewed combinations.
+# Two cases x five repeats x five frozen folds = 50 outer cells (500 epochs).
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: staged_static_03_v3_b1_b2_followup_v1
+  kind: catalog_sweep
+  purpose: "Compare B0+B2 against B0+B1+B2 for CompactCNN1D across all five frozen repeats."
+  flow_position: "Focused follow-up to the Stage 3 centred-star raw-model ablation."
+  decision_role: ablation
+  reference_case_id: compact_cnn__b0_b2_r5_fixed10
+  thesis_sections:
+    - "Stage 3 v3 repeated CompactCNN window/resampling follow-up"
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: >-
+    B0+B2 is the within-study reference; B0+B1+B2 differs only by target
+    sample rate (64 to 400 Hz).
+  controlled_factors:
+    - "Frozen repeats 0-4 and folds 0-4"
+    - "Training seed 42"
+    - "CompactCNN1D architecture"
+    - "Ten fixed epochs without early stopping or outer-label checkpoint selection"
+    - "All B0 controls except the explicitly declared B1/B2 overrides"
+  notes:
+    - "Two configurations times five repeats times five folds produce 50 outer cells."
+    - "The paired contrast estimates the B1 resampling effect conditional on B2."
+cases:
+  - case_id: compact_cnn__b0_b2_r5_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_b0_b2_v3
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN B0 with only B2: 5 s windows and 2.5 s hop at 64 Hz."
+    formal_profile: null
+  - case_id: compact_cnn__b0_b1_b2_r5_fixed10
+    catalog_entry: compact_cnn
+    screen_profile_id: legacy_bridge_b0_b1_b2_v3
+    output_group: raw
+    overrides: {}
+    rationale: "CompactCNN B0 with B1+B2: 400 Hz and 5 s/2.5 s windows."
+    formal_profile: null
+legacy_bridge:
+  schema_version: ppg_frailty.legacy_v2_bridge_protocol.v1
+  design: field_driven_followup_v1
+  protocol_id: stage3_v3_compact_b1_b2_repeated_fixed10
+  source_specification: "inline:legacy_bridge.effective_controls"
+  source_specification_sha256: 36a9956f5743475216810d4a5c4d5987b50d9153b53dc41be294aa08df4e4f44
+  runtime_status: implemented_field_driven_followup_v1
+  budget:
+    case_count: 2
+    repeat_indices: [0, 1, 2, 3, 4]
+    fold_indices: [0, 1, 2, 3, 4]
+    training_seed: 42
+    fixed_epochs: 10
+    early_stopping: false
+    outer_label_checkpoint_selection: false
+    fit_count: 50
+    model_epoch_count: 500
+    phase0_fit_count: 0
+    phase0_model_epoch_count: 0
+  execution_order:
+    - compact_cnn__B0_B2_r5_fixed10
+    - compact_cnn__B0_B1_B2_r5_fixed10
+  baseline_controls:
+    ppg_preprocessing: legacy_detrend_bandpass_0p2_8
+    imu_preprocessing: legacy_filtered_axes
+    target_fs_hz: 64
+    window_seconds: 15.0
+    hop_seconds: 3.0
+    historical_retained_fraction: 0.9
+    max_windows_per_file: null
+    allow_short_record_padding: true
+    normalization: per_window_all_eight
+    sampler: exhaustive_shuffle_without_replacement
+    class_weighting: outer_train_window_inverse_frequency
+    optimizer: adamw
+    batch_size: 32
+    fixed_epochs: 10
+    learning_rate: 0.001
+    weight_decay: 0.0001
+    training_metric_aggregation_rule: line_a_equal_files
+    primary_report_aggregation_view: window_balanced_to_participant
+  factor_overrides:
+    B0_B2:
+      factor_id: B2_window_plan
+      overrides: {window_seconds: 5.0, hop_seconds: 2.5}
+      expected_changed_paths: [controls.window_seconds, controls.hop_seconds]
+      interpretation: >-
+        B0 plus B2 only: 15/3 to 5/2.5 seconds, retaining B0's 0.9 fraction
+        and no cap.
+    B0_B1_B2:
+      factor_id: B1_sampling_rate_plus_B2_window_plan
+      overrides: {target_fs_hz: 400, window_seconds: 5.0, hop_seconds: 2.5}
+      expected_changed_paths:
+        - controls.target_fs_hz
+        - controls.window_seconds
+        - controls.hop_seconds
+      interpretation: "B0 plus B1+B2: 400 Hz and 5/2.5 seconds; all other B0 controls unchanged."
+  profiles:
+    - case_id: compact_cnn__B0_B2_r5_fixed10
+      catalog_case_id: compact_cnn__b0_b2_r5_fixed10
+      model_id: CompactCNN1D
+      profile_id: B0_B2
+    - case_id: compact_cnn__B0_B1_B2_r5_fixed10
+      catalog_case_id: compact_cnn__b0_b1_b2_r5_fixed10
+      model_id: CompactCNN1D
+      profile_id: B0_B1_B2
+  aggregation_views:
+    - window_balanced_to_participant
+    - line_a_equal_files
+    - line_b_equal_role_families
+  primary_table_columns:
+    - model
+    - profile
+    - participant_oof_balanced_accuracy
+    - participant_oof_macro_f1
+    - worst_class_f1
+    - delta_from_reference
+  sampling_diagnostics:
+    - dataset_row_count
+    - draw_count
+    - unique_row_draw_count
+    - duplicate_draw_fraction
+    - never_drawn_row_fraction
+    - draw_counts_by_participant
+    - draw_counts_by_class
+    - draw_counts_by_B_R_family
+    - draw_counts_by_file
+    - class_weight_vector
+    - sampler_identity
+  restrictions:
+    - exactly_two_declared_CompactCNN_profiles
+    - no_models_or_hyperparameter_search_beyond_declared_profiles
+    - B0_B1_B2_differs_from_B0_B2_only_by_target_fs_hz
+    - sampling_diagnostics_saved_for_every_fold_and_epoch
+  required_runtime_capabilities:
+    - explicit_profile_controls_runtime_dispatch_without_profile_id_algorithm_switches
+    - legacy_64_and_400_Hz_resampling_through_one_shared_builder
+    - five_repeat_frozen_split_registry_execution
+execution:
+  repeats: [0, 1, 2, 3, 4]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 1
+  device: cuda
+  parallel_level: cases
+  continue_on_error: false
+  allow_parallel_deep: false
+  measure_operational_costs: false
+output:
+  root: artifacts/studies/static_line_b_staged_v2
+report:
+  top_k: 2
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10

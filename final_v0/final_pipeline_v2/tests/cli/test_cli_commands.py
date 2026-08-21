@@ -158,7 +158,7 @@ class CliCommandTests(unittest.TestCase):
             "--models",
             "CompactCNN1D",
             "LogisticRegressionL2",
-            "ROCKET",
+            "InceptionTimeMatrix",
             "FileBagFusionCompact",
             "--seed",
             "42",
@@ -173,8 +173,10 @@ class CliCommandTests(unittest.TestCase):
             {"raw", "feature_vector", "feature_matrix", "fusion"},
         )
         indexed = {row["canonical_model_id"]: row for row in payload["results"]}
-        self.assertEqual(indexed["ROCKET"]["machine_model_id"], "rocket_numpy")
-        self.assertEqual(indexed["ROCKET"]["n_kernels"], 64)
+        self.assertEqual(
+            indexed["InceptionTimeMatrix"]["machine_model_id"],
+            "inception_matrix",
+        )
         self.assertEqual(
             indexed["CompactCNN1D"]["variant"],
             "reference_not_wang_fcn",
