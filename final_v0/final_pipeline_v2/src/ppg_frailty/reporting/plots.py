@@ -26,12 +26,68 @@ STAGE3_STAR_FIGURE_NAMES = (
 )
 
 
+FIGURE_TABLE_SOURCES: Mapping[str, tuple[str, ...]] = {
+    "leaderboard": ("predictive_leaderboard",),
+    "stability": ("repeat_metrics",),
+    "macro_f1_stability": ("repeat_metrics",),
+    "roc_pr_auc_stability": ("repeat_metrics",),
+    "per_class_metric_stability": (
+        "repeat_per_class_metrics",
+        "per_class_metric_distribution_summary",
+    ),
+    "worst_class_f1_stability": ("worst_class_f1_stability",),
+    "fold_heatmap": ("fold_metrics",),
+    "paired_deltas": ("paired_deltas",),
+    "ablation_sensitivity_metrics": (
+        "paired_deltas",
+        "stage3_star_fold_contrasts",
+    ),
+    "coverage": ("coverage",),
+    "route_role_coverage": ("route_role_coverage",),
+    "quality_distributions": ("quality_distributions",),
+    "calibration": ("calibration_bins",),
+    "confusion_matrices": ("confusion_matrices",),
+    "confusion_matrices_row_normalized": ("confusion_row_normalized",),
+    "per_class": ("per_class_metrics",),
+    "aggregation_view_metrics": ("aggregation_view_comparison",),
+    "aggregation_hierarchy_coverage": ("aggregation_hierarchy_coverage",),
+    "aggregation_view_confusion_matrices": (
+        "aggregation_view_confusion_matrices",
+    ),
+    "aggregation_view_confusion_matrices_row_normalized": (
+        "aggregation_view_confusion_matrices",
+    ),
+    "aggregation_view_per_class": ("aggregation_view_per_class_metrics",),
+    "learning_curves": ("training_history_raw",),
+    "top_learning_curves": ("training_history_raw", "predictive_leaderboard"),
+    "balanced_accuracy_learning_curves": ("training_history_raw",),
+    "top_balanced_accuracy_learning_curves": (
+        "training_history_raw",
+        "predictive_leaderboard",
+    ),
+    "parameter_effects": ("varied_parameters", "repeat_metrics"),
+    "parameter_interaction": ("varied_parameters", "repeat_metrics"),
+    "legacy_bridge_numeric_ablation_report": (
+        "legacy_bridge_numeric_ablation_report",
+    ),
+    "legacy_bridge_execution_order_report": (
+        "legacy_bridge_execution_order_report",
+    ),
+    "stage3_star_model_deltas": ("stage3_star_contrasts",),
+    "stage3_star_fold_delta_heatmap": ("stage3_star_fold_contrasts",),
+}
+
+
 STATIC_FIGURE_NAMES = (
     "leaderboard",
     "stability",
+    "macro_f1_stability",
+    "roc_pr_auc_stability",
+    "per_class_metric_stability",
     "worst_class_f1_stability",
     "fold_heatmap",
     "paired_deltas",
+    "ablation_sensitivity_metrics",
     "coverage",
     "route_role_coverage",
     "quality_distributions",
@@ -299,6 +355,99 @@ def _stability(analysis: StudyAnalysis, pyplot: Any) -> Any:
     return figure
 
 
+def _metric_boxplot_panels(
+    rows: Sequence[Mapping[str, Any]],
+    pyplot: Any,
+    *,
+    metrics: Sequence[tuple[str, str]],
+    group_fields: Sequence[str],
+    title: str,
+) -> Any:
+    """Draw configurable metric boxplots from arbitrary report rows."""
+
+    grouped: dict[str, list[Mapping[str, Any]]] = {}
+    for row in rows:
+        label = " · ".join(str(row.get(field, "N/A")) for field in group_fields)
+        grouped.setdefault(label, []).append(row)
+    available = [
+        (field, label)
+        for field, label in metrics
+        if any(_number(row.get(field)) is not None for row in rows)
+    ]
+    if not grouped or not available:
+        raise ValueError("configured repeat-level metrics unavailable")
+    labels = sorted(grouped)
+    figure, axes = pyplot.subplots(
+        len(available),
+        1,
+        figsize=(max(8.0, len(labels) * 1.3), max(4.2, len(available) * 3.6)),
+        squeeze=False,
+    )
+    positions = np.arange(len(labels), dtype=np.float64)
+    for axis, (metric, metric_label) in zip(axes.flat, available):
+        values = [
+            [
+                value
+                for row in grouped[label]
+                if (value := _number(row.get(metric))) is not None
+            ]
+            for label in labels
+        ]
+        values = [current if current else [np.nan] for current in values]
+        axis.boxplot(values, positions=positions, showmeans=True)
+        _set_centered_category_ticks(axis, positions, labels, rotation=30.0)
+        if "delta" in metric:
+            finite = [abs(value) for group in values for value in group if np.isfinite(value)]
+            limit = max(finite, default=0.05) * 1.15
+            axis.set_ylim(-limit, limit)
+            axis.axhline(0.0, color="black", linewidth=1)
+        else:
+            axis.set_ylim(0.0, 1.0)
+        axis.set_ylabel(metric_label)
+        axis.grid(axis="y", alpha=0.25)
+    figure.suptitle(title)
+    figure.tight_layout()
+    return figure
+
+
+def _macro_f1_stability(analysis: StudyAnalysis, pyplot: Any) -> Any:
+    return _metric_boxplot_panels(
+        analysis.repeat_metrics,
+        pyplot,
+        metrics=(("macro_f1", "Macro-F1"),),
+        group_fields=("case_id",),
+        title="Repeat-level Macro-F1 stability",
+    )
+
+
+def _roc_pr_auc_stability(analysis: StudyAnalysis, pyplot: Any) -> Any:
+    return _metric_boxplot_panels(
+        analysis.repeat_metrics,
+        pyplot,
+        metrics=(
+            ("macro_roc_auc_ovr", "Macro ROC AUC (one-vs-rest)"),
+            ("macro_pr_auc_ovr", "Macro PR AUC (one-vs-rest)"),
+        ),
+        group_fields=("case_id",),
+        title="Repeat-level probability discrimination",
+    )
+
+
+def _per_class_metric_stability(analysis: StudyAnalysis, pyplot: Any) -> Any:
+    return _metric_boxplot_panels(
+        analysis.repeat_per_class_metrics,
+        pyplot,
+        metrics=(
+            ("balanced_accuracy_ovr", "Per-class BA (one-vs-rest)"),
+            ("f1", "Per-class F1"),
+            ("roc_auc_ovr", "Per-class ROC AUC"),
+            ("pr_auc_ovr", "Per-class PR AUC"),
+        ),
+        group_fields=("case_id", "class_name"),
+        title="Per-class repeat stability",
+    )
+
+
 def _worst_class_f1_stability(analysis: StudyAnalysis, pyplot: Any) -> Any:
     rows = list(analysis.worst_class_f1_stability)
     if not rows:
@@ -407,6 +556,34 @@ def _paired_deltas(analysis: StudyAnalysis, pyplot: Any) -> Any:
     axis.tick_params(axis="x", rotation=30)
     axis.grid(axis="y", alpha=0.25)
     return figure
+
+
+def _ablation_sensitivity_metrics(analysis: StudyAnalysis, pyplot: Any) -> Any:
+    if analysis.stage3_star_fold_contrasts:
+        rows = analysis.stage3_star_fold_contrasts
+        return _metric_boxplot_panels(
+            rows,
+            pyplot,
+            metrics=(
+                ("delta_native_balanced_accuracy", "Δ BA"),
+                ("delta_native_macro_f1", "Δ Macro-F1"),
+                ("delta_native_worst_class_f1", "Δ worst-class F1"),
+            ),
+            group_fields=("model", "factor_id"),
+            title="Centered-star matched-fold ablation sensitivity",
+        )
+    return _metric_boxplot_panels(
+        analysis.paired_deltas,
+        pyplot,
+        metrics=(
+            ("balanced_accuracy_delta", "Δ BA"),
+            ("macro_f1_delta", "Δ Macro-F1"),
+            ("macro_roc_auc_ovr_delta", "Δ macro ROC AUC"),
+            ("macro_pr_auc_ovr_delta", "Δ macro PR AUC"),
+        ),
+        group_fields=("case_id",),
+        title="Reference-paired ablation sensitivity",
+    )
 
 
 def _coverage(analysis: StudyAnalysis, pyplot: Any) -> Any:
@@ -1717,11 +1894,14 @@ def generate_static_figures(
     collected: CollectedStudy,
     analysis: StudyAnalysis,
     directory: str | Path,
+    *,
+    modules: Sequence[str] | None = None,
 ) -> tuple[Mapping[str, Any], ...]:
-    """Generate deterministic PNG figures, or one N/A marker per missing view."""
+    """Generate selected modular PNG figures, or one N/A marker per missing view."""
 
     target = Path(directory)
     target.mkdir(parents=True, exist_ok=True)
+    requested_modules = None if not modules or "all" in modules else set(modules)
     try:
         import matplotlib
 
@@ -1741,6 +1921,7 @@ def generate_static_figures(
             for name in STATIC_FIGURE_NAMES
             if name not in (*LEGACY_BRIDGE_FIGURE_NAMES, *STAGE3_STAR_FIGURE_NAMES)
             or name in bridge_names
+            if requested_modules is None or name in requested_modules
         )
         return tuple(
             _na(target, name, reason)
@@ -1750,11 +1931,27 @@ def generate_static_figures(
         ("leaderboard", lambda plot: _leaderboard(analysis, plot)),
         ("stability", lambda plot: _stability(analysis, plot)),
         (
+            "macro_f1_stability",
+            lambda plot: _macro_f1_stability(analysis, plot),
+        ),
+        (
+            "roc_pr_auc_stability",
+            lambda plot: _roc_pr_auc_stability(analysis, plot),
+        ),
+        (
+            "per_class_metric_stability",
+            lambda plot: _per_class_metric_stability(analysis, plot),
+        ),
+        (
             "worst_class_f1_stability",
             lambda plot: _worst_class_f1_stability(analysis, plot),
         ),
         ("fold_heatmap", lambda plot: _fold_heatmap(analysis, plot)),
         ("paired_deltas", lambda plot: _paired_deltas(analysis, plot)),
+        (
+            "ablation_sensitivity_metrics",
+            lambda plot: _ablation_sensitivity_metrics(analysis, plot),
+        ),
         ("coverage", lambda plot: _coverage(analysis, plot)),
         (
             "route_role_coverage",
@@ -1848,6 +2045,8 @@ def generate_static_figures(
                 ),
             ),
         )
+    if requested_modules is not None:
+        plots = tuple(item for item in plots if item[0] in requested_modules)
     na_png_names = {
         "balanced_accuracy_learning_curves",
         "top_balanced_accuracy_learning_curves",
@@ -1867,6 +2066,7 @@ def generate_static_figures(
 
 
 __all__ = [
+    "FIGURE_TABLE_SOURCES",
     "LEGACY_BRIDGE_FIGURE_NAMES",
     "STAGE3_STAR_FIGURE_NAMES",
     "STATIC_FIGURE_NAMES",

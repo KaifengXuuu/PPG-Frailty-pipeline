@@ -387,6 +387,9 @@ def parse_study_plan(
     )
     output_raw = dict(raw.get("output") or {})
     report_raw = dict(raw.get("report") or {})
+    raw_figure_modules = report_raw.get("figure_modules", ("all",))
+    if isinstance(raw_figure_modules, str):
+        raw_figure_modules = (raw_figure_modules,)
     return StudyPlan(
         schema_version=str(raw.get("schema_version", "")),
         study=study,
@@ -425,6 +428,14 @@ def parse_study_plan(
                 report_raw.get("write_static_figures", True)
             ),
             calibration_bins=int(report_raw.get("calibration_bins", 10)),
+            figure_modules=tuple(
+                str(value)
+                for value in raw_figure_modules
+            ),
+            compact_mean_sd=bool(report_raw.get("compact_mean_sd", True)),
+            write_excel_workbook=bool(
+                report_raw.get("write_excel_workbook", True)
+            ),
         ),
         plan_path=None if plan_path is None else Path(plan_path).resolve(),
     )

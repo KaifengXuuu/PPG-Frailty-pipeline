@@ -283,7 +283,9 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
                 json.dumps({"summary_rows": rows}), encoding="utf-8"
             )
             result = generate_motion_peak_report(root)
-            self.assertEqual(result["figure_count"], 3)
+            self.assertEqual(result["figure_count"], 5)
+            self.assertTrue((root / "tables" / "report_tables.xlsx").is_file())
+            self.assertTrue((root / "tables" / "table_figure_pairs.csv").is_file())
             self.assertTrue((root / "STUDY_SUMMARY.html").is_file())
             self.assertIn(
                 "<table>",
@@ -457,7 +459,9 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
                 json.dumps({"summary_rows": summary}), encoding="utf-8"
             )
             result = generate_motion_peak_report(root)
-            self.assertEqual(result["figure_count"], 8)
+            self.assertEqual(result["figure_count"], 11)
+            self.assertTrue((root / "tables" / "report_tables.xlsx").is_file())
+            self.assertTrue((root / "tables" / "table_figure_pairs.csv").is_file())
             generate_motion_peak_report(root)
             self.assertTrue((root / "figures/motion_training_learning_curves.png").is_file())
             self.assertTrue((root / "result_backup/backup_manifest.json").is_file())
@@ -476,11 +480,17 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
                 {
                     "dataset",
                     "participant_macro_balanced_accuracy",
+                    "participant_macro_balanced_accuracy_sd",
                     "participant_macro_f1",
+                    "participant_macro_f1_sd",
                     "participant_macro_sensitivity",
+                    "participant_macro_sensitivity_sd",
                     "participant_macro_specificity",
+                    "participant_macro_specificity_sd",
                     "participant_macro_roc_auc",
+                    "participant_macro_roc_auc_sd",
                     "participant_macro_pr_auc",
+                    "participant_macro_pr_auc_sd",
                     "worst_fold_balanced_accuracy",
                 },
             )

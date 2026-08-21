@@ -91,7 +91,22 @@ Generate or refresh the report without training:
 
 Each new run creates a dated folder containing resolved configs, case attempts,
 structured progress JSONL, CSV/JSON tables, Markdown/HTML summaries, generated
-figures, N/A markers for unavailable views, and outputs_index.json.
+figures, N/A markers for unavailable views, and outputs_index.json. Every
+registered table has one CSV and one worksheet in `tables/report_tables.xlsx`;
+`tables/table_figure_pairs.csv` records the modular table-to-figure sources.
+Human-facing summary tables collapse available repeat/participant means and SDs
+to `mean ± SD`; the matching JSON keeps lossless mean, SD, CI, minimum, and
+maximum fields.
+
+The ordinary study `report` mapping exposes presentation-only controls:
+
+    report:
+      write_static_figures: true
+      figure_modules: [all]  # or selected registered plot module names
+      compact_mean_sd: true
+      write_excel_workbook: true
+
+These options never alter fitting, OOF predictions, seeds, or data splits.
 
 ## Seed and ensemble boundary
 

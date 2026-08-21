@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import hashlib
 import html
 import json
@@ -14,11 +13,22 @@ from typing import Any, Mapping, Sequence
 
 from .analyze import StudyAnalysis, analyze_study
 from .collect import CollectedStudy, collect_study
-from .plots import clear_static_figure_artifacts, generate_static_figures
+from .plots import (
+    FIGURE_TABLE_SOURCES,
+    clear_static_figure_artifacts,
+    generate_static_figures,
+)
 from .reproducibility import (
     NOT_VERIFIABLE,
     ReproducibilityAudit,
     audit_study_reproducibility,
+)
+from .tabular import (
+    ReportTable,
+    compact_rows,
+    format_mean_sd,
+    write_csv,
+    write_excel_workbook,
 )
 
 
@@ -54,25 +64,7 @@ def _write_json(path: Path, value: Any) -> None:
 
 
 def _write_csv(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fields = list(dict.fromkeys(key for row in rows for key in row))
-    if not fields:
-        path.write_text("\n", encoding="utf-8")
-        return
-    with path.open("w", encoding="utf-8", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=fields)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(
-                {
-                    key: (
-                        json.dumps(value, ensure_ascii=False, sort_keys=True)
-                        if isinstance(value, (dict, list, tuple))
-                        else value
-                    )
-                    for key, value in row.items()
-                }
-            )
+    write_csv(path, rows)
 
 
 def _fmt(value: Any) -> str:
@@ -87,7 +79,9 @@ def _fmt(value: Any) -> str:
 
 def _markdown_table(
     rows: Sequence[Mapping[str, Any]],
-    columns: Sequence[tuple[str, str]],
+    columns: Sequence[
+        tuple[str | tuple[str, str] | tuple[str, str, bool], str]
+    ],
 ) -> list[str]:
     if not rows:
         return ["N/A — no rows were available.", ""]
@@ -98,7 +92,18 @@ def _markdown_table(
     for row in rows:
         lines.append(
             "| "
-            + " | ".join(_fmt(row.get(field)) for field, _ in columns)
+            + " | ".join(
+                (
+                    format_mean_sd(
+                        row.get(field[0]),
+                        row.get(field[1]),
+                        percent=True if len(field) == 2 else field[2],
+                    )
+                    if isinstance(field, tuple)
+                    else _fmt(row.get(field))
+                )
+                for field, _ in columns
+            )
             + " |"
         )
     lines.append("")
@@ -532,8 +537,11 @@ def _report_markdown(
                 ("predictive_rank", "Rank"),
                 ("case_id", "Case"),
                 (
-                    "participant_mean_abstention_aware_balanced_accuracy",
-                    "Abstention-aware BA",
+                    (
+                        "participant_mean_abstention_aware_balanced_accuracy",
+                        "repeat_abstention_aware_balanced_accuracy_sample_sd",
+                    ),
+                    "Abstention-aware BA, mean ± SD (%)",
                 ),
                 (
                     "participant_mean_abstention_aware_macro_precision",
@@ -544,29 +552,42 @@ def _report_markdown(
                     "Abstention-aware recall",
                 ),
                 (
-                    "participant_mean_abstention_aware_macro_f1",
-                    "Abstention-aware Macro-F1",
+                    (
+                        "participant_mean_abstention_aware_macro_f1",
+                        "repeat_abstention_aware_macro_f1_sample_sd",
+                    ),
+                    "Abstention-aware Macro-F1, mean ± SD (%)",
                 ),
                 ("participant_mean_coverage_rate", "Participant coverage"),
                 ("abstention_count", "Abstentions"),
                 ("abstention_counts_by_class", "Abstentions by class"),
-                ("participant_mean_balanced_accuracy", "Conditional BA"),
-                ("participant_mean_macro_f1", "Conditional Macro-F1"),
                 (
-                    "repeat_abstention_aware_balanced_accuracy_ci95_low",
-                    "Aware BA CI95 low",
+                    (
+                        "participant_mean_balanced_accuracy",
+                        "repeat_balanced_accuracy_sample_sd",
+                    ),
+                    "Conditional BA, mean ± SD (%)",
                 ),
                 (
-                    "repeat_abstention_aware_balanced_accuracy_ci95_high",
-                    "Aware BA CI95 high",
+                    (
+                        "participant_mean_macro_f1",
+                        "repeat_macro_f1_sample_sd",
+                    ),
+                    "Conditional Macro-F1, mean ± SD (%)",
                 ),
                 (
-                    "repeat_abstention_aware_macro_f1_ci95_low",
-                    "Aware Macro-F1 CI95 low",
+                    (
+                        "participant_mean_macro_roc_auc_ovr",
+                        "repeat_macro_roc_auc_ovr_sample_sd",
+                    ),
+                    "Macro ROC AUC, mean ± SD (%)",
                 ),
                 (
-                    "repeat_abstention_aware_macro_f1_ci95_high",
-                    "Aware Macro-F1 CI95 high",
+                    (
+                        "participant_mean_macro_pr_auc_ovr",
+                        "repeat_macro_pr_auc_ovr_sample_sd",
+                    ),
+                    "Macro PR AUC, mean ± SD (%)",
                 ),
                 ("balanced_accuracy_lcb95", "Conditional BA LCB95"),
                 ("macro_f1_lcb95", "Conditional Macro-F1 LCB95"),
@@ -587,6 +608,48 @@ def _report_markdown(
             ),
         )
     )
+    lines.extend(
+        [
+            "## Repeat-level predictive distributions",
+            "",
+            "Mean and sample SD are shown in one percentage column; lossless CI, "
+            "range, mean, and SD values remain in the matching JSON table.",
+            "",
+        ]
+    )
+    lines.extend(
+        _markdown_table(
+            compact_rows(getattr(analysis, "metric_distribution_summary", ())),
+            (
+                ("case_id", "Case"),
+                ("metric", "Metric"),
+                ("n", "Repeats"),
+                ("mean_sd", "Mean ± SD (%)"),
+                ("metric_source", "Source"),
+            ),
+        )
+    )
+    lines.extend(
+        [
+            "<details><summary>Per-class repeat distributions</summary>",
+            "",
+        ]
+    )
+    lines.extend(
+        _markdown_table(
+            compact_rows(
+                getattr(analysis, "per_class_metric_distribution_summary", ())
+            ),
+            (
+                ("case_id", "Case"),
+                ("class_name", "Class"),
+                ("metric", "Metric"),
+                ("n", "Repeats"),
+                ("mean_sd", "Mean ± SD (%)"),
+            ),
+        )
+    )
+    lines.extend(["</details>", ""])
     if _is_stage3_centered_star(collected.plan):
         for name, title, notice, columns, _description in _STAGE3_STAR_TABLES:
             lines.extend([f"## {title}", "", notice, ""])
@@ -740,16 +803,21 @@ def _report_markdown(
                 ("abstention_aware_worst_class_f1", "Aware worst F1"),
                 ("abstention_aware_worst_class_recall", "Aware worst recall"),
                 (
-                    "participant_mean_abstention_aware_balanced_accuracy",
-                    "Aware mean BA",
-                ),
-                (
-                    "repeat_abstention_aware_balanced_accuracy_population_sd",
-                    "Aware repeat BA SD",
+                    (
+                        "participant_mean_abstention_aware_balanced_accuracy",
+                        "repeat_abstention_aware_balanced_accuracy_population_sd",
+                    ),
+                    "Aware BA, mean ± SD (%)",
                 ),
                 ("worst_class_f1", "Worst F1"),
                 ("worst_class_recall", "Worst recall"),
-                ("participant_mean_balanced_accuracy", "Conditional mean BA"),
+                (
+                    (
+                        "participant_mean_balanced_accuracy",
+                        "repeat_balanced_accuracy_population_sd",
+                    ),
+                    "Conditional BA, mean ± SD (%)",
+                ),
             ),
         )
     )
@@ -895,10 +963,7 @@ def _report_markdown(
                 ("component", "Component"),
                 ("valid_count", "Valid n"),
                 ("unavailable_rate", "Unavailable"),
-                ("mean", "Mean"),
-                ("population_sd", "SD"),
-                ("minimum", "Min"),
-                ("maximum", "Max"),
+                (("mean", "population_sd", False), "Mean ± SD"),
             ),
         )
     )
@@ -956,6 +1021,10 @@ def _report_markdown(
             "- [tables/aggregation_view_confusion_matrices.csv](tables/aggregation_view_confusion_matrices.csv)",
             "- [tables/aggregation_hierarchy_coverage.csv](tables/aggregation_hierarchy_coverage.csv)",
             "- [tables/metric_distribution_summary.csv](tables/metric_distribution_summary.csv)",
+            "- [tables/repeat_per_class_metrics.csv](tables/repeat_per_class_metrics.csv)",
+            "- [tables/per_class_metric_distribution_summary.csv](tables/per_class_metric_distribution_summary.csv)",
+            "- [tables/table_figure_pairs.csv](tables/table_figure_pairs.csv)",
+            "- [tables/report_tables.xlsx](tables/report_tables.xlsx): one table per worksheet",
             "- [tables/worst_class_f1_stability.csv](tables/worst_class_f1_stability.csv)",
             "- [tables/incomplete_cases.csv](tables/incomplete_cases.csv)",
             "- [tables/confusion_counts.csv](tables/confusion_counts.csv)",
@@ -983,7 +1052,10 @@ def _report_markdown(
 
 
 def _html_table(
-    rows: Sequence[Mapping[str, Any]], columns: Sequence[tuple[str, str]]
+    rows: Sequence[Mapping[str, Any]],
+    columns: Sequence[
+        tuple[str | tuple[str, str] | tuple[str, str, bool], str]
+    ],
 ) -> str:
     if not rows:
         return "<p><em>N/A — no rows were available.</em></p>"
@@ -993,7 +1065,7 @@ def _html_table(
         body.append(
             "<tr>"
             + "".join(
-                f"<td>{html.escape(_fmt(row.get(field)))}</td>"
+                f"<td>{html.escape(format_mean_sd(row.get(field[0]), row.get(field[1]), percent=True if len(field) == 2 else field[2]) if isinstance(field, tuple) else _fmt(row.get(field)))}</td>"
                 for field, _ in columns
             )
             + "</tr>"
@@ -1090,8 +1162,11 @@ Conditional values use retained participants only and do not lead the ranking.</
 {_html_table(analysis.predictive_leaderboard, (
     ("predictive_rank", "Rank"), ("case_id", "Case"),
     (
-        "participant_mean_abstention_aware_balanced_accuracy",
-        "Abstention-aware BA",
+        (
+            "participant_mean_abstention_aware_balanced_accuracy",
+            "repeat_abstention_aware_balanced_accuracy_sample_sd",
+        ),
+        "Abstention-aware BA, mean ± SD (%)",
     ),
     (
         "participant_mean_abstention_aware_macro_precision",
@@ -1102,18 +1177,40 @@ Conditional values use retained participants only and do not lead the ranking.</
         "Abstention-aware recall",
     ),
     (
-        "participant_mean_abstention_aware_macro_f1",
-        "Abstention-aware Macro-F1",
+        (
+            "participant_mean_abstention_aware_macro_f1",
+            "repeat_abstention_aware_macro_f1_sample_sd",
+        ),
+        "Abstention-aware Macro-F1, mean ± SD (%)",
     ),
     ("participant_mean_coverage_rate", "Participant coverage"),
     ("abstention_count", "Abstentions"),
     ("abstention_counts_by_class", "Abstentions by class"),
-    ("participant_mean_balanced_accuracy", "Conditional BA"),
-    ("participant_mean_macro_f1", "Conditional Macro-F1"),
-    ("repeat_abstention_aware_balanced_accuracy_ci95_low", "Aware BA CI95 low"),
-    ("repeat_abstention_aware_balanced_accuracy_ci95_high", "Aware BA CI95 high"),
-    ("repeat_abstention_aware_macro_f1_ci95_low", "Aware Macro-F1 CI95 low"),
-    ("repeat_abstention_aware_macro_f1_ci95_high", "Aware Macro-F1 CI95 high"),
+    (
+        (
+            "participant_mean_balanced_accuracy",
+            "repeat_balanced_accuracy_sample_sd",
+        ),
+        "Conditional BA, mean ± SD (%)",
+    ),
+    (
+        ("participant_mean_macro_f1", "repeat_macro_f1_sample_sd"),
+        "Conditional Macro-F1, mean ± SD (%)",
+    ),
+    (
+        (
+            "participant_mean_macro_roc_auc_ovr",
+            "repeat_macro_roc_auc_ovr_sample_sd",
+        ),
+        "Macro ROC AUC, mean ± SD (%)",
+    ),
+    (
+        (
+            "participant_mean_macro_pr_auc_ovr",
+            "repeat_macro_pr_auc_ovr_sample_sd",
+        ),
+        "Macro PR AUC, mean ± SD (%)",
+    ),
     ("balanced_accuracy_lcb95", "Conditional BA LCB95"),
     ("macro_f1_lcb95", "Conditional Macro-F1 LCB95"),
     ("worst_fold_abstention_aware_balanced_accuracy", "Aware worst-fold BA"),
@@ -1123,6 +1220,18 @@ Conditional values use retained participants only and do not lead the ranking.</
     ("auxiliary_motion_evidence_valid_outer_oof", "Motion auxiliary outer-OOF"),
     ("ranking_interpretation", "Interpretation"),
 ))}
+<h2>Repeat-level predictive distributions</h2>
+<p>Mean and sample SD share one percentage column. Lossless CI/range values
+remain in the matching JSON table.</p>
+{_html_table(compact_rows(getattr(analysis, "metric_distribution_summary", ())), (
+    ("case_id", "Case"), ("metric", "Metric"), ("n", "Repeats"),
+    ("mean_sd", "Mean ± SD (%)"), ("metric_source", "Source"),
+))}
+<details><summary>Per-class repeat distributions</summary>
+{_html_table(compact_rows(getattr(analysis, "per_class_metric_distribution_summary", ())), (
+    ("case_id", "Case"), ("class_name", "Class"), ("metric", "Metric"),
+    ("n", "Repeats"), ("mean_sd", "Mean ± SD (%)"),
+))}</details>
 {bridge_html}
 <h2>Aggregation sensitivity from the same file-level OOF</h2>
 <p class="notice">The declared-source row reproduces the aggregation used by
@@ -1250,8 +1359,8 @@ classification is still evaluated on each outer held-out fold.</p>
 {_html_table(analysis.quality_distributions, (
     ("case_id", "Case"), ("role", "Role"), ("route_state", "Route state"),
     ("component", "Component"), ("valid_count", "Valid n"),
-    ("unavailable_rate", "Unavailable"), ("mean", "Mean"),
-    ("population_sd", "SD"), ("minimum", "Min"), ("maximum", "Max"),
+    ("unavailable_rate", "Unavailable"),
+    (("mean", "population_sd", False), "Mean ± SD"),
 ))}
 <h2>Figures</h2>{figure_html or "<p><em>N/A — no generated figures.</em></p>"}
 <h3>Figure status, including explicit N/A reasons</h3>
@@ -1545,6 +1654,16 @@ def generate_study_report(
             "Pooled participant OOF or labeled cell-fallback class metrics",
         ),
         (
+            "repeat_per_class_metrics",
+            analysis.repeat_per_class_metrics,
+            "Per-repeat participant OOF one-vs-rest BA/F1/ROC-AUC/PR-AUC by class",
+        ),
+        (
+            "per_class_metric_distribution_summary",
+            analysis.per_class_metric_distribution_summary,
+            "Repeat mean/SD by case, class, and one-vs-rest predictive metric",
+        ),
+        (
             "confusion_matrices",
             analysis.confusion_matrices,
             "Pooled participant OOF or labeled cell-fallback confusion matrices",
@@ -1636,10 +1755,22 @@ def generate_study_report(
         )
     index: list[dict[str, Any]] = []
     table_file_count = 0
+    report_options = bundle.plan.get("report", {})
+    report_options = report_options if isinstance(report_options, Mapping) else {}
+    use_compact_tables = bool(report_options.get("compact_mean_sd", True))
+    report_tables = [
+        ReportTable(
+            name=name,
+            rows=rows,
+            description=description,
+            compact=use_compact_tables,
+        )
+        for name, rows, description in table_payloads
+    ]
     for name, rows, description in table_payloads:
         csv_path = tables / f"{name}.csv"
         json_path = tables / f"{name}.json"
-        _write_csv(csv_path, rows)
+        _write_csv(csv_path, compact_rows(rows) if use_compact_tables else rows)
         _write_json(json_path, list(rows))
         status = "available" if rows else "N/A_no_rows"
         index.extend(
@@ -1668,11 +1799,22 @@ def generate_study_report(
     )
     index.extend(confusion_entries)
     table_file_count += confusion_file_count
-    write_figures = bool(bundle.plan.get("report", {}).get("write_static_figures", True))
+    write_figures = bool(report_options.get("write_static_figures", True))
+    raw_figure_modules = report_options.get("figure_modules", ("all",))
+    figure_modules = (
+        (raw_figure_modules,)
+        if isinstance(raw_figure_modules, str)
+        else tuple(raw_figure_modules)
+    )
     if not write_figures:
         clear_static_figure_artifacts(figures_dir)
     figures = (
-        generate_static_figures(bundle, analysis, figures_dir)
+        generate_static_figures(
+            bundle,
+            analysis,
+            figures_dir,
+            modules=figure_modules,
+        )
         if write_figures
         else (
             {
@@ -1705,6 +1847,65 @@ def generate_study_report(
                     status=str(figure["status"]),
                 )
             )
+    table_names = {table.name for table in report_tables}
+    table_figure_pairs: list[dict[str, Any]] = []
+    for figure in figures:
+        figure_name = str(figure.get("figure", ""))
+        for table_name in FIGURE_TABLE_SOURCES.get(figure_name, ()):
+            table_figure_pairs.append(
+                {
+                    "table": table_name,
+                    "table_status": (
+                        "available" if table_name in table_names else "not_registered"
+                    ),
+                    "figure": figure_name,
+                    "figure_status": figure.get("status"),
+                    "figure_path": figure.get("path", ""),
+                    "reason": figure.get("reason", ""),
+                }
+            )
+    pair_table = ReportTable(
+        name="table_figure_pairs",
+        rows=table_figure_pairs,
+        description="Modular source-table to figure pairing registry",
+        compact=False,
+    )
+    report_tables.append(pair_table)
+    pair_csv = tables / "table_figure_pairs.csv"
+    pair_json = tables / "table_figure_pairs.json"
+    _write_csv(pair_csv, table_figure_pairs)
+    _write_json(pair_json, table_figure_pairs)
+    index.extend(
+        (
+            _index_entry(
+                root,
+                pair_csv,
+                artifact_type="table_csv",
+                description=pair_table.description,
+                status="available" if table_figure_pairs else "N/A_no_rows",
+            ),
+            _index_entry(
+                root,
+                pair_json,
+                artifact_type="table_json",
+                description=pair_table.description,
+                status="available" if table_figure_pairs else "N/A_no_rows",
+            ),
+        )
+    )
+    table_file_count += 2
+    if bool(report_options.get("write_excel_workbook", True)):
+        workbook = tables / "report_tables.xlsx"
+        write_excel_workbook(workbook, report_tables)
+        index.append(
+            _index_entry(
+                root,
+                workbook,
+                artifact_type="table_workbook",
+                description="One worksheet per registered report table",
+            )
+        )
+        table_file_count += 1
     summary_payload = {
         "schema_version": "ppg_frailty.study_report.v2",
         "generated_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -1716,6 +1917,7 @@ def generate_study_report(
         "analysis": asdict(analysis),
         "reproducibility_audit": reproducibility.to_dict(),
         "figure_status": list(figures),
+        "table_figure_pairs": table_figure_pairs,
     }
     summary_json = root / "study_summary.json"
     _write_json(summary_json, summary_payload)

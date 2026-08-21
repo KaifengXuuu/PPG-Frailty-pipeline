@@ -43,6 +43,12 @@ from ..peaks.msptdfast_v2 import (
 )
 from ..peaks.resolver import CANONICAL_DETECTOR_ID, detect_pulses
 from ..provenance import sha256_file, stable_payload_sha256
+from ..reporting.tabular import (
+    ReportTable,
+    compact_rows,
+    write_csv,
+    write_excel_workbook,
+)
 from ..signal.motion_imu import (
     PTT_STATIC_CALIBRATION_ROLE,
     RollPitchEkfConfig,
@@ -79,6 +85,33 @@ from .motion_runner import (
 STAGE5_SCHEMA = "ppg_frailty.stage5_pre_motion_ptt.v1"
 PEAK_ABLATION_SCHEMA = "ppg_frailty.stage_ablation_01_static_peaks.v2"
 RESULT_SCHEMA = "ppg_frailty.motion_peak_study_result.v1"
+
+_STAGE5_DETECTOR_FIGURE_MODULES = {
+    "motion_detector_metrics",
+    "motion_internal_confusion_matrix",
+    "motion_internal_subject_confusion_matrix",
+    "motion_ptt_confusion_matrix",
+    "motion_ptt_subject_confusion_matrix",
+    "motion_ptt_training_oof_confusion_matrix",
+    "motion_ptt_training_oof_subject_confusion_matrix",
+    "motion_internal_reverse_confusion_matrix",
+    "motion_internal_reverse_subject_confusion_matrix",
+    "motion_training_learning_curves",
+}
+_DENOISER_FIGURE_MODULES = {
+    "denoiser_interval_rmse",
+    "denoiser_beat_f1",
+    "denoiser_beat_sensitivity",
+    "denoiser_beat_ppv",
+    "denoiser_runtime",
+}
+_PEAK_FIGURE_MODULES = {
+    "static_peak_detector_f1",
+    "static_peak_detector_sensitivity",
+    "static_peak_detector_ppv",
+    "static_peak_detector_interval_rmse",
+    "static_peak_detector_runtime",
+}
 MOTION_MODEL_COMPARISON_SCHEMA = "ppg_frailty.motion_model_comparison_package.v1"
 _PTT_COLUMNS = (
     "peaks", "pleth_1", "pleth_2", "a_x", "a_y", "a_z", "g_x", "g_y", "g_z"
@@ -235,28 +268,22 @@ def load_motion_peak_plan(path: str | Path) -> StudyPlan:
         ) != 400.0:
             raise ValueError("Stage5-pre uses the registered PTT 500-to-400-Hz adapter")
         report = data.get("report")
-        if (
-            not isinstance(report, Mapping)
-            or report.get("required_detector_figures")
-            != [
-                "motion_internal_confusion_matrix",
-                "motion_internal_subject_confusion_matrix",
-                "motion_ptt_confusion_matrix",
-                "motion_ptt_subject_confusion_matrix",
-                "motion_ptt_training_oof_confusion_matrix",
-                "motion_ptt_training_oof_subject_confusion_matrix",
-                "motion_internal_reverse_confusion_matrix",
-                "motion_internal_reverse_subject_confusion_matrix",
-                "motion_training_learning_curves",
-            ]
-            or report.get("denoiser_figures_when_enabled")
-            != [
-                "denoiser_interval_rmse",
-                "denoiser_beat_f1",
-                "denoiser_runtime",
-            ]
+        if not isinstance(report, Mapping):
+            raise ValueError("Stage5 report settings must be a mapping")
+        for field, supported in (
+            ("required_detector_figures", _STAGE5_DETECTOR_FIGURE_MODULES),
+            ("denoiser_figures_when_enabled", _DENOISER_FIGURE_MODULES),
         ):
-            raise ValueError("Stage5 report figure contract drift")
+            configured = report.get(field)
+            if (
+                not isinstance(configured, list)
+                or not configured
+                or len(configured) != len(set(configured))
+                or not set(configured) <= supported
+            ):
+                raise ValueError(
+                    f"Stage5 report {field} must select unique registered modules"
+                )
     else:
         if data.get("activities") != ["sit"]:
             raise ValueError("Stage-ablation-01 is a pure-static sit-only experiment")
@@ -313,6 +340,19 @@ def load_motion_peak_plan(path: str | Path) -> StudyPlan:
         _finite(validation.get("max_lag_s"), "max_lag_s", positive=True)
         _finite(validation.get("lag_step_s"), "lag_step_s", positive=True)
         _finite(validation.get("lag_window_s"), "lag_window_s", positive=True)
+        report = data.get("report")
+        configured = (
+            report.get("required_figures") if isinstance(report, Mapping) else None
+        )
+        if (
+            not isinstance(configured, list)
+            or not configured
+            or len(configured) != len(set(configured))
+            or not set(configured) <= _PEAK_FIGURE_MODULES
+        ):
+            raise ValueError(
+                "static peak report required_figures must select unique registered modules"
+            )
     return StudyPlan(source, dict(data), schema, study_type, study_id)
 
 
@@ -527,6 +567,17 @@ def _aggregate_benchmark(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
             participant_rows.append(
                 {
                     "f1": float(np.mean([float(row["f1"]) for row in current])),
+                    "sensitivity": float(
+                        np.mean([float(row["sensitivity"]) for row in current])
+                    ),
+                    "positive_predictive_value": float(
+                        np.mean(
+                            [
+                                float(row["positive_predictive_value"])
+                                for row in current
+                            ]
+                        )
+                    ),
                     "rmse": (
                         float(np.mean(available_rmse))
                         if available_rmse
@@ -536,6 +587,10 @@ def _aggregate_benchmark(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
                 }
             )
         participant_f1 = [row["f1"] for row in participant_rows]
+        participant_sensitivity = [row["sensitivity"] for row in participant_rows]
+        participant_ppv = [
+            row["positive_predictive_value"] for row in participant_rows
+        ]
         participant_rmse = [row["rmse"] for row in participant_rows]
         output.append(
             {
@@ -547,9 +602,42 @@ def _aggregate_benchmark(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
                 "participant_macro_f1": (
                     float(np.mean(participant_f1)) if participant_f1 else None
                 ),
+                "participant_macro_f1_sd": (
+                    float(np.std(participant_f1, ddof=1))
+                    if len(participant_f1) >= 2
+                    else None
+                ),
+                "participant_macro_sensitivity": (
+                    float(np.mean(participant_sensitivity))
+                    if participant_sensitivity
+                    else None
+                ),
+                "participant_macro_sensitivity_sd": (
+                    float(np.std(participant_sensitivity, ddof=1))
+                    if len(participant_sensitivity) >= 2
+                    else None
+                ),
+                "participant_macro_positive_predictive_value": (
+                    float(np.mean(participant_ppv)) if participant_ppv else None
+                ),
+                "participant_macro_positive_predictive_value_sd": (
+                    float(np.std(participant_ppv, ddof=1))
+                    if len(participant_ppv) >= 2
+                    else None
+                ),
                 "participant_macro_ibi_ppi_rmse_ms": (
                     float(np.nanmean(participant_rmse))
                     if participant_rmse and np.any(np.isfinite(participant_rmse))
+                    else None
+                ),
+                "participant_macro_ibi_ppi_rmse_ms_sd": (
+                    float(
+                        np.std(
+                            [value for value in participant_rmse if np.isfinite(value)],
+                            ddof=1,
+                        )
+                    )
+                    if sum(np.isfinite(participant_rmse)) >= 2
                     else None
                 ),
                 "total_runtime_s": float(np.sum([row["runtime"] for row in participant_rows])),
@@ -791,23 +879,26 @@ def _read_parquet(path: Path) -> list[dict[str, Any]]:
 
 
 def _write_csv(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fields = sorted({str(key) for row in rows for key in row})
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({key: row.get(key) for key in fields})
+    write_csv(path, compact_rows(rows))
 
 
 def _markdown_table(rows: Sequence[Mapping[str, Any]]) -> str:
     if not rows:
         return "N/A"
-    fields = sorted({str(key) for row in rows for key in row})
+    displayed = (
+        [dict(row) for row in rows]
+        if any(
+            isinstance(value, str) and "*" in value
+            for row in rows
+            for value in row.values()
+        )
+        else compact_rows(rows)
+    )
+    fields = sorted({str(key) for row in displayed for key in row})
     body = ["| " + " | ".join(fields) + " |", "| " + " | ".join("---" for _ in fields) + " |"]
     body.extend(
         "| " + " | ".join(str(row.get(field, "")) for field in fields) + " |"
-        for row in rows
+        for row in displayed
     )
     return "\n".join(body)
 
@@ -817,13 +908,22 @@ def _html_table(rows: Sequence[Mapping[str, Any]]) -> str:
 
     if not rows:
         return "<p>N/A</p>"
-    fields = sorted({str(key) for row in rows for key in row})
+    displayed = (
+        [dict(row) for row in rows]
+        if any(
+            isinstance(value, str) and "*" in value
+            for row in rows
+            for value in row.values()
+        )
+        else compact_rows(rows)
+    )
+    fields = sorted({str(key) for row in displayed for key in row})
     heading = "".join(f"<th>{html.escape(field)}</th>" for field in fields)
     body = "".join(
         "<tr>" + "".join(
             f"<td>{html.escape(str(row.get(field, '')))}</td>" for field in fields
         ) + "</tr>"
-        for row in rows
+        for row in displayed
     )
     return f"<table><thead><tr>{heading}</tr></thead><tbody>{body}</tbody></table>"
 
@@ -838,15 +938,42 @@ def _detector_report_rows(
     output: list[dict[str, Any]] = []
     for dataset, rows, worst_fold in datasets:
         metrics = participant_macro_motion_metrics(rows)
+        participant_metrics = [
+            participant_macro_motion_metrics(
+                [
+                    row
+                    for row in rows
+                    if str(row["participant_id"]) == participant_id
+                ]
+            )
+            for participant_id in sorted(
+                {str(row["participant_id"]) for row in rows}
+            )
+        ]
+
+        def sample_sd(metric: str) -> float | None:
+            values = np.asarray(
+                [row[metric] for row in participant_metrics], dtype=np.float64
+            )
+            return float(values.std(ddof=1)) if values.size >= 2 else None
+
         output.append(
             {
                 "dataset": dataset,
                 "participant_macro_balanced_accuracy": metrics["balanced_accuracy"],
+                "participant_macro_balanced_accuracy_sd": sample_sd(
+                    "balanced_accuracy"
+                ),
                 "participant_macro_f1": metrics["macro_f1"],
+                "participant_macro_f1_sd": sample_sd("macro_f1"),
                 "participant_macro_sensitivity": metrics["sensitivity"],
+                "participant_macro_sensitivity_sd": sample_sd("sensitivity"),
                 "participant_macro_specificity": metrics["specificity"],
+                "participant_macro_specificity_sd": sample_sd("specificity"),
                 "participant_macro_roc_auc": metrics["roc_auc"],
+                "participant_macro_roc_auc_sd": sample_sd("roc_auc"),
                 "participant_macro_pr_auc": metrics["pr_auc"],
+                "participant_macro_pr_auc_sd": sample_sd("pr_auc"),
                 "worst_fold_balanced_accuracy": float(worst_fold),
             }
         )
@@ -859,8 +986,9 @@ def _rank_and_mark_denoiser_rows(
     """Return numeric rows plus report-only best-cell decorations.
 
     Subject-macro PPI--RR RMSE is the primary ascending sort key; F1 is only
-    the descending tie-breaker.  Machine-readable CSV/JSON remains numeric;
-    only the Markdown/HTML display rows receive ``*`` markers.
+    the descending tie-breaker. Lossless JSON remains numeric. CSV/XLSX and
+    Markdown/HTML use the compact mean ± SD projection; only Markdown/HTML
+    display rows receive ``*`` markers.
     """
 
     numeric = [
@@ -892,8 +1020,8 @@ def _rank_and_mark_denoiser_rows(
     ]
     best_rmse = min(finite_rmse) if finite_rmse else None
     display: list[dict[str, Any]] = []
-    for row in numeric:
-        marked = dict(row)
+    for row, compact in zip(numeric, compact_rows(numeric), strict=True):
+        marked = dict(compact)
         f1_best = math.isclose(
             float(row["participant_macro_f1"]), best_f1, rel_tol=0.0, abs_tol=1e-15
         )
@@ -904,11 +1032,19 @@ def _rank_and_mark_denoiser_rows(
             abs_tol=1e-12,
         )
         if f1_best:
-            marked["participant_macro_f1"] = f"{row['participant_macro_f1']}*"
-        if rmse_best:
-            marked["participant_macro_ibi_ppi_rmse_ms"] = (
-                f"{row['participant_macro_ibi_ppi_rmse_ms']}*"
+            field = (
+                "participant_macro_f1_mean_sd"
+                if "participant_macro_f1_mean_sd" in marked
+                else "participant_macro_f1"
             )
+            marked[field] = f"{marked[field]}*"
+        if rmse_best:
+            field = (
+                "participant_macro_ibi_ppi_rmse_ms_mean_sd"
+                if "participant_macro_ibi_ppi_rmse_ms_mean_sd" in marked
+                else "participant_macro_ibi_ppi_rmse_ms"
+            )
+            marked[field] = f"{marked[field]}*"
         if f1_best or rmse_best:
             marker = "**" if f1_best and rmse_best else "*"
             marked["activity_group"] = f"{row['activity_group']}{marker}"
@@ -998,6 +1134,22 @@ def _confusion(rows: Sequence[Mapping[str, Any]]) -> np.ndarray:
     return matrix
 
 
+def _confusion_report_row(
+    dataset: str,
+    matrix: np.ndarray,
+    *,
+    aggregation_level: str,
+) -> dict[str, Any]:
+    return {
+        "dataset": dataset,
+        "aggregation_level": aggregation_level,
+        "true_static_predicted_static": int(matrix[0, 0]),
+        "true_static_predicted_motion": int(matrix[0, 1]),
+        "true_motion_predicted_static": int(matrix[1, 0]),
+        "true_motion_predicted_motion": int(matrix[1, 1]),
+    }
+
+
 def _plot_confusion(path: Path, matrix: np.ndarray, title: str) -> None:
     import matplotlib
     matplotlib.use("Agg")
@@ -1042,6 +1194,46 @@ def _plot_summary(path: Path, rows: Sequence[Mapping[str, Any]], metric: str, ti
     plt.close(figure)
 
 
+def _plot_detector_metrics(
+    path: Path, rows: Sequence[Mapping[str, Any]]
+) -> None:
+    """Pair the detector score table with one compact multi-metric figure."""
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    metrics = (
+        ("participant_macro_balanced_accuracy", "BA"),
+        ("participant_macro_f1", "Macro-F1"),
+        ("participant_macro_sensitivity", "Sensitivity"),
+        ("participant_macro_specificity", "Specificity"),
+        ("participant_macro_roc_auc", "ROC AUC"),
+        ("participant_macro_pr_auc", "PR AUC"),
+        ("worst_fold_balanced_accuracy", "Worst-fold BA"),
+    )
+    labels = [str(row["dataset"]) for row in rows]
+    x = np.arange(len(labels), dtype=np.float64)
+    width = 0.8 / len(metrics)
+    figure, axis = plt.subplots(figsize=(max(9.0, len(labels) * 2.2), 5.0))
+    for index, (field, label) in enumerate(metrics):
+        axis.bar(
+            x + (index - (len(metrics) - 1) / 2.0) * width,
+            [float(row[field]) for row in rows],
+            width=width,
+            label=label,
+        )
+    axis.set_xticks(x, labels, rotation=25, ha="right")
+    axis.set_ylim(0.0, 1.0)
+    axis.set_ylabel("Participant-macro score")
+    axis.set_title("Motion detector internal and cross-dataset metrics")
+    axis.grid(axis="y", alpha=0.25)
+    axis.legend(ncol=2, fontsize=8)
+    figure.tight_layout()
+    figure.savefig(path, dpi=160)
+    plt.close(figure)
+
+
 def _plot_motion_learning_curves(path: Path, history_paths: Sequence[Path]) -> None:
     import matplotlib
     matplotlib.use("Agg")
@@ -1079,6 +1271,26 @@ def _plot_motion_learning_curves(path: Path, history_paths: Sequence[Path]) -> N
     figure.tight_layout()
     figure.savefig(path, dpi=160)
     plt.close(figure)
+
+
+def _motion_learning_curve_rows(
+    history_paths: Sequence[Path], root: Path
+) -> list[dict[str, Any]]:
+    """Materialize the exact rows paired with the learning-curve figure."""
+
+    output: list[dict[str, Any]] = []
+    for history_path in sorted(history_paths):
+        payload = json.loads(history_path.read_text(encoding="utf-8"))
+        for row in payload.get("rows", ()):
+            output.append(
+                {
+                    "history_path": history_path.relative_to(root).as_posix(),
+                    "fold_index": payload.get("fold_index"),
+                    "final_fit": payload.get("final_fit", False),
+                    **dict(row),
+                }
+            )
+    return output
 
 
 def _copy_bound_file(source: Path, target: Path, expected_sha256: str) -> str:
@@ -1249,6 +1461,34 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
     root = Path(study_dir).resolve()
     manifest_path = root / "study_manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    resolved_plan_path = root / "resolved_plan.yaml"
+    resolved_plan = yaml.safe_load(resolved_plan_path.read_text(encoding="utf-8"))
+    report_config = (
+        resolved_plan.get("report", {})
+        if isinstance(resolved_plan, Mapping)
+        else {}
+    )
+    configured_figures = set(
+        report_config.get(
+            "required_detector_figures"
+            if manifest["study_type"] == "stage5_pre_motion_ptt"
+            else "required_figures",
+            (),
+        )
+    )
+    if manifest["study_type"] == "stage5_pre_motion_ptt":
+        configured_figures.update(
+            report_config.get("denoiser_figures_when_enabled", ())
+        )
+    if "xlsx" not in set(report_config.get("formats", ())):
+        # Completed pre-XLSX studies receive the new report-only modules when
+        # their report is rebuilt; training evidence and the resolved plan stay
+        # untouched.
+        configured_figures.update(
+            _STAGE5_DETECTOR_FIGURE_MODULES | _DENOISER_FIGURE_MODULES
+            if manifest["study_type"] == "stage5_pre_motion_ptt"
+            else _PEAK_FIGURE_MODULES
+        )
     tables = root / "tables"
     figures = root / "figures"
     tables.mkdir(exist_ok=True)
@@ -1258,6 +1498,7 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
     headline_metric_rows: list[Mapping[str, Any]] = []
     detector_internal_rows: list[Mapping[str, Any]] = []
     detector_transfer_rows: list[Mapping[str, Any]] = []
+    detector_window_confusion_rows: list[Mapping[str, Any]] = []
     detector_subject_confusion_rows: list[Mapping[str, Any]] = []
     denoiser_display_tables: dict[str, list[dict[str, Any]]] = {}
     comparison_rows: list[dict[str, Any]] = []
@@ -1361,6 +1602,10 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
         headline_metric_rows = _detector_report_rows(detector_datasets)
         _write_csv(tables / "motion_detector_metrics.csv", headline_metric_rows)
         _strict_json(tables / "motion_detector_metrics.json", headline_metric_rows)
+        detector_metric_figure = figures / "motion_detector_metrics.png"
+        if detector_metric_figure.stem in configured_figures:
+            _plot_detector_metrics(detector_metric_figure, headline_metric_rows)
+            images.append(detector_metric_figure)
         detector_internal_rows = [
             row for row in headline_metric_rows
             if str(row["dataset"]).endswith("outer_oof")
@@ -1422,17 +1667,35 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
             ),
         ):
             path = figures / name
-            _plot_confusion(path, _confusion(rows), title)
-            images.append(path)
+            window_matrix = _confusion(rows)
+            detector_window_confusion_rows.append(
+                _confusion_report_row(
+                    dataset,
+                    window_matrix,
+                    aggregation_level="window",
+                )
+            )
+            if path.stem in configured_figures:
+                _plot_confusion(path, window_matrix, title)
+                images.append(path)
             subject_row, subject_matrix = _subject_confusion_report_row(dataset, rows)
             detector_subject_confusion_rows.append(subject_row)
             subject_path = figures / subject_name
-            _plot_confusion(
-                subject_path,
-                subject_matrix,
-                f"{title} · subject×activity-class",
-            )
-            images.append(subject_path)
+            if subject_path.stem in configured_figures:
+                _plot_confusion(
+                    subject_path,
+                    subject_matrix,
+                    f"{title} · subject×activity-class",
+                )
+                images.append(subject_path)
+        _write_csv(
+            tables / "motion_detector_window_confusion.csv",
+            detector_window_confusion_rows,
+        )
+        _strict_json(
+            tables / "motion_detector_window_confusion.json",
+            detector_window_confusion_rows,
+        )
         _write_csv(
             tables / "motion_detector_subject_confusion.csv",
             detector_subject_confusion_rows,
@@ -1449,8 +1712,12 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
             )
         if not history_paths:
             raise ValueError("completed Stage5-pre report requires motion training histories")
-        _plot_motion_learning_curves(learning_path, history_paths)
-        images.append(learning_path)
+        if learning_path.stem in configured_figures:
+            _plot_motion_learning_curves(learning_path, history_paths)
+            images.append(learning_path)
+        motion_history_rows = _motion_learning_curve_rows(history_paths, root)
+        _write_csv(tables / "motion_training_history.csv", motion_history_rows)
+        _strict_json(tables / "motion_training_history.json", motion_history_rows)
         denoiser_stage = manifest.get("stages", {}).get("ptt_denoiser_benchmark", {})
         denoiser_enabled = (
             isinstance(denoiser_stage, Mapping)
@@ -1463,7 +1730,11 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
             benchmark = json.loads(
                 (denoiser_dir / "denoiser_benchmark.json").read_text(encoding="utf-8")
             )
-            summary_rows = benchmark["summary_rows"]
+            summary_rows = (
+                _aggregate_benchmark(benchmark["rows"])
+                if benchmark.get("rows")
+                else benchmark["summary_rows"]
+            )
             _write_csv(tables / "denoiser_summary.csv", summary_rows)
             _strict_json(tables / "denoiser_summary.json", summary_rows)
             for activity_group in ("static", "dynamic"):
@@ -1480,11 +1751,22 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
                     "IBI–PPI RMSE (lower is better)",
                 ),
                 ("participant_macro_f1", "denoiser_beat_f1.png", "Delay-aligned beat F1"),
+                (
+                    "participant_macro_sensitivity",
+                    "denoiser_beat_sensitivity.png",
+                    "Delay-aligned beat sensitivity",
+                ),
+                (
+                    "participant_macro_positive_predictive_value",
+                    "denoiser_beat_ppv.png",
+                    "Delay-aligned beat positive predictive value",
+                ),
                 ("total_runtime_s", "denoiser_runtime.png", "Reducer + detector runtime"),
             ):
                 path = figures / name
-                _plot_summary(path, summary_rows, metric, title)
-                images.append(path)
+                if path.stem in configured_figures:
+                    _plot_summary(path, summary_rows, metric, title)
+                    images.append(path)
         comparison_stage = manifest.get("stages", {}).get(
             "motion_model_comparison_package", {}
         )
@@ -1533,11 +1815,25 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
         result = json.loads(
             (ablation_dir / "static_peak_ablation.json").read_text(encoding="utf-8")
         )
-        summary_rows = result["summary_rows"]
+        summary_rows = (
+            _aggregate_benchmark(result["rows"])
+            if result.get("rows")
+            else result["summary_rows"]
+        )
         _write_csv(tables / "static_peak_detector_summary.csv", summary_rows)
         _strict_json(tables / "static_peak_detector_summary.json", summary_rows)
         for metric, name, title in (
             ("participant_macro_f1", "static_peak_detector_f1.png", "Static PTT beat F1"),
+            (
+                "participant_macro_sensitivity",
+                "static_peak_detector_sensitivity.png",
+                "Static PTT beat sensitivity",
+            ),
+            (
+                "participant_macro_positive_predictive_value",
+                "static_peak_detector_ppv.png",
+                "Static PTT beat positive predictive value",
+            ),
             (
                 "participant_macro_ibi_ppi_rmse_ms",
                 "static_peak_detector_interval_rmse.png",
@@ -1546,13 +1842,78 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
             ("total_runtime_s", "static_peak_detector_runtime.png", "Static detector runtime"),
         ):
             path = figures / name
-            _plot_summary(path, summary_rows, metric, title)
-            images.append(path)
+            if path.stem in configured_figures:
+                _plot_summary(path, summary_rows, metric, title)
+                images.append(path)
         headline = {"static_peak_detector_summary_rows": summary_rows}
+    figure_table_sources: Mapping[str, tuple[str, ...]] = {
+        "motion_detector_metrics": ("motion_detector_metrics",),
+        "motion_internal_confusion_matrix": ("motion_detector_window_confusion",),
+        "motion_ptt_confusion_matrix": ("motion_detector_window_confusion",),
+        "motion_ptt_training_oof_confusion_matrix": (
+            "motion_detector_window_confusion",
+        ),
+        "motion_internal_reverse_confusion_matrix": (
+            "motion_detector_window_confusion",
+        ),
+        "motion_internal_subject_confusion_matrix": (
+            "motion_detector_subject_confusion",
+        ),
+        "motion_ptt_subject_confusion_matrix": (
+            "motion_detector_subject_confusion",
+        ),
+        "motion_ptt_training_oof_subject_confusion_matrix": (
+            "motion_detector_subject_confusion",
+        ),
+        "motion_internal_reverse_subject_confusion_matrix": (
+            "motion_detector_subject_confusion",
+        ),
+        "motion_training_learning_curves": ("motion_training_history",),
+        "denoiser_interval_rmse": ("denoiser_summary",),
+        "denoiser_beat_f1": ("denoiser_summary",),
+        "denoiser_beat_sensitivity": ("denoiser_summary",),
+        "denoiser_beat_ppv": ("denoiser_summary",),
+        "denoiser_runtime": ("denoiser_summary",),
+        "static_peak_detector_f1": ("static_peak_detector_summary",),
+        "static_peak_detector_sensitivity": ("static_peak_detector_summary",),
+        "static_peak_detector_ppv": ("static_peak_detector_summary",),
+        "static_peak_detector_interval_rmse": ("static_peak_detector_summary",),
+        "static_peak_detector_runtime": ("static_peak_detector_summary",),
+    }
+    table_figure_pairs = [
+        {
+            "table": table_name,
+            "table_status": (
+                "available"
+                if (tables / f"{table_name}.csv").is_file()
+                else "not_registered"
+            ),
+            "figure": image.stem,
+            "figure_status": "generated",
+            "figure_path": image.relative_to(root).as_posix(),
+        }
+        for image in images
+        for table_name in figure_table_sources.get(image.stem, ())
+    ]
+    _write_csv(tables / "table_figure_pairs.csv", table_figure_pairs)
+    _strict_json(tables / "table_figure_pairs.json", table_figure_pairs)
+    workbook_tables: list[ReportTable] = []
+    for csv_path in sorted(tables.glob("*.csv")):
+        with csv_path.open("r", encoding="utf-8", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        workbook_tables.append(
+            ReportTable(
+                name=csv_path.stem,
+                rows=rows,
+                description="Stage motion/peak report table",
+            )
+        )
+    write_excel_workbook(tables / "report_tables.xlsx", workbook_tables)
     _strict_json(root / "study_summary.json", {
         "schema_version": RESULT_SCHEMA,
         "study_id": manifest["study_id"],
         "status": manifest["status"],
+        "table_figure_pairs": table_figure_pairs,
         **headline,
     })
     numerical_sections = (
@@ -1627,7 +1988,10 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
         *[f"![{path.stem}](figures/{path.name})" for path in images], "",
         "## Numerical outputs", "",
         *numerical_sections,
-        "Machine-readable values are in `study_summary.json` and `tables/`.", "",
+        "Machine-readable values are in `study_summary.json` and `tables/`. "
+        "Each report table has an individual CSV; `tables/report_tables.xlsx` "
+        "contains one table per worksheet, and `tables/table_figure_pairs.csv` "
+        "records every analytical figure/table pair.", "",
     ]
     markdown = "\n".join(lines)
     (root / "STUDY_SUMMARY.md").write_text(markdown, encoding="utf-8")

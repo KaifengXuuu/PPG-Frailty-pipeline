@@ -11,10 +11,12 @@ from typing import Any, Iterable, Mapping, Sequence
 import numpy as np
 from scipy.stats import t as student_t
 from sklearn.metrics import (
+    average_precision_score,
     balanced_accuracy_score,
     confusion_matrix,
     f1_score,
     precision_recall_fscore_support,
+    roc_auc_score,
 )
 
 from ..data.schema import CANONICAL_CLASS_NAMES
@@ -245,6 +247,44 @@ def _descriptive_statistics(values: Iterable[Any]) -> dict[str, Any]:
     }
 
 
+def _per_class_metric_distributions(
+    rows: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    metrics = (
+        "balanced_accuracy_ovr",
+        "f1",
+        "recall",
+        "specificity",
+        "roc_auc_ovr",
+        "pr_auc_ovr",
+    )
+    groups: dict[tuple[str, Any, str], list[Mapping[str, Any]]] = {}
+    for row in rows:
+        key = (
+            str(row.get("case_id", "")),
+            row.get("class_label"),
+            str(row.get("class_name", "")),
+        )
+        groups.setdefault(key, []).append(row)
+    output: list[dict[str, Any]] = []
+    for (case_id, class_label, class_name), selected in sorted(
+        groups.items(), key=lambda item: (item[0][0], str(item[0][1]))
+    ):
+        for metric in metrics:
+            output.append(
+                {
+                    "case_id": case_id,
+                    "class_label": class_label,
+                    "class_name": class_name,
+                    "metric": metric,
+                    **_descriptive_statistics(
+                        row.get(metric) for row in selected
+                    ),
+                }
+            )
+    return output
+
+
 def _class_order(rows: Sequence[Mapping[str, Any]]) -> tuple[int, ...]:
     for row in rows:
         raw = row.get("class_order")
@@ -304,6 +344,42 @@ def _oof_metric_row(
         labels=list(order),
         zero_division=0,
     )
+    matrix = confusion_matrix(labels, predictions, labels=list(order))
+    total = float(matrix.sum())
+    specificity: list[float] = []
+    class_balanced_accuracy: list[float] = []
+    class_roc_auc: list[float | None] = []
+    class_pr_auc: list[float | None] = []
+    for index, label in enumerate(order):
+        true_positive = float(matrix[index, index])
+        false_positive = float(matrix[:, index].sum() - true_positive)
+        false_negative = float(matrix[index, :].sum() - true_positive)
+        true_negative = total - true_positive - false_positive - false_negative
+        negative_total = true_negative + false_positive
+        current_specificity = (
+            true_negative / negative_total if negative_total else 0.0
+        )
+        specificity.append(float(current_specificity))
+        class_balanced_accuracy.append(
+            float((float(recall[index]) + current_specificity) / 2.0)
+        )
+        binary_label = labels == int(label)
+        if np.unique(binary_label).size < 2:
+            class_roc_auc.append(None)
+            class_pr_auc.append(None)
+        else:
+            class_roc_auc.append(
+                float(roc_auc_score(binary_label, probabilities[:, index]))
+            )
+            class_pr_auc.append(
+                float(
+                    average_precision_score(
+                        binary_label, probabilities[:, index]
+                    )
+                )
+            )
+    valid_roc = [value for value in class_roc_auc if value is not None]
+    valid_pr = [value for value in class_pr_auc if value is not None]
     return {
         "case_id": case_id,
         "repeat": repeat,
@@ -311,13 +387,13 @@ def _oof_metric_row(
         "macro_f1": float(
             f1_score(labels, predictions, labels=list(order), average="macro", zero_division=0)
         ),
+        "macro_roc_auc_ovr": float(fmean(valid_roc)) if valid_roc else None,
+        "macro_pr_auc_ovr": float(fmean(valid_pr)) if valid_pr else None,
         "worst_class_recall": float(np.min(recall)),
         "worst_class_f1": float(np.min(class_f1)),
         "n_predictions": int(labels.size),
         "class_order": list(order),
-        "confusion_matrix": confusion_matrix(
-            labels, predictions, labels=list(order)
-        ).tolist(),
+        "confusion_matrix": matrix.tolist(),
         "per_class": [
             {
                 "case_id": case_id,
@@ -326,7 +402,11 @@ def _oof_metric_row(
                 "class_name": CANONICAL_CLASS_NAMES.get(int(label), str(label)),
                 "precision": float(precision[index]),
                 "recall": float(recall[index]),
+                "specificity": specificity[index],
+                "balanced_accuracy_ovr": class_balanced_accuracy[index],
                 "f1": float(class_f1[index]),
+                "roc_auc_ovr": class_roc_auc[index],
+                "pr_auc_ovr": class_pr_auc[index],
                 "support": int(support[index]),
             }
             for index, label in enumerate(order)
@@ -488,6 +568,15 @@ def _per_class_from_confusion(
         out=np.zeros_like(true_positive),
         where=(precision + recall) > 0,
     )
+    false_positive = predicted - true_positive
+    false_negative = support - true_positive
+    true_negative = matrix.sum() - true_positive - false_positive - false_negative
+    specificity = np.divide(
+        true_negative,
+        true_negative + false_positive,
+        out=np.zeros_like(true_positive),
+        where=(true_negative + false_positive) > 0,
+    )
     return [
         {
             "case_id": case_id,
@@ -498,7 +587,13 @@ def _per_class_from_confusion(
             ),
             "precision": float(precision[index]),
             "recall": float(recall[index]),
+            "specificity": float(specificity[index]),
+            "balanced_accuracy_ovr": float(
+                (recall[index] + specificity[index]) / 2.0
+            ),
             "f1": float(class_f1[index]),
+            "roc_auc_ovr": None,
+            "pr_auc_ovr": None,
             "support": int(support[index]),
             "metric_source": metric_source,
         }
@@ -2830,6 +2925,8 @@ class StudyAnalysis:
     incomplete_cases: tuple[Mapping[str, Any], ...]
     deployment_table: tuple[Mapping[str, Any], ...]
     notes: tuple[str, ...]
+    repeat_per_class_metrics: tuple[Mapping[str, Any], ...] = ()
+    per_class_metric_distribution_summary: tuple[Mapping[str, Any], ...] = ()
     aggregation_view_fold_metrics: tuple[Mapping[str, Any], ...] = ()
     stage3_star_absolute: tuple[Mapping[str, Any], ...] = ()
     stage3_star_contrasts: tuple[Mapping[str, Any], ...] = ()
@@ -2872,6 +2969,7 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
 
     all_repeat: list[Mapping[str, Any]] = []
     all_per_class: list[Mapping[str, Any]] = []
+    repeat_per_class: list[Mapping[str, Any]] = []
     matrices: list[Mapping[str, Any]] = []
     calibration: list[Mapping[str, Any]] = []
     summaries: list[Mapping[str, Any]] = []
@@ -2895,6 +2993,14 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
                 )
                 if aware is None:
                     continue
+                if conditional is not None:
+                    repeat_per_class.extend(
+                        {
+                            **class_row,
+                            "metric_source": "participant_oof_per_repeat",
+                        }
+                        for class_row in conditional["per_class"]
+                    )
                 repeat_rows.append(
                     (
                         {
@@ -2908,6 +3014,8 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
                             "repeat": repeat,
                             "balanced_accuracy": None,
                             "macro_f1": None,
+                            "macro_roc_auc_ovr": None,
+                            "macro_pr_auc_ovr": None,
                             "worst_class_recall": None,
                             "worst_class_f1": None,
                             "n_predictions": 0,
@@ -3024,6 +3132,8 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         all_repeat.extend(repeat_rows)
         repeat_ba = [row.get("balanced_accuracy") for row in repeat_rows]
         repeat_f1 = [row.get("macro_f1") for row in repeat_rows]
+        repeat_roc_auc = [row.get("macro_roc_auc_ovr") for row in repeat_rows]
+        repeat_pr_auc = [row.get("macro_pr_auc_ovr") for row in repeat_rows]
         repeat_abstention_metrics = {
             name: [row.get(name) for row in repeat_rows]
             for name in _ABSTENTION_AWARE_METRICS
@@ -3113,6 +3223,8 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         )
         ba_statistics = _descriptive_statistics(repeat_ba)
         f1_statistics = _descriptive_statistics(repeat_f1)
+        roc_auc_statistics = _descriptive_statistics(repeat_roc_auc)
+        pr_auc_statistics = _descriptive_statistics(repeat_pr_auc)
         aware_ba_statistics = _descriptive_statistics(
             repeat_abstention_metrics["abstention_aware_balanced_accuracy"]
         )
@@ -3132,6 +3244,18 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
                     "metric": "macro_f1",
                     "metric_source": metric_source,
                     **f1_statistics,
+                },
+                {
+                    "case_id": case_id,
+                    "metric": "macro_roc_auc_ovr",
+                    "metric_source": metric_source,
+                    **roc_auc_statistics,
+                },
+                {
+                    "case_id": case_id,
+                    "metric": "macro_pr_auc_ovr",
+                    "metric_source": metric_source,
+                    **pr_auc_statistics,
                 },
                 {
                     "case_id": case_id,
@@ -3194,6 +3318,8 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
             "participant_mean_macro_f1": (
                 mean_f1 if mean_f1 is not None else _mean(repeat_f1)
             ),
+            "participant_mean_macro_roc_auc_ovr": _mean(repeat_roc_auc),
+            "participant_mean_macro_pr_auc_ovr": _mean(repeat_pr_auc),
             **{
                 f"participant_mean_{name}": value
                 for name, value in aware_means.items()
@@ -3252,6 +3378,18 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
             "repeat_macro_f1_ci95_margin": f1_statistics["ci95_margin"],
             "repeat_macro_f1_minimum": f1_statistics["minimum"],
             "repeat_macro_f1_maximum": f1_statistics["maximum"],
+            "repeat_macro_roc_auc_ovr_population_sd": roc_auc_statistics[
+                "population_sd"
+            ],
+            "repeat_macro_roc_auc_ovr_sample_sd": roc_auc_statistics["sample_sd"],
+            "repeat_macro_roc_auc_ovr_ci95_low": roc_auc_statistics["ci95_low"],
+            "repeat_macro_roc_auc_ovr_ci95_high": roc_auc_statistics["ci95_high"],
+            "repeat_macro_pr_auc_ovr_population_sd": pr_auc_statistics[
+                "population_sd"
+            ],
+            "repeat_macro_pr_auc_ovr_sample_sd": pr_auc_statistics["sample_sd"],
+            "repeat_macro_pr_auc_ovr_ci95_low": pr_auc_statistics["ci95_low"],
+            "repeat_macro_pr_auc_ovr_ci95_high": pr_auc_statistics["ci95_high"],
             "repeat_abstention_aware_balanced_accuracy_population_sd": (
                 aware_ba_statistics["population_sd"]
             ),
@@ -3548,6 +3686,20 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
                         and _number(baseline.get("macro_f1")) is not None
                         else None
                     ),
+                    "macro_roc_auc_ovr_delta": (
+                        _number(row.get("macro_roc_auc_ovr"))
+                        - _number(baseline.get("macro_roc_auc_ovr"))
+                        if _number(row.get("macro_roc_auc_ovr")) is not None
+                        and _number(baseline.get("macro_roc_auc_ovr")) is not None
+                        else None
+                    ),
+                    "macro_pr_auc_ovr_delta": (
+                        _number(row.get("macro_pr_auc_ovr"))
+                        - _number(baseline.get("macro_pr_auc_ovr"))
+                        if _number(row.get("macro_pr_auc_ovr")) is not None
+                        and _number(baseline.get("macro_pr_auc_ovr")) is not None
+                        else None
+                    ),
                 }
             )
     elif centered_star:
@@ -3615,6 +3767,13 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         aggregation_view_comparison,
     )
     notes.extend(legacy_bridge_report_notes)
+    if repeat_per_class:
+        notes.append(
+            "Report-only ROC AUC is one-vs-rest macro AUC; PR AUC is "
+            "one-vs-rest average precision. Per-class BA is (sensitivity + "
+            "specificity) / 2. All are recomputed from retained outer "
+            "participant OOF probabilities."
+        )
     return StudyAnalysis(
         case_summary=tuple(summaries),
         metric_distribution_summary=tuple(metric_distributions),
@@ -3655,6 +3814,10 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         incomplete_cases=tuple(incomplete_cases),
         deployment_table=tuple(deployment),
         notes=tuple(dict.fromkeys(notes)),
+        repeat_per_class_metrics=tuple(repeat_per_class),
+        per_class_metric_distribution_summary=tuple(
+            _per_class_metric_distributions(repeat_per_class)
+        ),
         stage3_star_absolute=tuple(stage3_star_absolute),
         stage3_star_contrasts=tuple(stage3_star_contrasts),
         stage3_star_fold_contrasts=tuple(stage3_star_fold_contrasts),

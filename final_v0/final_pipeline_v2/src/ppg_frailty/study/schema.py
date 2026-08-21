@@ -1097,12 +1097,19 @@ class ReportSpec:
     write_html: bool = True
     write_static_figures: bool = True
     calibration_bins: int = 10
+    figure_modules: tuple[str, ...] = ("all",)
+    compact_mean_sd: bool = True
+    write_excel_workbook: bool = True
 
     def __post_init__(self) -> None:
         if not 1 <= int(self.top_k) <= 100:
             raise ValueError("report top_k must lie in 1..100")
         if not 2 <= int(self.calibration_bins) <= 100:
             raise ValueError("calibration_bins must lie in 2..100")
+        if not self.figure_modules or any(
+            not str(value).strip() for value in self.figure_modules
+        ):
+            raise ValueError("figure_modules must contain non-empty module names")
 
 
 @dataclass(frozen=True)
@@ -1321,6 +1328,9 @@ class StudyPlan:
                 "write_html": self.report.write_html,
                 "write_static_figures": self.report.write_static_figures,
                 "calibration_bins": self.report.calibration_bins,
+                "figure_modules": list(self.report.figure_modules),
+                "compact_mean_sd": self.report.compact_mean_sd,
+                "write_excel_workbook": self.report.write_excel_workbook,
             },
         }
         if self.execution.device is not None:
