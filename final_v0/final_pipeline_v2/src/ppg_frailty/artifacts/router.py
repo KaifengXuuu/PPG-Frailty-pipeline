@@ -9,7 +9,7 @@ import numpy as np
 
 from ..contracts import ArtifactReductionResult, SignalRoute
 from ..signal.views import CANONICAL_FS_HZ, CanonicalSignalViews
-from .base import ArtifactReducer, failure_result, validate_result
+from .base import ArtifactReducer, failure_result, parameters_dict, validate_result
 from .bss import (
     FastIcaBssConfig,
     FastIcaBssReducer,
@@ -108,6 +108,28 @@ def get_reducer(name: str, parameters: Mapping[str, Any] | None = None) -> Artif
     if normalized in {"learned", "learned_denoiser", "hybrid_denoiser", "onnx_denoiser"}:
         return UnsupportedReducer(normalized, parameters)
     raise KeyError(f"unknown artifact reducer: {name}")
+
+
+def reducer_audit_metadata(
+    name: str,
+    parameters: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return executable reducer identity, resolved parameters and short method text."""
+
+    reducer = get_reducer(name, parameters)
+    description = str(reducer.algorithm_kernel_description).strip()
+    if not description or len(description) > 300:
+        raise ValueError(
+            f"{reducer.reducer_id} algorithm/kernel description must contain 1-300 characters"
+        )
+    config = getattr(reducer, "config", getattr(reducer, "parameters", {}))
+    return {
+        "reducer_id": reducer.reducer_id,
+        "reducer_version": reducer.reducer_version,
+        "resolved_parameters": parameters_dict(config),
+        "algorithm_kernel_description": description,
+        "description_character_count": len(description),
+    }
 
 
 @dataclass(frozen=True)

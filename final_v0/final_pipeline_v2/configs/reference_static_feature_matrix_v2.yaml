@@ -1,8 +1,7 @@
-# Developer smoke/reference harness for the 115x150 representation contract.
-# InceptionTimeMatrix remains constructible for validation but is not selected
-# in the formal catalog or current study plans; the scientific matrix model is TBD.
+# Named executable reference for the 146xvariable-K window-matrix contract and
+# the reviewed Small single-network Matrix InceptionTime.
 schema_version: ppg_frailty.pipeline_config.v2
-config_id: reference_static_feature_matrix_inception_full_role_aware_v2
+config_id: reference_static_window_feature_matrix_inception_small_v2
 manifest:
   path: manifests/internal_records_v2.csv
   manifest_version: internal_records_v2
@@ -95,9 +94,9 @@ signal:
     edge_extrapolation: false
     all_missing_channel_action: reject_record
   imu:
-    gravity_method: calibrated_roll_pitch_ekf
+    gravity_method: profile_a_lowpass_0p3hz
     initialization: same_participant_static_calibration
-    comparison_method: profile_a_lowpass_0p3hz
+    comparison_method: calibrated_roll_pitch_ekf
     sensor_lowpass_acc_hz: 20.0
     sensor_lowpass_gyro_hz: 40.0
     sensor_filter_order: 3
@@ -149,6 +148,11 @@ quality:
     keep_fraction: 1.0
     score_algorithm: legacy_cardiac_motion_window_sqi_v1
     application_scope: outer_train_only
+routing:
+  window_s: 8.0
+  hop_s: 2.0
+  fs_hz: 400.0
+  source_grid: canonical_acquisition_grid
 artifact:
   reducer: identity
   reducer_version: identity_v1
@@ -160,13 +164,12 @@ artifact:
   parameters: {}
 features:
   enabled_groups: [engineering_summary]
-  registry_id: feature_vector_282_v3
   prv_primary_backend: local_manual
   prv_library_comparison_scope: fixed_ppi_vectors_only_no_classifier
-  file_vector_schema: feature_vector_282_v3
   engineering_sequence_schema: engineering_10s_hop2s_thesis_115_v3
-  matrix_schema: ordered_feature_matrix_d115_by_150_engineering_v4
-  matrix_k: 150
+  window_feature_schema: window_feature_set_d146_v1
+  matrix_schema: ordered_window_feature_matrix_d146_variable_k_v1
+  matrix_length_policy: all_complete_windows_variable_k
   technical_metadata_allowed: false
   missing_physiology_encoding: nan_and_validity_false
   time_prv_min_duration_s: 60.0
@@ -193,9 +196,9 @@ features:
   - population_sd
 model:
   model_id: InceptionTimeMatrix
-  variant: full
-  input_channels: 0
-  input_channels_resolution: derive_exactly_from_frozen_matrix_channel_schema
+  variant: small
+  input_channels: 146
+  input_channels_resolution: exact_window_feature_schema_d146
   n_classes: 3
   ensemble_size: 1
   seed_policy: outer_cv_repeat_seed_equals_split_seed
@@ -207,19 +210,19 @@ model:
   - 9
   dilation: 1
   architecture_parameters:
-    bottleneck_channels: 32
+    bottleneck_channels: 16
     branch_count: 4
     classifier_dropout: 0.2
-    depth: 6
+    depth: 3
     dilation: 1
     global_pooling: mask_aware_global_average
     kernel_sizes: [39, 19, 9]
     model_id: inception_matrix
     n_classes: 3
-    out_channels: 32
+    out_channels: 16
     representation_mode: feature_matrix
     residual_interval: 3
-    variant: full
+    variant: small
 training:
   execution_mode: formal
   epoch_rule: fixed_epoch
@@ -233,8 +236,9 @@ training:
   optimizer: adam
   learning_rate: 0.001
   weight_decay: 0.0001
-  class_weighting: outer_train_inverse_frequency
-  sampler: balance_line_weighted_v2
+  class_weighting: outer_train_window_inverse_frequency
+  class_count_basis: row
+  sampler: exhaustive_shuffle_without_replacement
   loss: cross_entropy
   label_smoothing: 0.0
   gradient_clip_norm: null

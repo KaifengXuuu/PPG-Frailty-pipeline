@@ -33,6 +33,12 @@ from ..training.aggregation import (
 from ..training.oof import OofPredictionRow
 from ..training.evaluator import evaluate_predictions_with_abstentions
 from .collect import CollectedStudy
+from .classification_diagnostics import (
+    classification_diagnostic_status_rows,
+    classification_roc_curve_rows,
+    classification_tsne_rows,
+    normalize_classification_rows,
+)
 
 
 WINDOW_BALANCED_TO_PARTICIPANT = "window_balanced_to_participant"
@@ -1148,6 +1154,181 @@ def _route_role_quality_tables(
             }
         )
     return coverage, distributions
+
+
+def _denoiser_hr_tables(
+    collected: CollectedStudy,
+) -> tuple[list[Mapping[str, Any]], list[Mapping[str, Any]]]:
+    """Build paired per-record and participant-macro direct/post HR tables."""
+
+    records: list[dict[str, Any]] = []
+    for row in collected.quality_rows:
+        artifact = (
+            row.get("route_artifact")
+            if isinstance(row.get("route_artifact"), Mapping)
+            else {}
+        )
+        if not _as_bool(artifact.get("denoiser_attempted", False)):
+            continue
+        direct_hr = _number(artifact.get("direct_hr_bpm"))
+        post_hr = _number(artifact.get("post_denoise_hr_bpm"))
+        delta = (
+            float(post_hr - direct_hr)
+            if direct_hr is not None and post_hr is not None
+            else None
+        )
+        records.append(
+            {
+                "case_id": str(row.get("case_id", "")),
+                "repeat": row.get("repeat"),
+                "fold": row.get("fold"),
+                "outer_partition": str(
+                    row.get("outer_partition", "not_reported")
+                ),
+                "participant_id": str(row.get("participant_id", "")),
+                "record_id": str(row.get("record_id", "")),
+                "role": str(row.get("role", "unknown")),
+                "denoiser_id": str(artifact.get("denoiser_id", "unknown")),
+                "denoiser_status": str(
+                    artifact.get("denoiser_status", "not_reported")
+                ),
+                "heart_rate_estimator": str(
+                    artifact.get(
+                        "heart_rate_estimator",
+                        "60_over_median_valid_ppi_s",
+                    )
+                ),
+                "direct_hr_bpm": direct_hr,
+                "post_denoise_hr_bpm": post_hr,
+                "post_minus_direct_hr_bpm": delta,
+                "absolute_post_minus_direct_hr_bpm": (
+                    None if delta is None else abs(delta)
+                ),
+                "direct_valid_ppi_count": artifact.get(
+                    "direct_valid_ppi_count"
+                ),
+                "post_denoise_valid_ppi_count": artifact.get(
+                    "post_denoise_valid_ppi_count"
+                ),
+                "direct_peak_count": artifact.get("direct_peak_count"),
+                "post_denoise_peak_count": artifact.get(
+                    "post_denoise_peak_count"
+                ),
+                "direct_reference_wavelength": artifact.get(
+                    "direct_reference_wavelength"
+                ),
+                "post_denoise_reference_wavelength": artifact.get(
+                    "post_denoise_reference_wavelength"
+                ),
+                "post_q_rate_state": artifact.get("post_q_rate_state"),
+                "retained_for_classifier": _as_bool(row.get("retained", False)),
+            }
+        )
+
+    grouped: dict[tuple[str, str, str, str], list[Mapping[str, Any]]] = {}
+    for row in records:
+        for role_scope in (str(row["role"]), "ALL"):
+            grouped.setdefault(
+                (
+                    str(row["case_id"]),
+                    str(row["denoiser_id"]),
+                    str(row["outer_partition"]),
+                    role_scope,
+                ),
+                [],
+            ).append(row)
+
+    summary: list[Mapping[str, Any]] = []
+    for (case_id, denoiser_id, outer_partition, role_scope), rows in sorted(
+        grouped.items(),
+        key=lambda item: (
+            item[0][0],
+            item[0][1],
+            item[0][2] != "outer_oof",
+            item[0][2],
+            item[0][3] != "ALL",
+            item[0][3],
+        ),
+    ):
+        paired = [
+            row
+            for row in rows
+            if row["direct_hr_bpm"] is not None
+            and row["post_denoise_hr_bpm"] is not None
+        ]
+        participant_rows: dict[str, list[Mapping[str, Any]]] = {}
+        for row in paired:
+            participant_rows.setdefault(str(row["participant_id"]), []).append(row)
+        participant_direct = [
+            float(fmean(float(row["direct_hr_bpm"]) for row in values))
+            for values in participant_rows.values()
+        ]
+        participant_post = [
+            float(fmean(float(row["post_denoise_hr_bpm"]) for row in values))
+            for values in participant_rows.values()
+        ]
+        participant_delta = [
+            float(
+                fmean(float(row["post_minus_direct_hr_bpm"]) for row in values)
+            )
+            for values in participant_rows.values()
+        ]
+        participant_absolute_delta = [
+            float(
+                fmean(
+                    float(row["absolute_post_minus_direct_hr_bpm"])
+                    for row in values
+                )
+            )
+            for values in participant_rows.values()
+        ]
+        direct_stats = _descriptive_statistics(participant_direct)
+        post_stats = _descriptive_statistics(participant_post)
+        delta_stats = _descriptive_statistics(participant_delta)
+        absolute_stats = _descriptive_statistics(participant_absolute_delta)
+        summary.append(
+            {
+                "case_id": case_id,
+                "denoiser_id": denoiser_id,
+                "outer_partition": outer_partition,
+                "role_scope": role_scope,
+                "attempted_record_count": len(rows),
+                "successful_reducer_record_count": sum(
+                    str(row["denoiser_status"]).lower() == "success"
+                    for row in rows
+                ),
+                "paired_hr_record_count": len(paired),
+                "paired_participant_count": len(participant_rows),
+                "participant_macro_direct_hr_bpm": direct_stats["mean"],
+                "participant_sd_direct_hr_bpm": direct_stats["population_sd"],
+                "participant_macro_post_denoise_hr_bpm": post_stats["mean"],
+                "participant_sd_post_denoise_hr_bpm": post_stats[
+                    "population_sd"
+                ],
+                "participant_macro_post_minus_direct_hr_bpm": delta_stats[
+                    "mean"
+                ],
+                "participant_sd_post_minus_direct_hr_bpm": delta_stats[
+                    "population_sd"
+                ],
+                "participant_macro_absolute_hr_change_bpm": absolute_stats[
+                    "mean"
+                ],
+                "participant_sd_absolute_hr_change_bpm": absolute_stats[
+                    "population_sd"
+                ],
+                "heart_rate_estimator": (
+                    str(rows[0]["heart_rate_estimator"])
+                    if rows
+                    else "60_over_median_valid_ppi_s"
+                ),
+                "comparison_scope": (
+                    "paired_same_record_same_outer_partition_before_after_"
+                    "denoising_then_participant_macro"
+                ),
+            }
+        )
+    return records, summary
 
 
 _OOF_ROW_FIELDS = frozenset(field.name for field in fields(OofPredictionRow))
@@ -2893,6 +3074,250 @@ def _stage3_star_report_tables(
     ]
     return absolute, contrasts, fold_contrasts, execution_rows, notes
 
+
+def _stage3_star_presentation_tables(
+    collected: CollectedStudy,
+    absolute: Sequence[Mapping[str, Any]],
+    contrasts: Sequence[Mapping[str, Any]],
+    aggregation_view_repeat_metrics: Sequence[Mapping[str, Any]],
+) -> tuple[
+    list[Mapping[str, Any]],
+    list[Mapping[str, Any]],
+    list[Mapping[str, Any]],
+    list[str],
+]:
+    """Build two within-model B0--B7 tables and one side-by-side table.
+
+    Human-facing means and population SDs use the declared repeat-level native
+    participant-OOF endpoints. Variant deltas are paired to the same model's B0
+    by repeat. The cross-model table is deliberately descriptive and is never
+    relabelled as a causal ablation.
+    """
+
+    if not absolute:
+        return [], [], [], []
+    bridge = collected.plan.get("legacy_bridge")
+    if not isinstance(bridge, Mapping) or bridge.get("design") != _STAGE3_STAR_DESIGN:
+        return [], [], [], []
+    budget = bridge.get("budget")
+    if not isinstance(budget, Mapping):
+        return [], [], [], [
+            "Stage-3 presentation tables are N/A because the repeat budget is missing."
+        ]
+    try:
+        expected_repeats = tuple(int(value) for value in budget["repeat_indices"])
+    except (KeyError, TypeError, ValueError):
+        return [], [], [], [
+            "Stage-3 presentation tables are N/A because repeat indices are invalid."
+        ]
+    if not expected_repeats or len(set(expected_repeats)) != len(expected_repeats):
+        return [], [], [], [
+            "Stage-3 presentation tables are N/A because repeat indices are empty or duplicated."
+        ]
+
+    model_order = ("InceptionTimeFull", "CompactCNN1D")
+    profile_order = tuple(f"B{level}" for level in range(8))
+    absolute_by_model_profile = {
+        (str(row.get("model")), str(row.get("profile"))): row
+        for row in absolute
+    }
+    contrast_by_model_profile = {
+        (str(row.get("model")), str(row.get("variant_profile"))): row
+        for row in contrasts
+    }
+    repeats = {
+        (
+            str(row.get("case_id")),
+            str(row.get("aggregation_view")),
+            int(row.get("repeat", -1)),
+        ): row
+        for row in aggregation_view_repeat_metrics
+        if row.get("repeat") is not None
+    }
+    metrics = ("balanced_accuracy", "macro_f1", "worst_class_f1")
+    native_series: dict[tuple[str, str, str], tuple[float, ...] | None] = {}
+
+    def complete_series(
+        absolute_row: Mapping[str, Any], metric: str
+    ) -> tuple[float, ...] | None:
+        values: list[float] = []
+        for repeat in expected_repeats:
+            row = repeats.get(
+                (
+                    str(absolute_row.get("catalog_case_id")),
+                    str(absolute_row.get("native_aggregation_view")),
+                    repeat,
+                )
+            )
+            value = None if row is None else _number(row.get(metric))
+            if value is None:
+                return None
+            values.append(value)
+        return tuple(values)
+
+    model_tables: dict[str, list[Mapping[str, Any]]] = {
+        model: [] for model in model_order
+    }
+    notes: list[str] = []
+    for model in model_order:
+        baseline = absolute_by_model_profile.get((model, "B0"))
+        if baseline is None:
+            notes.append(
+                f"Stage-3 {model} B0--B7 table is N/A because B0 is missing."
+            )
+            continue
+        baseline_series = {
+            metric: complete_series(baseline, metric) for metric in metrics
+        }
+        for profile in profile_order:
+            absolute_row = absolute_by_model_profile.get((model, profile))
+            if absolute_row is None:
+                notes.append(
+                    f"Stage-3 {model} table is incomplete because {profile} is missing."
+                )
+                continue
+            contrast = (
+                None
+                if profile == "B0"
+                else contrast_by_model_profile.get((model, profile))
+            )
+            row: dict[str, Any] = {
+                "model": model,
+                "profile": profile,
+                "factor_id": absolute_row.get("factor_id"),
+                "reference_profile": "B0",
+                "native_aggregation_view": absolute_row.get(
+                    "native_aggregation_view"
+                ),
+                "comparison_type": (
+                    "baseline"
+                    if profile == "B0"
+                    else "within_model_B0_centered_ablation"
+                ),
+                "repeat_count": len(expected_repeats),
+                "passed_cell_count": absolute_row.get("passed_cell_count"),
+                "changed_control_paths": absolute_row.get(
+                    "actual_changed_control_paths"
+                ),
+                "single_factor_audit": absolute_row.get("single_factor_audit"),
+                "contrast_metrics_available": (
+                    bool(absolute_row.get("native_metrics_available"))
+                    if profile == "B0"
+                    else bool(
+                        contrast is not None
+                        and contrast.get("contrast_metrics_available")
+                    )
+                ),
+                "inference": "descriptive_repeat_mean_population_sd",
+            }
+            for metric in metrics:
+                series = complete_series(absolute_row, metric)
+                native_series[(model, profile, metric)] = series
+                baseline_values = baseline_series[metric]
+                absolute_available = series is not None
+                deltas = (
+                    tuple(0.0 for _ in expected_repeats)
+                    if profile == "B0" and absolute_available
+                    else tuple(
+                        right - left
+                        for left, right in zip(baseline_values, series)
+                    )
+                    if (
+                        series is not None
+                        and baseline_values is not None
+                        and row["contrast_metrics_available"]
+                    )
+                    else None
+                )
+                row[f"native_{metric}"] = (
+                    float(fmean(series)) if series is not None else None
+                )
+                row[f"native_{metric}_sd"] = (
+                    _sd(series) if series is not None else None
+                )
+                row[f"delta_vs_B0_{metric}"] = (
+                    float(fmean(deltas)) if deltas is not None else None
+                )
+                row[f"delta_vs_B0_{metric}_sd"] = (
+                    _sd(deltas) if deltas is not None else None
+                )
+            row["repeat_metrics_complete"] = all(
+                native_series.get((model, profile, metric)) is not None
+                for metric in metrics
+            )
+            model_tables[model].append(row)
+
+    side_by_side: list[Mapping[str, Any]] = []
+    inception_model, cnn_model = model_order
+    for profile in profile_order:
+        inception = absolute_by_model_profile.get((inception_model, profile))
+        cnn = absolute_by_model_profile.get((cnn_model, profile))
+        if inception is None or cnn is None:
+            notes.append(
+                f"Stage-3 cross-model row {profile} is N/A because one model is missing."
+            )
+            continue
+        row: dict[str, Any] = {
+            "profile": profile,
+            "factor_id": inception.get("factor_id"),
+            "native_aggregation_view": inception.get("native_aggregation_view"),
+            "comparison_type": "matched_architecture_comparison_not_ablation",
+            "repeat_count": len(expected_repeats),
+            "cross_model_profile_controls_match": bool(
+                inception.get("cross_model_profile_controls_match")
+                and cnn.get("cross_model_profile_controls_match")
+            ),
+            "both_cases_complete": bool(
+                inception.get("complete_for_requested_execution")
+                and cnn.get("complete_for_requested_execution")
+            ),
+            "inference": "descriptive_paired_repeat_difference_no_significance",
+        }
+        for metric in metrics:
+            inception_values = native_series.get(
+                (inception_model, profile, metric)
+            )
+            cnn_values = native_series.get((cnn_model, profile, metric))
+            paired = (
+                tuple(
+                    inception_value - cnn_value
+                    for inception_value, cnn_value in zip(
+                        inception_values, cnn_values
+                    )
+                )
+                if inception_values is not None and cnn_values is not None
+                else None
+            )
+            for prefix, values in (
+                ("inception", inception_values),
+                ("cnn", cnn_values),
+                ("inception_minus_cnn", paired),
+            ):
+                row[f"{prefix}_{metric}"] = (
+                    float(fmean(values)) if values is not None else None
+                )
+                row[f"{prefix}_{metric}_sd"] = (
+                    _sd(values) if values is not None else None
+                )
+        row["comparison_metrics_available"] = bool(
+            row["cross_model_profile_controls_match"]
+            and row["both_cases_complete"]
+            and all(
+                native_series.get((model, profile, metric)) is not None
+                for model in model_order
+                for metric in metrics
+            )
+        )
+        side_by_side.append(row)
+
+    return (
+        model_tables[inception_model],
+        model_tables[cnn_model],
+        side_by_side,
+        notes,
+    )
+
+
 @dataclass(frozen=True)
 class StudyAnalysis:
     """All normalized tables consumed by CSV, Markdown, HTML, and plots."""
@@ -2925,6 +3350,8 @@ class StudyAnalysis:
     incomplete_cases: tuple[Mapping[str, Any], ...]
     deployment_table: tuple[Mapping[str, Any], ...]
     notes: tuple[str, ...]
+    denoiser_hr_record_pairs: tuple[Mapping[str, Any], ...] = ()
+    denoiser_hr_comparison: tuple[Mapping[str, Any], ...] = ()
     repeat_per_class_metrics: tuple[Mapping[str, Any], ...] = ()
     per_class_metric_distribution_summary: tuple[Mapping[str, Any], ...] = ()
     aggregation_view_fold_metrics: tuple[Mapping[str, Any], ...] = ()
@@ -2932,6 +3359,13 @@ class StudyAnalysis:
     stage3_star_contrasts: tuple[Mapping[str, Any], ...] = ()
     stage3_star_fold_contrasts: tuple[Mapping[str, Any], ...] = ()
     stage3_star_execution: tuple[Mapping[str, Any], ...] = ()
+    stage3_star_inception_comparison: tuple[Mapping[str, Any], ...] = ()
+    stage3_star_cnn_comparison: tuple[Mapping[str, Any], ...] = ()
+    stage3_star_model_comparison: tuple[Mapping[str, Any], ...] = ()
+    classification_prediction_scores: tuple[Mapping[str, Any], ...] = ()
+    classification_roc_curves: tuple[Mapping[str, Any], ...] = ()
+    classification_prediction_tsne: tuple[Mapping[str, Any], ...] = ()
+    classification_diagnostic_status: tuple[Mapping[str, Any], ...] = ()
 
 
 def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
@@ -2976,6 +3410,44 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
     metric_distributions: list[Mapping[str, Any]] = []
     coverage_rows: list[Mapping[str, Any]] = []
     notes = list(collected.limitations)
+
+    report_options = collected.plan.get("report", {})
+    report_options = report_options if isinstance(report_options, Mapping) else {}
+    classification_prediction_scores = normalize_classification_rows(
+        collected.subject_oof_rows,
+        evaluation_id="participant_outer_oof",
+        aggregation_level="participant",
+    )
+    classification_roc_curves = classification_roc_curve_rows(
+        classification_prediction_scores,
+        macro_grid_points=int(
+            report_options.get("classification_roc_macro_grid_points", 201)
+        ),
+    )
+    classification_prediction_tsne = classification_tsne_rows(
+        classification_prediction_scores,
+        random_state=int(
+            report_options.get("classification_tsne_random_state", 42)
+        ),
+        perplexity=float(
+            report_options.get("classification_tsne_perplexity", 30.0)
+        ),
+        max_samples=int(
+            report_options.get("classification_tsne_max_samples", 5000)
+        ),
+    )
+    classification_diagnostic_status = classification_diagnostic_status_rows(
+        tuple(manifest_cases),
+        classification_prediction_scores,
+        classification_roc_curves,
+        classification_prediction_tsne,
+    )
+    if classification_prediction_tsne:
+        notes.append(
+            "Classification t-SNE is a report-only embedding of persisted OOF "
+            "prediction-probability vectors, not a hidden-feature embedding and "
+            "not evidence of separability in the model representation space."
+        )
 
     for case_id, case in manifest_cases.items():
         oof_rows = oof_by_case.get(case_id, [])
@@ -3712,6 +4184,9 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
     route_role_coverage, quality_distributions = _route_role_quality_tables(
         collected
     )
+    denoiser_hr_record_pairs, denoiser_hr_comparison = _denoiser_hr_tables(
+        collected
+    )
     (
         aggregation_line_comparison,
         aggregation_line_repeat_metrics,
@@ -3757,6 +4232,18 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         aggregation_view_fold_metrics,
     )
     notes.extend(stage3_star_notes)
+    (
+        stage3_star_inception_comparison,
+        stage3_star_cnn_comparison,
+        stage3_star_model_comparison,
+        stage3_star_presentation_notes,
+    ) = _stage3_star_presentation_tables(
+        collected,
+        stage3_star_absolute,
+        stage3_star_contrasts,
+        aggregation_view_repeat_metrics,
+    )
+    notes.extend(stage3_star_presentation_notes)
     (
         legacy_bridge_numeric_ablation_report,
         legacy_bridge_execution_order_report,
@@ -3814,6 +4301,8 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         incomplete_cases=tuple(incomplete_cases),
         deployment_table=tuple(deployment),
         notes=tuple(dict.fromkeys(notes)),
+        denoiser_hr_record_pairs=tuple(denoiser_hr_record_pairs),
+        denoiser_hr_comparison=tuple(denoiser_hr_comparison),
         repeat_per_class_metrics=tuple(repeat_per_class),
         per_class_metric_distribution_summary=tuple(
             _per_class_metric_distributions(repeat_per_class)
@@ -3822,6 +4311,21 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         stage3_star_contrasts=tuple(stage3_star_contrasts),
         stage3_star_fold_contrasts=tuple(stage3_star_fold_contrasts),
         stage3_star_execution=tuple(stage3_star_execution),
+        stage3_star_inception_comparison=tuple(
+            stage3_star_inception_comparison
+        ),
+        stage3_star_cnn_comparison=tuple(stage3_star_cnn_comparison),
+        stage3_star_model_comparison=tuple(stage3_star_model_comparison),
+        classification_prediction_scores=tuple(
+            classification_prediction_scores
+        ),
+        classification_roc_curves=tuple(classification_roc_curves),
+        classification_prediction_tsne=tuple(
+            classification_prediction_tsne
+        ),
+        classification_diagnostic_status=tuple(
+            classification_diagnostic_status
+        ),
     )
 
 

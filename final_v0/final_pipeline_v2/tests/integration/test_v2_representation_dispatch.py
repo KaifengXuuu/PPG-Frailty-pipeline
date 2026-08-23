@@ -22,6 +22,9 @@ from ppg_frailty.features import (
     default_registry,
     engineering_feature_names,
     registry_for_groups,
+    window_feature_names,
+    WindowFeatureExtraction,
+    WINDOW_FEATURE_SCHEMA_VERSION,
 )
 from ppg_frailty.peaks import BeatPairAudit, BeatPairingResult
 from ppg_frailty.representations import RawWindows
@@ -67,10 +70,21 @@ def _state(participant: str, value: float, *, role: str = "R3") -> experiment._R
         channel_schema=engineering_names,
         schema_version=ENGINEERING_SCHEMA_VERSION,
     )
-    state.engineering = EngineeringExtraction(
-        sequence=sequence,
-        value_validity=np.ones(engineering_values.shape, dtype=bool),
-        route=SignalRoute.DIRECT,
+    matrix_names = window_feature_names()
+    matrix_values = np.tile(
+        np.linspace(value, value + 1.0, len(matrix_names), dtype=np.float64),
+        (2, 1),
+    )
+    state.engineering = WindowFeatureExtraction(
+        sequence=EngineeringFeatureSequence(
+            values=matrix_values,
+            start_samples=np.asarray((0, 2000), dtype=np.int64),
+            valid_row_mask=np.ones(2, dtype=bool),
+            channel_schema=matrix_names,
+            schema_version=WINDOW_FEATURE_SCHEMA_VERSION,
+        ),
+        value_validity=np.ones(matrix_values.shape, dtype=bool),
+        row_tiers=("excellent", "excellent"),
         reasons=(),
     )
     raw = np.zeros((2, 8, 16), dtype=np.float32)
@@ -649,7 +663,7 @@ class RepresentationDispatchTest(unittest.TestCase):
                 declared_channel_order=experiment._CANONICAL_RAW_CHANNEL_SCHEMA,
             )
         )
-        self.assertIs(unchanged, dataset)
+        self.assertIsNot(unchanged, dataset)
         self.assertEqual(unchanged.values.shape, (1, 8, 4))
         self.assertEqual(
             experiment._model_input_spec(unchanged, "raw").channel_schema,
@@ -666,7 +680,7 @@ class RepresentationDispatchTest(unittest.TestCase):
             "shapeformer_channel_specific_osd",
             declared_channel_order=experiment._CANONICAL_RAW_CHANNEL_SCHEMA,
         )
-        self.assertIs(shapeformer, dataset)
+        self.assertIsNot(shapeformer, dataset)
         np.testing.assert_array_equal(shapeformer.values, values)
         self.assertEqual(
             experiment._model_input_spec(shapeformer, "raw").channel_schema,
@@ -674,15 +688,17 @@ class RepresentationDispatchTest(unittest.TestCase):
         )
         self.assertFalse(shapeformer_binding["silent_channel_slicing"])
 
-        with self.assertRaisesRegex(
-            RuntimeError,
-            "frailty_model_input_channel_order_must_equal_canonical_8ch_schema",
-        ):
-            experiment._bind_raw_dataset_for_model(
-                dataset,
-                "shapeformer_channel_specific_osd",
-                declared_channel_order=("RED", "IR"),
-            )
+        ppg_only, subset_binding = experiment._bind_raw_dataset_for_model(
+            dataset,
+            "shapeformer_channel_specific_osd",
+            declared_channel_order=("RED", "IR"),
+        )
+        self.assertEqual(ppg_only.values.shape, (1, 2, 4))
+        self.assertEqual(ppg_only.channel_schema, ("RED", "IR"))
+        self.assertEqual(
+            subset_binding["status"], "explicit_frailty_raw_channel_subset"
+        )
+        self.assertFalse(subset_binding["silent_channel_slicing"])
 
         invalid = RawWindowDataset(
             np.zeros((1, 11, 4), dtype=np.float32),
@@ -729,8 +745,9 @@ class RepresentationDispatchTest(unittest.TestCase):
             matrix_states, OOF_IDS, "feature_matrix"
         )
         self.assertEqual(matrix_dataset.representation_mode, "feature_matrix")
-        self.assertEqual(matrix_dataset.values.shape[0], 1)
-        self.assertEqual(matrix_dataset.values.shape[1:], (115, 150))
+        self.assertEqual(len(matrix_dataset.values), 1)
+        self.assertEqual(matrix_dataset.values[0].shape, (146, 2))
+        self.assertEqual(matrix_dataset.sequence_lengths, (2,))
 
         fusion_states = _states()
         fusion_provenance = experiment._fit_representation_artifacts(

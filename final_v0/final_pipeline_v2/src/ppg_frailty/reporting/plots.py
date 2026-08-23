@@ -27,6 +27,18 @@ STAGE3_STAR_FIGURE_NAMES = (
 
 
 FIGURE_TABLE_SOURCES: Mapping[str, tuple[str, ...]] = {
+    "classification_prediction_scores": (
+        "classification_prediction_scores",
+        "classification_diagnostic_status",
+    ),
+    "classification_prediction_tsne": (
+        "classification_prediction_tsne",
+        "classification_diagnostic_status",
+    ),
+    "classification_roc_auc_curves": (
+        "classification_roc_curves",
+        "classification_diagnostic_status",
+    ),
     "leaderboard": ("predictive_leaderboard",),
     "stability": ("repeat_metrics",),
     "macro_f1_stability": ("repeat_metrics",),
@@ -44,6 +56,7 @@ FIGURE_TABLE_SOURCES: Mapping[str, tuple[str, ...]] = {
     ),
     "coverage": ("coverage",),
     "route_role_coverage": ("route_role_coverage",),
+    "denoiser_hr_comparison": ("denoiser_hr_comparison",),
     "quality_distributions": ("quality_distributions",),
     "calibration": ("calibration_bins",),
     "confusion_matrices": ("confusion_matrices",),
@@ -79,6 +92,9 @@ FIGURE_TABLE_SOURCES: Mapping[str, tuple[str, ...]] = {
 
 
 STATIC_FIGURE_NAMES = (
+    "classification_prediction_scores",
+    "classification_prediction_tsne",
+    "classification_roc_auc_curves",
     "leaderboard",
     "stability",
     "macro_f1_stability",
@@ -90,6 +106,7 @@ STATIC_FIGURE_NAMES = (
     "ablation_sensitivity_metrics",
     "coverage",
     "route_role_coverage",
+    "denoiser_hr_comparison",
     "quality_distributions",
     "calibration",
     "confusion_matrices",
@@ -139,6 +156,198 @@ def _category_tick_label(value: Any) -> str:
     """Wrap structured case identifiers without moving their tick anchor."""
 
     return "\n".join(str(value).split("__"))
+
+
+def _diagnostic_groups(
+    rows: Sequence[Mapping[str, Any]],
+) -> list[tuple[tuple[str, str, str], list[Mapping[str, Any]]]]:
+    grouped: dict[tuple[str, str, str], list[Mapping[str, Any]]] = {}
+    for row in rows:
+        key = (
+            str(row.get("classifier_id")),
+            str(row.get("evaluation_id")),
+            str(row.get("aggregation_level")),
+        )
+        grouped.setdefault(key, []).append(row)
+    return sorted(grouped.items())
+
+
+def _diagnostic_panel_grid(
+    pyplot: Any,
+    panel_count: int,
+    *,
+    width: float = 5.2,
+    height: float = 4.2,
+) -> tuple[Any, np.ndarray]:
+    if panel_count <= 0:
+        raise ValueError("classification diagnostic requires OOF prediction rows")
+    columns = min(4, panel_count)
+    rows = int(math.ceil(panel_count / columns))
+    figure, axes = pyplot.subplots(
+        rows,
+        columns,
+        figsize=(width * columns, height * rows),
+        squeeze=False,
+    )
+    for axis in axes.flat[panel_count:]:
+        axis.axis("off")
+    return figure, axes
+
+
+def _classification_prediction_scores(
+    collected: CollectedStudy,
+    analysis: StudyAnalysis,
+    pyplot: Any,
+) -> Any:
+    groups = _diagnostic_groups(analysis.classification_prediction_scores)
+    figure, axes = _diagnostic_panel_grid(pyplot, len(groups))
+    report = collected.plan.get("report", {})
+    report = report if isinstance(report, Mapping) else {}
+    bins = int(report.get("classification_score_histogram_bins", 40))
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    for axis, (key, rows) in zip(axes.flat, groups, strict=False):
+        classifier_id, evaluation_id, level = key
+        class_order = tuple(int(value) for value in rows[0]["class_order"])
+        if len(class_order) == 2:
+            positive = class_order[-1]
+            field = f"probability_class_{positive}"
+            for true_label, color in zip(class_order, ("tab:blue", "tab:orange")):
+                values = [
+                    float(row[field])
+                    for row in rows
+                    if int(row["true_label"]) == true_label
+                ]
+                axis.hist(
+                    values,
+                    bins=edges,
+                    alpha=0.58,
+                    color=color,
+                    label=f"true={true_label} (n={len(values)})",
+                )
+            thresholds = [
+                float(row["decision_threshold"])
+                for row in rows
+                if row.get("decision_threshold") is not None
+            ]
+            if thresholds:
+                threshold = float(np.median(thresholds))
+                axis.axvline(
+                    threshold,
+                    color="black",
+                    linestyle="--",
+                    linewidth=1.4,
+                    label=f"threshold={threshold:.4g}",
+                )
+            axis.set_xlabel(f"P(class={positive})")
+        else:
+            for correct, color, label in (
+                (True, "tab:green", "correct"),
+                (False, "tab:red", "incorrect"),
+            ):
+                values = [
+                    float(row["predicted_confidence"])
+                    for row in rows
+                    if bool(row["prediction_correct"]) is correct
+                ]
+                if values:
+                    axis.hist(
+                        values,
+                        bins=edges,
+                        alpha=0.58,
+                        color=color,
+                        label=f"{label} (n={len(values)})",
+                    )
+            axis.text(
+                0.02,
+                0.97,
+                "multiclass argmax · no scalar threshold",
+                transform=axis.transAxes,
+                va="top",
+                fontsize=8,
+            )
+            axis.set_xlabel("Maximum predicted class probability")
+        axis.set_xlim(0.0, 1.0)
+        axis.set_ylabel("Count")
+        axis.set_title(f"{classifier_id}\n{evaluation_id} · {level}", fontsize=9)
+        axis.grid(axis="y", alpha=0.2)
+        handles, labels = axis.get_legend_handles_labels()
+        if handles:
+            axis.legend(fontsize=7)
+    figure.suptitle("OOF prediction-score distributions and decision threshold")
+    figure.tight_layout()
+    return figure
+
+
+def _classification_prediction_tsne(analysis: StudyAnalysis, pyplot: Any) -> Any:
+    groups = _diagnostic_groups(analysis.classification_prediction_tsne)
+    figure, axes = _diagnostic_panel_grid(pyplot, len(groups))
+    for axis, (key, rows) in zip(axes.flat, groups, strict=False):
+        classifier_id, evaluation_id, level = key
+        labels = sorted({int(row["true_label"]) for row in rows})
+        for label in labels:
+            selected = [row for row in rows if int(row["true_label"]) == label]
+            axis.scatter(
+                [float(row["tsne_x"]) for row in selected],
+                [float(row["tsne_y"]) for row in selected],
+                s=22,
+                alpha=0.72,
+                label=f"true={label}",
+            )
+        incorrect = [row for row in rows if not bool(row["prediction_correct"])]
+        if incorrect:
+            axis.scatter(
+                [float(row["tsne_x"]) for row in incorrect],
+                [float(row["tsne_y"]) for row in incorrect],
+                s=36,
+                marker="x",
+                linewidths=1.0,
+                color="black",
+                label="misclassified",
+            )
+        axis.set_title(f"{classifier_id}\n{evaluation_id} · {level}", fontsize=9)
+        axis.set_xlabel("t-SNE 1")
+        axis.set_ylabel("t-SNE 2")
+        axis.grid(alpha=0.15)
+        axis.legend(fontsize=7)
+    figure.suptitle(
+        "Prediction-space t-SNE (persisted OOF probabilities; not hidden features)"
+    )
+    figure.tight_layout()
+    return figure
+
+
+def _classification_roc_auc_curves(analysis: StudyAnalysis, pyplot: Any) -> Any:
+    groups = _diagnostic_groups(analysis.classification_roc_curves)
+    figure, axes = _diagnostic_panel_grid(pyplot, len(groups))
+    for axis, (key, rows) in zip(axes.flat, groups, strict=False):
+        classifier_id, evaluation_id, level = key
+        curves: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
+        for row in rows:
+            curve_key = (str(row["curve"]), str(row["class_label"]))
+            curves.setdefault(curve_key, []).append(row)
+        for (curve, class_label), points in sorted(curves.items()):
+            points = sorted(points, key=lambda row: int(row["point_index"]))
+            curve_auc = float(points[0]["roc_auc"])
+            is_macro = curve == "macro_average_ovr"
+            axis.plot(
+                [float(row["false_positive_rate"]) for row in points],
+                [float(row["true_positive_rate"]) for row in points],
+                linewidth=2.2 if is_macro else 1.2,
+                linestyle="-" if is_macro else "--",
+                label=f"{'macro OvR' if is_macro else f'class {class_label} OvR'} (AUC={curve_auc:.3f})",
+            )
+        axis.plot([0, 1], [0, 1], color="0.45", linestyle=":", linewidth=1.0)
+        axis.set_xlim(0.0, 1.0)
+        axis.set_ylim(0.0, 1.0)
+        axis.set_aspect("equal", adjustable="box")
+        axis.set_xlabel("False-positive rate")
+        axis.set_ylabel("True-positive rate")
+        axis.set_title(f"{classifier_id}\n{evaluation_id} · {level}", fontsize=9)
+        axis.grid(alpha=0.2)
+        axis.legend(fontsize=7, loc="lower right")
+    figure.suptitle("Empirical OOF ROC curves with area under the curve (AUC)")
+    figure.tight_layout()
+    return figure
 
 
 def _set_centered_category_ticks(
@@ -429,7 +638,7 @@ def _roc_pr_auc_stability(analysis: StudyAnalysis, pyplot: Any) -> Any:
             ("macro_pr_auc_ovr", "Macro PR AUC (one-vs-rest)"),
         ),
         group_fields=("case_id",),
-        title="Repeat-level probability discrimination",
+        title="Repeat-level AUC scalar stability (not an ROC curve)",
     )
 
 
@@ -689,6 +898,72 @@ def _quality_distributions(analysis: StudyAnalysis, pyplot: Any) -> Any:
     _set_centered_category_ticks(axis, positions, labels)
     axis.set_ylabel("Component value (mean ± population SD)")
     axis.set_title("Quality distributions by route and role")
+    axis.grid(axis="y", alpha=0.25)
+    figure.tight_layout()
+    return figure
+
+
+def _denoiser_hr_comparison(analysis: StudyAnalysis, pyplot: Any) -> Any:
+    rows = [
+        row
+        for row in getattr(analysis, "denoiser_hr_comparison", ())
+        if str(row.get("role_scope")) == "ALL"
+        and str(row.get("outer_partition")) == "outer_oof"
+        and _number(row.get("participant_macro_direct_hr_bpm")) is not None
+        and _number(row.get("participant_macro_post_denoise_hr_bpm")) is not None
+    ]
+    if not rows:
+        raise ValueError("paired direct/post-denoiser HR evidence unavailable")
+    labels = [
+        f"{row['denoiser_id']}\n{row['case_id']}"
+        for row in rows
+    ]
+    direct = np.asarray(
+        [float(row["participant_macro_direct_hr_bpm"]) for row in rows],
+        dtype=np.float64,
+    )
+    post = np.asarray(
+        [float(row["participant_macro_post_denoise_hr_bpm"]) for row in rows],
+        dtype=np.float64,
+    )
+    direct_sd = np.asarray(
+        [
+            _number(row.get("participant_sd_direct_hr_bpm")) or 0.0
+            for row in rows
+        ],
+        dtype=np.float64,
+    )
+    post_sd = np.asarray(
+        [
+            _number(row.get("participant_sd_post_denoise_hr_bpm")) or 0.0
+            for row in rows
+        ],
+        dtype=np.float64,
+    )
+    positions = np.arange(len(rows), dtype=np.float64)
+    figure, axis = pyplot.subplots(
+        figsize=(max(7.5, len(rows) * 2.0), 5.2)
+    )
+    axis.bar(
+        positions - 0.19,
+        direct,
+        width=0.38,
+        yerr=direct_sd,
+        capsize=3,
+        label="Direct PPG HR",
+    )
+    axis.bar(
+        positions + 0.19,
+        post,
+        width=0.38,
+        yerr=post_sd,
+        capsize=3,
+        label="Post-denoiser PPG HR",
+    )
+    _set_centered_category_ticks(axis, positions, labels)
+    axis.set_ylabel("Participant-macro HR (bpm; mean ± participant SD)")
+    axis.set_title("Paired direct versus post-denoiser heart rate")
+    axis.legend()
     axis.grid(axis="y", alpha=0.25)
     figure.tight_layout()
     return figure
@@ -1928,6 +2203,20 @@ def generate_static_figures(
             for name in requested_names
         )
     plots: tuple[tuple[str, Callable[[Any], Any]], ...] = (
+        (
+            "classification_prediction_scores",
+            lambda plot: _classification_prediction_scores(
+                collected, analysis, plot
+            ),
+        ),
+        (
+            "classification_prediction_tsne",
+            lambda plot: _classification_prediction_tsne(analysis, plot),
+        ),
+        (
+            "classification_roc_auc_curves",
+            lambda plot: _classification_roc_auc_curves(analysis, plot),
+        ),
         ("leaderboard", lambda plot: _leaderboard(analysis, plot)),
         ("stability", lambda plot: _stability(analysis, plot)),
         (
@@ -1956,6 +2245,10 @@ def generate_static_figures(
         (
             "route_role_coverage",
             lambda plot: _route_role_coverage(analysis, plot),
+        ),
+        (
+            "denoiser_hr_comparison",
+            lambda plot: _denoiser_hr_comparison(analysis, plot),
         ),
         (
             "quality_distributions",

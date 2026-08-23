@@ -69,6 +69,21 @@ class ReportingTabularExportTests(unittest.TestCase):
                     if name.endswith((".xml", ".rels")):
                         ElementTree.fromstring(archive.read(name))
 
+    def test_workbook_is_readable_by_installed_openpyxl_when_available(self) -> None:
+        try:
+            from openpyxl import load_workbook
+        except ImportError:
+            self.skipTest("openpyxl is not installed")
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "tables.xlsx"
+            write_excel_workbook(
+                target,
+                (ReportTable("metrics", ({"case": "a", "score": 0.75},)),),
+            )
+            workbook = load_workbook(target, read_only=True, data_only=True)
+            self.assertEqual(workbook.sheetnames, ["metrics"])
+            self.assertEqual(workbook["metrics"]["A2"].value, "a")
+
 
 if __name__ == "__main__":
     unittest.main()

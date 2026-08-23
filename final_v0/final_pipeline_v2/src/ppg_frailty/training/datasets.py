@@ -99,12 +99,22 @@ class RawWindowDataset(_IdentityDataset):
         values: np.ndarray,
         identities: list[SampleIdentity] | tuple[SampleIdentity, ...],
         sample_mask: np.ndarray | None = None,
+        channel_schema: list[str] | tuple[str, ...] | None = None,
     ) -> None:
         array = np.asarray(values, dtype=np.float32)
         if array.ndim != 3 or not np.isfinite(array).all():
             raise ValueError("raw values must be finite [sample,channel,time]")
         self.values = array
         self.identities = _validate_identities(identities, array.shape[0])
+        if channel_schema is None:
+            self.channel_schema = ()
+        else:
+            schema = tuple(str(value) for value in channel_schema)
+            if len(schema) != array.shape[1] or len(schema) != len(set(schema)):
+                raise ValueError(
+                    "channel_schema must uniquely name every raw input channel"
+                )
+            self.channel_schema = schema
         if sample_mask is None:
             self.sample_mask = np.ones((array.shape[0], array.shape[2]), dtype=bool)
         else:
@@ -181,45 +191,68 @@ class FeatureMatrixDataset(_IdentityDataset):
         frozen = tuple(matrices)
         if not frozen:
             raise ValueError("at least one OrderedFeatureMatrixV1 is required")
+        from ..representations.feature_matrix import validate_feature_matrix
+
+        for matrix in frozen:
+            validate_feature_matrix(matrix)
         reference = frozen[0]
         for matrix in frozen:
             if (
                 tuple(matrix.channel_schema) != tuple(reference.channel_schema)
                 or tuple(matrix.context_schema) != tuple(reference.context_schema)
                 or matrix.schema_version != reference.schema_version
-                or np.asarray(matrix.values).shape != np.asarray(reference.values).shape
             ):
-                raise ValueError("OrderedFeatureMatrixV1 schemas/shapes differ within a batch")
+                raise ValueError("OrderedFeatureMatrixV1 schemas differ within a dataset")
         return cls(
-            np.stack([np.asarray(matrix.values, dtype=np.float32) for matrix in frozen]),
-            np.stack([np.asarray(matrix.row_mask, dtype=bool) for matrix in frozen]),
+            tuple(np.asarray(matrix.values, dtype=np.float32) for matrix in frozen),
+            tuple(np.asarray(matrix.row_mask, dtype=bool) for matrix in frozen),
             identities,
             reference.channel_schema,
         )
 
     def __init__(
         self,
-        values: np.ndarray,
-        row_mask: np.ndarray,
+        values: np.ndarray | tuple[np.ndarray, ...] | list[np.ndarray],
+        row_mask: np.ndarray | tuple[np.ndarray, ...] | list[np.ndarray],
         identities: list[SampleIdentity] | tuple[SampleIdentity, ...],
         channel_schema: list[str] | tuple[str, ...],
     ) -> None:
-        array = np.asarray(values, dtype=np.float32)
-        mask = np.asarray(row_mask, dtype=bool)
-        if array.ndim != 3 or mask.shape != (array.shape[0], array.shape[2]):
-            raise ValueError("matrix values must be [file,D,K] and row_mask [file,K]")
-        if not np.isfinite(array).all() or bool(np.any(mask.sum(axis=1) == 0)):
-            raise ValueError("matrix must be finite and every file needs a valid column")
+        if isinstance(values, np.ndarray):
+            if values.ndim != 3:
+                raise ValueError("matrix values must be [file,D,K] or variable [D,K_i]")
+            matrices = tuple(np.asarray(value, dtype=np.float32) for value in values)
+        else:
+            matrices = tuple(np.asarray(value, dtype=np.float32) for value in values)
+        if isinstance(row_mask, np.ndarray):
+            if row_mask.ndim != 2:
+                raise ValueError("matrix row_mask must be [file,K] or variable [K_i]")
+            masks = tuple(np.asarray(value, dtype=bool) for value in row_mask)
+        else:
+            masks = tuple(np.asarray(value, dtype=bool) for value in row_mask)
+        if not matrices or len(matrices) != len(masks):
+            raise ValueError("matrix values and row masks must be non-empty and aligned")
+        channel_count = matrices[0].shape[0] if matrices[0].ndim == 2 else -1
+        if any(
+            matrix.ndim != 2
+            or matrix.shape[0] != channel_count
+            or mask.shape != (matrix.shape[1],)
+            or not np.isfinite(matrix).all()
+            or not np.any(mask)
+            for matrix, mask in zip(matrices, masks)
+        ):
+            raise ValueError("every matrix must be finite [D,K_i] with a valid column")
         schema = tuple(channel_schema)
-        if len(schema) != array.shape[1] or len(schema) != len(set(schema)):
+        if len(schema) != channel_count or len(schema) != len(set(schema)):
             raise ValueError("channel_schema must uniquely name every matrix channel")
-        self.values = array
-        self.row_mask = mask
+        self.values = matrices
+        self.row_mask = masks
+        self.n_channels = channel_count
+        self.sequence_lengths = tuple(matrix.shape[1] for matrix in matrices)
         self.channel_schema = schema
-        self.identities = _validate_identities(identities, array.shape[0])
+        self.identities = _validate_identities(identities, len(matrices))
 
     def __len__(self) -> int:
-        return self.values.shape[0]
+        return len(self.values)
 
     def __getitem__(self, index: int) -> dict[str, Any]:
         _require_torch()
@@ -298,6 +331,32 @@ def collate_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
     identities = [sample["identity"] for sample in samples]
     labels = torch.stack([sample["y"] for sample in samples])
     if "window_bag" not in samples[0]:
+        if (
+            "mask" in samples[0]
+            and samples[0]["x"].ndim == 2
+            and any(
+                sample["x"].shape[-1] != samples[0]["x"].shape[-1]
+                for sample in samples
+            )
+        ):
+            channels = int(samples[0]["x"].shape[0])
+            maximum_length = max(int(sample["x"].shape[-1]) for sample in samples)
+            values = torch.zeros(
+                (len(samples), channels, maximum_length), dtype=torch.float32
+            )
+            mask = torch.zeros((len(samples), maximum_length), dtype=torch.bool)
+            for index, sample in enumerate(samples):
+                if int(sample["x"].shape[0]) != channels:
+                    raise ValueError("feature-matrix channels differ within a batch")
+                length = int(sample["x"].shape[-1])
+                values[index, :, :length] = sample["x"]
+                mask[index, :length] = sample["mask"]
+            return {
+                "x": values,
+                "mask": mask,
+                "y": labels,
+                "identities": identities,
+            }
         result: dict[str, Any] = {
             "x": torch.stack([sample["x"] for sample in samples]),
             "y": labels,

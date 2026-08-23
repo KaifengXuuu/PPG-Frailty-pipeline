@@ -24,9 +24,9 @@ from ppg_frailty.peaks.msptdfast_v2 import (
 from ppg_frailty.quality.stage5_pre import (
     PEAK_ABLATION_SCHEMA,
     STAGE5_SCHEMA,
+    _file_prediction_rows,
     _stage_directory,
     _rank_and_mark_denoiser_rows,
-    _subject_activity_prediction_rows,
     align_and_score_beats,
     generate_motion_peak_report,
     get_reducer as stage5_get_reducer,
@@ -286,6 +286,8 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
             self.assertEqual(result["figure_count"], 5)
             self.assertTrue((root / "tables" / "report_tables.xlsx").is_file())
             self.assertTrue((root / "tables" / "table_figure_pairs.csv").is_file())
+            self.assertTrue((root / "tables" / "test_components.csv").is_file())
+            self.assertTrue((root / "TEST_COMPONENTS.md").is_file())
             self.assertTrue((root / "STUDY_SUMMARY.html").is_file())
             self.assertIn(
                 "<table>",
@@ -408,19 +410,23 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
             )
             prediction_rows = [
                 {
-                    "participant_id": "p1", "activity_label": 0,
+                    "participant_id": "p1", "file_id": "p1_static",
+                    "activity_label": 0, "repeat_index": 0, "fold_index": 0,
                     "p_active": 0.1, "threshold": 0.5, "predicted_activity": 0,
                 },
                 {
-                    "participant_id": "p1", "activity_label": 1,
+                    "participant_id": "p1", "file_id": "p1_motion",
+                    "activity_label": 1, "repeat_index": 0, "fold_index": 0,
                     "p_active": 0.9, "threshold": 0.5, "predicted_activity": 1,
                 },
                 {
-                    "participant_id": "p2", "activity_label": 0,
+                    "participant_id": "p2", "file_id": "p2_static",
+                    "activity_label": 0, "repeat_index": 0, "fold_index": 0,
                     "p_active": 0.8, "threshold": 0.5, "predicted_activity": 1,
                 },
                 {
-                    "participant_id": "p2", "activity_label": 1,
+                    "participant_id": "p2", "file_id": "p2_motion",
+                    "activity_label": 1, "repeat_index": 0, "fold_index": 0,
                     "p_active": 0.2, "threshold": 0.5, "predicted_activity": 0,
                 },
             ]
@@ -429,7 +435,14 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
                 internal / "motion_window_oof.parquet",
             )
             pq.write_table(
-                pa.Table.from_pylist(prediction_rows),
+                pa.Table.from_pylist([
+                    {
+                        key: value
+                        for key, value in row.items()
+                        if key not in {"repeat_index", "fold_index"}
+                    }
+                    for row in prediction_rows
+                ]),
                 external / "motion_ptt_window_predictions.parquet",
             )
             history_dir = internal / "repeat_0/fold_0"
@@ -459,9 +472,13 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
                 json.dumps({"summary_rows": summary}), encoding="utf-8"
             )
             result = generate_motion_peak_report(root)
-            self.assertEqual(result["figure_count"], 11)
+            self.assertEqual(result["figure_count"], 17)
             self.assertTrue((root / "tables" / "report_tables.xlsx").is_file())
             self.assertTrue((root / "tables" / "table_figure_pairs.csv").is_file())
+            self.assertTrue((root / "tables" / "denoiser_algorithms.csv").is_file())
+            component_table = (root / "TEST_COMPONENTS.md").read_text(encoding="utf-8")
+            self.assertIn("Algorithm and kernel (≤300 chars)", component_table)
+            self.assertIn("pca_bss", component_table)
             generate_motion_peak_report(root)
             self.assertTrue((root / "figures/motion_training_learning_curves.png").is_file())
             self.assertTrue((root / "result_backup/backup_manifest.json").is_file())
@@ -474,40 +491,84 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
                     encoding="utf-8"
                 )
             )
-            self.assertEqual(len(detector), 2)
+            self.assertEqual(len(detector), 4)
             self.assertEqual(
                 set(detector[0]),
                 {
+                    "model_id",
                     "dataset",
-                    "participant_macro_balanced_accuracy",
-                    "participant_macro_balanced_accuracy_sd",
-                    "participant_macro_f1",
-                    "participant_macro_f1_sd",
-                    "participant_macro_sensitivity",
-                    "participant_macro_sensitivity_sd",
-                    "participant_macro_specificity",
-                    "participant_macro_specificity_sd",
-                    "participant_macro_roc_auc",
-                    "participant_macro_roc_auc_sd",
-                    "participant_macro_pr_auc",
-                    "participant_macro_pr_auc_sd",
+                    "evaluation_scope",
+                    "aggregation_level",
+                    "file_score_aggregation",
+                    "observation_count",
+                    "participant_count",
+                    "file_count",
+                    "window_count",
+                    "balanced_accuracy",
+                    "macro_f1",
+                    "sensitivity",
+                    "specificity",
+                    "roc_auc",
+                    "pr_auc",
                     "worst_fold_balanced_accuracy",
                 },
             )
-            subject_confusion = json.loads(
-                (root / "tables/motion_detector_subject_confusion.json").read_text(
+            self.assertEqual(
+                {row["aggregation_level"] for row in detector}, {"window", "file"}
+            )
+            file_confusion = json.loads(
+                (root / "tables/motion_detector_file_confusion.json").read_text(
                     encoding="utf-8"
                 )
             )
-            self.assertEqual(len(subject_confusion), 2)
+            self.assertEqual(len(file_confusion), 2)
             self.assertEqual(
-                subject_confusion[0]["aggregation_level"],
-                "participant_by_activity_class_median_probability",
+                file_confusion[0]["aggregation_level"],
+                "file_median_window_probability",
             )
-            self.assertEqual(subject_confusion[0]["participant_count"], 2)
-            self.assertEqual(subject_confusion[0]["participant_activity_class_count"], 4)
             self.assertTrue(
-                (root / "figures/motion_internal_subject_confusion_matrix.png").is_file()
+                (root / "figures/motion_internal_file_confusion_matrix.png").is_file()
+            )
+            self.assertTrue(
+                (root / "figures/frailty29_trained_window_score_distribution.png").is_file()
+            )
+            self.assertTrue(
+                (root / "figures/frailty29_trained_file_score_distribution.png").is_file()
+            )
+            self.assertTrue(
+                (root / "figures/frailty29_trained_window_prediction_tsne.png").is_file()
+            )
+            self.assertTrue(
+                (root / "figures/frailty29_trained_file_prediction_tsne.png").is_file()
+            )
+            self.assertTrue(
+                (root / "figures/frailty29_trained_window_roc_auc_curve.png").is_file()
+            )
+            self.assertTrue(
+                (root / "figures/frailty29_trained_file_roc_auc_curve.png").is_file()
+            )
+            roc_rows = json.loads(
+                (root / "tables/motion_detector_roc_curves.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertTrue(roc_rows)
+            self.assertEqual(
+                {row["aggregation_level"] for row in roc_rows},
+                {"window", "file"},
+            )
+            self.assertTrue(
+                all("false_positive_rate" in row for row in roc_rows)
+            )
+            tsne_rows = json.loads(
+                (root / "tables/motion_detector_prediction_tsne.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertTrue(tsne_rows)
+            self.assertEqual(
+                {row["tsne_input_space"] for row in tsne_rows},
+                {"persisted_prediction_probability_vector"},
             )
             index = json.loads(
                 (root / "outputs_index.json").read_text(encoding="utf-8")
@@ -554,28 +615,33 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
         _, single_display = _rank_and_mark_denoiser_rows([rows[0]], "static")
         self.assertEqual(single_display[0]["activity_group"], "static**")
 
-    def test_subject_activity_rows_use_median_probability_and_frozen_threshold(
+    def test_file_rows_use_median_probability_and_frozen_threshold(
         self,
     ) -> None:
         rows = [
             {
-                "participant_id": "p1", "activity_label": 0,
+                "participant_id": "p1", "file_id": "p1_static", "activity_label": 0,
                 "p_active": probability, "threshold": 0.5,
             }
             for probability in (0.1, 0.2, 0.9)
         ] + [
             {
-                "participant_id": "p1", "activity_label": 1,
+                "participant_id": "p1", "file_id": "p1_motion", "activity_label": 1,
                 "p_active": probability, "threshold": 0.5,
             }
             for probability in (0.6, 0.8)
         ]
-        subject_rows = _subject_activity_prediction_rows(rows)
-        self.assertEqual(len(subject_rows), 2)
-        self.assertEqual(subject_rows[0]["median_p_active"], 0.2)
-        self.assertEqual(subject_rows[0]["predicted_activity"], 0)
-        self.assertEqual(subject_rows[1]["median_p_active"], 0.7)
-        self.assertEqual(subject_rows[1]["predicted_activity"], 1)
+        file_rows = _file_prediction_rows(rows)
+        self.assertEqual(len(file_rows), 2)
+        by_id = {row["file_id"]: row for row in file_rows}
+        self.assertEqual(by_id["p1_static"]["p_active"], 0.2)
+        self.assertEqual(by_id["p1_static"]["predicted_activity"], 0)
+        self.assertEqual(by_id["p1_motion"]["p_active"], 0.7)
+        self.assertEqual(by_id["p1_motion"]["predicted_activity"], 1)
+        mean_rows = _file_prediction_rows(rows, score_aggregation="mean")
+        mean_by_id = {row["file_id"]: row for row in mean_rows}
+        self.assertAlmostEqual(mean_by_id["p1_static"]["p_active"], 0.4)
+        self.assertEqual(mean_by_id["p1_static"]["score_aggregation"], "mean")
 
     @unittest.skipUnless(importlib.util.find_spec("pyarrow"), "pyarrow not installed")
     def test_reverse_ablation_trains_five_ptt_folds_and_one_final_model(self) -> None:

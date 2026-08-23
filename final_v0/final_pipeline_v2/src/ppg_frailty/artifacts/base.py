@@ -23,6 +23,7 @@ class ArtifactReducer(ABC):
 
     reducer_id: str
     reducer_version: str
+    algorithm_kernel_description: str = ""
     is_identity: bool = False
 
     @abstractmethod

@@ -59,6 +59,10 @@ class NlmsReducer(ArtifactReducer):
 
     reducer_id = "nlms_imu_anc"
     reducer_version = "nlms_delay_taps_v1"
+    algorithm_kernel_description = (
+        "以六轴物理单位 IMU 为参考，对 RED/IR 分别运行带泄漏的归一化 LMS 自适应噪声抵消；"
+        "内核：多延迟 tapped-reference 线性滤波，参考 RMS 达阈值时按 NLMS 规则更新权重。"
+    )
 
     def __init__(self, config: NlmsConfig = NlmsConfig()) -> None:
         config.validate()

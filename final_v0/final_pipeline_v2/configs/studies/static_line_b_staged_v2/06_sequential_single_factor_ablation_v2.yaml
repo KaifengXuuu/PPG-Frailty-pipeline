@@ -1,31 +1,69 @@
-# Reusable Stage 6 template. It has exactly one active factor.
-# 1) Replace base_config with the selected finalist resolved config.
-# 2) Run learning rate below.
-# 3) Save the selected LR into the next locked base config.
-# 4) Replace the only axis with batch size [32, 64, 128].
-# 5) Lock the selected batch size, then replace the only axis with
-#    fixed epochs [7, 10, 15].
-# Optional later factor: weight decay [0.00001, 0.0001, 0.001].
-# For a classical finalist, replace the axis with one applicable model factor:
-# Logistic C [0.1, 1.0, 10.0]; SVM C [0.1, 1.0, 10.0], then gamma;
-# ExtraTrees max_features [sqrt, 0.5, 1.0], then min_samples_leaf [1, 2, 5];
-# Feature-matrix model-specific axes remain pending; retired ROCKET axes are absent.
-# Never place LR, batch size and epochs in this file simultaneously.
+# Retained single-factor CompactCNN learning-rate ablation. All cases share
+# the selected V2-core plus B0/B2/B7 state and differ only in learning rate.
+# The newer InceptionTime tuning route is stage6_batch_LR_search.yaml.
 schema_version: ppg_frailty.study_plan.v2
 study:
-  study_id: staged_static_06_learning_rate_v2
-  kind: ablation
-  purpose: "Confirm one training factor at a time on the manually selected final model."
-  flow_position: "Stage 6 after finalist and module-route selection; repeat this template sequentially for each factor."
+  study_id: staged_static_06_learning_rate_v3
+  kind: catalog_sweep
+  purpose: "Confirm one CompactCNN learning-rate factor on the selected V2-core plus B0/B2/B7 state."
+  flow_position: "Retained Stage 6 single-factor ablation; superseded for InceptionTime tuning by the resource-aware Stage 6 plans."
   decision_role: ablation
-  reference_case_id: null
+  reference_case_id: compact_cnn_lr001
   thesis_sections:
     - "Sequential single-factor training ablations"
-base_config: configs/reference_static_role_aware_v2.yaml
-axes:
-  - path: training.learning_rate
-    values: [0.0003, 0.001, 0.003]
-    reference: 0.001
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: "One learning-rate factor only; all B0/B2/B7 and V2-core controls are identical."
+  controlled_factors:
+    - "CompactCNN1D architecture, 64 Hz, 5/2.5 s and all-eight DL window scaling"
+    - "AdamW, batch32, participant-count class weights and Line B aggregation"
+  notes:
+    - "This retained CompactCNN ablation is separate from the InceptionTime successive-halving study."
+cases:
+  - case_id: compact_cnn_lr0003
+    catalog_entry: compact_cnn
+    screen_profile_id: v2_core_b0_b2_b7_selected
+    output_group: raw
+    overrides: &common_lr0003
+      signal.dl_resampling.enabled: true
+      signal.dl_resampling.target_fs_hz: 64.0
+      signal.normalization.raw_ppg: per_window_median_iqr_over_1p349_sd_finite
+      signal.normalization.raw_imu: none
+      windows.raw_dl.length_s: 5.0
+      windows.raw_dl.hop_s: 2.5
+      training.optimizer: adamw
+      training.batch_size: 32
+      training.sampler: exhaustive_shuffle_without_replacement
+      training.class_weighting: outer_train_window_inverse_frequency
+      training.class_count_basis: row
+      training.learning_rate: 0.0003
+      aggregation.balance_line: line_b_equal_role_families
+    rationale: "Learning-rate ablation at 3e-4."
+    formal_profile: null
+  - case_id: compact_cnn_lr001
+    catalog_entry: compact_cnn
+    screen_profile_id: v2_core_b0_b2_b7_selected
+    output_group: raw
+    overrides:
+      <<: *common_lr0003
+      training.learning_rate: 0.001
+    rationale: "B0 learning-rate reference at 1e-3."
+    formal_profile: null
+  - case_id: compact_cnn_lr003
+    catalog_entry: compact_cnn
+    screen_profile_id: v2_core_b0_b2_b7_selected
+    output_group: raw
+    overrides:
+      <<: *common_lr0003
+      training.learning_rate: 0.003
+    rationale: "Learning-rate ablation at 3e-3."
+    formal_profile: null
 execution:
   repeats: [0, 1, 2, 3, 4]
   folds: [0, 1, 2, 3, 4]
@@ -42,3 +80,6 @@ report:
   write_html: true
   write_static_figures: true
   calibration_bins: 10
+  figure_modules: [all]
+  compact_mean_sd: true
+  write_excel_workbook: true

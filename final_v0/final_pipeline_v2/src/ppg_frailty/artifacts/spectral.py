@@ -81,6 +81,10 @@ class SpectralMaskReducer(ArtifactReducer):
 
     reducer_id = "spectral_mask"
     reducer_version = "spectral_mask_v1"
+    algorithm_kernel_description = (
+        "由六轴 IMU 时频幅度构造软污染掩膜，在心率频带内抑制 RED/IR、带外置零；"
+        "内核：Hann STFT/ISTFT、逐帧 IMU 分位数归一化和有下限的乘性谱增益。"
+    )
 
     def __init__(self, config: SpectralMaskConfig = SpectralMaskConfig()) -> None:
         config.validate()

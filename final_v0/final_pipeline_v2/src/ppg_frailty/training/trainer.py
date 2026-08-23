@@ -607,9 +607,9 @@ class TrainingConfig:
     optimizer: str = "adam"
     optimizer_parameters: dict[str, Any] = field(default_factory=dict)
     class_weighting: str = "inverse_frequency"
-    class_count_basis: str = "participant"
+    class_count_basis: str = "row"
     training_balance: str = "equal_role_families"
-    sampler: str = "balance_line_weighted_v2"
+    sampler: str = "exhaustive_shuffle_without_replacement"
     samples_per_epoch: int | None = None
     participant_window_quota: str | int | float = "all"
     classifier_role_families: tuple[str, ...] = ("B", "R")
@@ -731,11 +731,9 @@ class TrainingConfig:
             canonical_weighting, implied_basis = _CLASS_WEIGHTING_INPUT_ALIASES[
                 self.class_weighting
             ]
-            if self.class_count_basis not in {"participant", implied_basis}:
-                raise ValueError(
-                    f"legacy class_weighting={self.class_weighting} conflicts with "
-                    f"class_count_basis={self.class_count_basis}"
-                )
+            # A legacy compound alias owns both the strategy and its count
+            # basis. The dataclass cannot distinguish an omitted basis from
+            # its modern row default, so the alias deterministically wins.
             object.__setattr__(self, "class_weighting", canonical_weighting)
             object.__setattr__(self, "class_count_basis", implied_basis)
         if (
@@ -830,15 +828,6 @@ class TrainingConfig:
             raise ValueError(
                 "balanced_softmax owns its configured count-basis correction and "
                 "requires class_weighting=none"
-            )
-        if (
-            self.class_weighting == "none"
-            and self.loss != "balanced_softmax"
-            and self.class_count_basis != "participant"
-        ):
-            raise ValueError(
-                "class_count_basis=row would be inactive when class_weighting=none "
-                "and loss is not balanced_softmax"
             )
         if self.loss != "focal_loss" and float(self.focal_gamma) != 2.0:
             raise ValueError(
@@ -1299,7 +1288,7 @@ def outer_train_inverse_frequency_weights(
     dataset: Dataset,
     n_classes: int,
     *,
-    class_count_basis: str = "participant",
+    class_count_basis: str = "row",
 ) -> np.ndarray:
     """Compute inverse-frequency weights from the configured outer-train unit."""
 
@@ -1342,7 +1331,7 @@ def outer_train_effective_number_weights(
     n_classes: int,
     *,
     beta: float,
-    class_count_basis: str = "participant",
+    class_count_basis: str = "row",
 ) -> np.ndarray:
     """Return effective-number weights from the configured count basis.
 
@@ -1401,7 +1390,7 @@ def configured_class_weight_vector(
     class_weighting: str,
     n_classes: int,
     class_weight_beta: float = 0.999,
-    class_count_basis: str = "participant",
+    class_count_basis: str = "row",
 ) -> np.ndarray:
     """Resolve one declared class-weight policy to an explicit vector."""
 

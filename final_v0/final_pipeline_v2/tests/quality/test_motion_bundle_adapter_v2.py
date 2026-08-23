@@ -26,6 +26,7 @@ from ppg_frailty.quality.motion_bundle_adapter import (
     LoadedReusedMotionDetector,
     ReusedMotionDetectorConfig,
     infer_reused_motion_recording,
+    infer_reused_motion_windows,
     load_reused_motion_detector,
     motion_recording_from_signal_views,
     resolve_reused_motion_detector_config,
@@ -113,7 +114,10 @@ class ReusedMotionConfigTest(unittest.TestCase):
         self.assertIsNone(default.evidence_path)
         self.assertIsNone(default.expected_evidence_sha256)
         self.assertEqual(default.device, "cuda")
-        self.assertEqual(default.window_probability_aggregation, "median")
+        self.assertEqual(
+            default.window_probability_aggregation,
+            "native_windows_file_median_diagnostics_only",
+        )
         self.assertEqual(default.threshold_source, "bundle_frozen")
 
         resolved = resolve_reused_motion_detector_config(
@@ -389,6 +393,23 @@ class ReusedMotionInferenceTest(unittest.TestCase):
         self.assertEqual(decision.record_probability, 0.5)
         self.assertEqual(decision.motion_state, "high_motion")
         self.assertIn("at_or_above", decision.reason)
+
+    def test_native_window_probabilities_are_the_primary_motion_output(self) -> None:
+        detector = _loaded_detector(0.5)
+        with patch(
+            "ppg_frailty.quality.motion_bundle_adapter."
+            "predict_formal_motion_probability",
+            return_value=np.asarray([0.4, 0.6]),
+        ):
+            series = infer_reused_motion_windows(detector, _recording())
+        self.assertEqual(
+            [row.motion_state for row in series.decisions], ["low", "high"]
+        )
+        self.assertEqual(
+            [row.start_sample_400 for row in series.decisions], [0, 800]
+        )
+        self.assertEqual(series.file_median_probability_diagnostic, 0.5)
+        self.assertIn("diagnostic_only", series.reason)
 
     def test_missing_and_short_motion_fail_closed_as_unfit(self) -> None:
         detector = _loaded_detector()

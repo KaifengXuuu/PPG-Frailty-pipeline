@@ -13,6 +13,12 @@ from typing import Any, Mapping, Sequence
 
 from .analyze import StudyAnalysis, analyze_study
 from .collect import CollectedStudy, collect_study
+from .components import (
+    TEST_COMPONENT_COLUMNS,
+    build_pipeline_test_component_rows,
+    markdown_test_component_table,
+    write_test_component_markdown,
+)
 from .plots import (
     FIGURE_TABLE_SOURCES,
     clear_static_figure_artifacts,
@@ -158,6 +164,69 @@ _LEGACY_BRIDGE_EXECUTION_COLUMNS = (
 )
 
 
+_DENOISER_HR_SUMMARY_COLUMNS = (
+    ("case_id", "Case"),
+    ("denoiser_id", "Denoiser"),
+    ("outer_partition", "Partition"),
+    ("role_scope", "Role"),
+    ("attempted_record_count", "Attempts"),
+    ("paired_hr_record_count", "Paired HR records"),
+    ("paired_participant_count", "Participants"),
+    (
+        (
+            "participant_macro_direct_hr_bpm",
+            "participant_sd_direct_hr_bpm",
+            False,
+        ),
+        "Direct HR bpm",
+    ),
+    (
+        (
+            "participant_macro_post_denoise_hr_bpm",
+            "participant_sd_post_denoise_hr_bpm",
+            False,
+        ),
+        "Post-denoise HR bpm",
+    ),
+    (
+        (
+            "participant_macro_post_minus_direct_hr_bpm",
+            "participant_sd_post_minus_direct_hr_bpm",
+            False,
+        ),
+        "Post − direct bpm",
+    ),
+    (
+        (
+            "participant_macro_absolute_hr_change_bpm",
+            "participant_sd_absolute_hr_change_bpm",
+            False,
+        ),
+        "Absolute ΔHR bpm",
+    ),
+)
+
+
+_DENOISER_HR_RECORD_COLUMNS = (
+    ("case_id", "Case"),
+    ("repeat", "Repeat"),
+    ("fold", "Fold"),
+    ("outer_partition", "Partition"),
+    ("participant_id", "Participant"),
+    ("record_id", "Record"),
+    ("role", "Role"),
+    ("denoiser_id", "Denoiser"),
+    ("denoiser_status", "Status"),
+    ("direct_hr_bpm", "Direct HR"),
+    ("post_denoise_hr_bpm", "Post HR"),
+    ("post_minus_direct_hr_bpm", "ΔHR"),
+    ("direct_valid_ppi_count", "Direct PPI n"),
+    ("post_denoise_valid_ppi_count", "Post PPI n"),
+    ("post_q_rate_state", "Post Q_rate"),
+    ("retained_for_classifier", "CNN retained"),
+)
+
+
 def _is_stage3_centered_star(plan: Mapping[str, Any]) -> bool:
     bridge = plan.get("legacy_bridge")
     return isinstance(bridge, Mapping) and str(bridge.get("design", "")) == (
@@ -211,7 +280,10 @@ _STAGE3_STAR_CONTRAST_COLUMNS = (
         "B0/B7 window OOF identical",
     ),
     ("matched_window_oof_row_count", "B0/B7 matched window rows"),
-    ("window_oof_probability_max_abs_diff", "B0/B7 max |probability diff|"),
+    (
+        "window_oof_probability_max_abs_diff",
+        "B0/B7 max absolute probability diff",
+    ),
     ("window_oof_identity_audit_status", "B0/B7 identity audit"),
 )
 
@@ -244,27 +316,130 @@ _STAGE3_STAR_EXECUTION_COLUMNS = (
     ("execution_transition_is_ablation", "Transition is ablation"),
 )
 
+
+_STAGE3_STAR_WITHIN_MODEL_COLUMNS = (
+    ("profile", "Profile"),
+    ("factor_id", "Factor"),
+    ("native_aggregation_view", "Native endpoint"),
+    (
+        ("native_balanced_accuracy", "native_balanced_accuracy_sd"),
+        "BA mean ± SD (%)",
+    ),
+    (
+        ("delta_vs_B0_balanced_accuracy", "delta_vs_B0_balanced_accuracy_sd"),
+        "Δ BA vs B0 mean ± SD (pp)",
+    ),
+    (("native_macro_f1", "native_macro_f1_sd"), "Macro-F1 mean ± SD (%)"),
+    (
+        ("delta_vs_B0_macro_f1", "delta_vs_B0_macro_f1_sd"),
+        "Δ Macro-F1 vs B0 mean ± SD (pp)",
+    ),
+    (
+        ("native_worst_class_f1", "native_worst_class_f1_sd"),
+        "Worst-class F1 mean ± SD (%)",
+    ),
+    (
+        ("delta_vs_B0_worst_class_f1", "delta_vs_B0_worst_class_f1_sd"),
+        "Δ worst-class F1 vs B0 mean ± SD (pp)",
+    ),
+    ("repeat_count", "Repeats"),
+    ("changed_control_paths", "Changed controls"),
+    ("single_factor_audit", "Factor audit"),
+    ("contrast_metrics_available", "Available"),
+)
+
+
+_STAGE3_STAR_CROSS_MODEL_COLUMNS = (
+    ("profile", "Profile"),
+    ("factor_id", "Factor"),
+    ("native_aggregation_view", "Native endpoint"),
+    (
+        ("inception_balanced_accuracy", "inception_balanced_accuracy_sd"),
+        "InceptionTime BA mean ± SD (%)",
+    ),
+    (
+        ("cnn_balanced_accuracy", "cnn_balanced_accuracy_sd"),
+        "CNN BA mean ± SD (%)",
+    ),
+    (
+        (
+            "inception_minus_cnn_balanced_accuracy",
+            "inception_minus_cnn_balanced_accuracy_sd",
+        ),
+        "InceptionTime − CNN Δ BA mean ± SD (pp)",
+    ),
+    (
+        ("inception_macro_f1", "inception_macro_f1_sd"),
+        "InceptionTime Macro-F1 mean ± SD (%)",
+    ),
+    (("cnn_macro_f1", "cnn_macro_f1_sd"), "CNN Macro-F1 mean ± SD (%)"),
+    (
+        ("inception_minus_cnn_macro_f1", "inception_minus_cnn_macro_f1_sd"),
+        "InceptionTime − CNN Δ Macro-F1 mean ± SD (pp)",
+    ),
+    (
+        ("inception_worst_class_f1", "inception_worst_class_f1_sd"),
+        "InceptionTime worst-class F1 mean ± SD (%)",
+    ),
+    (
+        ("cnn_worst_class_f1", "cnn_worst_class_f1_sd"),
+        "CNN worst-class F1 mean ± SD (%)",
+    ),
+    (
+        (
+            "inception_minus_cnn_worst_class_f1",
+            "inception_minus_cnn_worst_class_f1_sd",
+        ),
+        "InceptionTime − CNN Δ worst-class F1 mean ± SD (pp)",
+    ),
+    ("repeat_count", "Paired repeats"),
+    ("cross_model_profile_controls_match", "Controls match"),
+    ("comparison_metrics_available", "Available"),
+)
+
+
 _STAGE3_STAR_TABLES = (
     (
+        "stage3_star_inception_comparison",
+        "Stage 3 InceptionTime B0–B7 comparison",
+        "One InceptionTime table: B0 is the baseline and B1–B7 are paired to B0 by repeat. Values are native participant-OOF repeat mean ± population SD. B2 and B6 are declared coupled bundles; B7 is a reporting-aggregation ablation.",
+        _STAGE3_STAR_WITHIN_MODEL_COLUMNS,
+        "InceptionTime B0-B7 native repeat mean/SD and paired B0-centered deltas",
+    ),
+    (
+        "stage3_star_cnn_comparison",
+        "Stage 3 CompactCNN B0–B7 comparison",
+        "One CompactCNN table: B0 is the baseline and B1–B7 are paired to B0 by repeat. Values are native participant-OOF repeat mean ± population SD. B2 and B6 are declared coupled bundles; B7 is a reporting-aggregation ablation.",
+        _STAGE3_STAR_WITHIN_MODEL_COLUMNS,
+        "CompactCNN B0-B7 native repeat mean/SD and paired B0-centered deltas",
+    ),
+    (
+        "stage3_star_model_comparison",
+        "Stage 3 B0–B7 InceptionTime versus CompactCNN",
+        "Each row horizontally matches the two models under the same B-profile, repeat split and native endpoint. InceptionTime − CNN is a descriptive matched architecture comparison, not one of the fourteen B0-centered ablations and carries no significance claim.",
+        _STAGE3_STAR_CROSS_MODEL_COLUMNS,
+        "B0-B7 side-by-side InceptionTime and CompactCNN repeat mean/SD with paired descriptive model deltas",
+    ),
+    (
         "stage3_star_absolute",
-        "Stage 3 centered-star absolute endpoints",
+        "Stage 3 centered-star detailed absolute endpoints",
         "Sixteen absolute model/profile endpoints. W/A/B are same-OOF sensitivity views; each row declares its native endpoint.",
         _STAGE3_STAR_ABSOLUTE_COLUMNS,
         "Sixteen absolute model/profile endpoints with native and W/A/B same-OOF metrics",
     ),
     (
         "stage3_star_contrasts",
-        "Stage 3 centered-star contrasts",
-        "Fourteen same-model B0→variant contrasts. Availability requires five passed cells plus matching seeds, split hashes, held-out rosters, native metrics, and exact factor paths; cross-model deltas are prohibited. B0/B7 also audits training-control and window-OOF identity.",
+        "Stage 3 centered-star detailed contrast audit",
+        "Fourteen same-model B0→variant contrasts. Availability requires all declared repeat×fold cells plus matching seeds, split hashes, held-out rosters, native metrics, and exact factor paths. B0/B7 also audits training-control and window-OOF identity.",
         _STAGE3_STAR_CONTRAST_COLUMNS,
         "Fourteen same-model B0-centered contrasts with factor and reproducibility audits",
     ),
     (
         "stage3_star_fold_contrasts",
-        "Stage 3 centered-star matched-fold deltas",
-        "The 14×5 fold deltas are descriptive only: no CI or significance claim. Seven contrasts within each model share the same correlated B0.",
+        "Stage 3 centered-star detailed matched-fold deltas",
+        "Every declared repeat×fold delta is descriptive only: no CI or significance claim. Seven contrasts within each model share the same correlated B0.",
         _STAGE3_STAR_FOLD_COLUMNS,
-        "Seventy matched-fold descriptive deltas; no CI or significance inference",
+        "All matched repeat/fold descriptive deltas; no CI or significance inference",
     ),
     (
         "stage3_star_execution",
@@ -370,6 +545,7 @@ def _report_markdown(
     analysis: StudyAnalysis,
     figures: Sequence[Mapping[str, Any]],
     reproducibility: ReproducibilityAudit | None = None,
+    test_component_rows: Sequence[Mapping[str, Any]] = (),
 ) -> str:
     reproducibility = reproducibility or _unavailable_reproducibility(
         "seed/split evidence was not supplied to the report renderer"
@@ -422,6 +598,15 @@ def _report_markdown(
         f"{manifest.get('failed_cell_count', 'N/A')} / "
         f"{manifest.get('not_run_cell_count', 'N/A')}",
         f"- Resume-skipped passed cases: {manifest.get('resumed_case_count', 0)}",
+        "",
+        "## Test models, modules, inputs, and fixed parameters",
+        "",
+        "The identical standalone table is in "
+        "[TEST_COMPONENTS.md](TEST_COMPONENTS.md); machine-readable copies are "
+        "`tables/test_components.csv` and `.json`. Input data are reported as "
+        "dataset/path, signal view, channels, units, rate, and windows—not hashes.",
+        "",
+        markdown_test_component_table(test_component_rows),
         "",
         "## Seed and data-split reproducibility",
         "",
@@ -915,6 +1100,37 @@ def _report_markdown(
     )
     lines.extend(
         [
+            "## Denoiser paired heart-rate comparison",
+            "",
+            "HR is calculated as `60 / median(valid PPI seconds)` from the same "
+            "registered peak detector before and after the single denoiser attempt. "
+            "Rows are paired within recording and averaged within participant before "
+            "the participant-macro summary. Use the `outer_oof` rows for the primary "
+            "held-out comparison; outer-train rows remain audit-only.",
+            "",
+        ]
+    )
+    lines.extend(
+        _markdown_table(
+            analysis.denoiser_hr_comparison,
+            _DENOISER_HR_SUMMARY_COLUMNS,
+        )
+    )
+    lines.extend(
+        [
+            "<details><summary>Per-record paired denoiser HR evidence</summary>",
+            "",
+        ]
+    )
+    lines.extend(
+        _markdown_table(
+            analysis.denoiser_hr_record_pairs,
+            _DENOISER_HR_RECORD_COLUMNS,
+        )
+    )
+    lines.extend(["</details>", ""])
+    lines.extend(
+        [
             "## Frozen motion evidence used by each route",
             "",
             "Frailty29 reuse is in-sample auxiliary motion-preprocessing evidence, "
@@ -964,6 +1180,32 @@ def _report_markdown(
                 ("valid_count", "Valid n"),
                 ("unavailable_rate", "Unavailable"),
                 (("mean", "population_sd", False), "Mean ± SD"),
+            ),
+        )
+    )
+    lines.extend(
+        [
+            "## Classification score, t-SNE, and ROC–AUC diagnostics",
+            "",
+            "Every classifier with persisted participant OOF probabilities is "
+            "represented in the three paired figure modules. t-SNE embeds the "
+            "prediction-probability vector, not hidden features. Multiclass "
+            "frailty decisions use argmax and therefore have no single scalar "
+            "threshold.",
+            "",
+        ]
+    )
+    lines.extend(
+        _markdown_table(
+            getattr(analysis, "classification_diagnostic_status", ()),
+            (
+                ("classifier_id", "Classifier"),
+                ("prediction_score_status", "Score/threshold"),
+                ("prediction_tsne_status", "Prediction t-SNE"),
+                ("roc_auc_curve_status", "ROC–AUC curve"),
+                ("prediction_row_count", "OOF rows"),
+                ("tsne_point_count", "t-SNE points"),
+                ("roc_curve_point_count", "ROC points"),
             ),
         )
     )
@@ -1023,6 +1265,10 @@ def _report_markdown(
             "- [tables/metric_distribution_summary.csv](tables/metric_distribution_summary.csv)",
             "- [tables/repeat_per_class_metrics.csv](tables/repeat_per_class_metrics.csv)",
             "- [tables/per_class_metric_distribution_summary.csv](tables/per_class_metric_distribution_summary.csv)",
+            "- [tables/classification_prediction_scores.csv](tables/classification_prediction_scores.csv)",
+            "- [tables/classification_prediction_tsne.csv](tables/classification_prediction_tsne.csv)",
+            "- [tables/classification_roc_curves.csv](tables/classification_roc_curves.csv)",
+            "- [tables/classification_diagnostic_status.csv](tables/classification_diagnostic_status.csv)",
             "- [tables/table_figure_pairs.csv](tables/table_figure_pairs.csv)",
             "- [tables/report_tables.xlsx](tables/report_tables.xlsx): one table per worksheet",
             "- [tables/worst_class_f1_stability.csv](tables/worst_class_f1_stability.csv)",
@@ -1078,6 +1324,7 @@ def _report_html(
     analysis: StudyAnalysis,
     figures: Sequence[Mapping[str, Any]],
     reproducibility: ReproducibilityAudit | None = None,
+    test_component_rows: Sequence[Mapping[str, Any]] = (),
 ) -> str:
     reproducibility = reproducibility or _unavailable_reproducibility(
         "seed/split evidence was not supplied to the report renderer"
@@ -1154,6 +1401,10 @@ th{{background:#f0f3f6}}img{{max-width:100%;height:auto}}figure{{margin:2rem 0}}
 <p class="notice">Descriptive manual-review report; no automatic winner is selected.</p>
 <p><strong>Purpose:</strong> {html.escape(str(study.get("purpose", "N/A")))}</p>
 <p><strong>Flow position:</strong> {html.escape(str(study.get("flow_position", "N/A")))}</p>
+<h2>Test models, modules, inputs, and fixed parameters</h2>
+<p>The identical Markdown table is in <a href="TEST_COMPONENTS.md">TEST_COMPONENTS.md</a>.
+Input data are named directly rather than represented by hashes.</p>
+{_html_table(test_component_rows, TEST_COMPONENT_COLUMNS)}
 {reproducibility_html}
 <h2>Predictive leaderboard</h2>
 <p>Primary ranking uses participant-level, repeat-recomputed abstention-aware
@@ -1338,6 +1589,14 @@ minimum-coverage decision remains auditable.</p>
     ("mean_post_q_rate_score", "Mean post Q_rate"),
     ("mean_post_q_rate_coverage", "Post Q_rate coverage"),
 ))}
+<h2>Denoiser paired heart-rate comparison</h2>
+<p>HR is 60 / median(valid PPI seconds) from the same registered detector
+before and after one denoiser attempt. Same-record pairs are averaged within
+participant before participant-macro summaries. Outer-OOF rows are primary;
+outer-train rows remain audit-only.</p>
+{_html_table(getattr(analysis, "denoiser_hr_comparison", ()), _DENOISER_HR_SUMMARY_COLUMNS)}
+<details><summary>Per-record paired denoiser HR evidence</summary>
+{_html_table(getattr(analysis, "denoiser_hr_record_pairs", ()), _DENOISER_HR_RECORD_COLUMNS)}</details>
 <h2>Frozen motion evidence used by each route</h2>
 <p class="notice">Frailty29 reuse is in-sample auxiliary motion-preprocessing
 evidence, not valid outer-OOF motion-detector evidence. Downstream frailty
@@ -1361,6 +1620,20 @@ classification is still evaluated on each outer held-out fold.</p>
     ("component", "Component"), ("valid_count", "Valid n"),
     ("unavailable_rate", "Unavailable"),
     (("mean", "population_sd", False), "Mean ± SD"),
+))}
+<h2>Classification score, t-SNE, and ROC–AUC diagnostics</h2>
+<p>Every classifier with persisted participant OOF probabilities is represented
+in the three paired figure modules. t-SNE embeds prediction probabilities, not
+hidden features. Multiclass frailty decisions use argmax and have no single
+scalar threshold.</p>
+{_html_table(getattr(analysis, "classification_diagnostic_status", ()), (
+    ("classifier_id", "Classifier"),
+    ("prediction_score_status", "Score/threshold"),
+    ("prediction_tsne_status", "Prediction t-SNE"),
+    ("roc_auc_curve_status", "ROC–AUC curve"),
+    ("prediction_row_count", "OOF rows"),
+    ("tsne_point_count", "t-SNE points"),
+    ("roc_curve_point_count", "ROC points"),
 ))}
 <h2>Figures</h2>{figure_html or "<p><em>N/A — no generated figures.</em></p>"}
 <h3>Figure status, including explicit N/A reasons</h3>
@@ -1595,8 +1868,34 @@ def generate_study_report(
     figures_dir = root / "figures"
     tables.mkdir(exist_ok=True)
     figures_dir.mkdir(exist_ok=True)
+    test_component_rows = build_pipeline_test_component_rows(root, bundle.manifest)
     table_payloads: tuple[tuple[str, Sequence[Mapping[str, Any]], str], ...] = (
+        (
+            "test_components",
+            test_component_rows,
+            "All participating models/modules with named input data and complete fixed parameters",
+        ),
         ("case_summary", analysis.case_summary, "One descriptive row per case"),
+        (
+            "classification_prediction_scores",
+            analysis.classification_prediction_scores,
+            "Per-classifier persisted OOF prediction probabilities, confidence, and decision-threshold provenance",
+        ),
+        (
+            "classification_prediction_tsne",
+            analysis.classification_prediction_tsne,
+            "Deterministic report-only t-SNE coordinates from persisted OOF probability vectors",
+        ),
+        (
+            "classification_roc_curves",
+            analysis.classification_roc_curves,
+            "Empirical one-vs-rest and macro-average OOF ROC curve coordinates with AUC",
+        ),
+        (
+            "classification_diagnostic_status",
+            analysis.classification_diagnostic_status,
+            "Per-classifier availability audit for score, prediction-space t-SNE, and ROC-AUC figures",
+        ),
         (
             "metric_distribution_summary",
             analysis.metric_distribution_summary,
@@ -1685,6 +1984,16 @@ def generate_study_report(
             "route_role_coverage",
             analysis.route_role_coverage,
             "Tier, motion provenance, abstention, retained/direct/processed, and denoiser summaries by route and role",
+        ),
+        (
+            "denoiser_hr_comparison",
+            analysis.denoiser_hr_comparison,
+            "Participant-macro paired direct/post-denoiser PPG heart-rate comparison",
+        ),
+        (
+            "denoiser_hr_record_pairs",
+            analysis.denoiser_hr_record_pairs,
+            "Per-record paired direct/post-denoiser PPG heart-rate evidence",
         ),
         (
             "quality_distributions",
@@ -1918,6 +2227,7 @@ def generate_study_report(
         "reproducibility_audit": reproducibility.to_dict(),
         "figure_status": list(figures),
         "table_figure_pairs": table_figure_pairs,
+        "test_components": test_component_rows,
     }
     summary_json = root / "study_summary.json"
     _write_json(summary_json, summary_payload)
@@ -1929,9 +2239,28 @@ def generate_study_report(
             description="Machine-readable complete study summary",
         )
     )
+    component_markdown = write_test_component_markdown(root, test_component_rows)
+    index.append(
+        _index_entry(
+            root,
+            component_markdown,
+            artifact_type="test_component_contract",
+            description=(
+                "Standalone copy of the report's model/module, input-data, and "
+                "fixed-parameter table"
+            ),
+        )
+    )
     markdown_path = root / "STUDY_SUMMARY.md"
     markdown_path.write_text(
-        _report_markdown(bundle, analysis, figures, reproducibility), encoding="utf-8"
+        _report_markdown(
+            bundle,
+            analysis,
+            figures,
+            reproducibility,
+            test_component_rows,
+        ),
+        encoding="utf-8",
     )
     index.append(
         _index_entry(
@@ -1945,7 +2274,14 @@ def generate_study_report(
     html_path = root / "STUDY_SUMMARY.html" if write_html else None
     if html_path is not None:
         html_path.write_text(
-            _report_html(bundle, analysis, figures, reproducibility), encoding="utf-8"
+            _report_html(
+                bundle,
+                analysis,
+                figures,
+                reproducibility,
+                test_component_rows,
+            ),
+            encoding="utf-8",
         )
         index.append(
             _index_entry(

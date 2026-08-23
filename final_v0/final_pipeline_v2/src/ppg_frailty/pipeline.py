@@ -1106,6 +1106,9 @@ def run_model_comparison(
         (seed + member_index + 1) & 0xFFFF_FFFF
         for member_index in range(ensemble_size)
     )
+    frailty_raw_channel_schema = (
+        "RED", "IR", "A_dyn_x", "A_dyn_y", "A_dyn_z", "GX", "GY", "GZ",
+    )
 
     rng = np.random.default_rng(seed)
     rows: list[dict[str, Any]] = []
@@ -1172,19 +1175,21 @@ def run_model_comparison(
 
             torch.manual_seed(seed)
             if machine_model_id == "inception_matrix":
-                spec = ModelInputSpec("feature_matrix", n_channels=115, n_classes=3)
+                # Exercise the authoritative D=146, variable-K matrix contract.
+                # K=59 is deliberately different from the legacy fixed K=150.
+                spec = ModelInputSpec("feature_matrix", n_channels=146, n_classes=3)
                 model_config: dict[str, Any] = {
                     "model_id": machine_model_id,
                     "seed": seed,
-                    "variant": "full",
+                    "variant": "small",
                     "dropout": 0.2,
                     "kernel_sizes": [39, 19, 9],
                     "dilation": 1,
                 }
                 inputs = torch.from_numpy(
-                    rng.normal(size=(2, 115, 150)).astype(np.float32)
+                    rng.normal(size=(2, 146, 59)).astype(np.float32)
                 )
-                mask_tensor = torch.ones((2, 150), dtype=torch.bool)
+                mask_tensor = torch.ones((2, 59), dtype=torch.bool)
                 model = create_model(explicit(model_config, spec), spec)
                 with torch.no_grad():
                     logits = model(inputs, mask_tensor)
@@ -1197,11 +1202,16 @@ def run_model_comparison(
                     if machine_model_id == "inception_full_five_member_ensemble"
                     else "feature_matrix"
                 )
-                ensemble_channels = 8 if ensemble_mode == "raw" else 115
+                ensemble_channels = 8 if ensemble_mode == "raw" else 146
                 spec = ModelInputSpec(
                     ensemble_mode,
                     n_channels=ensemble_channels,
                     n_classes=3,
+                    channel_schema=(
+                        frailty_raw_channel_schema
+                        if ensemble_mode == "raw"
+                        else ()
+                    ),
                 )
                 model = create_model(
                     explicit(
@@ -1221,12 +1231,12 @@ def run_model_comparison(
                         size=(
                             2,
                             ensemble_channels,
-                            150 if ensemble_mode == "feature_matrix" else 64,
+                            59 if ensemble_mode == "feature_matrix" else 64,
                         ),
                     ).astype(np.float32)
                 )
                 with torch.no_grad():
-                    mask_length = 150 if ensemble_mode == "feature_matrix" else 64
+                    mask_length = 59 if ensemble_mode == "feature_matrix" else 64
                     logits = model(inputs, torch.ones((2, mask_length), dtype=torch.bool))
             elif machine_model_id in {
                 "shapeformer_channel_specific_osd",
@@ -1234,10 +1244,7 @@ def run_model_comparison(
                 "shapeformer_effect_size_fixed_v1",
                 "shapeformer_legacy_effect_size_port",
             }:
-                channel_schema = (
-                    "RED", "IR", "A_dyn_x", "A_dyn_y",
-                    "A_dyn_z", "GX", "GY", "GZ",
-                )
+                channel_schema = frailty_raw_channel_schema
                 spec = ModelInputSpec(
                     "raw",
                     n_channels=8,
@@ -1472,7 +1479,13 @@ def run_model_comparison(
             elif machine_model_id in {
                 "fusion_compact", "fusion_inception", "file_bag_fusion",
             }:
-                spec = ModelInputSpec("fusion", n_channels=8, n_classes=3, n_file_features=8)
+                spec = ModelInputSpec(
+                    "fusion",
+                    n_channels=8,
+                    n_classes=3,
+                    n_file_features=8,
+                    channel_schema=frailty_raw_channel_schema,
+                )
                 if machine_model_id == "fusion_compact":
                     fusion_options = {
                         "signal_dropout": 0.0,
@@ -1512,7 +1525,12 @@ def run_model_comparison(
                 with torch.no_grad():
                     logits = model(bag, window_mask, file_features)
             else:
-                spec = ModelInputSpec("raw", n_channels=8, n_classes=3)
+                spec = ModelInputSpec(
+                    "raw",
+                    n_channels=8,
+                    n_classes=3,
+                    channel_schema=frailty_raw_channel_schema,
+                )
                 raw_options: dict[str, Any]
                 if machine_model_id == "compact_cnn":
                     raw_options = {
@@ -1550,15 +1568,20 @@ def run_model_comparison(
             kind = "forward_contract_probability_sum_error"
             parameters = int(sum(item.numel() for item in model.parameters() if item.requires_grad))
         resolved_architecture = resolved_architecture_parameters(model, spec)
+        resolved_variant = resolved_architecture.get(
+            "variant",
+            resolved_architecture.get(
+                "member_variant",
+                derived_model_variant({"model_id": canonical_model_id}),
+            ),
+        )
         rows.append(
             {
                 "model_id": canonical_model_id,
                 "canonical_model_id": canonical_model_id,
                 "machine_model_id": machine_model_id,
                 "representation_mode": spec.mode.value,
-                "variant": derived_model_variant(
-                    {"model_id": canonical_model_id}
-                ),
+                "variant": resolved_variant,
                 "ensemble_size": int(
                     resolved_architecture.get("member_count", 1)
                 ),

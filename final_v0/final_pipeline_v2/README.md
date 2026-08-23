@@ -24,7 +24,8 @@ source/lock/attestation gate。
 - reference quality mode 为 `off`。`diagnostics_only` 只记录诊断；`route` 直接选择
   可执行 SQI/calibration/route/recovery 状态机，不再依赖 readiness 或 Phase-0/C0 门禁。
 - direct PPG view 使用 0.2–8 Hz；0.5–5 Hz 是 ablation。IMU reference 为同一
-  participant role-B 校准的 roll–pitch EKF，无静默 fallback；LPF 0.3 Hz 是 ablation。
+  participant role-B 校准的 Profile-A 0.3 Hz gravity LPF；calibrated roll–pitch EKF
+  是显式单因素 ablation，两者都禁止静默 fallback。
 - frailty raw/fusion/ShapeFormer 输入固定为 8 通道：
   `RED, IR, A_dyn_X, A_dyn_Y, A_dyn_Z, GX, GY, GZ`。DL tensor 在每个 5 s
   window 内对八通道分别做 median/(IQR/1.349)、population-SD fallback、clip
@@ -44,6 +45,11 @@ focal loss、fixed/inner-grouped epoch 策略、Line A/Line B、quality 与 norm
 hash 前完整物化；配置接受的每个算法字段必须有真实 runtime consumer，不适用于当前
 model backend 的字段会明确报错。任务数据边界（29 participants、三分类、冻结 5×5
 OOF、raw/fusion 的有序 8 通道与 400 Hz 内部信号网格）仍保持不变。
+
+训练 reference 使用 exhaustive shuffle without replacement 和 outer-train row/window
+inverse-frequency class weights。`balance_line_weighted_v2` sampler 与 participant-count
+class-weight basis 均保留为独立、默认不自动运行的 ablation 模块；报告聚合仍可独立选择
+Line A/Line B，不能把 Line-B reporting 与 Line-B training sampler 混为一项。
 
 `features.enabled_groups` 是旧 `extra_input`/`manual_features` 的统一替代入口，可组合
 选择 basic PPI/rate、HRV time-domain、HRV spectral、HRV nonlinear、morphology、

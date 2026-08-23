@@ -10,6 +10,7 @@ from ..artifacts.router import (
     ArtifactRouteOutcome,
     UnsupportedReducer,
     get_reducer,
+    reducer_audit_metadata,
     run_artifact_route,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "ArtifactRouteOutcome",
     "UnsupportedReducer",
     "get_reducer",
+    "reducer_audit_metadata",
     "run_artifact_route",
 ]

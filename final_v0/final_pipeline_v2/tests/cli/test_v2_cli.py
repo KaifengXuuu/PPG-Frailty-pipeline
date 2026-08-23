@@ -52,7 +52,7 @@ class V2CliTests(unittest.TestCase):
         """新增入口只做preflight / New representation aliases do not train."""
 
         expected = {
-            "feature-matrix": "reference_static_feature_matrix_inception_full_role_aware_v2",
+            "feature-matrix": "reference_static_window_feature_matrix_inception_small_v2",
             "fusion": "reference_static_fusion_compact_role_aware_v2",
         }
         for alias, config_id in expected.items():
@@ -99,7 +99,7 @@ class V2CliTests(unittest.TestCase):
     def test_catalog_inspection_includes_profiles_but_executes_nothing(self) -> None:
         code, payload = self._call(["catalog", "--line", "line_a"])
         self.assertEqual(code, 0)
-        self.assertEqual(payload["candidate_count"], 10)
+        self.assertEqual(payload["candidate_count"], 11)
         self.assertEqual(payload["matched_comparator_count"], 1)
         self.assertEqual(payload["ensemble_comparison_count"], 1)
         entries = {row["entry_id"]: row for row in payload["entries"]}

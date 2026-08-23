@@ -176,6 +176,7 @@ class PulseResult:
     peak_ordinals: np.ndarray | None = None
     detector_score: float = 0.0
     detector_coverage: float = float("nan")
+    interval_source_routes: np.ndarray | None = None
 
     def validate_identity(self) -> None:
         """Prevent PPI intervals from crossing detector runs or signal routes."""
@@ -195,8 +196,28 @@ class PulseResult:
         intervals = np.asarray(self.ppi_s)
         if interval_ids.shape != intervals.shape:
             raise ValueError("interval_run_ids must align one-to-one with PPI intervals")
-        if interval_ids.size and np.any(interval_ids != run_id):
-            raise ValueError("PPI intervals cannot cross pulse-detection runs")
+        source_routes = self.interval_source_routes
+        if source_routes is None:
+            if interval_ids.size and np.any(interval_ids != run_id):
+                raise ValueError("PPI intervals cannot cross pulse-detection runs")
+        else:
+            routes = np.asarray(source_routes).astype(str)
+            if routes.shape != intervals.shape or np.any(interval_ids == ""):
+                raise ValueError(
+                    "composite PPI route/run provenance must align one-to-one"
+                )
+            valid_routes = {
+                SignalRoute.DIRECT.value,
+                SignalRoute.IDENTITY.value,
+                SignalRoute.ARTIFACT_RATE_ONLY.value,
+                "routing_boundary",
+            }
+            if any(value not in valid_routes for value in routes):
+                raise ValueError("composite PPI contains an unknown source route")
+            boundary = routes == "routing_boundary"
+            valid_intervals = np.asarray(self.valid_interval_mask, dtype=bool)
+            if np.any(boundary & valid_intervals):
+                raise ValueError("routing-boundary PPI separators must be invalid")
         if self.detector_id:
             if self.selected_polarity not in {-1, 1}:
                 raise ValueError("detector PulseResult requires polarity -1 or +1")
@@ -216,13 +237,12 @@ class PulseResult:
             peaks = np.asarray(self.peaks)
             if (
                 ordinals.shape != peaks.shape
-                or not np.array_equal(
-                    ordinals,
-                    np.arange(peaks.size, dtype=ordinals.dtype),
-                )
+                or not np.issubdtype(ordinals.dtype, np.integer)
+                or np.any(ordinals < 0)
+                or (ordinals.size > 1 and np.any(np.diff(ordinals) <= 0))
             ):
                 raise ValueError(
-                    "peak_ordinals must preserve the original detected-peak order"
+                    "peak_ordinals must preserve unique increasing global identities"
                 )
 
 
@@ -258,6 +278,94 @@ class OrderedFeatureMatrixV1:
     context_schema: tuple[str, ...]
     schema_version: str
     provenance: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class RoutingWindow:
+    """One common 8 s/2 s evidence window on the canonical 400 Hz grid."""
+
+    record_id: str
+    routing_window_id: str
+    start_s: float
+    stop_s: float
+    centre_s: float
+    start_sample_400: int
+    stop_sample_400: int
+
+
+@dataclass(frozen=True)
+class RoutingCell:
+    """One non-overlapping ownership cell and its complete route provenance."""
+
+    record_id: str
+    participant_id: str
+    role: str
+    routing_window_id: str
+    cell_id: str
+    cell_start_s: float
+    cell_stop_s: float
+    start_sample_400: int
+    stop_sample_400: int
+    sqi_mode: str
+    sqi_assessed: bool
+    direct_q_rate_score: float | None
+    direct_q_rate_state: str | None
+    direct_q_morph_score: float | None
+    direct_q_morph_state: str | None
+    motion_detector_enabled: bool
+    motion_probability: float | None
+    motion_threshold: float | None
+    motion_state: str
+    pre_route_tier: str
+    denoiser_enabled: bool
+    denoiser_requested: bool
+    denoiser_status: str
+    post_q_rate_score: float | None
+    post_q_rate_state: str | None
+    final_tier: str
+    source_route: str
+    source_view: str
+    reason_codes: tuple[str, ...]
+    config_sha256: str
+    sqi_calibrator_sha256: str | None
+    motion_model_sha256: str | None
+    motion_input_schema_sha256: str | None
+    reducer_sha256: str | None
+
+
+@dataclass(frozen=True)
+class RoutingTimeline:
+    """Canonical chronological route ownership for one complete recording."""
+
+    record_id: str
+    participant_id: str
+    role: str
+    fs_hz: float
+    n_samples: int
+    windows: tuple[RoutingWindow, ...]
+    cells: tuple[RoutingCell, ...]
+    schema_version: str = "ppg_frailty.routing_timeline.v1"
+
+    def validate(self) -> None:
+        if not self.record_id or not self.participant_id or not self.role:
+            raise ValueError("routing timeline identity fields must be non-empty")
+        if float(self.fs_hz) != 400.0 or self.n_samples <= 0:
+            raise ValueError("routing timeline requires a positive canonical 400 Hz grid")
+        if not self.cells:
+            raise ValueError("routing timeline requires at least one ownership cell")
+        previous_stop = 0
+        for index, cell in enumerate(self.cells):
+            if cell.record_id != self.record_id:
+                raise ValueError("routing cell record identity drift")
+            if not 0 <= cell.start_sample_400 < cell.stop_sample_400 <= self.n_samples:
+                raise ValueError("routing cell bounds are outside the recording")
+            if cell.start_sample_400 != previous_stop:
+                raise ValueError("routing cells must be contiguous and non-overlapping")
+            if cell.cell_id != f"{self.record_id}::cell_{index:06d}":
+                raise ValueError("routing cell identity/order drift")
+            previous_stop = cell.stop_sample_400
+        if previous_stop != self.n_samples:
+            raise ValueError("routing cells must explicitly account for every sample")
 
 
 @dataclass(frozen=True)

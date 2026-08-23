@@ -16,6 +16,10 @@ class IdentityReducer(ArtifactReducer):
 
     reducer_id = "identity"
     reducer_version = "identity_exact_v1"
+    algorithm_kernel_description = (
+        "逐样本复制双波长 PPG，不估计或抑制伪影；内核：恒等映射与同时间网格校验，"
+        "作为未去噪直接对照。"
+    )
     is_identity = True
 
     def reduce(
@@ -39,4 +43,3 @@ class IdentityReducer(ArtifactReducer):
             )
         except ValueError as exc:
             return failure_result(self, str(exc))
-

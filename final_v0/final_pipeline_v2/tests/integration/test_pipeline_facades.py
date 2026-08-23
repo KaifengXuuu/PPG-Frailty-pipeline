@@ -179,6 +179,9 @@ class CanonicalFacadeTests(unittest.TestCase):
             ROOT / "historical" / "v1_transition" / "configs" / "motion_benchmark_v1.yaml",
             allow_legacy=True,
         ).to_dict()
+        # This facade test audits the reducer mapping only. The historical file
+        # predates frozen-bundle evidence and cannot activate formal motion inference.
+        config["artifact"]["motion_detector_enabled"] = False
         resolved = resolve_artifact_config(config["artifact"])
         self.assertEqual(resolved["declared_reducer"], "spectral_mask")
         self.assertEqual(resolved["runtime_reducer"], "spectral_mask")

@@ -853,7 +853,7 @@ def preprocess_motion_imu_calibrated_ekf(
     )
 
 
-def preprocess_motion_imu_lpf_ablation(
+def preprocess_motion_imu_profile_a_lpf(
     acceleration: np.ndarray,
     gyroscope: np.ndarray,
     *,
@@ -864,7 +864,7 @@ def preprocess_motion_imu_lpf_ablation(
     calibration: MotionImuCalibration,
     config: RollPitchEkfConfig,
 ) -> MotionImuResult:
-    """Explicit Profile-A LPF ablation; never called as an EKF fallback."""
+    """Run the explicit Profile-A LPF; never use it as an EKF fallback."""
 
     acc_filtered, gyro_filtered, input_lineage = _prepare_si_inputs(
         acceleration,
@@ -896,11 +896,17 @@ def preprocess_motion_imu_lpf_ablation(
         "calibration_artifact_sha256": calibration.artifact_sha256,
         "calibration_source_role": calibration.source_role,
         "runtime_participant_id": str(participant_id),
+        "sensor_filters": {
+            "phase": "zero_phase",
+            "order": config.sensor_filter_order,
+            "acceleration_lowpass_hz": config.accelerometer_lowpass_hz,
+            "gyroscope_lowpass_hz": config.gyroscope_lowpass_hz,
+        },
         "gravity_lowpass_hz": config.gravity_lowpass_hz,
         "gravity_filter_order": config.gravity_filter_order,
         "phase": "zero_phase",
         "silent_fallback": False,
-        "executed_as": "named_ablation_only",
+        "executed_as": "named_reference_profile",
         **input_lineage,
     }
     return _motion_result(
@@ -913,6 +919,11 @@ def preprocess_motion_imu_lpf_ablation(
         profile_id=PROFILE_A_LPF_ID,
         diagnostics=diagnostics,
     )
+
+
+# Backward-compatible import name. The runtime identity and persisted profile
+# ID are unchanged; only its catalog role was changed from ablation to reference.
+preprocess_motion_imu_lpf_ablation = preprocess_motion_imu_profile_a_lpf
 
 
 __all__ = [
@@ -928,5 +939,6 @@ __all__ = [
     "RollPitchEkfConfig",
     "fit_motion_imu_calibration",
     "preprocess_motion_imu_calibrated_ekf",
+    "preprocess_motion_imu_profile_a_lpf",
     "preprocess_motion_imu_lpf_ablation",
 ]

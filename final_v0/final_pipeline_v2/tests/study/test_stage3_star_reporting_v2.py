@@ -10,6 +10,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from ppg_frailty.reporting.analyze import (
+    _stage3_star_presentation_tables,
     _stage3_star_report_tables,
     analyze_study,
 )
@@ -185,6 +186,33 @@ def _fixture(
     return bundle, summaries, views, folds
 
 
+def _repeat_metrics(
+    bundle: CollectedStudy,
+    views: list[dict],
+) -> list[dict]:
+    repeat_indices = tuple(
+        int(value)
+        for value in bundle.plan["legacy_bridge"]["budget"]["repeat_indices"]
+    )
+    rows: list[dict] = []
+    for view in views:
+        for repeat in repeat_indices:
+            offset = repeat / 1000.0
+            rows.append(
+                {
+                    "case_id": view["case_id"],
+                    "aggregation_view": view["aggregation_view"],
+                    "repeat": repeat,
+                    "balanced_accuracy": (
+                        view["participant_mean_balanced_accuracy"] + offset
+                    ),
+                    "macro_f1": view["participant_mean_macro_f1"] + offset,
+                    "worst_class_f1": view["worst_class_f1"] + offset,
+                }
+            )
+    return rows
+
+
 class Stage3StarReportingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -252,6 +280,41 @@ class Stage3StarReportingTests(unittest.TestCase):
         self.assertIsNotNone(
             _stage3_star_fold_delta_heatmap(analysis, self.pyplot)
         )
+
+    def test_two_model_tables_and_horizontal_profile_matches_use_paired_repeats(
+        self,
+    ) -> None:
+        bundle, summaries, views, folds = _fixture(tuple(range(5)))
+        absolute, contrasts, _fold_rows, _execution, _notes = (
+            _stage3_star_report_tables(bundle, summaries, views, folds)
+        )
+        inception, cnn, side_by_side, notes = _stage3_star_presentation_tables(
+            bundle,
+            absolute,
+            contrasts,
+            _repeat_metrics(bundle, views),
+        )
+        self.assertEqual((len(inception), len(cnn), len(side_by_side)), (8, 8, 8))
+        self.assertFalse(notes)
+        inception_b2 = next(row for row in inception if row["profile"] == "B2")
+        self.assertAlmostEqual(inception_b2["native_balanced_accuracy"], 0.622)
+        self.assertAlmostEqual(inception_b2["delta_vs_B0_balanced_accuracy"], 0.02)
+        self.assertAlmostEqual(inception_b2["delta_vs_B0_balanced_accuracy_sd"], 0.0)
+        self.assertEqual(
+            inception_b2["comparison_type"],
+            "within_model_B0_centered_ablation",
+        )
+        cnn_b7 = next(row for row in cnn if row["profile"] == "B7")
+        self.assertAlmostEqual(cnn_b7["delta_vs_B0_balanced_accuracy"], 0.002)
+        cross_b2 = next(row for row in side_by_side if row["profile"] == "B2")
+        self.assertAlmostEqual(
+            cross_b2["inception_minus_cnn_balanced_accuracy"], 0.1
+        )
+        self.assertEqual(
+            cross_b2["comparison_type"],
+            "matched_architecture_comparison_not_ablation",
+        )
+        self.assertTrue(cross_b2["comparison_metrics_available"])
 
     def test_b7_uses_native_W_to_B_and_exact_row_identity_audit(self) -> None:
         _absolute, contrasts, _folds, _execution, _notes = self._tables()
@@ -335,8 +398,16 @@ class Stage3StarReportingTests(unittest.TestCase):
                 )
 
     def test_star_plots_and_report_outputs_are_registered(self) -> None:
-        bundle, _summaries, _views, _folds = _fixture()
+        bundle, _summaries, views, _folds = _fixture()
         absolute, contrasts, fold_rows, execution, notes = self._tables(bundle)
+        inception, cnn, model_comparison, presentation_notes = (
+            _stage3_star_presentation_tables(
+                bundle,
+                absolute,
+                contrasts,
+                _repeat_metrics(bundle, views),
+            )
+        )
         base = analyze_study(replace(bundle, plan={"report": {}}))
         analysis = replace(
             base,
@@ -344,7 +415,10 @@ class Stage3StarReportingTests(unittest.TestCase):
             stage3_star_contrasts=tuple(contrasts),
             stage3_star_fold_contrasts=tuple(fold_rows),
             stage3_star_execution=tuple(execution),
-            notes=tuple(notes),
+            stage3_star_inception_comparison=tuple(inception),
+            stage3_star_cnn_comparison=tuple(cnn),
+            stage3_star_model_comparison=tuple(model_comparison),
+            notes=tuple(notes + presentation_notes),
         )
         self.assertIsNotNone(_stage3_star_model_deltas(analysis, self.pyplot))
         self.assertIsNotNone(_stage3_star_fold_delta_heatmap(analysis, self.pyplot))
@@ -355,8 +429,20 @@ class Stage3StarReportingTests(unittest.TestCase):
             with patch("ppg_frailty.reporting.report.analyze_study", return_value=analysis):
                 result = generate_study_report(root, collected=result_bundle)
             self.assertTrue((root / "tables/stage3_star_fold_contrasts.json").is_file())
+            self.assertTrue(
+                (root / "tables/stage3_star_inception_comparison.csv").is_file()
+            )
+            self.assertTrue(
+                (root / "tables/stage3_star_cnn_comparison.csv").is_file()
+            )
+            self.assertTrue(
+                (root / "tables/stage3_star_model_comparison.csv").is_file()
+            )
             self.assertTrue((root / "figures/stage3_star_model_deltas.png").is_file())
-            self.assertIn("centered-star contrasts", result.summary_markdown.read_text(encoding="utf-8"))
+            markdown = result.summary_markdown.read_text(encoding="utf-8")
+            self.assertIn("InceptionTime B0–B7 comparison", markdown)
+            self.assertIn("CompactCNN B0–B7 comparison", markdown)
+            self.assertIn("InceptionTime versus CompactCNN", markdown)
             paths = {
                 row["path"]
                 for row in json.loads(result.output_index.read_text(encoding="utf-8"))[
@@ -364,6 +450,7 @@ class Stage3StarReportingTests(unittest.TestCase):
                 ]
             }
             self.assertIn("tables/stage3_star_contrasts.csv", paths)
+            self.assertIn("tables/stage3_star_model_comparison.csv", paths)
 
     def test_unavailable_star_delta_plot_is_warning_free(self) -> None:
         bundle, _summaries, _views, _folds = _fixture()

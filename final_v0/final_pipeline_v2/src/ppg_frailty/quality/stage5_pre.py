@@ -49,6 +49,18 @@ from ..reporting.tabular import (
     write_csv,
     write_excel_workbook,
 )
+from ..reporting.components import (
+    build_motion_peak_test_component_rows,
+    markdown_test_component_table,
+    write_test_component_markdown,
+)
+from ..reporting.classification_diagnostics import (
+    ClassificationDiagnosticConfig,
+    classification_diagnostic_status_rows,
+    classification_roc_curve_rows,
+    classification_tsne_rows,
+    normalize_classification_rows,
+)
 from ..signal.motion_imu import (
     PTT_STATIC_CALIBRATION_ROLE,
     RollPitchEkfConfig,
@@ -78,7 +90,8 @@ from .motion import (
 )
 from .motion_runner import (
     _deployment_threshold_from_oof,
-    participant_macro_motion_metrics,
+    _pr_auc_average_precision,
+    _roc_auc,
 )
 
 
@@ -89,15 +102,35 @@ RESULT_SCHEMA = "ppg_frailty.motion_peak_study_result.v1"
 _STAGE5_DETECTOR_FIGURE_MODULES = {
     "motion_detector_metrics",
     "motion_internal_confusion_matrix",
-    "motion_internal_subject_confusion_matrix",
+    "motion_internal_file_confusion_matrix",
     "motion_ptt_confusion_matrix",
-    "motion_ptt_subject_confusion_matrix",
+    "motion_ptt_file_confusion_matrix",
     "motion_ptt_training_oof_confusion_matrix",
-    "motion_ptt_training_oof_subject_confusion_matrix",
+    "motion_ptt_training_oof_file_confusion_matrix",
     "motion_internal_reverse_confusion_matrix",
-    "motion_internal_reverse_subject_confusion_matrix",
+    "motion_internal_reverse_file_confusion_matrix",
+    "frailty29_trained_window_score_distribution",
+    "frailty29_trained_file_score_distribution",
+    "ptt22_trained_window_score_distribution",
+    "ptt22_trained_file_score_distribution",
+    "frailty29_trained_window_prediction_tsne",
+    "frailty29_trained_file_prediction_tsne",
+    "ptt22_trained_window_prediction_tsne",
+    "ptt22_trained_file_prediction_tsne",
+    "frailty29_trained_window_roc_auc_curve",
+    "frailty29_trained_file_roc_auc_curve",
+    "ptt22_trained_window_roc_auc_curve",
+    "ptt22_trained_file_roc_auc_curve",
     "motion_training_learning_curves",
 }
+_OBSOLETE_STAGE5_REPORT_RELATIVE_PATHS = (
+    "tables/motion_detector_subject_confusion.csv",
+    "tables/motion_detector_subject_confusion.json",
+    "figures/motion_internal_subject_confusion_matrix.png",
+    "figures/motion_ptt_subject_confusion_matrix.png",
+    "figures/motion_ptt_training_oof_subject_confusion_matrix.png",
+    "figures/motion_internal_reverse_subject_confusion_matrix.png",
+)
 _DENOISER_FIGURE_MODULES = {
     "denoiser_interval_rmse",
     "denoiser_beat_f1",
@@ -270,6 +303,31 @@ def load_motion_peak_plan(path: str | Path) -> StudyPlan:
         report = data.get("report")
         if not isinstance(report, Mapping):
             raise ValueError("Stage5 report settings must be a mapping")
+        if report.get("file_score_aggregation", "median") not in {
+            "median",
+            "mean",
+            "maximum",
+        }:
+            raise ValueError(
+                "Stage5 report file_score_aggregation must be median, mean, or maximum"
+            )
+        ClassificationDiagnosticConfig(
+            tsne_random_state=int(
+                report.get("classification_tsne_random_state", 42)
+            ),
+            tsne_perplexity=float(
+                report.get("classification_tsne_perplexity", 30.0)
+            ),
+            tsne_max_samples=int(
+                report.get("classification_tsne_max_samples", 2000)
+            ),
+            roc_macro_grid_points=int(
+                report.get("classification_roc_macro_grid_points", 201)
+            ),
+            score_histogram_bins=int(
+                report.get("classification_score_histogram_bins", 40)
+            ),
+        )
         for field, supported in (
             ("required_detector_figures", _STAGE5_DETECTOR_FIGURE_MODULES),
             ("denoiser_figures_when_enabled", _DENOISER_FIGURE_MODULES),
@@ -930,54 +988,135 @@ def _html_table(rows: Sequence[Mapping[str, Any]]) -> str:
 
 def _detector_report_rows(
     datasets: Sequence[
-        tuple[str, Sequence[Mapping[str, Any]], float]
+        tuple[str, str, str, Sequence[Mapping[str, Any]]]
     ],
-) -> list[dict[str, Any]]:
-    """Recompute all requested detector metrics from persisted predictions."""
+    *,
+    file_score_aggregation: str = "median",
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Recompute window- and file-level metrics from persisted predictions."""
 
-    output: list[dict[str, Any]] = []
-    for dataset, rows, worst_fold in datasets:
-        metrics = participant_macro_motion_metrics(rows)
-        participant_metrics = [
-            participant_macro_motion_metrics(
-                [
-                    row
-                    for row in rows
-                    if str(row["participant_id"]) == participant_id
-                ]
-            )
-            for participant_id in sorted(
-                {str(row["participant_id"]) for row in rows}
-            )
-        ]
-
-        def sample_sd(metric: str) -> float | None:
-            values = np.asarray(
-                [row[metric] for row in participant_metrics], dtype=np.float64
-            )
-            return float(values.std(ddof=1)) if values.size >= 2 else None
-
-        output.append(
-            {
-                "dataset": dataset,
-                "participant_macro_balanced_accuracy": metrics["balanced_accuracy"],
-                "participant_macro_balanced_accuracy_sd": sample_sd(
-                    "balanced_accuracy"
-                ),
-                "participant_macro_f1": metrics["macro_f1"],
-                "participant_macro_f1_sd": sample_sd("macro_f1"),
-                "participant_macro_sensitivity": metrics["sensitivity"],
-                "participant_macro_sensitivity_sd": sample_sd("sensitivity"),
-                "participant_macro_specificity": metrics["specificity"],
-                "participant_macro_specificity_sd": sample_sd("specificity"),
-                "participant_macro_roc_auc": metrics["roc_auc"],
-                "participant_macro_roc_auc_sd": sample_sd("roc_auc"),
-                "participant_macro_pr_auc": metrics["pr_auc"],
-                "participant_macro_pr_auc_sd": sample_sd("pr_auc"),
-                "worst_fold_balanced_accuracy": float(worst_fold),
-            }
+    metrics_output: list[dict[str, Any]] = []
+    file_predictions: list[dict[str, Any]] = []
+    for model_id, dataset, evaluation_scope, window_rows in datasets:
+        dataset_file_rows = _file_prediction_rows(
+            window_rows, score_aggregation=file_score_aggregation
         )
-    return output
+        file_predictions.extend(
+            {
+                "model_id": model_id,
+                "dataset": dataset,
+                "evaluation_scope": evaluation_scope,
+                **row,
+            }
+            for row in dataset_file_rows
+        )
+        for aggregation_level, selected in (
+            ("window", window_rows),
+            ("file", dataset_file_rows),
+        ):
+            metrics = _detector_level_metrics(selected)
+            metrics_output.append(
+                {
+                    "model_id": model_id,
+                    "dataset": dataset,
+                    "evaluation_scope": evaluation_scope,
+                    "aggregation_level": aggregation_level,
+                    "file_score_aggregation": (
+                        file_score_aggregation
+                        if aggregation_level == "file"
+                        else "not_applicable"
+                    ),
+                    "observation_count": len(selected),
+                    "participant_count": len(
+                        {str(row["participant_id"]) for row in selected}
+                    ),
+                    "file_count": len(
+                        {
+                            (str(row["participant_id"]), str(row["file_id"]))
+                            for row in selected
+                        }
+                    ),
+                    "window_count": (
+                        len(selected)
+                        if aggregation_level == "window"
+                        else sum(int(row["window_count"]) for row in selected)
+                    ),
+                    **metrics,
+                    "worst_fold_balanced_accuracy": _worst_fold_balanced_accuracy(
+                        selected
+                    ),
+                }
+            )
+    return metrics_output, file_predictions
+
+
+def _detector_level_metrics(
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[str, float]:
+    """Binary metrics where every supplied row has exactly equal weight."""
+
+    if not rows:
+        raise ValueError("motion detector metrics require prediction rows")
+    labels = np.asarray([int(row["activity_label"]) for row in rows], dtype=np.int64)
+    probabilities = np.asarray(
+        [float(row["p_active"]) for row in rows], dtype=np.float64
+    )
+    predicted = np.asarray(
+        [int(row["predicted_activity"]) for row in rows], dtype=np.int64
+    )
+    if (
+        set(labels.tolist()) != {0, 1}
+        or not set(predicted.tolist()) <= {0, 1}
+        or not np.all(np.isfinite(probabilities))
+    ):
+        raise ValueError("motion detector metrics require finite binary-class rows")
+    recalls: list[float] = []
+    f1s: list[float] = []
+    for class_id in (0, 1):
+        true_positive = int(np.sum((labels == class_id) & (predicted == class_id)))
+        false_negative = int(np.sum((labels == class_id) & (predicted != class_id)))
+        false_positive = int(np.sum((labels != class_id) & (predicted == class_id)))
+        recall = true_positive / (true_positive + false_negative)
+        precision = (
+            true_positive / (true_positive + false_positive)
+            if true_positive + false_positive
+            else 0.0
+        )
+        f1 = (
+            2.0 * precision * recall / (precision + recall)
+            if precision + recall
+            else 0.0
+        )
+        recalls.append(float(recall))
+        f1s.append(float(f1))
+    return {
+        "balanced_accuracy": float(np.mean(recalls)),
+        "macro_f1": float(np.mean(f1s)),
+        "sensitivity": recalls[1],
+        "specificity": recalls[0],
+        "roc_auc": _roc_auc(labels, probabilities),
+        "pr_auc": _pr_auc_average_precision(labels, probabilities),
+    }
+
+
+def _worst_fold_balanced_accuracy(
+    rows: Sequence[Mapping[str, Any]],
+) -> float | None:
+    """Return worst grouped-OOF fold BA; final-model transfers have no fold."""
+
+    grouped: dict[tuple[int, int], list[Mapping[str, Any]]] = {}
+    for row in rows:
+        repeat = row.get("repeat_index")
+        fold = row.get("fold_index")
+        if repeat is None or fold is None:
+            return None
+        grouped.setdefault((int(repeat), int(fold)), []).append(row)
+    scores = [
+        _detector_level_metrics(selected)["balanced_accuracy"]
+        for selected in grouped.values()
+        if {int(row["activity_label"]) for row in selected} == {0, 1}
+    ]
+    return float(min(scores)) if scores else None
 
 
 def _rank_and_mark_denoiser_rows(
@@ -1052,79 +1191,74 @@ def _rank_and_mark_denoiser_rows(
     return numeric, display
 
 
-def _subject_activity_prediction_rows(
+def _file_prediction_rows(
     rows: Sequence[Mapping[str, Any]],
+    *,
+    score_aggregation: str = "median",
 ) -> list[dict[str, Any]]:
-    """Collapse windows to one score per participant and activity class.
+    """Collapse windows to one configured score per physical recording file."""
 
-    Every Stage5 dataset contains both static and motion observations for each
-    participant, so a scientifically meaningful subject-level confusion matrix
-    uses participant-by-activity-class units rather than assigning one label to
-    an entire participant. The unit score is the median window probability.
-    """
+    aggregators: Mapping[str, Callable[[np.ndarray], float]] = {
+        "median": lambda values: float(np.median(values)),
+        "mean": lambda values: float(np.mean(values)),
+        "maximum": lambda values: float(np.max(values)),
+    }
+    if score_aggregation not in aggregators:
+        raise ValueError("file score aggregation must be median, mean, or maximum")
 
-    grouped: dict[tuple[str, int], list[Mapping[str, Any]]] = {}
+    grouped: dict[tuple[int | None, int | None, str, str], list[Mapping[str, Any]]] = {}
     for row in rows:
         participant_id = str(row.get("participant_id", ""))
-        label = int(row.get("activity_label", -1))
-        if not participant_id or label not in (0, 1):
-            raise ValueError(
-                "subject-level motion confusion requires valid participant and label"
-            )
-        grouped.setdefault((participant_id, label), []).append(row)
+        file_id = str(row.get("file_id", ""))
+        if not participant_id or not file_id:
+            raise ValueError("file-level motion reporting requires participant_id and file_id")
+        repeat = (
+            int(row["repeat_index"]) if row.get("repeat_index") is not None else None
+        )
+        fold = int(row["fold_index"]) if row.get("fold_index") is not None else None
+        grouped.setdefault((repeat, fold, participant_id, file_id), []).append(row)
     if not grouped:
-        raise ValueError("subject-level motion confusion requires prediction rows")
+        raise ValueError("file-level motion reporting requires prediction rows")
 
     output: list[dict[str, Any]] = []
-    for (participant_id, label), selected in sorted(grouped.items()):
+    for (repeat, fold, participant_id, file_id), selected in sorted(
+        grouped.items(), key=lambda item: tuple(str(value) for value in item[0])
+    ):
         probabilities = np.asarray(
             [float(row["p_active"]) for row in selected], dtype=np.float64
         )
         thresholds = {float(row["threshold"]) for row in selected}
+        labels = {int(row["activity_label"]) for row in selected}
         if (
             not np.all(np.isfinite(probabilities))
             or len(thresholds) != 1
+            or len(labels) != 1
             or not math.isfinite(next(iter(thresholds)))
         ):
             raise ValueError(
-                "subject-level motion confusion requires finite scores and one "
-                "frozen threshold per participant"
+                "file-level motion reporting requires one label, one frozen "
+                "threshold, and finite scores per file"
             )
-        probability = float(np.median(probabilities))
+        probability = aggregators[score_aggregation](probabilities)
         threshold = thresholds.pop()
         output.append(
             {
                 "participant_id": participant_id,
-                "activity_label": label,
+                "file_id": file_id,
+                "activity": selected[0].get(
+                    "activity", selected[0].get("role_family")
+                ),
+                "activity_label": labels.pop(),
                 "window_count": len(selected),
-                "median_p_active": probability,
+                "p_active": probability,
+                "score_aggregation": score_aggregation,
                 "threshold": threshold,
                 "predicted_activity": int(probability >= threshold),
+                "repeat_index": repeat,
+                "fold_index": fold,
             }
         )
     return output
-
-
-def _subject_confusion_report_row(
-    dataset: str, rows: Sequence[Mapping[str, Any]]
-) -> tuple[dict[str, Any], np.ndarray]:
-    subject_rows = _subject_activity_prediction_rows(rows)
-    matrix = _confusion(subject_rows)
-    return (
-        {
-            "dataset": dataset,
-            "aggregation_level": "participant_by_activity_class_median_probability",
-            "participant_count": len(
-                {str(row["participant_id"]) for row in subject_rows}
-            ),
-            "participant_activity_class_count": len(subject_rows),
-            "true_static_predicted_static": int(matrix[0, 0]),
-            "true_static_predicted_motion": int(matrix[0, 1]),
-            "true_motion_predicted_static": int(matrix[1, 0]),
-            "true_motion_predicted_motion": int(matrix[1, 1]),
-        },
-        matrix,
-    )
 
 
 def _confusion(rows: Sequence[Mapping[str, Any]]) -> np.ndarray:
@@ -1194,6 +1328,266 @@ def _plot_summary(path: Path, rows: Sequence[Mapping[str, Any]], metric: str, ti
     plt.close(figure)
 
 
+def _score_distribution_rows(
+    datasets: Sequence[
+        tuple[str, str, str, Sequence[Mapping[str, Any]]]
+    ],
+    *,
+    aggregation_level: str,
+    file_score_aggregation: str = "median",
+) -> list[dict[str, Any]]:
+    """Materialize the numerical table paired with detector score plots."""
+
+    output: list[dict[str, Any]] = []
+    for model_id, dataset, evaluation_scope, window_rows in datasets:
+        rows = (
+            window_rows
+            if aggregation_level == "window"
+            else _file_prediction_rows(
+                window_rows, score_aggregation=file_score_aggregation
+            )
+        )
+        thresholds = np.asarray(
+            [float(row["threshold"]) for row in rows], dtype=np.float64
+        )
+        for class_id, class_name in ((0, "static"), (1, "motion")):
+            scores = np.asarray(
+                [
+                    float(row["p_active"])
+                    for row in rows
+                    if int(row["activity_label"]) == class_id
+                ],
+                dtype=np.float64,
+            )
+            if not scores.size or not np.all(np.isfinite(scores)):
+                raise ValueError("score distribution requires finite rows from both classes")
+            quantiles = np.quantile(scores, (0.05, 0.25, 0.5, 0.75, 0.95))
+            output.append(
+                {
+                    "model_id": model_id,
+                    "dataset": dataset,
+                    "evaluation_scope": evaluation_scope,
+                    "aggregation_level": aggregation_level,
+                    "activity_class": class_name,
+                    "observation_count": int(scores.size),
+                    "score_mean": float(np.mean(scores)),
+                    "score_sd": (
+                        float(np.std(scores, ddof=1)) if scores.size >= 2 else None
+                    ),
+                    "score_q05": float(quantiles[0]),
+                    "score_q25": float(quantiles[1]),
+                    "score_median": float(quantiles[2]),
+                    "score_q75": float(quantiles[3]),
+                    "score_q95": float(quantiles[4]),
+                    "threshold_min": float(np.min(thresholds)),
+                    "threshold_median": float(np.median(thresholds)),
+                    "threshold_max": float(np.max(thresholds)),
+                }
+            )
+    return output
+
+
+def _plot_score_distribution(
+    path: Path,
+    datasets: Sequence[tuple[str, Sequence[Mapping[str, Any]]]],
+    *,
+    aggregation_level: str,
+    file_score_aggregation: str = "median",
+    score_histogram_bins: int = 40,
+    title: str,
+) -> None:
+    """Plot class-conditional scores and every frozen threshold location."""
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    figure, axes = plt.subplots(
+        1,
+        len(datasets),
+        figsize=(max(6.4, 6.0 * len(datasets)), 4.6),
+        squeeze=False,
+        sharex=True,
+    )
+    bins = np.linspace(0.0, 1.0, int(score_histogram_bins) + 1)
+    for axis, (dataset, window_rows) in zip(axes[0], datasets, strict=True):
+        rows = (
+            window_rows
+            if aggregation_level == "window"
+            else _file_prediction_rows(
+                window_rows, score_aggregation=file_score_aggregation
+            )
+        )
+        for class_id, class_name, color in (
+            (0, "static", "tab:blue"),
+            (1, "motion", "tab:orange"),
+        ):
+            scores = [
+                float(row["p_active"])
+                for row in rows
+                if int(row["activity_label"]) == class_id
+            ]
+            axis.hist(
+                scores,
+                bins=bins,
+                alpha=0.58,
+                color=color,
+                label=f"{class_name} (n={len(scores)})",
+            )
+        thresholds = np.unique(
+            np.asarray([float(row["threshold"]) for row in rows], dtype=np.float64)
+        )
+        threshold_median = float(np.median(thresholds))
+        if thresholds.size > 1:
+            axis.axvspan(
+                float(np.min(thresholds)),
+                float(np.max(thresholds)),
+                color="black",
+                alpha=0.10,
+                label="fold-threshold range",
+            )
+        axis.axvline(
+            threshold_median,
+            color="black",
+            linestyle="--",
+            linewidth=1.5,
+            label=f"threshold median={threshold_median:.6f}",
+        )
+        axis.set_title(dataset)
+        axis.set_xlabel("Predicted motion probability")
+        axis.set_ylabel("Count")
+        axis.set_xlim(0.0, 1.0)
+        axis.grid(axis="y", alpha=0.2)
+        axis.legend(fontsize=8)
+    figure.suptitle(title)
+    figure.tight_layout()
+    figure.savefig(path, dpi=160)
+    plt.close(figure)
+
+
+def _plot_motion_prediction_tsne(
+    path: Path,
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    title: str,
+) -> None:
+    """Plot probability-space t-SNE for each evaluation dataset."""
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    grouped: dict[str, list[Mapping[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(str(row["evaluation_id"]), []).append(row)
+    if not grouped:
+        raise ValueError("motion prediction t-SNE requires coordinate rows")
+    figure, axes = plt.subplots(
+        1,
+        len(grouped),
+        figsize=(max(6.2, 5.8 * len(grouped)), 4.8),
+        squeeze=False,
+    )
+    for axis, (dataset, selected) in zip(
+        axes[0], sorted(grouped.items()), strict=True
+    ):
+        for label, class_name, color in (
+            (0, "static", "tab:blue"),
+            (1, "motion", "tab:orange"),
+        ):
+            class_rows = [
+                row for row in selected if int(row["true_label"]) == label
+            ]
+            axis.scatter(
+                [float(row["tsne_x"]) for row in class_rows],
+                [float(row["tsne_y"]) for row in class_rows],
+                s=18,
+                alpha=0.65,
+                color=color,
+                label=f"{class_name} (n={len(class_rows)})",
+            )
+        incorrect = [
+            row for row in selected if not bool(row["prediction_correct"])
+        ]
+        if incorrect:
+            axis.scatter(
+                [float(row["tsne_x"]) for row in incorrect],
+                [float(row["tsne_y"]) for row in incorrect],
+                s=30,
+                marker="x",
+                linewidths=0.9,
+                color="black",
+                label="misclassified",
+            )
+        axis.set_title(dataset)
+        axis.set_xlabel("t-SNE 1")
+        axis.set_ylabel("t-SNE 2")
+        axis.grid(alpha=0.15)
+        axis.legend(fontsize=8)
+    figure.suptitle(
+        f"{title}\nPersisted prediction probabilities; not hidden features"
+    )
+    figure.tight_layout()
+    figure.savefig(path, dpi=160)
+    plt.close(figure)
+
+
+def _plot_motion_roc_auc_curve(
+    path: Path,
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    title: str,
+) -> None:
+    """Plot the empirical motion-class ROC curve and annotate its AUC."""
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    selected = [
+        row
+        for row in rows
+        if row.get("curve") == "one_vs_rest"
+        and str(row.get("class_label")) == "1"
+    ]
+    grouped: dict[str, list[Mapping[str, Any]]] = {}
+    for row in selected:
+        grouped.setdefault(str(row["evaluation_id"]), []).append(row)
+    if not grouped:
+        raise ValueError("motion ROC-AUC plot requires both reference classes")
+    figure, axes = plt.subplots(
+        1,
+        len(grouped),
+        figsize=(max(6.2, 5.5 * len(grouped)), 4.8),
+        squeeze=False,
+    )
+    for axis, (dataset, points) in zip(
+        axes[0], sorted(grouped.items()), strict=True
+    ):
+        points = sorted(points, key=lambda row: int(row["point_index"]))
+        curve_auc = float(points[0]["roc_auc"])
+        axis.plot(
+            [float(row["false_positive_rate"]) for row in points],
+            [float(row["true_positive_rate"]) for row in points],
+            linewidth=2.0,
+            color="tab:blue",
+            label=f"motion ROC (AUC={curve_auc:.3f})",
+        )
+        axis.plot([0, 1], [0, 1], color="0.45", linestyle=":", linewidth=1.0)
+        axis.set_xlim(0.0, 1.0)
+        axis.set_ylim(0.0, 1.0)
+        axis.set_aspect("equal", adjustable="box")
+        axis.set_xlabel("False-positive rate")
+        axis.set_ylabel("True-positive rate")
+        axis.set_title(dataset)
+        axis.grid(alpha=0.2)
+        axis.legend(loc="lower right", fontsize=8)
+    figure.suptitle(title)
+    figure.tight_layout()
+    figure.savefig(path, dpi=160)
+    plt.close(figure)
+
+
 def _plot_detector_metrics(
     path: Path, rows: Sequence[Mapping[str, Any]]
 ) -> None:
@@ -1204,29 +1598,32 @@ def _plot_detector_metrics(
     import matplotlib.pyplot as plt
 
     metrics = (
-        ("participant_macro_balanced_accuracy", "BA"),
-        ("participant_macro_f1", "Macro-F1"),
-        ("participant_macro_sensitivity", "Sensitivity"),
-        ("participant_macro_specificity", "Specificity"),
-        ("participant_macro_roc_auc", "ROC AUC"),
-        ("participant_macro_pr_auc", "PR AUC"),
+        ("balanced_accuracy", "BA"),
+        ("macro_f1", "Macro-F1"),
+        ("sensitivity", "Sensitivity"),
+        ("specificity", "Specificity"),
+        ("roc_auc", "ROC AUC"),
+        ("pr_auc", "PR AUC"),
         ("worst_fold_balanced_accuracy", "Worst-fold BA"),
     )
-    labels = [str(row["dataset"]) for row in rows]
+    labels = [f"{row['dataset']}\n{row['aggregation_level']}" for row in rows]
     x = np.arange(len(labels), dtype=np.float64)
     width = 0.8 / len(metrics)
     figure, axis = plt.subplots(figsize=(max(9.0, len(labels) * 2.2), 5.0))
     for index, (field, label) in enumerate(metrics):
         axis.bar(
             x + (index - (len(metrics) - 1) / 2.0) * width,
-            [float(row[field]) for row in rows],
+            [
+                float(row[field]) if row.get(field) is not None else np.nan
+                for row in rows
+            ],
             width=width,
             label=label,
         )
     axis.set_xticks(x, labels, rotation=25, ha="right")
     axis.set_ylim(0.0, 1.0)
-    axis.set_ylabel("Participant-macro score")
-    axis.set_title("Motion detector internal and cross-dataset metrics")
+    axis.set_ylabel("Score")
+    axis.set_title("Motion detector window- and file-level metrics")
     axis.grid(axis="y", alpha=0.25)
     axis.legend(ncol=2, fontsize=8)
     figure.tight_layout()
@@ -1468,6 +1865,26 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
         if isinstance(resolved_plan, Mapping)
         else {}
     )
+    file_score_aggregation = str(
+        report_config.get("file_score_aggregation", "median")
+    )
+    diagnostic_config = ClassificationDiagnosticConfig(
+        tsne_random_state=int(
+            report_config.get("classification_tsne_random_state", 42)
+        ),
+        tsne_perplexity=float(
+            report_config.get("classification_tsne_perplexity", 30.0)
+        ),
+        tsne_max_samples=int(
+            report_config.get("classification_tsne_max_samples", 2000)
+        ),
+        roc_macro_grid_points=int(
+            report_config.get("classification_roc_macro_grid_points", 201)
+        ),
+        score_histogram_bins=int(
+            report_config.get("classification_score_histogram_bins", 40)
+        ),
+    )
     configured_figures = set(
         report_config.get(
             "required_detector_figures"
@@ -1489,17 +1906,47 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
             if manifest["study_type"] == "stage5_pre_motion_ptt"
             else _PEAK_FIGURE_MODULES
         )
+    if manifest["study_type"] == "stage5_pre_motion_ptt":
+        # Report-only migration: completed studies predate the corrected
+        # window/file requirement, so rebuilding them must add the current
+        # detector modules without altering any training evidence.
+        configured_figures.update(_STAGE5_DETECTOR_FIGURE_MODULES)
     tables = root / "tables"
     figures = root / "figures"
     tables.mkdir(exist_ok=True)
     figures.mkdir(exist_ok=True)
+    if manifest["study_type"] == "stage5_pre_motion_ptt":
+        for relative in _OBSOLETE_STAGE5_REPORT_RELATIVE_PATHS:
+            (root / relative).unlink(missing_ok=True)
+            (root / "result_backup" / relative).unlink(missing_ok=True)
+    test_component_rows = build_motion_peak_test_component_rows(
+        resolved_plan,
+        manifest,
+    )
+    _write_csv(tables / "test_components.csv", test_component_rows)
+    _strict_json(tables / "test_components.json", test_component_rows)
+    denoiser_algorithm_rows = [
+        dict(row)
+        for row in test_component_rows
+        if row.get("component_role") == "denoiser"
+    ]
+    if denoiser_algorithm_rows:
+        _write_csv(tables / "denoiser_algorithms.csv", denoiser_algorithm_rows)
+        _strict_json(tables / "denoiser_algorithms.json", denoiser_algorithm_rows)
+    component_markdown = write_test_component_markdown(root, test_component_rows)
     images: list[Path] = []
     summary_rows: list[Mapping[str, Any]] = []
     headline_metric_rows: list[Mapping[str, Any]] = []
     detector_internal_rows: list[Mapping[str, Any]] = []
     detector_transfer_rows: list[Mapping[str, Any]] = []
     detector_window_confusion_rows: list[Mapping[str, Any]] = []
-    detector_subject_confusion_rows: list[Mapping[str, Any]] = []
+    detector_file_confusion_rows: list[Mapping[str, Any]] = []
+    detector_file_prediction_rows: list[Mapping[str, Any]] = []
+    detector_score_distribution_rows: list[Mapping[str, Any]] = []
+    detector_prediction_rows: list[Mapping[str, Any]] = []
+    detector_roc_curve_rows: list[Mapping[str, Any]] = []
+    detector_tsne_rows: list[Mapping[str, Any]] = []
+    detector_diagnostic_status_rows: list[Mapping[str, Any]] = []
     denoiser_display_tables: dict[str, list[dict[str, Any]]] = {}
     comparison_rows: list[dict[str, Any]] = []
     comparison_payload: Mapping[str, Any] | None = None
@@ -1518,17 +1965,19 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
         internal_rows = _read_parquet(internal_dir / "motion_window_oof.parquet")
         external_rows = _read_parquet(external_dir / "motion_ptt_window_predictions.parquet")
         detector_datasets: list[
-            tuple[str, Sequence[Mapping[str, Any]], float]
+            tuple[str, str, str, Sequence[Mapping[str, Any]]]
         ] = [
             (
+                "frailty29_trained_motion_detector",
                 "frailty29_outer_oof",
+                "source_grouped_oof",
                 internal_rows,
-                float(internal["major_metrics"]["worst_fold_balanced_accuracy"]),
             ),
             (
+                "frailty29_trained_motion_detector",
                 "frailty29_trained_to_ptt22",
+                "frozen_cross_dataset",
                 external_rows,
-                float(external["major_metrics"]["worst_fold_balanced_accuracy"]),
             ),
         ]
         stages = manifest.get("stages", {})
@@ -1580,39 +2029,44 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
             detector_datasets.extend(
                 [
                     (
+                        "ptt22_trained_motion_detector",
                         "ptt22_outer_oof",
+                        "source_grouped_oof",
                         reverse_training_rows,
-                        float(
-                            ptt_training["major_metrics"][
-                                "worst_fold_balanced_accuracy"
-                            ]
-                        ),
                     ),
                     (
+                        "ptt22_trained_motion_detector",
                         "ptt22_trained_to_frailty29",
+                        "frozen_cross_dataset",
                         internal_reverse_rows,
-                        float(
-                            internal_reverse["major_metrics"][
-                                "worst_fold_balanced_accuracy"
-                            ]
-                        ),
                     ),
                 ]
             )
-        headline_metric_rows = _detector_report_rows(detector_datasets)
+        headline_metric_rows, detector_file_prediction_rows = _detector_report_rows(
+            detector_datasets,
+            file_score_aggregation=file_score_aggregation,
+        )
         _write_csv(tables / "motion_detector_metrics.csv", headline_metric_rows)
         _strict_json(tables / "motion_detector_metrics.json", headline_metric_rows)
+        _write_csv(
+            tables / "motion_detector_file_predictions.csv",
+            detector_file_prediction_rows,
+        )
+        _strict_json(
+            tables / "motion_detector_file_predictions.json",
+            detector_file_prediction_rows,
+        )
         detector_metric_figure = figures / "motion_detector_metrics.png"
         if detector_metric_figure.stem in configured_figures:
             _plot_detector_metrics(detector_metric_figure, headline_metric_rows)
             images.append(detector_metric_figure)
         detector_internal_rows = [
             row for row in headline_metric_rows
-            if str(row["dataset"]).endswith("outer_oof")
+            if row["evaluation_scope"] == "source_grouped_oof"
         ]
         detector_transfer_rows = [
             row for row in headline_metric_rows
-            if not str(row["dataset"]).endswith("outer_oof")
+            if row["evaluation_scope"] == "frozen_cross_dataset"
         ]
         _write_csv(
             tables / "motion_detector_internal_evaluation.csv",
@@ -1630,18 +2084,168 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
             tables / "motion_detector_cross_dataset_evaluation.json",
             detector_transfer_rows,
         )
-        for dataset, name, subject_name, rows, title in (
+        for aggregation_level in ("window", "file"):
+            detector_score_distribution_rows.extend(
+                _score_distribution_rows(
+                    detector_datasets,
+                    aggregation_level=aggregation_level,
+                    file_score_aggregation=file_score_aggregation,
+                )
+            )
+        _write_csv(
+            tables / "motion_detector_score_distributions.csv",
+            detector_score_distribution_rows,
+        )
+        _strict_json(
+            tables / "motion_detector_score_distributions.json",
+            detector_score_distribution_rows,
+        )
+        for model_id, dataset, _scope, window_rows in detector_datasets:
+            for aggregation_level in ("window", "file"):
+                level_rows = (
+                    list(window_rows)
+                    if aggregation_level == "window"
+                    else _file_prediction_rows(
+                        window_rows,
+                        score_aggregation=file_score_aggregation,
+                    )
+                )
+                detector_prediction_rows.extend(
+                    normalize_classification_rows(
+                        level_rows,
+                        classifier_id=model_id,
+                        evaluation_id=dataset,
+                        aggregation_level=aggregation_level,
+                        label_field="activity_label",
+                    )
+                )
+        detector_roc_curve_rows = list(
+            classification_roc_curve_rows(
+                detector_prediction_rows,
+                macro_grid_points=diagnostic_config.roc_macro_grid_points,
+            )
+        )
+        detector_tsne_rows = list(
+            classification_tsne_rows(
+                detector_prediction_rows,
+                random_state=diagnostic_config.tsne_random_state,
+                perplexity=diagnostic_config.tsne_perplexity,
+                max_samples=diagnostic_config.tsne_max_samples,
+            )
+        )
+        expected_detector_ids = [
+            "frailty29_trained_motion_detector",
+            *(
+                ["ptt22_trained_motion_detector"]
+                if reverse_available
+                else []
+            ),
+        ]
+        detector_diagnostic_status_rows = list(
+            classification_diagnostic_status_rows(
+                expected_detector_ids,
+                detector_prediction_rows,
+                detector_roc_curve_rows,
+                detector_tsne_rows,
+            )
+        )
+        for table_name, table_rows in (
+            ("motion_detector_prediction_scores", detector_prediction_rows),
+            ("motion_detector_roc_curves", detector_roc_curve_rows),
+            ("motion_detector_prediction_tsne", detector_tsne_rows),
+            (
+                "motion_detector_diagnostic_status",
+                detector_diagnostic_status_rows,
+            ),
+        ):
+            _write_csv(tables / f"{table_name}.csv", table_rows)
+            _strict_json(tables / f"{table_name}.json", table_rows)
+        score_plot_specs = [
+            (
+                "frailty29_trained_motion_detector",
+                "frailty29_trained",
+                "Frailty29-trained motion detector",
+            )
+        ]
+        if reverse_available:
+            score_plot_specs.append(
+                (
+                    "ptt22_trained_motion_detector",
+                    "ptt22_trained",
+                    "PTT22-trained motion detector",
+                )
+            )
+        for model_id, file_prefix, plot_title in score_plot_specs:
+            model_datasets = [
+                (dataset, rows)
+                for candidate, dataset, _scope, rows in detector_datasets
+                if candidate == model_id
+            ]
+            for aggregation_level in ("window", "file"):
+                path = figures / (
+                    f"{file_prefix}_{aggregation_level}_score_distribution.png"
+                )
+                if path.stem in configured_figures:
+                    _plot_score_distribution(
+                        path,
+                        model_datasets,
+                        aggregation_level=aggregation_level,
+                        file_score_aggregation=file_score_aggregation,
+                        score_histogram_bins=(
+                            diagnostic_config.score_histogram_bins
+                        ),
+                        title=f"{plot_title} · {aggregation_level}-level scores",
+                    )
+                    images.append(path)
+                tsne_path = figures / (
+                    f"{file_prefix}_{aggregation_level}_prediction_tsne.png"
+                )
+                if tsne_path.stem in configured_figures:
+                    selected_tsne = [
+                        row
+                        for row in detector_tsne_rows
+                        if row["classifier_id"] == model_id
+                        and row["aggregation_level"] == aggregation_level
+                    ]
+                    _plot_motion_prediction_tsne(
+                        tsne_path,
+                        selected_tsne,
+                        title=(
+                            f"{plot_title} · {aggregation_level}-level "
+                            "prediction-space t-SNE"
+                        ),
+                    )
+                    images.append(tsne_path)
+                roc_path = figures / (
+                    f"{file_prefix}_{aggregation_level}_roc_auc_curve.png"
+                )
+                if roc_path.stem in configured_figures:
+                    selected_roc = [
+                        row
+                        for row in detector_roc_curve_rows
+                        if row["classifier_id"] == model_id
+                        and row["aggregation_level"] == aggregation_level
+                    ]
+                    _plot_motion_roc_auc_curve(
+                        roc_path,
+                        selected_roc,
+                        title=(
+                            f"{plot_title} · {aggregation_level}-level ROC–AUC"
+                        ),
+                    )
+                    images.append(roc_path)
+        for dataset, name, file_name, rows, title in (
             (
                 "frailty29_outer_oof",
                 "motion_internal_confusion_matrix.png",
-                "motion_internal_subject_confusion_matrix.png",
+                "motion_internal_file_confusion_matrix.png",
                 internal_rows,
                 "Internal 29-person OOF",
             ),
             (
                 "frailty29_trained_to_ptt22",
                 "motion_ptt_confusion_matrix.png",
-                "motion_ptt_subject_confusion_matrix.png",
+                "motion_ptt_file_confusion_matrix.png",
                 external_rows,
                 "PTT external evaluation",
             ),
@@ -1650,14 +2254,14 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
                     (
                         "ptt22_outer_oof",
                         "motion_ptt_training_oof_confusion_matrix.png",
-                        "motion_ptt_training_oof_subject_confusion_matrix.png",
+                        "motion_ptt_training_oof_file_confusion_matrix.png",
                         reverse_training_rows,
                         "PTT 22-person training OOF",
                     ),
                     (
                         "ptt22_trained_to_frailty29",
                         "motion_internal_reverse_confusion_matrix.png",
-                        "motion_internal_reverse_subject_confusion_matrix.png",
+                        "motion_internal_reverse_file_confusion_matrix.png",
                         internal_reverse_rows,
                         "PTT-trained frozen model on Frailty29",
                     ),
@@ -1678,16 +2282,27 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
             if path.stem in configured_figures:
                 _plot_confusion(path, window_matrix, title)
                 images.append(path)
-            subject_row, subject_matrix = _subject_confusion_report_row(dataset, rows)
-            detector_subject_confusion_rows.append(subject_row)
-            subject_path = figures / subject_name
-            if subject_path.stem in configured_figures:
-                _plot_confusion(
-                    subject_path,
-                    subject_matrix,
-                    f"{title} · subject×activity-class",
+            file_rows = _file_prediction_rows(
+                rows, score_aggregation=file_score_aggregation
+            )
+            file_matrix = _confusion(file_rows)
+            detector_file_confusion_rows.append(
+                _confusion_report_row(
+                    dataset,
+                    file_matrix,
+                    aggregation_level=(
+                        f"file_{file_score_aggregation}_window_probability"
+                    ),
                 )
-                images.append(subject_path)
+            )
+            file_path = figures / file_name
+            if file_path.stem in configured_figures:
+                _plot_confusion(
+                    file_path,
+                    file_matrix,
+                    f"{title} · file median probability",
+                )
+                images.append(file_path)
         _write_csv(
             tables / "motion_detector_window_confusion.csv",
             detector_window_confusion_rows,
@@ -1697,12 +2312,12 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
             detector_window_confusion_rows,
         )
         _write_csv(
-            tables / "motion_detector_subject_confusion.csv",
-            detector_subject_confusion_rows,
+            tables / "motion_detector_file_confusion.csv",
+            detector_file_confusion_rows,
         )
         _strict_json(
-            tables / "motion_detector_subject_confusion.json",
-            detector_subject_confusion_rows,
+            tables / "motion_detector_file_confusion.json",
+            detector_file_confusion_rows,
         )
         learning_path = figures / "motion_training_learning_curves.png"
         history_paths = tuple(internal_dir.rglob("motion_training_history.json"))
@@ -1793,18 +2408,11 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
                 tables / "motion_model_comparison_candidates.json", comparison_rows
             )
         headline = {
-            "internal_major_metrics": internal["major_metrics"],
-            "ptt_major_metrics": external["major_metrics"],
-            "ptt_training_oof_major_metrics": (
-                ptt_training["major_metrics"] if ptt_training is not None else None
-            ),
-            "frailty29_reverse_major_metrics": (
-                internal_reverse["major_metrics"]
-                if internal_reverse is not None
-                else None
-            ),
             "detector_report_rows": headline_metric_rows,
-            "detector_subject_confusion_rows": detector_subject_confusion_rows,
+            "detector_window_confusion_rows": detector_window_confusion_rows,
+            "detector_file_confusion_rows": detector_file_confusion_rows,
+            "detector_score_distribution_rows": detector_score_distribution_rows,
+            "detector_diagnostic_status_rows": detector_diagnostic_status_rows,
             "reverse_ablation_status": "passed" if reverse_available else "not_available",
             "motion_model_comparison": comparison_payload,
             "denoiser_status": "passed" if denoiser_enabled else "skipped_by_execution_option",
@@ -1856,17 +2464,53 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
         "motion_internal_reverse_confusion_matrix": (
             "motion_detector_window_confusion",
         ),
-        "motion_internal_subject_confusion_matrix": (
-            "motion_detector_subject_confusion",
+        "motion_internal_file_confusion_matrix": (
+            "motion_detector_file_confusion",
         ),
-        "motion_ptt_subject_confusion_matrix": (
-            "motion_detector_subject_confusion",
+        "motion_ptt_file_confusion_matrix": (
+            "motion_detector_file_confusion",
         ),
-        "motion_ptt_training_oof_subject_confusion_matrix": (
-            "motion_detector_subject_confusion",
+        "motion_ptt_training_oof_file_confusion_matrix": (
+            "motion_detector_file_confusion",
         ),
-        "motion_internal_reverse_subject_confusion_matrix": (
-            "motion_detector_subject_confusion",
+        "motion_internal_reverse_file_confusion_matrix": (
+            "motion_detector_file_confusion",
+        ),
+        "frailty29_trained_window_score_distribution": (
+            "motion_detector_score_distributions",
+        ),
+        "frailty29_trained_file_score_distribution": (
+            "motion_detector_score_distributions",
+        ),
+        "ptt22_trained_window_score_distribution": (
+            "motion_detector_score_distributions",
+        ),
+        "ptt22_trained_file_score_distribution": (
+            "motion_detector_score_distributions",
+        ),
+        "frailty29_trained_window_prediction_tsne": (
+            "motion_detector_prediction_tsne",
+        ),
+        "frailty29_trained_file_prediction_tsne": (
+            "motion_detector_prediction_tsne",
+        ),
+        "ptt22_trained_window_prediction_tsne": (
+            "motion_detector_prediction_tsne",
+        ),
+        "ptt22_trained_file_prediction_tsne": (
+            "motion_detector_prediction_tsne",
+        ),
+        "frailty29_trained_window_roc_auc_curve": (
+            "motion_detector_roc_curves",
+        ),
+        "frailty29_trained_file_roc_auc_curve": (
+            "motion_detector_roc_curves",
+        ),
+        "ptt22_trained_window_roc_auc_curve": (
+            "motion_detector_roc_curves",
+        ),
+        "ptt22_trained_file_roc_auc_curve": (
+            "motion_detector_roc_curves",
         ),
         "motion_training_learning_curves": ("motion_training_history",),
         "denoiser_interval_rmse": ("denoiser_summary",),
@@ -1914,6 +2558,7 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
         "study_id": manifest["study_id"],
         "status": manifest["status"],
         "table_figure_pairs": table_figure_pairs,
+        "test_components": test_component_rows,
         **headline,
     })
     numerical_sections = (
@@ -1926,15 +2571,30 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
             "",
             _markdown_table(detector_transfer_rows),
             "",
-            "### Detector subject-level confusion counts",
+            "### Detector window-level confusion counts",
             "",
-            _markdown_table(detector_subject_confusion_rows),
+            _markdown_table(detector_window_confusion_rows),
             "",
-            "Participant-macro metrics first score every participant from all of "
-            "that participant's windows, then average participants equally. The "
-            "subject-level confusion matrix uses one median probability for each "
-            "participant×activity-class unit because every participant has both "
-            "static and motion observations.",
+            "### Detector file-level confusion counts",
+            "",
+            _markdown_table(detector_file_confusion_rows),
+            "",
+            "### Detector classification diagnostic availability",
+            "",
+            _markdown_table(detector_diagnostic_status_rows),
+            "",
+            "Window-level metrics weight every persisted 8 s window equally. "
+            f"File-level metrics first take the {file_score_aggregation} motion "
+            "probability across "
+            "all windows sharing one physical `file_id`, then apply that file's "
+            "frozen threshold once. No participant-level aggregation is used in "
+            "these detector report tables. Worst-fold BA is reported only for "
+            "grouped-OOF rows; a final frozen cross-dataset application has no "
+            "training fold, so that cell is N/A.",
+            "The ROC figures are empirical ROC curves with AUC annotated on "
+            "the curve; `motion_detector_metrics.png` remains a separate metric "
+            "summary bar plot. t-SNE uses only persisted prediction probability "
+            "vectors and must not be described as a hidden-feature embedding.",
             "",
         ]
         if manifest["study_type"] == "stage5_pre_motion_ptt"
@@ -1984,6 +2644,11 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
         f"# {manifest['study_id']}", "", f"Status: **{manifest['status']}**", "",
         "## Scientific scope", "",
         str(manifest["scientific_scope"]), "",
+        "## Test models, modules, inputs, and fixed parameters", "",
+        "The identical standalone table is in `TEST_COMPONENTS.md`; "
+        "machine-readable copies are `tables/test_components.csv` and `.json`. "
+        "Input data are named directly rather than represented by hashes.", "",
+        markdown_test_component_table(test_component_rows), "",
         "## Figures", "",
         *[f"![{path.stem}](figures/{path.name})" for path in images], "",
         "## Numerical outputs", "",
@@ -2005,12 +2670,20 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
         + _html_table(detector_internal_rows)
         + "<h3>Detector frozen cross-dataset evaluation</h3>"
         + _html_table(detector_transfer_rows)
-        + "<h3>Detector subject-level confusion counts</h3>"
-        + _html_table(detector_subject_confusion_rows)
-        + "<p>Participant-macro metrics score each participant first and then "
-        "average participants equally. Subject-level confusion uses one median "
-        "probability for each participant-by-activity-class unit because every "
-        "participant has both static and motion observations.</p>"
+        + "<h3>Detector window-level confusion counts</h3>"
+        + _html_table(detector_window_confusion_rows)
+        + "<h3>Detector file-level confusion counts</h3>"
+        + _html_table(detector_file_confusion_rows)
+        + "<h3>Detector classification diagnostic availability</h3>"
+        + _html_table(detector_diagnostic_status_rows)
+        + "<p>Window-level metrics weight every persisted 8 s window equally. "
+        + f"File-level metrics use the {file_score_aggregation} probability across "
+        "all windows sharing "
+        "one physical file_id, then apply that file's frozen threshold once. No "
+        "participant-level aggregation is used. Worst-fold BA applies only to "
+        "grouped-OOF rows; final frozen transfers have no training fold. The "
+        "ROC figures are empirical ROC curves with annotated AUC; the t-SNE "
+        "figures embed persisted prediction probabilities, not hidden features.</p>"
         if manifest["study_type"] == "stage5_pre_motion_ptt"
         else _html_table(headline_metric_rows)
     )
@@ -2048,6 +2721,10 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
         "<!doctype html><meta charset='utf-8'><title>"
         + manifest["study_id"] + "</title><h1>" + manifest["study_id"]
         + "</h1><p>Status: " + manifest["status"] + "</p>"
+        + "<h2>Test models, modules, inputs, and fixed parameters</h2>"
+        + "<p>The identical Markdown table is in TEST_COMPONENTS.md. Input data "
+        + "are named directly rather than represented by hashes.</p>"
+        + _html_table(test_component_rows)
         + "<h2>Numerical outputs</h2>" + html_numerical
         + "<h2>Figures</h2>" + html_images,
         encoding="utf-8",
@@ -2077,7 +2754,8 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
         [
             root / "resolved_plan.yaml", root / "study_manifest.json",
             root / "study_summary.json", root / "STUDY_SUMMARY.md",
-            root / "STUDY_SUMMARY.html", root / "outputs_index.json",
+            root / "STUDY_SUMMARY.html", component_markdown,
+            root / "outputs_index.json",
             *tables.rglob("*"), *figures.rglob("*"),
             *root.glob("motion_model_comparison*/**/*.json"),
         ],

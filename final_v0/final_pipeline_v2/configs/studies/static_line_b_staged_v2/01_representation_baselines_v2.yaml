@@ -4,12 +4,12 @@ schema_version: ppg_frailty.study_plan.v2
 study:
   study_id: staged_static_01_representation_baselines_v2
   kind: catalog_sweep
-  purpose: "Compare the currently selected low-cost Line B representation baselines; feature-matrix model selection is pending."
+  purpose: "Compare four low-cost Line B representations, including the reviewed 146xvariable-K Small Matrix Inception route."
   flow_position: "Stage 1 of the staged pure-static finalist flow."
   decision_role: screening
   reference_case_id: null
   thesis_sections:
-    - "Executable representation lines and pending feature-matrix model selection"
+    - "Executable representation lines and the Small Matrix Inception baseline"
     - "Line B role-aware aggregation"
 catalog:
   path: configs/formal_experiment_catalog_v2.yaml
@@ -19,37 +19,62 @@ search:
   method: deterministic_sparse_profiles
   selection_seed: 42
   runtime_sampling: false
-  interpretation: "Three executable baselines; the 115-by-150 feature matrix is materialized but has no selected Stage-1 model."
+  interpretation: "Four executable baselines; the matrix case retains all complete 146-feature rows and uses one Small Inception network."
   controlled_factors:
     - "All 29 participants in repeat 0 and its five frozen held-out folds"
     - "Static roles B, R1, R2, R3, R4; Line B aggregation"
-    - "400 Hz; 5 s raw windows/2.5 s hop; 10 s engineering windows/2 s hop"
+    - "Raw/fusion DL branches use 64 Hz, 5 s/2.5 s; routing and the variable-K 146-feature matrix remain on 400 Hz, with 10 s/2 s matrix rows"
     - "Calibrated EKF; quality off; identity reducer; motion override disabled"
-    - "Deep models use fixed 10 epochs, batch 64, Adam LR 0.001, weight decay 0.0001"
+    - "Deep models retain their registered fixed10 training profiles: raw/fusion use AdamW/batch32, while the reviewed matrix reference remains Adam/batch64; reports use B7 Line B file/role aggregation"
   notes:
-    - "Feature-matrix model is intentionally pending; ROCKET/Ridge is no longer executable."
+    - "The matrix representative is Small single-network InceptionTime; ROCKET/Ridge remains retired."
     - "Do not call the highest case here the final model."
     - "If routes are close, rerun this plan with all repeats before pruning Stage 2."
 cases:
   - case_id: raw__compact_cnn
     catalog_entry: compact_cnn
-    screen_profile_id: canonical
+    screen_profile_id: v2_core_b0_b2_b7_selected
     output_group: raw
-    overrides: {}
+    overrides: &b0_b2_b7_dl
+      signal.dl_resampling.enabled: true
+      signal.dl_resampling.target_fs_hz: 64.0
+      signal.normalization.raw_ppg: per_window_median_iqr_over_1p349_sd_finite
+      signal.normalization.raw_imu: none
+      windows.raw_dl.length_s: 5.0
+      windows.raw_dl.hop_s: 2.5
+      training.optimizer: adamw
+      training.batch_size: 32
+      training.sampler: exhaustive_shuffle_without_replacement
+      training.class_weighting: outer_train_window_inverse_frequency
+      training.class_count_basis: row
+      aggregation.balance_line: line_b_equal_role_families
     rationale: "Low-cost raw-signal baseline."
     formal_profile: null
   - case_id: feature_vector__logistic
     catalog_entry: logistic_regression
-    screen_profile_id: canonical
+    screen_profile_id: v2_core_b0_b2_b7_selected
     output_group: feature_vector
     overrides: {}
     rationale: "Low-cost engineered-vector baseline."
+    formal_profile: null
+  - case_id: feature_matrix__inception_small
+    catalog_entry: inception_matrix_small
+    screen_profile_id: window_matrix_d146_variable_k_small_inception
+    output_group: feature_matrix
+    overrides:
+      windows.engineering.length_s: 10.0
+      windows.engineering.hop_s: 2.0
+      model.variant: small
+      model.input_channels: 146
+      model.ensemble_size: 1
+    rationale: "Chronological 146xvariable-K window matrix with one mask-aware Small InceptionTime network."
     formal_profile: null
   - case_id: fusion__compact
     catalog_entry: fusion_compact
     screen_profile_id: canonical
     output_group: fusion
-    overrides: {}
+    overrides:
+      <<: *b0_b2_b7_dl
     rationale: "Compact raw-plus-feature fusion baseline."
     formal_profile: null
 execution:
@@ -68,3 +93,6 @@ report:
   write_html: true
   write_static_figures: true
   calibration_bins: 10
+  figure_modules: [all]
+  compact_mean_sd: true
+  write_excel_workbook: true

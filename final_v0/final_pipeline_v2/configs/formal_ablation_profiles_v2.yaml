@@ -22,6 +22,16 @@ families:
       hierarchy: [window, file, participant]
       catalog_role: ablation
       auto_run: false
+  sampler:
+    reference_profile_id: exhaustive_shuffle_without_replacement
+    entries:
+    - {profile_id: exhaustive_shuffle_without_replacement, sampler: exhaustive_shuffle_without_replacement, catalog_role: reference, auto_run: false}
+    - {profile_id: line_b_weighted_sampler_ablation, sampler: balance_line_weighted_v2, catalog_role: ablation, auto_run: false}
+  class_count_basis:
+    reference_profile_id: row_count_class_weights
+    entries:
+    - {profile_id: row_count_class_weights, class_weighting: inverse_frequency, class_count_basis: row, catalog_role: reference, auto_run: false}
+    - {profile_id: participant_count_class_weights_ablation, class_weighting: inverse_frequency, class_count_basis: participant, catalog_role: ablation, auto_run: false}
   deep_fixed_epoch:
     reference_profile_id: default_epoch_10
     entries:
@@ -34,11 +44,11 @@ families:
     - {profile_id: direct_filter_0p2_to_8hz, low_hz: 0.2, high_hz: 8.0, catalog_role: reference, auto_run: false}
     - {profile_id: direct_filter_0p5_to_5hz_ablation, low_hz: 0.5, high_hz: 5.0, catalog_role: ablation, auto_run: false}
   imu_gravity:
-    reference_profile_id: calibrated_roll_pitch_ekf
+    reference_profile_id: profile_a_lowpass_0p3hz
     silent_fallback_forbidden: true
     entries:
-    - {profile_id: calibrated_roll_pitch_ekf, method: calibrated_roll_pitch_ekf, catalog_role: reference, auto_run: false}
-    - {profile_id: imu_lpf_0p3hz_ablation, method: profile_a_lowpass_0p3hz, catalog_role: ablation, auto_run: false}
+    - {profile_id: profile_a_lowpass_0p3hz, method: profile_a_lowpass_0p3hz, catalog_role: reference, auto_run: false}
+    - {profile_id: calibrated_roll_pitch_ekf_ablation, method: calibrated_roll_pitch_ekf, catalog_role: ablation, auto_run: false}
   peak_detector:
     reference_profile_id: aboy_project_v1
     silent_fallback_forbidden: true

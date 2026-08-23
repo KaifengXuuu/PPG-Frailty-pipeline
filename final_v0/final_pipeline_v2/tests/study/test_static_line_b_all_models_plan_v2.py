@@ -1,4 +1,4 @@
-"""Contracts for the explicit 13-model static Line B screening plan."""
+"""Contracts for the explicit ordinary-model static Line B screening plan."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ class StaticLineBAllModelsPlanTests(unittest.TestCase):
         self.assertEqual(self.plan.study.kind, "catalog_sweep")
         self.assertEqual(self.plan.catalog.balance_line, "line_b")
         self.assertEqual(self.plan.search.runtime_sampling, False)
-        self.assertEqual(len(self.expansion.cases), 30)
+        self.assertEqual(len(self.expansion.cases), 31)
         counts = Counter(case.output_group for case in self.expansion.cases)
         self.assertEqual(
             counts,
@@ -38,6 +38,7 @@ class StaticLineBAllModelsPlanTests(unittest.TestCase):
                 "raw": 15,
                 "fusion": 6,
                 "feature_vector": 9,
+                "feature_matrix": 1,
             },
         )
         by_entry: dict[str, list[object]] = defaultdict(list)
@@ -47,13 +48,20 @@ class StaticLineBAllModelsPlanTests(unittest.TestCase):
                 case.output_group,
                 case.config["representation_mode"],
             )
-        self.assertEqual(len(by_entry), 10)
-        self.assertTrue(all(len(values) == 3 for values in by_entry.values()))
+        self.assertEqual(len(by_entry), 11)
+        self.assertEqual(len(by_entry["inception_matrix_small"]), 1)
+        self.assertTrue(
+            all(
+                len(values) == 3
+                for entry, values in by_entry.items()
+                if entry != "inception_matrix_small"
+            )
+        )
         machines = {
             normalize_model_id(str(case.config["model"]["model_id"]))[1]
             for case in self.expansion.cases
         }
-        self.assertEqual(len(machines), 10)
+        self.assertEqual(len(machines), 11)
         self.assertFalse(any(int(case.config["model"]["ensemble_size"]) > 1 for case in self.expansion.cases))
 
     def test_shared_static_line_b_controls_are_identical(self) -> None:
@@ -63,7 +71,7 @@ class StaticLineBAllModelsPlanTests(unittest.TestCase):
             self.assertEqual(config["signal"]["internal_fs_hz"], 400.0)
             self.assertEqual(
                 config["signal"]["imu"]["gravity_method"],
-                "calibrated_roll_pitch_ekf",
+                "profile_a_lowpass_0p3hz",
             )
             self.assertEqual(config["quality"]["mode"], "off")
             self.assertFalse(config["artifact"]["motion_detector_enabled"])

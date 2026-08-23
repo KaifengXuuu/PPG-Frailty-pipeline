@@ -21,11 +21,11 @@ class CatalogMaterializerContracts(unittest.TestCase):
                 line="line_a",
                 output_dir=target,
             )
-            self.assertEqual(manifest["config_count"], 12)
-            self.assertEqual(manifest["candidate_count"], 10)
+            self.assertEqual(manifest["config_count"], 13)
+            self.assertEqual(manifest["candidate_count"], 11)
             self.assertEqual(manifest["matched_comparator_count"], 1)
             self.assertEqual(manifest["ensemble_comparison_count"], 1)
-            self.assertEqual(len(tuple(target.glob("*.yaml"))), 12)
+            self.assertEqual(len(tuple(target.glob("*.yaml"))), 13)
             self.assertTrue(
                 (
                     target

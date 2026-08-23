@@ -1,17 +1,17 @@
-# One feature-vector finalist and five predeclared module compositions. SQI,
-# the frozen all-29 motion detector, and rate-recovery reducers are imported
+# One CompactCNN1D finalist and eight predeclared module/data compositions. SQI,
+# matching frozen Stage5 fold motion detectors, and rate-recovery reducers are imported
 # through their ordinary V2 registries; this plan contains no algorithm copy.
 schema_version: ppg_frailty.study_plan.v2
 study:
-  study_id: staged_static_05_sqi_motion_feature_vector_v3
+  study_id: staged_static_05_sqi_motion_compact_cnn_v5
   kind: catalog_sweep
-  purpose: "Compare explicit SQI/motion tiers and one-attempt PCA/FastICA rate recovery on one feature-vector finalist."
+  purpose: "Compare eight window-level SQI/motion/PCA/FastICA compositions around one 64 Hz CompactCNN1D finalist, with routing fixed on the canonical 400 Hz grid."
   flow_position: "Stage 5 route-composition screen after ordinary-model selection."
   decision_role: robustness
-  reference_case_id: vector_logistic__off_off
+  reference_case_id: raw_compact_cnn__off_off_all_roles
   thesis_sections:
     - "SQI tier routing and abstention"
-    - "Frozen Frailty29 motion-model reuse"
+    - "Leakage-free matching-fold Frailty29 motion-model reuse"
     - "PCA versus FastICA one-attempt rate recovery"
 catalog:
   path: configs/formal_experiment_catalog_v2.yaml
@@ -21,23 +21,52 @@ search:
   method: deterministic_sparse_profiles
   selection_seed: 42
   runtime_sampling: false
-  interpretation: "Five predeclared compositions, not a Cartesian search and not automatic model selection."
+  interpretation: "Eight predeclared compositions, not a Cartesian search and not automatic model selection."
   controlled_factors:
-    - "Logistic Regression feature-vector route, participants, folds, split/training seeds and Line B aggregation"
+    - "CompactCNN1D raw route, participants, folds, split/training seeds and Line B aggregation"
+    - "Seven cases use all B/R/S/W roles; the explicit static_only input-scope control uses B/R roles only"
+    - "All cases use the selected V2-core plus B0/B2/B7 state: 64 Hz, 5/2.5 s, AdamW/batch32 and file/role Line B aggregation"
+    - "The CNN tensor uses all-eight-channel per-window robust scaling; fold-level IMU post-scaling is disabled"
+    - "All eight cases use the same calibrated roll-pitch EKF profile; EKF is a stage-wide explicit ablation relative to the ordinary V2 Profile-A LPF default"
     - "Fixed-formula SQI uses Q_rate >= 0.50, Q_morph >= 0.65 and coverage >= 0.80"
-    - "Motion cases reuse one frozen all-29 model and its strict-OOF-derived deployment threshold without refit or recalibration"
-    - "Each Unfit record receives at most one configured reducer attempt"
+    - "Each formal OOF cell reuses the matching existing Stage5 fold model and train-only threshold; all-29 is restricted to final refit/smoke"
+    - "SQI and motion expose the same native 8 s/2 s windows; file motion median is diagnostic only"
+    - "Each recording with recoverable Unfit windows receives at most one whole-record reducer attempt"
   notes:
-    - "The reused motion model was trained on all Frailty29 participants; its decisions are in-sample preprocessing evidence and are not valid outer-OOF motion predictions."
+    - "Formal OOF motion evidence is held out by the same participant roster and split hash as its frailty cell; final all-29 refit preserves the in-sample warning."
     - "The 20260820_182324 bundle is intentionally not used because its older final threshold does not satisfy the strict OOF deployment-threshold contract."
     - "PCA is preferred; FastICA is the parallel single-factor algorithm ablation."
-    - "The sklearn Logistic Regression estimator runs on CPU; only frozen motion-bundle inference uses CUDA."
+    - "CompactCNN1D training/inference and frozen motion-bundle inference both use CUDA."
+    - "PCA/FastICA outputs remain rate-only: post-denoiser HR is compared and reported, but Acceptable records are not supplied to the raw CNN."
+    - "SQI-off PCA/FastICA cases still record direct and post-denoiser HR diagnostics; direct SQI remains disabled."
 cases:
-  - case_id: vector_logistic__off_off
-    catalog_entry: logistic_regression
-    screen_profile_id: sqi_motion_off
-    output_group: feature_vector
-    overrides:
+  - case_id: raw_compact_cnn__off_off_all_roles
+    catalog_entry: compact_cnn
+    screen_profile_id: sqi_motion_off_all_roles
+    output_group: raw
+    overrides: &cnn_common
+      # Stage-wide controlled profile: every case uses EKF; the declared module
+      # switches and the one explicit static-only input scope are the study axes.
+      signal.imu.gravity_method: calibrated_roll_pitch_ekf
+      signal.imu.comparison_method: profile_a_lowpass_0p3hz
+      signal.dl_resampling.enabled: true
+      signal.dl_resampling.target_fs_hz: 64.0
+      signal.normalization.raw_ppg: per_window_robust
+      signal.normalization.raw_imu: none
+      windows.raw_dl.length_s: 5.0
+      windows.raw_dl.hop_s: 2.5
+      routing.window_s: 8.0
+      routing.hop_s: 2.0
+      routing.fs_hz: 400.0
+      routing.source_grid: canonical_acquisition_grid
+      training.optimizer: adamw
+      training.batch_size: 32
+      training.sampler: exhaustive_shuffle_without_replacement
+      training.class_weighting: outer_train_window_inverse_frequency
+      training.class_count_basis: row
+      training.classifier_role_families: [B, R, S, W]
+      aggregation.balance_line: line_b_equal_role_families
+      roles: [B, R1, R2, R3, R4, S1, S2, W1, W2]
       quality.mode: "off"
       artifact.motion_detector_enabled: false
       artifact.denoiser_enabled: false
@@ -45,14 +74,26 @@ cases:
       artifact.reducer_version: identity_v1
       artifact.degraded_policy: drop
       artifact.parameters: {}
-    rationale: "SQI-off, motion-off, denoiser-off static reference."
+    rationale: "SQI-off/motion-off all-role compatibility control: configured B/R roles route direct, while non-static S/W roles are Unfit as required by the common routing contract."
     formal_profile: null
 
-  - case_id: vector_logistic__sqi_only
-    catalog_entry: logistic_regression
+  - case_id: raw_compact_cnn__static_only
+    catalog_entry: compact_cnn
+    screen_profile_id: static_only_sqi_motion_denoiser_off
+    output_group: raw
+    overrides:
+      <<: *cnn_common
+      roles: [B, R1, R2, R3, R4]
+      training.classifier_role_families: [B, R]
+    rationale: "Explicit static-only input-scope control with SQI, motion detector and denoiser all disabled."
+    formal_profile: null
+
+  - case_id: raw_compact_cnn__sqi_only
+    catalog_entry: compact_cnn
     screen_profile_id: sqi_only_fixed_thresholds
-    output_group: feature_vector
+    output_group: raw
     overrides: &sqi_only
+      <<: *cnn_common
       quality.mode: route
       quality.calibrator: fixed_formula_thresholds_v1
       quality.rate_threshold: 0.50
@@ -67,67 +108,107 @@ cases:
     rationale: "SQI-only tier routing with the reference thresholds."
     formal_profile: null
 
-  - case_id: vector_logistic__sqi_motion_all29
-    catalog_entry: logistic_regression
-    screen_profile_id: sqi_plus_reused_all29_motion
-    output_group: feature_vector
-    overrides: &sqi_motion_all29
+  - case_id: raw_compact_cnn__sqi_motion_matching_fold
+    catalog_entry: compact_cnn
+    screen_profile_id: sqi_plus_reused_matching_fold_motion
+    output_group: raw
+    overrides: &sqi_motion_matching_fold
       <<: *sqi_only
       artifact.motion_detector_enabled: true
       artifact.motion_detector.evidence_path: artifacts/studies/static_line_b_staged_v2/20260820_225546_staged-static-05-pre-motion-ptt-v1/motion_internal/motion_internal_evidence.json
       artifact.motion_detector.expected_evidence_sha256: 10f02a9d784e06471c7109ff8dc92d28f1a8d7753f8fdf179bebce5699fb446c
       artifact.motion_detector.device: cuda
       artifact.motion_detector.batch_size: 64
-      artifact.motion_detector.window_probability_aggregation: median
+      artifact.motion_detector.window_probability_aggregation: native_windows_file_median_diagnostics_only
       artifact.motion_detector.threshold_source: bundle_frozen
-    rationale: "SQI plus frozen all-29 motion inference; no denoiser."
+      artifact.motion_detector.reuse_scope: matching_outer_fold_or_all29_final
+      artifact.motion_detector.expected_split_registry_sha256: 130b2887eb29a5a534397b4ce4dc7032f9de30ae46533fa0b2c41559ff4a1284
+    rationale: "SQI plus matching-fold native-window motion inference; no fitting, recalibration, or file-median routing."
     formal_profile: null
 
-  - case_id: vector_logistic__sqi_motion_pca
-    catalog_entry: logistic_regression
+  - case_id: raw_compact_cnn__sqi_motion_pca
+    catalog_entry: compact_cnn
     screen_profile_id: sqi_motion_pca_rate_recovery
-    output_group: feature_vector
+    output_group: raw
     overrides:
-      <<: *sqi_motion_all29
+      <<: *sqi_motion_matching_fold
       artifact.denoiser_enabled: true
       artifact.reducer: pca_bss
       artifact.reducer_version: pca_component_select_v2
-      artifact.degraded_policy: denoise_then_extract_rate_features
+      artifact.degraded_policy: denoise_then_compare_rate_exclude
       artifact.parameters:
         imu_reference_profile: imu_axes6_reference_v2
-    rationale: "Preferred deterministic PCA BSS one-attempt rate recovery."
+    rationale: "Preferred deterministic PCA BSS one-attempt HR-recovery diagnostic; rate-only output remains excluded from raw CNN input."
     formal_profile: null
 
-  - case_id: vector_logistic__sqi_motion_fastica
-    catalog_entry: logistic_regression
+  - case_id: raw_compact_cnn__sqi_motion_fastica
+    catalog_entry: compact_cnn
     screen_profile_id: sqi_motion_fastica_ablation
-    output_group: feature_vector
+    output_group: raw
     overrides:
-      <<: *sqi_motion_all29
+      <<: *sqi_motion_matching_fold
       artifact.denoiser_enabled: true
       artifact.reducer: fastica_bss
       artifact.reducer_version: fastica_component_select_v2
-      artifact.degraded_policy: denoise_then_extract_rate_features
+      artifact.degraded_policy: denoise_then_compare_rate_exclude
       artifact.parameters:
         random_state: 42
         max_iter: 1000
         tolerance: 0.00001
         imu_reference_profile: imu_axes6_reference_v2
-    rationale: "FastICA BSS algorithm ablation under the same one-attempt route."
+    rationale: "FastICA BSS HR-recovery ablation under the same one-attempt rate-only route."
+    formal_profile: null
+
+  - case_id: raw_compact_cnn__sqi_off_motion_pca
+    catalog_entry: compact_cnn
+    screen_profile_id: sqi_off_motion_pca_rate_recovery
+    output_group: raw
+    overrides:
+      <<: *sqi_motion_matching_fold
+      quality.mode: "off"
+      artifact.denoiser_enabled: true
+      artifact.reducer: pca_bss
+      artifact.reducer_version: pca_component_select_v2
+      artifact.degraded_policy: denoise_then_compare_rate_exclude
+      artifact.parameters:
+        imu_reference_profile: imu_axes6_reference_v2
+    rationale: "SQI-off plus matching-fold motion and deterministic PCA-BSS; reducer output is diagnostic only and cannot promote an Unfit window without SQI route mode."
+    formal_profile: null
+
+  - case_id: raw_compact_cnn__sqi_off_motion_fastica
+    catalog_entry: compact_cnn
+    screen_profile_id: sqi_off_motion_fastica_ablation
+    output_group: raw
+    overrides:
+      <<: *sqi_motion_matching_fold
+      quality.mode: "off"
+      artifact.denoiser_enabled: true
+      artifact.reducer: fastica_bss
+      artifact.reducer_version: fastica_component_select_v2
+      artifact.degraded_policy: denoise_then_compare_rate_exclude
+      artifact.parameters:
+        random_state: 42
+        max_iter: 1000
+        tolerance: 0.00001
+        imu_reference_profile: imu_axes6_reference_v2
+    rationale: "SQI-off plus matching-fold motion and FastICA-BSS ablation; reducer output is diagnostic only and cannot promote an Unfit window without SQI route mode."
     formal_profile: null
 execution:
   repeats: [0]
   folds: [0, 1, 2, 3, 4]
   jobs: 1
-  device: cpu
+  device: cuda
   parallel_level: cases
   continue_on_error: true
   allow_parallel_deep: false
-  measure_operational_costs: false
+  measure_operational_costs: true
 output:
   root: artifacts/studies/static_line_b_staged_v2
 report:
-  top_k: 5
+  top_k: 8
   write_html: true
   write_static_figures: true
   calibration_bins: 10
+  figure_modules: [all]
+  compact_mean_sd: true
+  write_excel_workbook: true

@@ -92,9 +92,9 @@ signal:
     edge_extrapolation: false
     all_missing_channel_action: reject_record
   imu:
-    gravity_method: calibrated_roll_pitch_ekf
+    gravity_method: profile_a_lowpass_0p3hz
     initialization: same_participant_static_calibration
-    comparison_method: profile_a_lowpass_0p3hz
+    comparison_method: calibrated_roll_pitch_ekf
     sensor_lowpass_acc_hz: 20.0
     sensor_lowpass_gyro_hz: 40.0
     sensor_filter_order: 3
@@ -162,8 +162,9 @@ features:
   prv_library_comparison_scope: fixed_ppi_vectors_only_no_classifier
   file_vector_schema: feature_vector_282_v3
   engineering_sequence_schema: engineering_10s_hop2s_thesis_115_v3
-  matrix_schema: ordered_feature_matrix_d115_by_150_engineering_v4
-  matrix_k: 150
+  window_feature_schema: window_feature_set_d146_v1
+  matrix_schema: ordered_window_feature_matrix_d146_variable_k_v1
+  matrix_length_policy: all_complete_windows_variable_k
   technical_metadata_allowed: false
   missing_physiology_encoding: nan_and_validity_false
   time_prv_min_duration_s: 60.0
@@ -244,8 +245,9 @@ training:
   optimizer: adam
   learning_rate: 0.001
   weight_decay: 0.0001
-  class_weighting: outer_train_inverse_frequency
-  sampler: balance_line_weighted_v2
+  class_weighting: outer_train_window_inverse_frequency
+  class_count_basis: row
+  sampler: exhaustive_shuffle_without_replacement
   loss: cross_entropy
   label_smoothing: 0.0
   gradient_clip_norm: null

@@ -31,6 +31,7 @@ TOP_LEVEL_KEYS = {
     "signal",
     "windows",
     "quality",
+    "routing",
     "artifact",
     "features",
     "model",
@@ -49,8 +50,10 @@ FEATURE_REGISTRY_CONFIG_SCHEMA = "feature_vector_282_v3"
 FEATURE_VECTOR_CONFIG_SCHEMA = "feature_vector_282_v3"
 ENGINEERING_SEQUENCE_CONFIG_SCHEMA = "engineering_10s_hop2s_thesis_115_v3"
 ORDERED_MATRIX_CONFIG_SCHEMA = (
-    "ordered_feature_matrix_d115_by_150_engineering_v4"
+    "ordered_window_feature_matrix_d146_variable_k_v1"
 )
+WINDOW_FEATURE_CONFIG_SCHEMA = "window_feature_set_d146_v1"
+LEGACY_TOP_LEVEL_KEYS = TOP_LEVEL_KEYS - {"routing"}
 def _strict_mapping(value: Any, name: str) -> dict[str, Any]:
     """验证对象类型 / Require a string-keyed mapping."""
 
@@ -129,7 +132,12 @@ class PipelineConfig:
 def _validate_common_payload(data: dict[str, Any]) -> None:
     """验证 V1/V2 共同结构 / Validate structure shared by V1 and V2."""
 
-    _require_exact_keys(data, TOP_LEVEL_KEYS, context="config")
+    expected_keys = (
+        LEGACY_TOP_LEVEL_KEYS
+        if data.get("schema_version") == LEGACY_SCHEMA_VERSION
+        else TOP_LEVEL_KEYS
+    )
+    _require_exact_keys(data, expected_keys, context="config")
     if data["representation_mode"] not in {"raw", "feature_vector", "feature_matrix", "fusion"}:
         raise ValueError("unsupported representation_mode")
     from .data.schema import REGISTERED_ROLES
@@ -140,7 +148,7 @@ def _validate_common_payload(data: dict[str, Any]) -> None:
         raise ValueError("roles must be a non-empty registered role list")
     if len(set(roles)) != len(roles):
         raise ValueError("roles must not contain duplicate role IDs")
-    for section in TOP_LEVEL_KEYS - {"schema_version", "config_id", "representation_mode", "roles"}:
+    for section in expected_keys - {"schema_version", "config_id", "representation_mode", "roles"}:
         _strict_mapping(data[section], section)
     training = _strict_mapping(data["training"], "training")
     if training.get("epoch_rule") not in {"fixed_epoch", "inner_grouped_selection"}:
@@ -432,6 +440,36 @@ def _materialize_quality_defaults(data: dict[str, Any]) -> None:
         }
     effective = {**metadata_defaults, **runtime}
     data["quality"] = effective
+
+
+def _materialize_routing_defaults(data: dict[str, Any]) -> None:
+    """Persist the common representation-independent 400 Hz evidence grid."""
+
+    declared = data.get("routing", {})
+    if declared is None:
+        declared = {}
+    if not isinstance(declared, Mapping):
+        raise TypeError("routing must be a mapping")
+    allowed = {"window_s", "hop_s", "fs_hz", "source_grid"}
+    unknown = sorted(set(declared) - allowed)
+    if unknown:
+        raise ValueError(f"routing contains unknown fields: {unknown}")
+    effective = {
+        "window_s": float(declared.get("window_s", 8.0)),
+        "hop_s": float(declared.get("hop_s", 2.0)),
+        "fs_hz": float(declared.get("fs_hz", 400.0)),
+        "source_grid": str(
+            declared.get("source_grid", "canonical_acquisition_grid")
+        ),
+    }
+    if effective != {
+        "window_s": 8.0,
+        "hop_s": 2.0,
+        "fs_hz": 400.0,
+        "source_grid": "canonical_acquisition_grid",
+    }:
+        raise ValueError("formal routing grid is fixed at canonical 400 Hz, 8 s/2 s")
+    data["routing"] = effective
 
 
 def _materialize_dl_resampling_defaults(data: dict[str, Any]) -> None:
@@ -811,10 +849,9 @@ def _validate_v2_signal_normalization(data: Mapping[str, Any]) -> None:
 def _materialize_feature_defaults(data: dict[str, Any]) -> None:
     """Resolve every executable feature parameter before hashing.
 
-    The 115-column engineering window sequence remains intact.  The independent
-    file-vector registry has 282 fields by default and may be cropped by complete
-    composable feature groups.  The ordered feature matrix is the fixed 115-by-150
-    engineering sequence; it is not a generic width parameter.  The deprecated
+    The 115-column base engineering sequence remains intact for file-vector
+    summaries. The matrix representation extends it to 146 pure window features
+    and retains every complete chronological row with variable K. The deprecated
     ``time_prv_min_accepted_peaks`` input is translated to the unambiguous
     ``rate_prv_min_peaks`` effective field.
     """
@@ -835,7 +872,8 @@ def _materialize_feature_defaults(data: dict[str, Any]) -> None:
         "technical_metadata_allowed": False,
         "missing_physiology_encoding": "nan_and_validity_false",
         "file_aggregation": ["mean", "population_sd"],
-        "matrix_k": 150,
+        "window_feature_schema": WINDOW_FEATURE_CONFIG_SCHEMA,
+        "matrix_length_policy": "all_complete_windows_variable_k",
         "enabled_groups": list(FEATURE_GROUP_ORDER),
     }
     prv_fields = {
@@ -848,22 +886,18 @@ def _materialize_feature_defaults(data: dict[str, Any]) -> None:
         "time_prv_min_accepted_peaks",
     }
     derived_fields = {"registry_id", "file_vector_schema", "matrix_schema"}
-    allowed = set(metadata_defaults) | prv_fields | derived_fields
+    # The retired fixed-width field is rejected rather than silently ignored.
+    allowed = set(metadata_defaults) | prv_fields | derived_fields | {"matrix_k"}
     unknown = sorted(set(declared) - allowed)
     if unknown:
         raise ValueError(f"features contains unknown fields: {unknown}")
-    matrix_k = declared.get("matrix_k", metadata_defaults["matrix_k"])
-    if isinstance(matrix_k, bool) or not isinstance(matrix_k, int):
-        raise ValueError("features.matrix_k must be an integer")
-    if matrix_k != 150:
-        raise ValueError(
-            "features.matrix_k is fixed at 150 by the feature-matrix contract"
-        )
+    if "matrix_k" in declared:
+        raise ValueError("features.matrix_k is retired; remove the fixed-K value")
     enabled_groups = canonicalize_feature_groups(
         declared.get("enabled_groups", FEATURE_GROUP_ORDER)
     )
     registry = registry_for_groups(enabled_groups)
-    matrix_schema = ordered_matrix_schema_version(matrix_k, registry)
+    matrix_schema = ordered_matrix_schema_version(None, registry)
     prv = PrvConfig.from_mapping(declared)
     effective = {
         **metadata_defaults,
@@ -875,7 +909,6 @@ def _materialize_feature_defaults(data: dict[str, Any]) -> None:
         # override or forge the materialized registry/schema identity.
         "registry_id": registry.schema_version,
         "file_vector_schema": registry.schema_version,
-        "matrix_k": int(matrix_k),
         "matrix_schema": matrix_schema,
     }
     data["features"] = effective
@@ -909,15 +942,14 @@ def _validate_v2_feature_schemas(data: Mapping[str, Any]) -> None:
         raise ValueError("features.file_vector_schema is not derived from enabled_groups")
     if features.get("engineering_sequence_schema") != ENGINEERING_SEQUENCE_CONFIG_SCHEMA:
         raise ValueError("features.engineering_sequence_schema is not registered")
-    matrix_k = features.get("matrix_k")
-    if (
-        isinstance(matrix_k, bool)
-        or not isinstance(matrix_k, int)
-        or matrix_k != 150
-    ):
-        raise ValueError("features.matrix_k must be the fixed integer 150")
-    if features.get("matrix_schema") != ordered_matrix_schema_version(matrix_k, registry):
-        raise ValueError("features.matrix_schema disagrees with matrix_k")
+    if features.get("window_feature_schema") != WINDOW_FEATURE_CONFIG_SCHEMA:
+        raise ValueError("features.window_feature_schema is not registered")
+    if features.get("matrix_length_policy") != "all_complete_windows_variable_k":
+        raise ValueError("feature matrix must retain all complete variable-K rows")
+    if "matrix_k" in features:
+        raise ValueError("features.matrix_k must not persist in the variable-K contract")
+    if features.get("matrix_schema") != ordered_matrix_schema_version(None, registry):
+        raise ValueError("features.matrix_schema is not the registered variable-K schema")
     if features.get("technical_metadata_allowed") is not False:
         raise ValueError("technical metadata cannot enter physiology predictors")
     if features.get("missing_physiology_encoding") != "nan_and_validity_false":
@@ -934,7 +966,7 @@ def _validate_v2_feature_schemas(data: Mapping[str, Any]) -> None:
         "engineering_summary",
     ):
         raise ValueError(
-            "feature_matrix consumes only the 115 engineering-window features; "
+            "feature_matrix consumes the registered 146 window features; "
             "features.enabled_groups must be [engineering_summary]"
         )
     prv_payload = PrvConfig.from_mapping(features).to_dict()
@@ -1229,14 +1261,21 @@ def _validate_v2_protocol(data: dict[str, Any]) -> None:
     resolved_artifact = resolve_artifact_config(
         _strict_mapping(data["artifact"], "artifact")
     )
-    if (
-        resolved_artifact["denoiser_enabled"]
-        and str(data["representation_mode"]) != "feature_vector"
-    ):
-        raise ValueError(
-            "rate-recovery denoisers produce Acceptable pulse-only evidence and "
-            "are executable only with representation_mode='feature_vector'"
-        )
+    if resolved_artifact["denoiser_enabled"]:
+        representation_mode = str(data["representation_mode"])
+        policy = str(resolved_artifact["degraded_policy"])
+        if representation_mode == "feature_vector":
+            if policy != "denoise_then_extract_rate_features":
+                raise ValueError(
+                    "feature-vector rate recovery requires "
+                    "degraded_policy='denoise_then_extract_rate_features'"
+                )
+        elif policy != "denoise_then_compare_rate_exclude":
+            raise ValueError(
+                "raw, feature-matrix, and fusion denoiser execution is "
+                "diagnostic-only and requires degraded_policy="
+                "'denoise_then_compare_rate_exclude'"
+            )
     resolve_peak_detector_config(_strict_mapping(data["signal"], "signal"))
     data["windows"] = validate_window_profiles_for_representation(
         _strict_mapping(data["windows"], "windows"),
@@ -1545,6 +1584,7 @@ def _materialize_v2_defaults(data: dict[str, Any]) -> None:
     )
     _materialize_dl_resampling_defaults(data)
     _materialize_feature_defaults(data)
+    _materialize_routing_defaults(data)
     _materialize_quality_defaults(data)
     _materialize_artifact_defaults(data)
     _materialize_aggregation_defaults(data)
@@ -1583,10 +1623,13 @@ def _validate_formal_ablation_materialization(data: Mapping[str, Any]) -> None:
             training["epoch_profile"], int(training["fixed_epochs"])
         ) != ("default_10", 10),
         "filter": filter_pair != (0.2, 8.0),
-        "gravity": gravity != "calibrated_roll_pitch_ekf",
+        "gravity": gravity != "profile_a_lowpass_0p3hz",
         "peak_detector": detector_id != "aboy_project_v1",
         "aggregation": balance_pair
         != ("equal_role_families", "line_b_equal_role_families"),
+        "sampler": training["sampler"]
+        != "exhaustive_shuffle_without_replacement",
+        "class_count_basis": training["class_count_basis"] != "row",
         "fixed_kernel": (
             dl.get("case_id") is not None
             and not str(dl.get("case_id")).endswith("__reference")
@@ -1615,6 +1658,7 @@ def _validate_formal_ablation_materialization(data: Mapping[str, Any]) -> None:
         or identity["family"] not in {
             "deep_fixed_epoch", "direct_filter", "imu_gravity",
             "fixed_kernel_samples", "aggregation_balance", "peak_detector",
+            "sampler", "class_count_basis",
         }
         or identity["single_factor_only"] is not True
         or identity["automatic_execution"] is not False
@@ -1634,6 +1678,8 @@ def _validate_formal_ablation_materialization(data: Mapping[str, Any]) -> None:
         "peak_detector": {"peak_detector"},
         "fixed_kernel_samples": {"fixed_kernel"},
         "aggregation_balance": {"aggregation"},
+        "sampler": {"sampler"},
+        "class_count_basis": {"class_count_basis"},
     }[family]
     if str(identity["catalog_role"]) == "reference":
         expected_active = set()
@@ -1660,11 +1706,30 @@ def _validate_formal_ablation_materialization(data: Mapping[str, Any]) -> None:
             raise ValueError("direct filter materialization identity drift")
     elif family == "imu_gravity":
         expected = {
-            "calibrated_roll_pitch_ekf": "calibrated_roll_pitch_ekf",
-            "imu_lpf_0p3hz_ablation": "profile_a_lowpass_0p3hz",
+            "profile_a_lowpass_0p3hz": "profile_a_lowpass_0p3hz",
+            "calibrated_roll_pitch_ekf_ablation": "calibrated_roll_pitch_ekf",
         }.get(profile_id)
         if expected is None or gravity != expected:
             raise ValueError("IMU gravity materialization identity drift")
+    elif family == "sampler":
+        expected = {
+            "exhaustive_shuffle_without_replacement":
+                "exhaustive_shuffle_without_replacement",
+            "line_b_weighted_sampler_ablation": "balance_line_weighted_v2",
+        }.get(profile_id)
+        if expected is None or training["sampler"] != expected:
+            raise ValueError("sampler materialization identity drift")
+    elif family == "class_count_basis":
+        expected = {
+            "row_count_class_weights": "row",
+            "participant_count_class_weights_ablation": "participant",
+        }.get(profile_id)
+        if (
+            expected is None
+            or training["class_weighting"] != "inverse_frequency"
+            or training["class_count_basis"] != expected
+        ):
+            raise ValueError("class-count-basis materialization identity drift")
     elif family == "peak_detector":
         expected = {
             "aboy_project_v1": "aboy_project_v1",
@@ -1711,7 +1776,14 @@ def validate_config_payload(payload: Mapping[str, Any], *, allow_legacy: bool = 
     """执行 fail-closed 配置验证 / Validate a formal V2 or explicit legacy config."""
 
     data = _strict_mapping(payload, "config")
-    _require_exact_keys(data, TOP_LEVEL_KEYS, context="config")
+    if data.get("schema_version") == V2_SCHEMA_VERSION:
+        data.setdefault("routing", {})
+    expected_keys = (
+        LEGACY_TOP_LEVEL_KEYS
+        if data.get("schema_version") == LEGACY_SCHEMA_VERSION
+        else TOP_LEVEL_KEYS
+    )
+    _require_exact_keys(data, expected_keys, context="config")
     if data.get("schema_version") == V2_SCHEMA_VERSION:
         _materialize_v2_defaults(data)
     _validate_common_payload(data)
@@ -1958,6 +2030,7 @@ def load_formal_ablation_profiles(path: str | Path) -> dict[str, Any]:
         {
             "aggregation_balance", "deep_fixed_epoch", "direct_filter",
             "imu_gravity", "fixed_kernel_samples", "peak_detector",
+            "sampler", "class_count_basis",
         },
         context="ablation_profile_families",
     )
@@ -1997,12 +2070,48 @@ def load_formal_ablation_profiles(path: str | Path) -> dict[str, Any]:
             {"profile_id": "direct_filter_0p5_to_5hz_ablation", "low_hz": 0.5, "high_hz": 5.0, "catalog_role": "ablation", "auto_run": False},
         ],
     }
+    expected_sampler = {
+        "reference_profile_id": "exhaustive_shuffle_without_replacement",
+        "entries": [
+            {
+                "profile_id": "exhaustive_shuffle_without_replacement",
+                "sampler": "exhaustive_shuffle_without_replacement",
+                "catalog_role": "reference",
+                "auto_run": False,
+            },
+            {
+                "profile_id": "line_b_weighted_sampler_ablation",
+                "sampler": "balance_line_weighted_v2",
+                "catalog_role": "ablation",
+                "auto_run": False,
+            },
+        ],
+    }
+    expected_class_count_basis = {
+        "reference_profile_id": "row_count_class_weights",
+        "entries": [
+            {
+                "profile_id": "row_count_class_weights",
+                "class_weighting": "inverse_frequency",
+                "class_count_basis": "row",
+                "catalog_role": "reference",
+                "auto_run": False,
+            },
+            {
+                "profile_id": "participant_count_class_weights_ablation",
+                "class_weighting": "inverse_frequency",
+                "class_count_basis": "participant",
+                "catalog_role": "ablation",
+                "auto_run": False,
+            },
+        ],
+    }
     expected_imu = {
-        "reference_profile_id": "calibrated_roll_pitch_ekf",
+        "reference_profile_id": "profile_a_lowpass_0p3hz",
         "silent_fallback_forbidden": True,
         "entries": [
-            {"profile_id": "calibrated_roll_pitch_ekf", "method": "calibrated_roll_pitch_ekf", "catalog_role": "reference", "auto_run": False},
-            {"profile_id": "imu_lpf_0p3hz_ablation", "method": "profile_a_lowpass_0p3hz", "catalog_role": "ablation", "auto_run": False},
+            {"profile_id": "profile_a_lowpass_0p3hz", "method": "profile_a_lowpass_0p3hz", "catalog_role": "reference", "auto_run": False},
+            {"profile_id": "calibrated_roll_pitch_ekf_ablation", "method": "calibrated_roll_pitch_ekf", "catalog_role": "ablation", "auto_run": False},
         ],
     }
     expected_peak_detector = {
@@ -2047,6 +2156,10 @@ def load_formal_ablation_profiles(path: str | Path) -> dict[str, Any]:
         raise ValueError("fixed epoch profiles drifted")
     if families["direct_filter"] != expected_filter:
         raise ValueError("direct filter profiles drifted")
+    if families["sampler"] != expected_sampler:
+        raise ValueError("sampler profiles drifted")
+    if families["class_count_basis"] != expected_class_count_basis:
+        raise ValueError("class-count-basis profiles drifted")
     if families["imu_gravity"] != expected_imu:
         raise ValueError("IMU gravity profiles drifted")
     if families["peak_detector"] != expected_peak_detector:
@@ -2107,6 +2220,7 @@ def materialize_formal_ablation_config(
     if family not in {
         "deep_fixed_epoch", "direct_filter", "imu_gravity",
         "fixed_kernel_samples", "aggregation_balance", "peak_detector",
+        "sampler", "class_count_basis",
     }:
         raise ValueError("unknown formal ablation family")
     payload = base.to_dict()
@@ -2169,10 +2283,21 @@ def materialize_formal_ablation_config(
             payload["signal"]["ppg_filter"]["high_hz"] = high
             payload["signal"]["analysis_view"].pop("direct_source", None)
         elif family == "imu_gravity":
-            payload["signal"]["imu"]["gravity_method"] = (
+            method = str(selected["method"])
+            payload["signal"]["imu"]["gravity_method"] = method
+            payload["signal"]["imu"]["comparison_method"] = (
                 "profile_a_lowpass_0p3hz"
-                if selected["profile_id"] == "imu_lpf_0p3hz_ablation"
+                if method == "calibrated_roll_pitch_ekf"
                 else "calibrated_roll_pitch_ekf"
+            )
+        elif family == "sampler":
+            payload["training"]["sampler"] = str(selected["sampler"])
+        elif family == "class_count_basis":
+            payload["training"]["class_weighting"] = str(
+                selected["class_weighting"]
+            )
+            payload["training"]["class_count_basis"] = str(
+                selected["class_count_basis"]
             )
         elif family == "peak_detector":
             payload["signal"]["peak_detector"]["detector_id"] = str(

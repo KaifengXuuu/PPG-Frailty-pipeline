@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 import unittest
 from types import SimpleNamespace
@@ -10,7 +11,13 @@ from unittest.mock import patch
 import numpy as np
 
 from ppg_frailty.config import load_config
-from ppg_frailty.contracts import QualityState, SignalRoute
+from ppg_frailty.contracts import (
+    PulseResult,
+    QualityEndpoint,
+    QualityResult,
+    QualityState,
+    SignalRoute,
+)
 from ppg_frailty.experiment import (
     _ExperimentProtocolError,
     _RuntimeRecord,
@@ -24,12 +31,17 @@ from ppg_frailty.experiment import (
     _quality_mode,
     _retain_without_quality_routing,
     _route_records,
+    _route_records_window_level,
 )
 from ppg_frailty.module_registry import resolve_peak_detector_config
 from ppg_frailty.v2_contract import resolve_balance_line, validate_quality_mode
 from ppg_frailty.signal.sqi import SqiDiagnosticComponent, SqiDiagnostics
 from ppg_frailty.signal.views import CanonicalSignalViews
 from ppg_frailty.quality.routing import run_quality_mode
+from ppg_frailty.quality.motion_bundle_adapter import (
+    MotionWindowDecision,
+    MotionWindowSeries,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -107,6 +119,13 @@ class _RouteConfig:
                 "degraded_policy": "drop",
                 "motion_detector_enabled": False,
             }
+        if name == "routing":
+            return {
+                "window_s": 8.0,
+                "hop_s": 2.0,
+                "fs_hz": 400.0,
+                "source_grid": "canonical_acquisition_grid",
+            }
         raise KeyError(name)
 
     def to_dict(self) -> dict[str, object]:
@@ -170,16 +189,312 @@ class PersistedRouteArtifactTest(unittest.TestCase):
             reason="q_rate_fail",
         )
 
-        direct_row = _persisted_route_artifact_row(direct)
-        dropped_row = _persisted_route_artifact_row(dropped)
+        direct_row = _persisted_route_artifact_row(
+            direct,
+            train_participant_ids=("P01",),
+            oof_participant_ids=("P02",),
+        )
+        dropped_row = _persisted_route_artifact_row(
+            dropped,
+            train_participant_ids=("P01",),
+            oof_participant_ids=("P02",),
+        )
 
         self.assertEqual(direct_row["signal_route"], "direct_x_filter")
+        self.assertEqual(direct_row["outer_partition"], "outer_train")
         self.assertTrue(direct_row["retained"])
         self.assertEqual(dropped_row["signal_route"], "dropped")
+        self.assertEqual(dropped_row["outer_partition"], "outer_oof")
         self.assertFalse(dropped_row["retained"])
 
 
 class V2QualityModeTest(unittest.TestCase):
+    def test_window_router_runs_one_whole_record_reducer_and_preserves_direct_cells(self) -> None:
+        samples = 4_000
+        time = np.arange(samples, dtype=np.float64) / 400.0
+        filtered = np.column_stack(
+            (np.sin(2.0 * np.pi * time), np.cos(2.0 * np.pi * time))
+        )
+        direct_views = CanonicalSignalViews(
+            x_native=filtered + 100.0,
+            x_filter=filtered,
+            x_analysis_rate=filtered.copy(),
+            imu_processed={
+                "dynamic_acc_mps2": np.column_stack(
+                    (
+                        np.full(samples, 0.1, dtype=np.float64),
+                        np.zeros(samples, dtype=np.float64),
+                        np.zeros(samples, dtype=np.float64),
+                    )
+                ),
+                "gyro_rads": np.zeros((samples, 3), dtype=np.float64),
+                "dynamic_magnitude": np.full(samples, 0.1, dtype=np.float64),
+                "gyro_magnitude": np.zeros(samples, dtype=np.float64),
+                "jerk_magnitude": np.zeros(samples, dtype=np.float64),
+            },
+            metadata={"record_id": "P01_B", "fs_hz": 400.0},
+            source_valid_mask=np.ones_like(filtered, dtype=bool),
+            repair_mask=np.zeros_like(filtered, dtype=bool),
+            route=SignalRoute.DIRECT,
+        )
+        direct_views.validate()
+        processed_views = replace(
+            direct_views,
+            x_ar=filtered * 0.9,
+            route=SignalRoute.ARTIFACT_RATE_ONLY,
+            metadata={
+                **direct_views.metadata,
+                "non_identity_artifact_reduction": True,
+                "rate_only": True,
+                "q_morph_state": "not_applicable",
+                "artifact_output_valid_mask": np.ones(samples, dtype=bool),
+            },
+        )
+        processed_views.validate()
+
+        def pulse(route: SignalRoute, run_id: str, wavelength: str) -> PulseResult:
+            peak_times = np.arange(0.5, 10.0, 0.5)
+            interval_count = peak_times.size - 1
+            return PulseResult(
+                peaks=np.rint(peak_times * 400).astype(np.int64),
+                peak_timestamps_s=peak_times,
+                accepted_peak_mask=np.ones(peak_times.size, dtype=bool),
+                interval_start_peak_indices=np.arange(interval_count),
+                interval_stop_peak_indices=np.arange(1, peak_times.size),
+                ppi_s=np.full(interval_count, 0.5),
+                valid_interval_mask=np.ones(interval_count, dtype=bool),
+                adjacency_mask=np.ones(interval_count, dtype=bool),
+                wavelength=wavelength,
+                detector_version="fixture",
+                confidence=np.ones(peak_times.size),
+                source_route=route,
+                detection_run_id=run_id,
+                interval_run_ids=np.asarray([run_id] * interval_count),
+                detector_id="aboy_project_v1",
+                selected_polarity=1,
+                block_hri_provenance_hash="a" * 64,
+                interval_rejection_reasons=tuple("accepted" for _ in range(interval_count)),
+                peak_ordinals=np.arange(peak_times.size),
+                detector_score=1.0 if wavelength == "RED" else 0.9,
+                detector_coverage=1.0,
+            )
+
+        direct_pulse = pulse(SignalRoute.DIRECT, "direct-global-red", "RED")
+        direct_ir_pulse = pulse(SignalRoute.DIRECT, "direct-global-ir", "IR")
+        processed_pulse = pulse(
+            SignalRoute.ARTIFACT_RATE_ONLY, "processed-global-red", "RED"
+        )
+        processed_ir_pulse = pulse(
+            SignalRoute.ARTIFACT_RATE_ONLY, "processed-global-ir", "IR"
+        )
+        state = _RuntimeRecord(
+            row=SimpleNamespace(
+                participant_id="P01", record_id="P01_B", role="B"
+            ),
+            views=direct_views,
+            direct_pulses_per_wavelength={
+                "RED": direct_pulse,
+                "IR": direct_ir_pulse,
+            },
+        )
+
+        def endpoint(
+            state_value: QualityState, score: float | None
+        ) -> QualityEndpoint:
+            return QualityEndpoint(
+                score=score,
+                state=state_value,
+                threshold=None if score is None else 0.5,
+                components={},
+                reasons=(),
+                coverage=1.0,
+            )
+
+        direct_quality = QualityResult(
+            q_rate=endpoint(QualityState.PASS, 0.9),
+            q_morph=endpoint(QualityState.PASS, 0.9),
+            state="pass",
+            components={},
+            reasons=(),
+            coverage=1.0,
+        )
+        post_quality = QualityResult(
+            q_rate=endpoint(QualityState.PASS, 0.8),
+            q_morph=endpoint(QualityState.NOT_APPLICABLE, None),
+            state="pass",
+            components={},
+            reasons=("rate_only",),
+            coverage=1.0,
+        )
+
+        class Config:
+            representation_mode = "raw"
+            sha256 = "f" * 64
+
+            def section(self, name: str) -> dict[str, object]:
+                return {
+                    "quality": {"mode": "route"},
+                    "artifact": {
+                        "motion_detector_enabled": True,
+                        "denoiser_enabled": True,
+                        "reducer": "pca_bss",
+                    },
+                    "routing": {
+                        "window_s": 8.0,
+                        "hop_s": 2.0,
+                        "fs_hz": 400.0,
+                        "source_grid": "canonical_acquisition_grid",
+                    },
+                    "signal": {
+                        "peak_detector": {
+                            "detector_id": "aboy_project_v1",
+                            "failure_action": "fail_closed_no_fallback",
+                            "min_observation_sec": 8.0,
+                            "min_peaks": 5,
+                        }
+                    },
+                }[name]
+
+            def to_dict(self) -> dict[str, object]:
+                return {
+                    "quality": self.section("quality"),
+                    "artifact": self.section("artifact"),
+                }
+
+        motion_series = MotionWindowSeries(
+            decisions=(
+                MotionWindowDecision(
+                    "P01_B::routing_000000", 0, 3200, 1600,
+                    0.1, 0.5, "low", "low",
+                ),
+                MotionWindowDecision(
+                    "P01_B::routing_000001", 800, 4000, 2400,
+                    0.9, 0.5, "high", "high",
+                ),
+            ),
+            threshold=0.5,
+            file_median_probability_diagnostic=0.5,
+            reason="diagnostic_only",
+        )
+        motion_series.validate()
+        motion_detector = SimpleNamespace(
+            provenance={
+                "execution": "inference_only_no_fit_no_recalibration",
+                "training_scope": "matching_fold",
+                "reuse_scope": "matching_outer_fold_reused",
+                "frailty29_evaluation_relation": "held_out",
+                "valid_outer_oof_claim": True,
+                "evidence_path": "evidence.json",
+                "evidence_sha256": "a" * 64,
+                "model_artifact_sha256": "b" * 64,
+                "model_input_schema_sha256": "c" * 64,
+                "ekf_config_sha256": "d" * 64,
+                "frozen_bundle_threshold_sha256": "e" * 64,
+                "threshold_source": "bundle_frozen",
+                "runtime_device": "cuda",
+                "window_probability_aggregation": (
+                    "native_windows_file_median_diagnostics_only"
+                ),
+            }
+        )
+        calls = {"reducer": 0, "processed_pulses": 0}
+
+        def reduce_once(*_args: object, **_kwargs: object) -> object:
+            calls["reducer"] += 1
+            return SimpleNamespace(
+                result=SimpleNamespace(
+                    reducer_id="pca_bss",
+                    reducer_version="pca_component_select_v2",
+                    status="success",
+                ),
+                views=processed_views,
+                route=SignalRoute.ARTIFACT_RATE_ONLY,
+            )
+
+        def processed_pulses(*_args: object, **_kwargs: object) -> object:
+            calls["processed_pulses"] += 1
+            return {"RED": processed_pulse, "IR": processed_ir_pulse}
+
+        api = __import__(
+            "ppg_frailty.experiment", fromlist=["_runtime_imports"]
+        )._runtime_imports()
+        api.update(
+            {
+                "evaluate_quality": lambda local, **_kwargs: (
+                    post_quality
+                    if local.route is SignalRoute.ARTIFACT_RATE_ONLY
+                    else direct_quality
+                ),
+                "motion_recording_from_signal_views": lambda *_a, **_k: object(),
+                "infer_reused_motion_windows": lambda *_a, **_k: motion_series,
+                "run_artifact_route": reduce_once,
+                "detect_pulses_per_wavelength": processed_pulses,
+                "select_reference_wavelength": lambda _rows: "RED",
+            }
+        )
+        report = SimpleNamespace(
+            artifact={"runtime_reducer": "pca_bss", "parameters": {}},
+            peak_detector={
+                "detector_id": "aboy_project_v1",
+                "failure_action": "fail_closed_no_fallback",
+                "min_observation_sec": 8.0,
+                "min_peaks": 5,
+            },
+            window_profiles={
+                "engineering": {
+                    "window_seconds": 10.0,
+                    "hop_seconds": 2.0,
+                    "end_alignment": "start",
+                    "short_record_action": "reject",
+                    "include_padded_tail": False,
+                    "max_windows": None,
+                    "cap_policy": "not_applicable",
+                }
+            },
+        )
+        with patch("ppg_frailty.experiment._runtime_imports", return_value=api):
+            _route_records_window_level(
+                [state],
+                Config(),
+                report,
+                SimpleNamespace(
+                    calibrator="fixed_formula_thresholds_v1",
+                    to_dict=lambda: {"calibrator": "fixed_formula_thresholds_v1"},
+                ),
+                None,
+                motion_detector=motion_detector,
+            )
+
+        self.assertEqual(calls, {"reducer": 1, "processed_pulses": 1})
+        self.assertEqual(
+            [(cell.final_tier, cell.source_view) for cell in state.routing_timeline.cells],
+            [("excellent", "x_filter_400"), ("acceptable", "x_ar_400")],
+        )
+        self.assertFalse(state.route_artifact["canonical_hybrid_waveform_created"])
+        self.assertEqual(state.route_artifact["denoiser_invocation_count"], 1)
+        self.assertEqual(
+            state.route_artifact["heart_rate_estimator"],
+            "60_over_median_valid_ppi_s",
+        )
+        self.assertEqual(state.route_artifact["direct_valid_ppi_count"], 18)
+        self.assertEqual(state.route_artifact["post_denoise_valid_ppi_count"], 18)
+        self.assertAlmostEqual(state.route_artifact["direct_hr_bpm"], 120.0)
+        self.assertAlmostEqual(state.route_artifact["post_denoise_hr_bpm"], 120.0)
+        self.assertAlmostEqual(state.route_artifact["post_minus_direct_hr_bpm"], 0.0)
+
+        from ppg_frailty.experiment import _extract_vector
+
+        _extract_vector(state, report)
+        self.assertIsNotNone(state.vector, state.reason)
+        self.assertEqual(
+            state.vector.provenance["routing_interval_source_routes"],
+            [SignalRoute.DIRECT.value, SignalRoute.ARTIFACT_RATE_ONLY.value],
+        )
+        self.assertEqual(
+            state.diagnostic_components["dual_optical_pairing"]["status"],
+            "unavailable_mixed_or_excluded_routing_cells",
+        )
+
     def test_all_abstained_outer_fold_emits_zero_aware_metrics(self) -> None:
         rows = tuple(
             SimpleNamespace(retained=False, label=label, probabilities=())
@@ -705,6 +1020,24 @@ class V2QualityModeTest(unittest.TestCase):
             return SimpleNamespace(result=direct if calls["quality"] == 1 else post)
 
         reduced_views = SimpleNamespace(x_filter=np.zeros((4000, 2)))
+        pulse_calls = {"count": 0}
+
+        def pulses(*_args: object, **_kwargs: object) -> object:
+            pulse_calls["count"] += 1
+            ppi = (
+                np.asarray([1.0, 0.8])
+                if pulse_calls["count"] == 1
+                else np.asarray([0.75, 0.75])
+            )
+            return {
+                wavelength: SimpleNamespace(
+                    ppi_s=ppi,
+                    valid_interval_mask=np.ones(ppi.shape, dtype=bool),
+                    peaks=np.arange(ppi.size + 1),
+                    wavelength=wavelength,
+                )
+                for wavelength in ("RED", "IR")
+            }
 
         def denoise(*_args: object, **_kwargs: object) -> object:
             calls["denoiser"] += 1
@@ -724,9 +1057,7 @@ class V2QualityModeTest(unittest.TestCase):
         )._runtime_imports()
         api.update(
             {
-                "detect_pulses_per_wavelength": lambda *_a, **_k: {
-                    "RED": object(), "IR": object()
-                },
+                "detect_pulses_per_wavelength": pulses,
                 "select_reference_wavelength": lambda _rows: "RED",
                 "run_quality_mode": quality_mode,
                 "run_artifact_route": denoise,
@@ -773,6 +1104,221 @@ class V2QualityModeTest(unittest.TestCase):
         self.assertEqual(state.quality_tier, "acceptable")
         self.assertEqual(state.route_status, "rate_only_processed")
         self.assertTrue(state.route_artifact["denoiser_attempted"])
+        self.assertEqual(
+            state.route_artifact["heart_rate_estimator"],
+            "60_over_median_valid_ppi_s",
+        )
+        self.assertAlmostEqual(state.route_artifact["direct_hr_bpm"], 60.0 / 0.9)
+        self.assertAlmostEqual(state.route_artifact["post_denoise_hr_bpm"], 80.0)
+        self.assertAlmostEqual(
+            state.route_artifact["post_minus_direct_hr_bpm"],
+            80.0 - 60.0 / 0.9,
+        )
+        self.assertEqual(state.route_artifact["direct_valid_ppi_count"], 2)
+        self.assertEqual(state.route_artifact["post_denoise_valid_ppi_count"], 2)
+
+    def test_sqi_off_motion_denoiser_records_direct_and_post_hr(self) -> None:
+        post = SimpleNamespace(
+            q_rate=SimpleNamespace(
+                state=QualityState.PASS, score=0.8, coverage=1.0
+            ),
+            q_morph=SimpleNamespace(
+                state=QualityState.NOT_APPLICABLE, score=None, coverage=1.0
+            ),
+        )
+        state = _RuntimeRecord(
+            row=SimpleNamespace(
+                participant_id="P01", record_id="P01_S1", role="S1"
+            ),
+            views=SimpleNamespace(x_filter=np.zeros((4000, 2))),
+        )
+        calls = {"quality": 0, "denoiser": 0, "pulses": 0}
+
+        def pulses(*_args: object, **_kwargs: object) -> object:
+            calls["pulses"] += 1
+            ppi = np.asarray(
+                [1.0, 1.0] if calls["pulses"] == 1 else [0.75, 0.75]
+            )
+            return {
+                "RED": SimpleNamespace(
+                    ppi_s=ppi,
+                    valid_interval_mask=np.ones(ppi.shape, dtype=bool),
+                    peaks=np.arange(3),
+                    wavelength="RED",
+                )
+            }
+
+        def quality_mode(*_args: object, **_kwargs: object) -> object:
+            calls["quality"] += 1
+            return SimpleNamespace(result=post)
+
+        reduced_views = SimpleNamespace(x_filter=np.zeros((4000, 2)))
+
+        def denoise(*_args: object, **_kwargs: object) -> object:
+            calls["denoiser"] += 1
+            return SimpleNamespace(
+                result=SimpleNamespace(
+                    reducer_id="pca_bss",
+                    reducer_version="pca_component_select_v2",
+                    status="success",
+                    reasons=(),
+                ),
+                views=reduced_views,
+                route=SignalRoute.ARTIFACT_RATE_ONLY,
+            )
+
+        api = __import__(
+            "ppg_frailty.experiment", fromlist=["_runtime_imports"]
+        )._runtime_imports()
+        api.update(
+            {
+                "detect_pulses_per_wavelength": pulses,
+                "select_reference_wavelength": lambda _rows: "RED",
+                "run_quality_mode": quality_mode,
+                "run_artifact_route": denoise,
+                "motion_recording_from_signal_views": lambda *_a, **_k: object(),
+                "infer_reused_motion_recording": lambda *_a, **_k: SimpleNamespace(
+                    motion_state="high_motion",
+                    record_probability=0.9,
+                    threshold=0.5,
+                    window_count=4,
+                    reason="high",
+                ),
+            }
+        )
+        motion_detector = SimpleNamespace(
+            provenance={
+                "execution": "inference_only_no_fit_no_recalibration",
+                "training_scope": "frailty29_all_participants",
+                "reuse_scope": "all29_reused",
+                "frailty29_evaluation_relation": "in_sample_for_frailty29",
+                "valid_outer_oof_claim": False,
+                "evidence_path": "evidence.json",
+                "evidence_sha256": "a" * 64,
+                "model_artifact_sha256": "b" * 64,
+                "ekf_config_sha256": "c" * 64,
+                "frozen_bundle_threshold_sha256": "c" * 64,
+                "threshold_source": "bundle_frozen",
+                "runtime_device": "cpu",
+                "window_probability_aggregation": "median",
+            }
+        )
+        config = _TierConfig(sqi=False, motion=True, denoiser=True)
+        config.representation_mode = "raw"
+        config.artifact["degraded_policy"] = "denoise_then_compare_rate_exclude"
+        with patch("ppg_frailty.experiment._runtime_imports", return_value=api):
+            _route_records(
+                [state],
+                config,
+                SimpleNamespace(
+                    artifact={"runtime_reducer": "pca_bss", "parameters": {}}
+                ),
+                SimpleNamespace(calibrator="fixed_formula_thresholds_v1"),
+                None,
+                motion_detector=motion_detector,
+            )
+        self.assertEqual(calls, {"quality": 1, "denoiser": 1, "pulses": 2})
+        self.assertFalse(state.retained)
+        self.assertEqual(state.route_status, "rate_only_diagnostic_excluded")
+        self.assertAlmostEqual(state.route_artifact["direct_hr_bpm"], 60.0)
+        self.assertAlmostEqual(state.route_artifact["post_denoise_hr_bpm"], 80.0)
+        self.assertAlmostEqual(
+            state.route_artifact["post_minus_direct_hr_bpm"], 20.0
+        )
+
+    def test_raw_denoiser_records_hr_then_excludes_rate_only_output(self) -> None:
+        direct = SimpleNamespace(
+            q_rate=SimpleNamespace(
+                state=QualityState.FAIL, score=0.3, coverage=1.0
+            ),
+            q_morph=SimpleNamespace(
+                state=QualityState.PASS, score=0.8, coverage=1.0
+            ),
+        )
+        post = SimpleNamespace(
+            q_rate=SimpleNamespace(
+                state=QualityState.PASS, score=0.8, coverage=1.0
+            ),
+            q_morph=SimpleNamespace(
+                state=QualityState.NOT_APPLICABLE, score=None, coverage=1.0
+            ),
+        )
+        state = _RuntimeRecord(
+            row=SimpleNamespace(
+                participant_id="P01", record_id="P01_R1", role="R1"
+            ),
+            views=SimpleNamespace(x_filter=np.zeros((4000, 2))),
+        )
+        quality_calls = {"count": 0}
+        pulse_calls = {"count": 0}
+
+        def quality_mode(*_args: object, **_kwargs: object) -> object:
+            quality_calls["count"] += 1
+            return SimpleNamespace(
+                result=direct if quality_calls["count"] == 1 else post
+            )
+
+        def pulses(*_args: object, **_kwargs: object) -> object:
+            pulse_calls["count"] += 1
+            ppi = np.asarray(
+                [1.0, 1.0]
+                if pulse_calls["count"] == 1
+                else [0.8, 0.8]
+            )
+            return {
+                "RED": SimpleNamespace(
+                    ppi_s=ppi,
+                    valid_interval_mask=np.ones(ppi.shape, dtype=bool),
+                    peaks=np.arange(3),
+                    wavelength="RED",
+                )
+            }
+
+        reduced_views = SimpleNamespace(x_filter=np.zeros((4000, 2)))
+        api = __import__(
+            "ppg_frailty.experiment", fromlist=["_runtime_imports"]
+        )._runtime_imports()
+        api.update(
+            {
+                "detect_pulses_per_wavelength": pulses,
+                "select_reference_wavelength": lambda _rows: "RED",
+                "run_quality_mode": quality_mode,
+                "run_artifact_route": lambda *_a, **_k: SimpleNamespace(
+                    result=SimpleNamespace(
+                        reducer_id="pca_bss",
+                        reducer_version="pca_component_select_v2",
+                        status="success",
+                        reasons=(),
+                    ),
+                    views=reduced_views,
+                    route=SignalRoute.ARTIFACT_RATE_ONLY,
+                ),
+            }
+        )
+        config = _TierConfig(sqi=True, motion=False, denoiser=True)
+        config.representation_mode = "raw"
+        config.artifact["degraded_policy"] = (
+            "denoise_then_compare_rate_exclude"
+        )
+        with patch("ppg_frailty.experiment._runtime_imports", return_value=api):
+            _route_records(
+                [state],
+                config,
+                SimpleNamespace(
+                    artifact={"runtime_reducer": "pca_bss", "parameters": {}}
+                ),
+                SimpleNamespace(calibrator="fixed_formula_thresholds_v1"),
+                None,
+            )
+        self.assertFalse(state.retained)
+        self.assertEqual(state.quality_tier, "acceptable")
+        self.assertEqual(state.route_status, "rate_only_diagnostic_excluded")
+        self.assertEqual(
+            state.route_artifact["abstention_reason"],
+            "post_denoise_rate_only_diagnostic_not_classifier_input",
+        )
+        self.assertAlmostEqual(state.route_artifact["direct_hr_bpm"], 60.0)
+        self.assertAlmostEqual(state.route_artifact["post_denoise_hr_bpm"], 75.0)
 
     def test_training_and_reporting_balance_are_independent_modules(self) -> None:
         resolved = resolve_balance_line(

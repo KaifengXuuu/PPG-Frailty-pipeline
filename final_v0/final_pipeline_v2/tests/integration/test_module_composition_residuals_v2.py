@@ -147,17 +147,17 @@ class V2ModuleCompositionResidualTests(unittest.TestCase):
         matrix = load_config(
             ROOT / "configs/reference_static_feature_matrix_v2.yaml"
         ).to_dict()
-        matrix["windows"]["engineering"]["hop_s"] = 4.0
-        with self.assertRaisesRegex(ValueError, "fixed 10 s/2 s"):
-            validate_config_payload(matrix)
+        matrix["windows"]["engineering"]["hop_s"] = 5.0
+        resolved = validate_config_payload(matrix)
+        self.assertEqual(resolved["windows"]["engineering"]["hop_s"], 5.0)
 
-    def test_rate_only_artifact_route_is_not_a_feature_matrix_fallback(self) -> None:
+    def test_rate_only_artifact_route_is_diagnostic_outside_feature_vector(self) -> None:
         descriptors = {item.module_id: item for item in ARTIFACT_MODULES}
         for module_id, descriptor in descriptors.items():
             if module_id != "identity":
                 self.assertEqual(
-                    descriptor.representation_modes,
-                    ("feature_vector",),
+                    set(descriptor.representation_modes),
+                    {"raw", "feature_vector", "feature_matrix", "fusion"},
                 )
 
         payload = load_config(
@@ -177,9 +177,17 @@ class V2ModuleCompositionResidualTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(
             ValueError,
-            "only with representation_mode='feature_vector'",
+            "diagnostic-only",
         ):
             validate_config_payload(payload)
+        payload["artifact"]["degraded_policy"] = (
+            "denoise_then_compare_rate_exclude"
+        )
+        resolved = validate_config_payload(payload)
+        self.assertEqual(
+            resolved["artifact"]["degraded_policy"],
+            "denoise_then_compare_rate_exclude",
+        )
 
 
 if __name__ == "__main__":

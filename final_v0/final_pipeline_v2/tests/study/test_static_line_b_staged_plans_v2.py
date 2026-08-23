@@ -9,7 +9,6 @@ import tempfile
 import unittest
 
 from ppg_frailty.study import (
-    AxisSpec,
     StudyRunner,
     load_study_plan,
     validate_canonical_expansion,
@@ -30,7 +29,96 @@ def _load(name: str):
 
 
 class StaticLineBStagedPlanTests(unittest.TestCase):
-    def test_stage_01_defers_feature_matrix_until_model_is_selected(self) -> None:
+    def test_non_bridge_same_model_drift_is_only_declared_experimental_factors(self) -> None:
+        """Guard the cross-plan audit requested for the staged root YAML files."""
+
+        _, stage1 = _load("01_representation_baselines_v2.yaml")
+        _, stage4 = _load("04_selected_inception_ensemble_v2.yaml")
+        _, stage5 = _load("05_sqi_motion_finalists_v2.yaml")
+        _, stage6 = _load("06_sequential_single_factor_ablation_v2.yaml")
+        stage1_by_model = {
+            case.config["model"]["model_id"]: case.config
+            for case in stage1.cases
+        }
+
+        compact_reference = stage1_by_model["CompactCNN1D"]
+        for case in stage6.cases:
+            for section in (
+                "manifest", "roles", "signal", "windows", "quality", "artifact",
+                "features", "model", "aggregation", "evaluation",
+            ):
+                self.assertEqual(case.config[section], compact_reference[section])
+            changed_training = {
+                key
+                for key in set(case.config["training"]) | set(compact_reference["training"])
+                if case.config["training"].get(key)
+                != compact_reference["training"].get(key)
+            }
+            self.assertLessEqual(changed_training, {"learning_rate"})
+
+        stage5_signal_reference = dict(compact_reference["signal"])
+        stage5_signal_reference["dl_resampling"] = {
+            **stage5_signal_reference["dl_resampling"],
+            "enabled": True,
+            "target_fs_hz": 64.0,
+        }
+        stage5_signal_reference["imu"] = {
+            **stage5_signal_reference["imu"],
+            "gravity_method": "calibrated_roll_pitch_ekf",
+            "comparison_method": "profile_a_lowpass_0p3hz",
+        }
+        for name in ("gravity_lowpass_hz", "gravity_filter_order"):
+            stage5_signal_reference["imu"].pop(name, None)
+        for name, value in (
+            ("process_covariance_diagonal_per_second", [5.0, 5.0, 0.05, 0.05, 0.05]),
+            ("observation_covariance_diagonal_rad2", [0.5, 0.5]),
+            ("initial_covariance_diagonal", [1.0, 1.0, 0.5, 0.5, 0.5]),
+            ("dynamic_observation_scale", 3.0),
+        ):
+            stage5_signal_reference["imu"][name] = value
+        for case in stage5.cases:
+            for section in (
+                "manifest", "windows", "features", "model", "aggregation",
+                "evaluation",
+            ):
+                self.assertEqual(case.config[section], compact_reference[section])
+            self.assertEqual(case.config["signal"], stage5_signal_reference)
+            changed_training = {
+                key
+                for key in set(case.config["training"])
+                | set(compact_reference["training"])
+                if case.config["training"].get(key)
+                != compact_reference["training"].get(key)
+            }
+            self.assertLessEqual(
+                changed_training, {"classifier_role_families"}
+            )
+            if case.case_id == "raw_compact_cnn__static_only":
+                self.assertEqual(
+                    case.config["roles"], compact_reference["roles"]
+                )
+                self.assertFalse(changed_training)
+            else:
+                self.assertEqual(
+                    case.config["roles"],
+                    [
+                        "B", "R1", "R2", "R3", "R4",
+                        "S1", "S2", "W1", "W2",
+                    ],
+                )
+                self.assertEqual(
+                    case.config["training"]["classifier_role_families"],
+                    ["B", "R", "S", "W"],
+                )
+
+        member0, ensemble = stage4.cases
+        for section in (
+            "manifest", "roles", "signal", "windows", "quality", "artifact",
+            "features", "training", "aggregation", "evaluation",
+        ):
+            self.assertEqual(member0.config[section], ensemble.config[section])
+
+    def test_stage_01_includes_small_variable_k_matrix_representative(self) -> None:
         plan, expansion = _load("01_representation_baselines_v2.yaml")
         self.assertEqual(plan.catalog.scope, "selected_ordinary")
         self.assertEqual(
@@ -38,6 +126,7 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
             {
                 "compact_cnn",
                 "logistic_regression",
+                "inception_matrix_small",
                 "fusion_compact",
             },
         )
@@ -46,12 +135,26 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
             {
                 "raw": 1,
                 "feature_vector": 1,
+                "feature_matrix": 1,
                 "fusion": 1,
             },
         )
         self.assertEqual(plan.execution.repeats, (0,))
         self.assertEqual(plan.execution.folds, (0, 1, 2, 3, 4))
         self.assertFalse(plan.execution.allow_parallel_deep)
+        matrix = next(
+            case.config
+            for case in expansion.cases
+            if case.output_group == "feature_matrix"
+        )
+        self.assertEqual(matrix["model"]["variant"], "small")
+        self.assertEqual(matrix["model"]["input_channels"], 146)
+        self.assertEqual(matrix["model"]["ensemble_size"], 1)
+        self.assertEqual(
+            matrix["features"]["matrix_schema"],
+            "ordered_window_feature_matrix_d146_variable_k_v1",
+        )
+        self.assertNotIn("matrix_k", matrix["features"])
 
     def test_stage_01_jobs_override_is_reduced_for_deep_cases(self) -> None:
         plan = load_study_plan(
@@ -73,19 +176,20 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
             ).run(plan, output_root=temporary)
         self.assertEqual(result.effective_jobs, 1)
 
-    def test_stage_02_is_the_three_case_r0_supplement(self) -> None:
+    def test_stage_02_is_the_four_case_selected_state_r0_supplement(self) -> None:
         plan, expansion = _load("02_competitive_routes_models_v2.yaml")
         self.assertEqual(plan.catalog.balance_line, "line_b")
         self.assertEqual(plan.catalog.scope, "selected_ordinary")
-        self.assertEqual(len(expansion.cases), 3)
+        self.assertEqual(len(expansion.cases), 4)
         self.assertEqual(
             Counter(case.output_group for case in expansion.cases),
-            {"raw": 1, "feature_vector": 2},
+            {"raw": 2, "feature_vector": 2},
         )
         entries = {str(case.catalog_entry) for case in expansion.cases}
         self.assertEqual(
             entries,
             {
+                "inception_full",
                 "inception_small",
                 "rbf_svm",
                 "extra_trees",
@@ -99,16 +203,25 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
             len(expansion.cases)
             * len(plan.execution.repeats)
             * len(plan.execution.folds),
-            15,
+            20,
         )
-        self.assertTrue(
-            all(case.screen_profile_id == "canonical" for case in plan.cases)
+        self.assertEqual(
+            {
+                case.case_id: case.screen_profile_id
+                for case in plan.cases
+            },
+            {
+                "raw__inception_full": "v2_core_b0_b2_b7_selected",
+                "raw__inception_small": "v2_core_b0_b2_b7_selected",
+                "feature_vector__rbf_svm": "canonical",
+                "feature_vector__extra_trees": "canonical",
+            },
         )
-        self.assertTrue(all(case.overrides == {} for case in plan.cases))
         self.assertTrue(all(case.formal_profile is None for case in plan.cases))
         self.assertEqual(
             {case.case_id for case in expansion.cases},
             {
+                "raw__inception_full",
                 "raw__inception_small",
                 "feature_vector__rbf_svm",
                 "feature_vector__extra_trees",
@@ -120,8 +233,10 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
                 for case in expansion.cases
             },
             {
+                "raw__inception_full":
+                    "formal_inception_full_line_b_v2__v2_core_b0_b2_b7_selected",
                 "raw__inception_small":
-                    "formal_inception_small_line_b_v2__canonical",
+                    "formal_inception_small_line_b_v2__v2_core_b0_b2_b7_selected",
                 "feature_vector__rbf_svm":
                     "formal_rbf_svm_line_b_v2__canonical",
                 "feature_vector__extra_trees":
@@ -217,7 +332,7 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
             cases[0],
             overrides={"training.learning_rate": 0.0003},
         )
-        with self.assertRaisesRegex(ValueError, "cannot add overrides"):
+        with self.assertRaisesRegex(ValueError, "cannot add unequal"):
             replace(plan, cases=tuple(cases))
 
     def test_selected_ordinary_scope_rejects_ensemble_entry(self) -> None:
@@ -234,38 +349,70 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
                 replace(plan, cases=tuple(cases))
             )
 
-    def test_stage_05_is_the_five_case_feature_vector_route_screen(self) -> None:
+    def test_stage_05_is_the_eight_case_compact_cnn_route_screen(self) -> None:
         plan, expansion = _load("05_sqi_motion_finalists_v2.yaml")
-        self.assertEqual(plan.study.reference_case_id, "vector_logistic__off_off")
+        self.assertEqual(
+            plan.study.reference_case_id,
+            "raw_compact_cnn__off_off_all_roles",
+        )
         self.assertEqual(plan.execution.repeats, (0,))
         self.assertEqual(plan.execution.folds, (0, 1, 2, 3, 4))
-        self.assertEqual(plan.execution.device, "cpu")
-        self.assertEqual(len(expansion.cases), 5)
+        self.assertEqual(plan.execution.device, "cuda")
+        self.assertEqual(len(expansion.cases), 8)
         self.assertEqual(
             {str(case.catalog_entry) for case in expansion.cases},
-            {"logistic_regression"},
+            {"compact_cnn"},
         )
         self.assertEqual(
             {case.output_group for case in expansion.cases},
-            {"feature_vector"},
+            {"raw"},
         )
         by_id = {case.case_id: case.config for case in expansion.cases}
         self.assertEqual(
             set(by_id),
             {
-                "vector_logistic__off_off",
-                "vector_logistic__sqi_only",
-                "vector_logistic__sqi_motion_all29",
-                "vector_logistic__sqi_motion_pca",
-                "vector_logistic__sqi_motion_fastica",
+                "raw_compact_cnn__off_off_all_roles",
+                "raw_compact_cnn__static_only",
+                "raw_compact_cnn__sqi_only",
+                "raw_compact_cnn__sqi_motion_matching_fold",
+                "raw_compact_cnn__sqi_motion_pca",
+                "raw_compact_cnn__sqi_motion_fastica",
+                "raw_compact_cnn__sqi_off_motion_pca",
+                "raw_compact_cnn__sqi_off_motion_fastica",
             },
         )
-        off = by_id["vector_logistic__off_off"]
+        off = by_id["raw_compact_cnn__off_off_all_roles"]
+        self.assertEqual(off["model"]["model_id"], "CompactCNN1D")
+        self.assertEqual(off["representation_mode"], "raw")
+        self.assertEqual(off["windows"]["raw_dl"]["length_s"], 5.0)
+        self.assertEqual(off["windows"]["raw_dl"]["hop_s"], 2.5)
+        self.assertTrue(off["signal"]["dl_resampling"]["enabled"])
+        self.assertEqual(off["signal"]["dl_resampling"]["target_fs_hz"], 64.0)
+        self.assertEqual(off["signal"]["normalization"]["raw_ppg"], "per_window_robust")
+        self.assertEqual(off["signal"]["normalization"]["raw_imu"], "none")
+        self.assertEqual(off["training"]["device"], "cuda")
         self.assertEqual(off["quality"]["mode"], "off")
         self.assertFalse(off["artifact"]["motion_detector_enabled"])
         self.assertFalse(off["artifact"]["denoiser_enabled"])
+        self.assertEqual(
+            off["roles"],
+            ["B", "R1", "R2", "R3", "R4", "S1", "S2", "W1", "W2"],
+        )
+        self.assertEqual(
+            off["training"]["classifier_role_families"],
+            ["B", "R", "S", "W"],
+        )
 
-        sqi = by_id["vector_logistic__sqi_only"]
+        static_only = by_id["raw_compact_cnn__static_only"]
+        self.assertEqual(static_only["roles"], ["B", "R1", "R2", "R3", "R4"])
+        self.assertEqual(
+            static_only["training"]["classifier_role_families"], ["B", "R"]
+        )
+        self.assertEqual(static_only["quality"]["mode"], "off")
+        self.assertFalse(static_only["artifact"]["motion_detector_enabled"])
+        self.assertFalse(static_only["artifact"]["denoiser_enabled"])
+
+        sqi = by_id["raw_compact_cnn__sqi_only"]
         self.assertEqual(sqi["quality"]["calibrator"], "fixed_formula_thresholds_v1")
         self.assertEqual(sqi["quality"]["rate_threshold"], 0.50)
         self.assertEqual(sqi["quality"]["morph_threshold"], 0.65)
@@ -275,7 +422,7 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
             0.0,
         )
 
-        motion = by_id["vector_logistic__sqi_motion_all29"]["artifact"]
+        motion = by_id["raw_compact_cnn__sqi_motion_matching_fold"]["artifact"]
         self.assertTrue(motion["motion_detector_enabled"])
         self.assertFalse(motion["denoiser_enabled"])
         self.assertEqual(
@@ -284,16 +431,43 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
         )
         self.assertEqual(
             motion["motion_detector"]["window_probability_aggregation"],
-            "median",
+            "native_windows_file_median_diagnostics_only",
+        )
+        self.assertEqual(
+            motion["motion_detector"]["reuse_scope"],
+            "matching_outer_fold_or_all29_final",
+        )
+        self.assertEqual(
+            motion["motion_detector"]["expected_split_registry_sha256"],
+            "130b2887eb29a5a534397b4ce4dc7032f9de30ae46533fa0b2c41559ff4a1284",
         )
         self.assertEqual(motion["motion_detector"]["device"], "cuda")
         self.assertEqual(
-            by_id["vector_logistic__sqi_motion_pca"]["artifact"]["reducer"],
+            by_id["raw_compact_cnn__sqi_motion_pca"]["artifact"]["reducer"],
             "pca_bss",
         )
         self.assertEqual(
-            by_id["vector_logistic__sqi_motion_fastica"]["artifact"]["reducer"],
+            by_id["raw_compact_cnn__sqi_motion_fastica"]["artifact"]["reducer"],
             "fastica_bss",
+        )
+        sqi_off_pca = by_id["raw_compact_cnn__sqi_off_motion_pca"]
+        self.assertEqual(sqi_off_pca["quality"]["mode"], "off")
+        self.assertTrue(sqi_off_pca["artifact"]["motion_detector_enabled"])
+        self.assertTrue(sqi_off_pca["artifact"]["denoiser_enabled"])
+        self.assertEqual(sqi_off_pca["artifact"]["reducer"], "pca_bss")
+        self.assertEqual(sqi_off_pca["quality"]["rate_threshold"], 0.50)
+        sqi_off_fastica = by_id["raw_compact_cnn__sqi_off_motion_fastica"]
+        self.assertEqual(sqi_off_fastica["quality"]["mode"], "off")
+        self.assertTrue(sqi_off_fastica["artifact"]["motion_detector_enabled"])
+        self.assertTrue(sqi_off_fastica["artifact"]["denoiser_enabled"])
+        self.assertEqual(sqi_off_fastica["artifact"]["reducer"], "fastica_bss")
+        self.assertTrue(
+            all(
+                case.config["training"]["device"] == "cuda"
+                and case.config["signal"]["imu"]["gravity_method"]
+                == "calibrated_roll_pitch_ekf"
+                for case in expansion.cases
+            )
         )
 
     def test_catalog_new_leaf_override_still_rejects_unknown_parameters(self) -> None:
@@ -308,72 +482,47 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
                 replace(plan, cases=tuple(cases))
             )
 
-    def test_stage_06_has_one_learning_rate_axis_only(self) -> None:
+    def test_catalog_rejects_unregistered_top_level_override(self) -> None:
+        plan = load_study_plan(PLAN_DIR / "05_sqi_motion_finalists_v2.yaml")
+        cases = list(plan.cases)
+        with self.assertRaisesRegex(ValueError, "roles selector"):
+            cases[0] = replace(
+                cases[0],
+                overrides={**cases[0].overrides, "invented_top_level": 1},
+            )
+
+    def test_retained_stage_06_changes_one_learning_rate_only(self) -> None:
         plan, expansion = _load(
             "06_sequential_single_factor_ablation_v2.yaml"
         )
-        self.assertEqual(plan.study.kind, "ablation")
-        self.assertEqual(len(plan.axes), 1)
-        self.assertEqual(plan.axes[0].path, "training.learning_rate")
-        self.assertEqual(plan.axes[0].values, (0.0003, 0.001, 0.003))
+        self.assertEqual(plan.study.kind, "catalog_sweep")
+        self.assertEqual(plan.study.decision_role, "ablation")
         self.assertEqual(len(expansion.cases), 3)
         self.assertEqual(
             {case.config["training"]["learning_rate"] for case in expansion.cases},
             {0.0003, 0.001, 0.003},
         )
 
-    def test_stage_06_documented_deep_axes_remain_single_factor(self) -> None:
-        plan = load_study_plan(
-            PLAN_DIR / "06_sequential_single_factor_ablation_v2.yaml"
-        )
-        for path, values, reference in (
-            ("training.batch_size", (32, 64, 128), 64),
-            ("training.fixed_epochs", (7, 10, 15), 10),
-        ):
-            with self.subTest(path=path):
-                changed = replace(
-                    plan,
-                    axes=(
-                        AxisSpec(
-                            path=path,
-                            values=values,
-                            reference=reference,
-                        ),
-                    ),
-                )
-                expansion = validate_canonical_expansion(
-                    StudyRunner(pipeline_root=ROOT).expand(changed)
-                )
-                self.assertEqual(len(expansion.cases), 3)
-                self.assertEqual(
-                    {case.config[path.split(".")[0]][path.split(".")[1]]
-                     for case in expansion.cases},
-                    set(values),
-                )
-
-    def test_stage_06_classical_axis_updates_runtime_and_provenance(self) -> None:
-        plan = load_study_plan(
-            PLAN_DIR / "06_sequential_single_factor_ablation_v2.yaml"
-        )
-        logistic_plan = replace(
-            plan,
-            base_config="configs/reference_static_feature_vector_v2.yaml",
-            axes=(
-                AxisSpec(
-                    path="model.logistic_c",
-                    values=(0.1, 1.0, 10.0),
-                    reference=1.0,
-                ),
-            ),
-        )
-        expansion = validate_canonical_expansion(
-            StudyRunner(pipeline_root=ROOT).expand(logistic_plan)
-        )
+    def test_retained_stage_06_uses_selected_b0_b2_b7_controls(self) -> None:
+        _, expansion = _load("06_sequential_single_factor_ablation_v2.yaml")
         for case in expansion.cases:
-            model = case.config["model"]
+            self.assertEqual(case.config["training"]["optimizer"], "adamw")
+            self.assertEqual(case.config["training"]["batch_size"], 32)
             self.assertEqual(
-                model["logistic_c"],
-                model["architecture_parameters"]["C"],
+                case.config["training"]["sampler"],
+                "exhaustive_shuffle_without_replacement",
+            )
+            self.assertEqual(
+                case.config["training"]["class_weighting"],
+                "inverse_frequency",
+            )
+            self.assertEqual(case.config["training"]["class_count_basis"], "row")
+            self.assertEqual(case.config["signal"]["dl_resampling"]["target_fs_hz"], 64.0)
+            self.assertEqual(case.config["windows"]["raw_dl"]["length_s"], 5.0)
+            self.assertEqual(case.config["windows"]["raw_dl"]["hop_s"], 2.5)
+            self.assertEqual(
+                case.config["aggregation"]["balance_line"],
+                "line_b_equal_role_families",
             )
 
     def test_original_mega_study_excludes_retired_rocket_profiles(self) -> None:
@@ -381,7 +530,7 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
         expansion = validate_canonical_expansion(
             StudyRunner(pipeline_root=ROOT).expand(plan)
         )
-        self.assertEqual(len(expansion.cases), 30)
+        self.assertEqual(len(expansion.cases), 31)
         self.assertEqual(plan.catalog.scope, "ordinary_active")
 
 

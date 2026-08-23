@@ -29,6 +29,11 @@ from ppg_frailty.features import (
     registry_for_groups,
     transform_engineering,
     transform_feature_vector_batch,
+    transform_window_features,
+    window_feature_names,
+    WindowFeatureExtraction,
+    WINDOW_FEATURE_SCHEMA_VERSION,
+    fit_fold_window_feature_transform,
 )
 from ppg_frailty.module_registry import list_modules
 from ppg_frailty.representations import (
@@ -63,6 +68,28 @@ def _engineering() -> EngineeringExtraction:
     )
 
 
+def _window_engineering() -> WindowFeatureExtraction:
+    names = window_feature_names()
+    values = np.vstack(
+        (
+            np.linspace(0.0, 1.0, len(names)),
+            np.linspace(1.0, 2.0, len(names)),
+        )
+    )
+    return WindowFeatureExtraction(
+        sequence=EngineeringFeatureSequence(
+            values=values,
+            start_samples=np.asarray((0, 2_000), dtype=np.int64),
+            valid_row_mask=np.ones(2, dtype=bool),
+            channel_schema=names,
+            schema_version=WINDOW_FEATURE_SCHEMA_VERSION,
+        ),
+        value_validity=np.ones(values.shape, dtype=bool),
+        row_tiers=("excellent", "excellent"),
+        reasons=(),
+    )
+
+
 class FeatureGroupProfileTests(unittest.TestCase):
     def test_full_dimensions_groups_and_legacy_migrations_are_explicit(self) -> None:
         registry = default_registry()
@@ -70,7 +97,7 @@ class FeatureGroupProfileTests(unittest.TestCase):
         self.assertEqual(registry.schema_version, "feature_vector_282_v3")
         self.assertEqual(
             ORDERED_MATRIX_SCHEMA_VERSION,
-            ordered_matrix_schema_version(150, registry),
+            ordered_matrix_schema_version(None, registry),
         )
         self.assertEqual(
             canonicalize_feature_groups(
@@ -133,7 +160,7 @@ class FeatureGroupProfileTests(unittest.TestCase):
         )
         self.assertEqual(
             resolved["features"]["matrix_schema"],
-            ordered_matrix_schema_version(150, registry),
+            ordered_matrix_schema_version(None, registry),
         )
         self.assertNotEqual(resolved["features"]["registry_id"], "forged")
 
@@ -148,7 +175,7 @@ class FeatureGroupProfileTests(unittest.TestCase):
             PIPELINE_ROOT / "configs" / "reference_static_fusion_v2.yaml"
         ).to_dict()
         fusion["features"]["matrix_k"] = 7
-        with self.assertRaisesRegex(ValueError, "fixed at 150"):
+        with self.assertRaisesRegex(ValueError, "retired"):
             validate_config_payload(fusion)
 
     def test_prv_controls_require_a_predictor_consumer(self) -> None:
@@ -232,22 +259,22 @@ class FeatureGroupProfileTests(unittest.TestCase):
         self.assertEqual(batch.fusion_tensor.shape, (2, 50))
         self.assertIn("values_plus_validity_50", batch.schema_version)
 
-        engineering = _engineering()
-        engineering_transform = fit_fold_feature_transform(
+        engineering = _window_engineering()
+        engineering_transform = fit_fold_window_feature_transform(
             (engineering,),
             fitted_on_participant_ids=("p1",),
             outer_train_participant_ids=("p1",),
             outer_oof_participant_ids=("p3",),
         )
         matrix = build_ordered_matrix(
-            transform_engineering(engineering, engineering_transform),
+            transform_window_features(engineering, engineering_transform),
             provenance={"route": SignalRoute.DIRECT.value},
         )
         self.assertIs(validate_feature_matrix(matrix), matrix)
-        self.assertEqual(matrix.values.shape, (115, 150))
+        self.assertEqual(matrix.values.shape, (146, 2))
         self.assertEqual(
             matrix.schema_version,
-            ordered_matrix_schema_version(150, registry),
+            ordered_matrix_schema_version(None, registry),
         )
 
         states = []
@@ -340,7 +367,7 @@ class FeatureGroupProfileTests(unittest.TestCase):
         self.assertEqual(features["registry_id"], registry.schema_version)
         self.assertEqual(
             features["matrix_schema"],
-            ordered_matrix_schema_version(features["matrix_k"], registry),
+            ordered_matrix_schema_version(None, registry),
         )
 
 

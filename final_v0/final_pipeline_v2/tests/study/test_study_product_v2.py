@@ -7,13 +7,18 @@ import tempfile
 import unittest
 from dataclasses import asdict, replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
 import yaml
 
 from ppg_frailty.reporting import generate_study_report
-from ppg_frailty.reporting.analyze import _cell_repeat_rows, analyze_study
+from ppg_frailty.reporting.analyze import (
+    _cell_repeat_rows,
+    _denoiser_hr_tables,
+    analyze_study,
+)
 from ppg_frailty.reporting.collect import (
     CollectedStudy,
     _cell_rows,
@@ -603,7 +608,7 @@ class StudyProductTests(unittest.TestCase):
             {
                 "schema_version": "ppg_frailty.study_plan.v2",
                 "study": {
-                    "study_id": "replacement_epoch_size_ablation",
+                    "study_id": "batch_size_ablation",
                     "kind": "ablation",
                     "purpose": "Exercise one runtime default as a normal axis.",
                     "flow_position": "No execution.",
@@ -612,9 +617,9 @@ class StudyProductTests(unittest.TestCase):
                 "base_config": str(canonical),
                 "axes": [
                     {
-                        "path": "training.samples_per_epoch",
-                        "values": [None, 64],
-                        "reference": None,
+                        "path": "training.batch_size",
+                        "values": [64, 32],
+                        "reference": 64,
                     }
                 ],
                 "execution": {"repeats": [0], "folds": [0], "jobs": 1},
@@ -625,11 +630,11 @@ class StudyProductTests(unittest.TestCase):
         )
         self.assertEqual(
             {row["parameter_path"] for row in expansion.varied_parameters},
-            {"training.samples_per_epoch"},
+            {"training.batch_size"},
         )
         self.assertEqual(
-            {case.config["training"]["samples_per_epoch"] for case in expansion.cases},
-            {None, 64},
+            {case.config["training"]["batch_size"] for case in expansion.cases},
+            {32, 64},
         )
 
     def test_optimizer_axis_materializes_each_module_own_defaults(self) -> None:
@@ -783,6 +788,8 @@ class StudyProductTests(unittest.TestCase):
         self.assertTrue(any(path.startswith("cases/") for path in paths))
         self.assertIn("tables/predictive_leaderboard.csv", paths)
         self.assertIn("tables/metric_distribution_summary.csv", paths)
+        self.assertIn("tables/test_components.csv", paths)
+        self.assertIn("TEST_COMPONENTS.md", paths)
         self.assertIn("tables/worst_class_f1_stability.csv", paths)
         self.assertIn("tables/incomplete_cases.csv", paths)
         self.assertIn("tables/confusion_counts.csv", paths)
@@ -1868,6 +1875,62 @@ class StudyProductTests(unittest.TestCase):
             for row in analysis.quality_distributions
         }
         self.assertEqual(distributions[("B", "sqi.q_rate")]["mean"], 0.8)
+
+    def test_denoiser_hr_tables_preserve_pairs_and_participant_macro(self) -> None:
+        rows = []
+        for participant_id, direct_values, post_values in (
+            ("P01", (70.0, 72.0), (75.0, 76.0)),
+            ("P02", (80.0, 82.0), (81.0, 83.0)),
+        ):
+            for index, (direct_hr, post_hr) in enumerate(
+                zip(direct_values, post_values, strict=True)
+            ):
+                rows.append(
+                    {
+                        "case_id": "raw_compact_cnn__sqi_motion_pca",
+                        "repeat": 0,
+                        "fold": index,
+                        "outer_partition": "outer_oof",
+                        "participant_id": participant_id,
+                        "record_id": f"{participant_id}_R{index + 1}",
+                        "role": f"R{index + 1}",
+                        "retained": False,
+                        "route_artifact": {
+                            "denoiser_attempted": True,
+                            "denoiser_id": "pca_bss",
+                            "denoiser_status": "success",
+                            "heart_rate_estimator": (
+                                "60_over_median_valid_ppi_s"
+                            ),
+                            "direct_hr_bpm": direct_hr,
+                            "post_denoise_hr_bpm": post_hr,
+                            "direct_valid_ppi_count": 20,
+                            "post_denoise_valid_ppi_count": 21,
+                            "post_q_rate_state": "pass",
+                        },
+                    }
+                )
+        records, summary = _denoiser_hr_tables(
+            SimpleNamespace(quality_rows=tuple(rows))
+        )
+        self.assertEqual(len(records), 4)
+        overall = next(
+            row
+            for row in summary
+            if row["role_scope"] == "ALL"
+            and row["outer_partition"] == "outer_oof"
+        )
+        self.assertEqual(overall["paired_hr_record_count"], 4)
+        self.assertEqual(overall["paired_participant_count"], 2)
+        self.assertAlmostEqual(
+            overall["participant_macro_direct_hr_bpm"], 76.0
+        )
+        self.assertAlmostEqual(
+            overall["participant_macro_post_denoise_hr_bpm"], 78.75
+        )
+        self.assertAlmostEqual(
+            overall["participant_macro_post_minus_direct_hr_bpm"], 2.75
+        )
 
 
 if __name__ == "__main__":

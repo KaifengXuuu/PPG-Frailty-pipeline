@@ -378,7 +378,7 @@ class MotionImuTests(unittest.TestCase):
             config=self.config,
         )
         self.assertEqual(lpf.profile_id, PROFILE_A_LPF_ID)
-        self.assertEqual(lpf.diagnostics["executed_as"], "named_ablation_only")
+        self.assertEqual(lpf.diagnostics["executed_as"], "named_reference_profile")
         lpf.validate()
         with self.assertRaisesRegex(ValueError, "stale or unknown"):
             replace(lpf, profile_id="profile_a_sensor_lpf_order4_stale").validate()

@@ -4,25 +4,37 @@ This folder is the compute-saving alternative to
 configs/studies/static_line_b_all_models_v2.yaml. The original 39-case plan is
 unchanged and remains available.
 
-The numbered files plus the final ShapeFormer stage form a manual scientific workflow. Results never auto-select a
-winner and no later file silently inherits an earlier result. Read each report,
-record the decision, then edit only the documented selector in the next file.
+The numbered files plus the final ShapeFormer stage form a scientific workflow.
+Ordinary model reports never auto-select a final winner. The Stage 6 tuning
+runner is the narrow exception: it records a deterministic development-only
+promotion/selection manifest so the dependent regularization and channel plans
+can inherit exactly the resolved parameters without manual transcription.
+
+For all non-historical CNN/InceptionTime cases below, `B0+B2+B7` means the
+selected DL execution state: 64 Hz, 5 s/2.5 s, AdamW/batch32 and file/role Line
+B reporting. The later V2-core contracts remain authoritative: calibrated
+Profile-A 0.3 Hz gravity LPF physical IMU for ordinary analysis modules and
+all-eight per-window robust scaling for the DL tensor. Calibrated roll-pitch
+EKF is an optional ablation, not an inherited default. B0 sampling is explicit:
+exhaustive shuffle without replacement and
+outer-train window/row inverse-frequency class weights; B5's Line-B weighted
+sampler and participant-count weighting are not silently inherited. Historical
+Stage 3 bridge plans remain immutable evidence and are not rewritten.
 
 ## Order and status
 
 1. 01_representation_baselines_v2.yaml
-   Runs four canonical low-cost representatives. It screens a
+   Runs three low-cost representatives. Raw CompactCNN and compact fusion use
+   the selected V2-core plus B0/B2/B7 state. It screens a
    representation-plus-model combination; it is not a pure causal
    representation comparison and not a final winner study. The default is one
    complete repeat. If routes are close, rerun with all repeats before pruning.
 
 2. 02_competitive_routes_models_v2.yaml
-   Extreme-compute-saving r0 supplement with exactly three missing canonical
-   cases: Raw InceptionSmall, Feature-vector RBF-SVM and Feature-vector
-   ExtraTrees. Reuse the reviewed r0 evidence for Raw CompactCNN, Raw
-   InceptionFull 400 Hz and Feature-vector Logistic; do not rerun them in this
-   stage. The supplemental report does not import or relabel those earlier
-   artifacts, so review the separately identified evidence alongside it.
+   r0 supplement with four cases: Raw InceptionFull, Raw InceptionSmall,
+   Feature-vector RBF-SVM and Feature-vector ExtraTrees. The old 400 Hz
+   InceptionFull evidence is incompatible and is not reused. Review this report
+   alongside a matching rerun of Stage 1.
 
 3. stage3_star.yaml (current restart)
    Runs CompactCNN and InceptionTimeFull for B0 plus seven independent
@@ -53,22 +65,43 @@ record the decision, then edit only the documented selector in the next file.
    model has no registered matched ensemble.
 
 5. 05_sqi_motion_finalists_v2.yaml
-   Five matched Logistic feature-vector cases compare off/off, fixed-threshold
-   SQI, SQI plus the frozen Frailty29 all-29 motion bundle, and one-attempt
-   PCA/FastICA recovery. The classifier stays on CPU; frozen motion inference
-   uses CUDA. The all-29 detector is explicitly in-sample auxiliary evidence on
-   Frailty29 and is never described as outer-OOF motion evidence.
+   Eight declared 64 Hz CompactCNN1D cases compare all-role off/off, a
+   static-only B/R input-scope control, fixed-threshold SQI, SQI plus the
+   frozen Frailty29 all-29 motion bundle, SQI-on PCA/FastICA, and SQI-off
+   PCA/FastICA one-attempt HR-recovery diagnostics. Seven cases use all
+   B/R/S/W roles; only `static_only` is restricted to B/R. The classifier and
+   frozen motion inference use CUDA. Raw-DL windows are 5 s with 2.5 s hop; the CNN tensor
+   uses all-eight per-window robust scaling without fold-level IMU
+   post-scaling. All eight cases explicitly use the same calibrated roll-pitch
+   EKF profile, making EKF a stage-wide ablation relative to the ordinary V2
+   Profile-A LPF default rather than a motion-on-only difference. Denoiser
+   outputs remain rate-only and are compared through
+   direct/post HR evidence rather than being supplied to the raw CNN. The
+   all-29 detector is explicitly in-sample auxiliary evidence on Frailty29 and
+   is never described as outer-OOF motion evidence. The persisted detector is
+   EKF-bound, but that requirement no longer creates an IMU-profile difference
+   between the eight within-stage comparisons. SQI-off denoiser cases still
+   persist direct and post-denoiser HR diagnostics without running direct SQI.
 
-6. 06_sequential_single_factor_ablation_v2.yaml
-   This is a reusable one-axis template. Replace base_config with the selected
-   finalist resolved config. Run LR, write the selected value into a new locked
-   base, switch the only axis to batch size, then repeat for epochs. Change the
-   study_id each time so each output remains separately archived.
-   Classical finalists use their own single factors instead: Logistic C; SVM C
-   then gamma; ExtraTrees max_features then min_samples_leaf. Feature-matrix
-   model-specific axes remain pending after retirement of ROCKET/Ridge.
-   If more than one parallel route remains, copy the template and run one
-   within-route comparison per locked base; do not mix routes in one axis.
+6. stage6_batch_LR_search.yaml
+   InceptionTimeFull batch/LR successive halving. Six candidates first run five
+   epochs on fold 0 from each of the five split seeds. Top three by mean
+   participant BA, then mean macro-F1, then case_id enter complete 5x5 fixed10
+   tuning CV. This costs 900 model-epochs rather than 1500 (40% reduction).
+   Both rungs are tuning evidence, never final-test evidence.
+
+   stage6_regula_search.yaml
+   Requires the completed batch/LR study directory. It imports the selected
+   batch and LR, then runs the declared R1-R9 WD/dropout/label-smoothing grid.
+
+   stage_ablation_channels.yaml
+   Requires the completed regularization study directory. It compares the
+   full eight-channel reference with RED+IR and ACC+gyro. Only the DL tensor is
+   sliced; physical IMU and amplitude-preserving analysis views remain intact.
+
+   06_sequential_single_factor_ablation_v2.yaml is retained as a separate
+   three-case CompactCNN learning-rate ablation, now also locked to the selected
+   state. It is not the InceptionTime tuning route.
 
 Last. stage_last_shapeformer_stability_v2.yaml
    ShapeFormer is intentionally deferred until every numbered stage has been
@@ -85,9 +118,19 @@ Run or dry-run any stage from the final_pipeline_v2 directory:
 
     python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/01_representation_baselines_v2.yaml --dry-run
 
-Run the three-case Stage 2 supplement:
+Run the four-case Stage 2 supplement:
 
     python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/02_competitive_routes_models_v2.yaml
+
+Run Stage 6 batch/LR successive halving on CUDA:
+
+    CUBLAS_WORKSPACE_CONFIG=:4096:8 CUDA_VISIBLE_DEVICES=0 MPLCONFIGDIR=/tmp/ppg-stage6-mpl python hyperparameter_studies_v2.py run --plan configs/studies/static_line_b_staged_v2/stage6_batch_LR_search.yaml --device cuda --jobs 1 --output-root artifacts/studies/static_line_b_staged_v2
+
+Then pass its exact output directory to regularization, followed by channels:
+
+    CUBLAS_WORKSPACE_CONFIG=:4096:8 CUDA_VISIBLE_DEVICES=0 MPLCONFIGDIR=/tmp/ppg-stage6-mpl python hyperparameter_studies_v2.py run --plan configs/studies/static_line_b_staged_v2/stage6_regula_search.yaml --upstream-study PATH_TO_BATCH_LR_STUDY --device cuda --jobs 1 --output-root artifacts/studies/static_line_b_staged_v2
+
+    CUBLAS_WORKSPACE_CONFIG=:4096:8 CUDA_VISIBLE_DEVICES=0 MPLCONFIGDIR=/tmp/ppg-stage6-mpl python hyperparameter_studies_v2.py run --plan configs/studies/static_line_b_staged_v2/stage_ablation_channels.yaml --upstream-study PATH_TO_REGULARIZATION_STUDY --device cuda --jobs 1 --output-root artifacts/studies/static_line_b_staged_v2
 
 Inspect the Stage 3 protocol without expansion or training:
 
@@ -139,6 +182,15 @@ the same reporting path:
 
     python3 frailty_3class_sweep_v2.py report --study-dir PATH_TO_STUDY
 
+Stage 6 orchestration reports use:
+
+    python3 hyperparameter_studies_v2.py report --study-dir PATH_TO_STAGE6_STUDY
+
+All ordinary stage plans explicitly request the current modular report bundle:
+paired CSV/JSON tables and plots, compact mean ± SD columns, one-sheet-per-table
+XLSX export, component/input/fixed-parameter tables, and split/training-seed
+reproducibility tables. Existing figures remain in place.
+
 When file-level OOF is present, the report always includes both balanced
 accuracy views: the declared canonical Line B result and Line A equal-file
 post-hoc reaggregation of the same held-out file probabilities. Line A is
@@ -148,10 +200,8 @@ for that run; the standalone report command can add it later without training.
 
 ## Default budgets
 
-- Stage 1: 4 cases, 20 outer cells by default; 100 only if manually escalated.
-- Stage 2: 3 supplemental cases, repeat 0 with all five folds, 15 outer cells.
-  The reused CompactCNN, InceptionFull and Logistic r0 evidence is not counted
-  again.
+- Stage 1: 3 cases, 15 outer cells by default; 75 only if manually escalated.
+- Stage 2: 4 supplemental cases, repeat 0 with all five folds, 20 outer cells.
 - Current Stage 3 centered star: exactly 16 cases, 400 fits and 4000
   model-epochs; no Phase 0 execution.
 - Stage 3 v3 CompactCNN follow-up: exactly 2 cases, 50 fits and 500
@@ -161,7 +211,11 @@ for that run; the standalone report command can add it later without training.
   model-epochs and does not affect that historical budget.
 - Stage 4: 2 scientific cases, 50 outer cells and 150 fitted networks.
 - Stage 5: 5 matched cases, repeat 0 and all five folds, 25 outer cells.
-- Stage 6: 3 cases and 75 outer cells for each active factor.
+- Stage 6 batch/LR: 30 five-epoch screening cells plus 75 fixed10 promoted
+  cells = 900 model-epochs (versus 1500 for direct 6-case 5x5 fixed10).
+- Stage 6 regularization: 9 cases, 225 fixed10 cells.
+- Channel ablation: 3 cases, 75 fixed10 cells.
+- Retained CompactCNN LR ablation: 3 cases, 75 fixed10 cells.
 - Stage last (ShapeFormer): 1, then 5, then 25 outer cells.
 
 Every study writes to artifacts/studies/static_line_b_staged_v2 under its own

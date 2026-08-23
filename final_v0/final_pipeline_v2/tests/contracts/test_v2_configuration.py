@@ -265,7 +265,7 @@ class V2ConfigurationTests(unittest.TestCase):
         self.assertEqual(resolved["gap_repair"]["max_gap_samples"], 100)
         self.assertEqual(
             resolved["imu"]["gravity_method"],
-            "calibrated_roll_pitch_ekf",
+            "profile_a_lowpass_0p3hz",
         )
 
     def test_signal_derived_aliases_have_one_effective_hash(self) -> None:
@@ -298,24 +298,21 @@ class V2ConfigurationTests(unittest.TestCase):
         )
         reference_payload = reference.to_dict()
         reference_imu = reference_payload["signal"]["imu"]
-        self.assertNotIn("gravity_lowpass_hz", reference_imu)
-        self.assertNotIn("gravity_filter_order", reference_imu)
+        self.assertEqual(reference_imu["gravity_lowpass_hz"], 0.3)
+        self.assertEqual(reference_imu["gravity_filter_order"], 4)
+        self.assertNotIn("process_covariance_diagonal_per_second", reference_imu)
 
-        default_inactive = reference.to_dict()
-        default_inactive["signal"]["imu"]["gravity_lowpass_hz"] = 0.3
-        default_inactive["signal"]["imu"]["gravity_filter_order"] = 4
-        resolved_default = validate_config_payload(default_inactive)
-        self.assertEqual(
-            hashlib.sha256(canonical_json_bytes(resolved_default)).hexdigest(),
-            reference.sha256,
+        ekf_default = reference.to_dict()
+        ekf_default["signal"]["imu"]["gravity_method"] = (
+            "calibrated_roll_pitch_ekf"
         )
+        ekf_default["signal"]["imu"]["comparison_method"] = (
+            "profile_a_lowpass_0p3hz"
+        )
+        resolved_ekf_default = validate_config_payload(ekf_default)
+        self.assertNotIn("gravity_lowpass_hz", resolved_ekf_default["signal"]["imu"])
 
-        invalid_inactive = reference.to_dict()
-        invalid_inactive["signal"]["imu"]["gravity_lowpass_hz"] = 0.8
-        with self.assertRaisesRegex(ValueError, "inactive"):
-            validate_config_payload(invalid_inactive)
-
-        ekf_varied = reference.to_dict()
+        ekf_varied = json.loads(json.dumps(resolved_ekf_default))
         ekf_varied["signal"]["imu"][
             "process_covariance_diagonal_per_second"
         ][0] = 7.0
@@ -331,11 +328,7 @@ class V2ConfigurationTests(unittest.TestCase):
             7.0,
         )
 
-        lpf_default = reference.to_dict()
-        lpf_default["signal"]["imu"]["gravity_method"] = (
-            "profile_a_lowpass_0p3hz"
-        )
-        resolved_lpf_default = validate_config_payload(lpf_default)
+        resolved_lpf_default = reference.to_dict()
         lpf_imu = resolved_lpf_default["signal"]["imu"]
         self.assertNotIn("process_covariance_diagonal_per_second", lpf_imu)
         self.assertEqual(lpf_imu["gravity_lowpass_hz"], 0.3)
@@ -394,13 +387,14 @@ class V2ConfigurationTests(unittest.TestCase):
         effective = config.to_dict()
         self.assertEqual(effective["training"]["optimizer"], "adam")
         self.assertEqual(
-            effective["training"]["sampler"], "balance_line_weighted_v2"
+            effective["training"]["sampler"],
+            "exhaustive_shuffle_without_replacement",
         )
         self.assertEqual(
             effective["training"]["class_weighting"],
             "inverse_frequency",
         )
-        self.assertEqual(effective["training"]["class_count_basis"], "participant")
+        self.assertEqual(effective["training"]["class_count_basis"], "row")
         self.assertEqual(effective["training"]["classifier_role_families"], ["B", "R"])
         self.assertEqual(effective["training"]["cache_policy"], "disabled")
         self.assertEqual(effective["training"]["n_classes"], 3)
@@ -729,17 +723,27 @@ class V2ConfigurationTests(unittest.TestCase):
         matrix = load_config(
             ROOT / "configs/reference_static_feature_matrix_v2.yaml"
         ).to_dict()
-        self.assertEqual(matrix["features"]["matrix_k"], 150)
+        self.assertNotIn("matrix_k", matrix["features"])
+        self.assertEqual(
+            matrix["features"]["window_feature_schema"],
+            "window_feature_set_d146_v1",
+        )
+        self.assertEqual(
+            matrix["features"]["matrix_length_policy"],
+            "all_complete_windows_variable_k",
+        )
         self.assertEqual(matrix["windows"]["engineering"]["length_s"], 10.0)
         self.assertEqual(matrix["windows"]["engineering"]["hop_s"], 2.0)
         wrong_k = copy.deepcopy(matrix)
         wrong_k["features"]["matrix_k"] = 149
-        with self.assertRaisesRegex(ValueError, "fixed at 150"):
+        with self.assertRaisesRegex(ValueError, "retired"):
             validate_config_payload(wrong_k)
-        wrong_hop = copy.deepcopy(matrix)
-        wrong_hop["windows"]["engineering"]["hop_s"] = 5.0
-        with self.assertRaisesRegex(ValueError, "fixed 10 s/2 s"):
-            validate_config_payload(wrong_hop)
+        sensitivity = copy.deepcopy(matrix)
+        sensitivity["windows"]["engineering"]["hop_s"] = 5.0
+        resolved_sensitivity = validate_config_payload(sensitivity)
+        self.assertEqual(
+            resolved_sensitivity["windows"]["engineering"]["hop_s"], 5.0
+        )
 
         changed_feature_formula = canonical.to_dict()
         changed_feature_formula["features"]["tachogram_fs_hz"] = 8.0
@@ -897,6 +901,18 @@ class V2ConfigurationTests(unittest.TestCase):
             "direct_filter_0p5_to_5hz_ablation",
         )
         self.assertIs(families["imu_gravity"]["silent_fallback_forbidden"], True)
+        self.assertEqual(
+            families["imu_gravity"]["reference_profile_id"],
+            "profile_a_lowpass_0p3hz",
+        )
+        self.assertEqual(
+            families["sampler"]["entries"][1]["sampler"],
+            "balance_line_weighted_v2",
+        )
+        self.assertEqual(
+            families["class_count_basis"]["entries"][1]["class_count_basis"],
+            "participant",
+        )
 
     def test_single_factor_configs_materialize_without_execution(self) -> None:
         profiles = ROOT / "configs/formal_ablation_profiles_v2.yaml"
@@ -961,13 +977,35 @@ class V2ConfigurationTests(unittest.TestCase):
             gravity = materialize_formal_ablation_config(
                 raw,
                 family="imu_gravity",
-                profile_id="imu_lpf_0p3hz_ablation",
+                profile_id="calibrated_roll_pitch_ekf_ablation",
                 output_path=output / "gravity.yaml",
                 profiles_path=profiles,
             )
             self.assertEqual(
                 gravity.payload["signal"]["imu"]["gravity_method"],
-                "profile_a_lowpass_0p3hz",
+                "calibrated_roll_pitch_ekf",
+            )
+            sampler = materialize_formal_ablation_config(
+                raw,
+                family="sampler",
+                profile_id="line_b_weighted_sampler_ablation",
+                output_path=output / "sampler.yaml",
+                profiles_path=profiles,
+            )
+            self.assertEqual(
+                sampler.payload["training"]["sampler"],
+                "balance_line_weighted_v2",
+            )
+            participant_weights = materialize_formal_ablation_config(
+                raw,
+                family="class_count_basis",
+                profile_id="participant_count_class_weights_ablation",
+                output_path=output / "participant_weights.yaml",
+                profiles_path=profiles,
+            )
+            self.assertEqual(
+                participant_weights.payload["training"]["class_count_basis"],
+                "participant",
             )
             with self.assertRaisesRegex(ValueError, "single-factor"):
                 materialize_formal_ablation_config(
@@ -1337,8 +1375,16 @@ class V2ConfigurationTests(unittest.TestCase):
                 "parameters": {},
             }
         )
-        with self.assertRaisesRegex(ValueError, "feature_vector"):
+        with self.assertRaisesRegex(ValueError, "diagnostic-only"):
             validate_config_payload(raw_nonidentity)
+        raw_nonidentity["artifact"]["degraded_policy"] = (
+            "denoise_then_compare_rate_exclude"
+        )
+        resolved_raw_diagnostic = validate_config_payload(raw_nonidentity)
+        self.assertEqual(
+            resolved_raw_diagnostic["artifact"]["degraded_policy"],
+            "denoise_then_compare_rate_exclude",
+        )
 
     def test_sqi_motion_and_denoiser_switches_accept_all_combinations(self) -> None:
         for sqi_enabled in (False, True):
@@ -1478,6 +1524,8 @@ class V2ConfigurationTests(unittest.TestCase):
             with self.subTest(update=update):
                 payload = json.loads(json.dumps(reference))
                 payload["training"].update(update)
+                if "samples_per_epoch" in update:
+                    payload["training"]["sampler"] = "uniform_replacement"
                 with self.assertRaisesRegex(
                     ValueError,
                     "execution_backend=estimator does not support",

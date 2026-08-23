@@ -28,6 +28,11 @@ from ppg_frailty.features import (
     summarize_engineering,
     transform_engineering,
     transform_feature_vector,
+    transform_window_features,
+    window_feature_names,
+    WindowFeatureExtraction,
+    WINDOW_FEATURE_SCHEMA_VERSION,
+    fit_fold_window_feature_transform,
 )
 from ppg_frailty.signal import build_signal_views
 from ppg_frailty.representations import validate_feature_matrix
@@ -362,32 +367,43 @@ class EngineeringRegistryTest(unittest.TestCase):
         self.assertFalse(any(name.startswith("sqi.") for name in registry.names))
         self.assertNotIn("prv.coverage", registry.names)
 
-    def test_matrix_is_exactly_115_by_150_without_context_predictors(self) -> None:
-        extraction = direct_extraction()
-        transform = fit_fold_feature_transform(
+    def test_matrix_is_146_by_variable_k_without_context_predictors(self) -> None:
+        names = window_feature_names()
+        values = np.arange(3 * len(names), dtype=np.float64).reshape(3, len(names))
+        extraction = WindowFeatureExtraction(
+            sequence=EngineeringFeatureSequence(
+                values=values,
+                start_samples=np.asarray((0, 800, 1600), dtype=np.int64),
+                valid_row_mask=np.ones(3, dtype=bool),
+                channel_schema=names,
+                schema_version=WINDOW_FEATURE_SCHEMA_VERSION,
+            ),
+            value_validity=np.ones(values.shape, dtype=bool),
+            row_tiers=("excellent", "excellent", "acceptable"),
+            reasons=(),
+        )
+        transform = fit_fold_window_feature_transform(
             [extraction],
             fitted_on_participant_ids=["train"],
             outer_train_participant_ids=["train"],
             outer_oof_participant_ids=["heldout"],
         )
-        transformed = transform_engineering(extraction, transform)
+        transformed = transform_window_features(extraction, transform)
         matrix = build_ordered_matrix(
             transformed,
             provenance={"route": SignalRoute.DIRECT.value},
         )
         self.assertIs(validate_feature_matrix(matrix), matrix)
-        engineering_count = len(engineering_feature_names())
-        self.assertEqual(matrix.values.shape, (engineering_count, 150))
+        self.assertEqual(matrix.values.shape, (146, 3))
         self.assertEqual(int(np.sum(matrix.row_mask)), 3)
         self.assertEqual(matrix.context_schema, ())
-        self.assertTrue(np.all(matrix.values[:, 3:] == 0.0))
         self.assertEqual(
             matrix.provenance["validity_encoding"],
             "provenance_only_not_predictor_channels_v1",
         )
         self.assertEqual(
             matrix.schema_version,
-            "ordered_feature_matrix_d115_by_150_engineering_v4",
+            "ordered_window_feature_matrix_d146_variable_k_v1",
         )
         for invalid_k in (0, -1, True, 149, 151, 4097, 2.5):
             with self.subTest(invalid_matrix_k=invalid_k):

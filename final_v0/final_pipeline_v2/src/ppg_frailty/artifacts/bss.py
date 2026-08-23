@@ -345,6 +345,10 @@ class PcaBssReducer(_LinearBssReducer):
 
     reducer_id = "pca_bss"
     reducer_version = "pca_component_select_v2"
+    algorithm_kernel_description = (
+        "对同步 RED/IR 做确定性双源 PCA，再按心率带集中度减 IMU 最大相关惩罚选择单一分量并投影回双通道；"
+        "内核：full-SVD PCA、Welch 频谱评分和线性 mixing 重建。"
+    )
     method = "pca"
 
 
@@ -353,6 +357,10 @@ class FastIcaBssReducer(_LinearBssReducer):
 
     reducer_id = "fastica_bss"
     reducer_version = "fastica_component_select_v2"
+    algorithm_kernel_description = (
+        "对同步 RED/IR 做固定随机种子的双源 FastICA，再按心率带集中度减 IMU 相关惩罚选分量并回投；"
+        "内核：unit-variance whitening、FastICA 不动点迭代与线性 mixing 重建。"
+    )
     method = "fastica"
 
 
@@ -361,6 +369,10 @@ class NmfBssReducer(ArtifactReducer):
 
     reducer_id = "nmf_bss"
     reducer_version = "nmf_shared_spectral_basis_v1"
+    algorithm_kernel_description = (
+        "拼接 RED/IR 的非负 STFT 幅度并拟合共享谱基，选择心率带能量占比最高的基后复用原相位重建；"
+        "内核：Hann STFT、NNDSVDA 初始化的坐标下降 NMF 与 ISTFT。"
+    )
 
     def __init__(self, config: NmfBssConfig | BssConfig | None = None) -> None:
         config = _nmf_config(BssConfig() if config is None else config)

@@ -143,9 +143,11 @@ class TrainingIsolationTests(unittest.TestCase):
         config = TrainingConfig.from_mapping(payload["training"])
         self.assertEqual(config.epoch_rule, "fixed_epoch")
         self.assertEqual(config.optimizer, "adam")
-        self.assertEqual(config.sampler, "balance_line_weighted_v2")
+        self.assertEqual(
+            config.sampler, "exhaustive_shuffle_without_replacement"
+        )
         self.assertEqual(config.class_weighting, "inverse_frequency")
-        self.assertEqual(config.class_count_basis, "participant")
+        self.assertEqual(config.class_count_basis, "row")
         legacy = TrainingConfig(epoch_rule="fixed")
         self.assertEqual(legacy.epoch_rule, "fixed_epoch")
         self.assertEqual(legacy.legacy_epoch_rule_alias, "fixed")
@@ -184,7 +186,10 @@ class TrainingIsolationTests(unittest.TestCase):
             )
         ).fit(_TinyClassifier, self.dataset, self.split)
         self.assertEqual(result.provenance.optimizer, "adam")
-        self.assertEqual(result.provenance.sampler, "balance_line_weighted_v2")
+        self.assertEqual(
+            result.provenance.sampler,
+            "exhaustive_shuffle_without_replacement",
+        )
         self.assertEqual(
             result.provenance.class_weighting,
             "inverse_frequency",
@@ -303,6 +308,12 @@ class TrainingIsolationTests(unittest.TestCase):
         np.testing.assert_allclose(weights, (0.125, 0.125, 0.25, 0.5))
         np.testing.assert_allclose(
             outer_train_inverse_frequency_weights(dataset, 3),
+            (2.0 / 3.0, 2.0, 0.0),
+        )
+        np.testing.assert_allclose(
+            outer_train_inverse_frequency_weights(
+                dataset, 3, class_count_basis="participant"
+            ),
             (1.0, 1.0, 0.0),
         )
 
@@ -632,7 +643,7 @@ class TrainingIsolationTests(unittest.TestCase):
         self.assertEqual(result.provenance.class_counts, (1.0, 2.0, 3.0))
         self.assertEqual(
             result.provenance.class_weight_count_basis,
-            "participant",
+            "row",
         )
         np.testing.assert_allclose(result.provenance.class_weight_vector, effective)
 
@@ -657,7 +668,10 @@ class TrainingIsolationTests(unittest.TestCase):
             estimator, dataset, self.split
         )
         self.assertEqual(result.provenance.fitted_participant_ids, tuple(f"P{i}" for i in range(6)))
-        self.assertEqual(result.provenance.sampler, "balance_line_weighted_v2")
+        self.assertEqual(
+            result.provenance.sampler,
+            "exhaustive_shuffle_without_replacement",
+        )
         self.assertEqual(
             result.provenance.class_weighting,
             "inverse_frequency",

@@ -26,7 +26,13 @@ from .legacy import (
     EmdSiftingRateOnlyReducer,
 )
 from .nlms import NlmsConfig, NlmsReducer
-from .router import ArtifactRouteOutcome, UnsupportedReducer, get_reducer, run_artifact_route
+from .router import (
+    ArtifactRouteOutcome,
+    UnsupportedReducer,
+    get_reducer,
+    reducer_audit_metadata,
+    run_artifact_route,
+)
 from .spectral import SpectralMaskConfig, SpectralMaskReducer
 
 __all__ = [
@@ -37,5 +43,6 @@ __all__ = [
     "DwtA2LegacyConfig", "DwtA2LegacyReducer",
     "NlmsConfig", "NlmsReducer", "NmfBssReducer", "PcaBssReducer", "SpectralMaskConfig",
     "SpectralMaskReducer", "SsaConfig", "SsaReducer", "ArtifactRouteOutcome",
-    "UnsupportedReducer", "get_reducer", "run_artifact_route", "validate_result",
+    "UnsupportedReducer", "get_reducer", "reducer_audit_metadata",
+    "run_artifact_route", "validate_result",
 ]

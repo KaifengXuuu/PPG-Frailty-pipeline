@@ -30,6 +30,7 @@ from .motion_imu import (
     RollPitchEkfConfig,
     fit_motion_imu_calibration,
     preprocess_motion_imu_calibrated_ekf,
+    preprocess_motion_imu_profile_a_lpf,
     preprocess_motion_imu_lpf_ablation,
 )
 from .optical import (
@@ -220,6 +221,7 @@ __all__ = [
     "RollPitchEkfConfig",
     "fit_motion_imu_calibration",
     "preprocess_motion_imu_calibrated_ekf",
+    "preprocess_motion_imu_profile_a_lpf",
     "preprocess_motion_imu_lpf_ablation",
     "extract_morphology",
     "OPTICAL_SCHEMA_VERSION",

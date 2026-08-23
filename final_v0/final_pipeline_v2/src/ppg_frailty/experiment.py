@@ -50,6 +50,8 @@ class _RuntimeRecord:
 
     row: Any
     views: Any = None
+    processed_views: Any = None
+    routing_timeline: Any = None
     direct_quality: Any = None
     final_quality: Any = None
     route: Any = None
@@ -63,6 +65,7 @@ class _RuntimeRecord:
     artifact_name: str = 'not_executed'
     artifact_version: str = 'not_executed'
     direct_pulses_per_wavelength: Any = None
+    processed_pulses_per_wavelength: Any = None
     vector: Any = None
     engineering: Any = None
     raw_windows: Any = None
@@ -96,12 +99,32 @@ def _drop_after_routing(
         }
 
 
-def _persisted_route_artifact_row(state: _RuntimeRecord) -> dict[str, Any]:
+def _persisted_route_artifact_row(
+    state: _RuntimeRecord,
+    *,
+    train_participant_ids: Iterable[str] = (),
+    oof_participant_ids: Iterable[str] = (),
+) -> dict[str, Any]:
     """Serialize final routing state even when no SQI diagnostics exist."""
 
+    participant_id = str(state.row.participant_id)
+    train = set(map(str, train_participant_ids))
+    oof = set(map(str, oof_participant_ids))
+    if participant_id in train and participant_id in oof:
+        raise _ExperimentProtocolError(
+            "route_artifact_participant_in_train_and_oof"
+        )
+    outer_partition = (
+        "outer_oof"
+        if participant_id in oof
+        else "outer_train"
+        if participant_id in train
+        else "not_reported"
+    )
     return {
         'record_id': state.row.record_id,
         'participant_id': state.row.participant_id,
+        'outer_partition': outer_partition,
         'role': state.row.role,
         'retained': state.retained,
         'route_status': state.route_status,
@@ -353,8 +376,9 @@ class _LegacyBridgePreparedFactory:
 def _runtime_imports() -> dict[str, Any]:
     '''延迟导入重型依赖 / Lazily import experiment dependencies.'''
 
-    import numpy as np
     from dataclasses import replace
+
+    import numpy as np
     from ppg_frailty.artifact import run_artifact_route
     from ppg_frailty.contracts import QualityState, SignalRoute
     from ppg_frailty.data.schema import canonicalize_role_family
@@ -363,6 +387,14 @@ def _runtime_imports() -> dict[str, Any]:
         extract_engineering_features,
         fit_fold_feature_transform,
         transform_engineering,
+    )
+    from ppg_frailty.features.window_matrix import (
+        build_ordered_window_matrix,
+        build_route_eligible_rate_pulse,
+        extract_window_features,
+        fit_fold_window_feature_transform,
+        route_eligible_morphology_aggregates,
+        transform_window_features,
     )
     from ppg_frailty.features.registry import (
         build_feature_vector,
@@ -415,10 +447,18 @@ def _runtime_imports() -> dict[str, Any]:
         run_quality_mode,
     )
     from ppg_frailty.quality.motion_bundle_adapter import (
+        infer_reused_motion_windows,
         infer_reused_motion_recording,
         load_reused_motion_detector,
         motion_recording_from_signal_views,
         resolve_reused_motion_detector_config,
+    )
+    from ppg_frailty.quality.routing_timeline import (
+        RoutingEvidence,
+        build_routing_timeline,
+        build_routing_windows,
+        overlapping_cells,
+        resolve_routing_evidence,
     )
     from ppg_frailty.representations import (
         build_raw_windows,
@@ -822,8 +862,51 @@ def _direct_pulses_for_state(
     return state.direct_pulses_per_wavelength
 
 
+def _pulse_hr_audit(pulse: Any | None) -> dict[str, Any]:
+    """Return one robust, auditable PPG-rate summary from detector PPIs."""
+
+    import numpy as np
+
+    estimator = "60_over_median_valid_ppi_s"
+    if pulse is None:
+        return {
+            "hr_bpm": None,
+            "median_valid_ppi_s": None,
+            "valid_ppi_count": 0,
+            "peak_count": 0,
+            "reference_wavelength": None,
+            "estimator": estimator,
+        }
+    ppi = np.asarray(getattr(pulse, "ppi_s", ()), dtype=np.float64)
+    declared_mask = np.asarray(
+        getattr(pulse, "valid_interval_mask", np.ones(ppi.shape, dtype=bool)),
+        dtype=bool,
+    )
+    if declared_mask.shape != ppi.shape:
+        raise _ExperimentProtocolError("pulse_hr_valid_interval_mask_misaligned")
+    valid = declared_mask & np.isfinite(ppi) & (ppi > 0.0)
+    selected = ppi[valid]
+    median_ppi = float(np.median(selected)) if selected.size else None
+    return {
+        "hr_bpm": (
+            None if median_ppi is None else float(60.0 / median_ppi)
+        ),
+        "median_valid_ppi_s": median_ppi,
+        "valid_ppi_count": int(selected.size),
+        "peak_count": int(
+            np.asarray(getattr(pulse, "peaks", ())).size
+        ),
+        "reference_wavelength": (
+            str(getattr(pulse, "wavelength"))
+            if getattr(pulse, "wavelength", None) is not None
+            else None
+        ),
+        "estimator": estimator,
+    }
+
+
 def _fit_quality_calibrator(states: list[_RuntimeRecord], config: Any, train_ids: tuple[str, ...], oof_ids: tuple[str, ...]) -> tuple[Any, Any]:
-    '''Resolve fixed SQI or fit its empirical map from outer-train rows only.'''
+    '''Resolve fixed SQI or fit from participant-balanced train routing windows.'''
 
     api = _runtime_imports()
     sqi_payload = config.to_dict()
@@ -837,20 +920,43 @@ def _fit_quality_calibrator(states: list[_RuntimeRecord], config: Any, train_ids
     base = api['replace'](formal, calibrator='fixed_formula_thresholds_v1')
     component_rows: list[dict[str, float]] = []
     participant_rows: list[str] = []
+    routing = config.section('routing')
+    training = set(map(str, train_ids))
     for state in states:
-        if state.views is None:
+        participant = str(state.row.participant_id)
+        if state.views is None or participant not in training:
             continue
         try:
+            record_components: list[dict[str, float]] = []
             pulses = _direct_pulses_for_state(state, api, detector)
             pulse = pulses[api['select_reference_wavelength'](pulses)]
-            quality = api['evaluate_quality'](
-                state.views,
-                config=base,
-                pulse=pulse,
-                **_peak_detection_runtime_kwargs(detector),
+            windows = api['build_routing_windows'](
+                str(state.row.record_id),
+                int(state.views.x_filter.shape[0]),
+                fs_hz=float(routing['fs_hz']),
+                window_s=float(routing['window_s']),
+                hop_s=float(routing['hop_s']),
             )
-            component_rows.append(api['quality_component_scores'](quality))
-            participant_rows.append(str(state.row.participant_id))
+            for window in windows:
+                local_views = _slice_signal_views_for_routing(
+                    state.views,
+                    window.start_sample_400,
+                    window.stop_sample_400,
+                )
+                local_pulse = _slice_global_pulse_for_routing(
+                    pulse,
+                    window.start_sample_400,
+                    window.stop_sample_400,
+                )
+                quality = api['evaluate_quality'](
+                    local_views,
+                    config=base,
+                    pulse=local_pulse,
+                    **_peak_detection_runtime_kwargs(detector),
+                )
+                record_components.append(api['quality_component_scores'](quality))
+            component_rows.extend(record_components)
+            participant_rows.extend([participant] * len(record_components))
         except Exception as exc:
             state.views = None
             state.reason = f'direct_base_sqi_failed:{type(exc).__name__}:{exc}'
@@ -1030,13 +1136,16 @@ def _apply_quality_motion_routing(
     """Execute one shared route orchestration for outer CV and final refit."""
 
     mode = _quality_mode(config)
-    diagnostic_provenance = None
-    if mode == 'diagnostics_only':
-        diagnostic_provenance = _retain_without_quality_routing(
-            states,
-            config,
-            diagnostics_only=True,
-        )
+    diagnostic_provenance = (
+        {
+            'method': 'native_routing_windows_fixed_formula_diagnostics',
+            'fitted_on_participant_ids': (),
+            'outer_oof_ids_absent': True,
+            'classification_effect': 'none',
+        }
+        if mode == 'diagnostics_only'
+        else None
+    )
     sqi_config = None
     calibrator = None
     if mode == 'route':
@@ -1046,8 +1155,13 @@ def _apply_quality_motion_routing(
             train_ids,
             oof_ids,
         )
-    motion_detector = _load_reused_motion_detector_for_config(config, paths)
-    _route_records(
+    motion_detector = _load_reused_motion_detector_for_config(
+        config,
+        paths,
+        train_ids=train_ids,
+        oof_ids=oof_ids,
+    )
+    _route_records_window_level(
         states,
         config,
         report,
@@ -1191,8 +1305,11 @@ def _compact_dual_optical_diagnostics(
 def _load_reused_motion_detector_for_config(
     config: Any,
     paths: Any,
+    *,
+    train_ids: tuple[str, ...] = (),
+    oof_ids: tuple[str, ...] = (),
 ) -> Any | None:
-    """Load one immutable all-29 detector per cell, never fit inside CV."""
+    """Load the immutable matching fold detector, or all-29 for final/smoke."""
 
     api = _runtime_imports()
     artifact = config.section('artifact')
@@ -1208,7 +1325,11 @@ def _load_reused_motion_detector_for_config(
     payload['enabled'] = True
     try:
         detector_config = api['resolve_reused_motion_detector_config'](payload)
-        return api['load_reused_motion_detector'](detector_config)
+        return api['load_reused_motion_detector'](
+            detector_config,
+            outer_train_participant_ids=tuple(train_ids),
+            outer_oof_participant_ids=tuple(oof_ids),
+        )
     except Exception as exc:
         raise _ExperimentProtocolError(
             f'motion_detector_bundle_invalid:{type(exc).__name__}:{exc}'
@@ -1247,6 +1368,489 @@ def _compact_motion_provenance(detector: Any | None) -> dict[str, Any]:
     }
 
 
+def _slice_signal_views_for_routing(views: Any, start: int, stop: int) -> Any:
+    """Create a time-aligned view of one routing window without changing sources."""
+
+    from dataclasses import replace
+    import numpy as np
+
+    total = int(views.x_filter.shape[0])
+    if not 0 <= start < stop <= total:
+        raise ValueError('routing slice lies outside canonical signal views')
+    imu = {
+        name: (
+            api_value[start:stop]
+            if (api_value := np.asarray(value)).ndim >= 1
+            and api_value.shape[0] == total
+            else api_value
+        )
+        for name, value in views.imu_processed.items()
+    }
+    metadata = dict(views.metadata)
+    metadata.update(
+        {
+            'routing_window_start_sample_400': int(start),
+            'routing_window_stop_sample_400': int(stop),
+        }
+    )
+    if 'artifact_output_valid_mask' in metadata:
+        metadata['artifact_output_valid_mask'] = np.asarray(
+            metadata['artifact_output_valid_mask'], dtype=bool
+        )[start:stop]
+    return replace(
+        views,
+        x_native=views.x_native[start:stop],
+        x_filter=views.x_filter[start:stop],
+        x_analysis_rate=views.x_analysis_rate[start:stop],
+        imu_processed=imu,
+        metadata=metadata,
+        source_valid_mask=views.source_valid_mask[start:stop],
+        repair_mask=views.repair_mask[start:stop],
+        x_ar=None if views.x_ar is None else views.x_ar[start:stop],
+    )
+
+
+def _slice_global_pulse_for_routing(
+    pulse: Any,
+    start: int,
+    stop: int,
+    *,
+    fs_hz: float = 400.0,
+) -> Any:
+    """Restrict one global detection run while retaining global peak ordinals."""
+
+    from dataclasses import replace
+    import numpy as np
+
+    timestamps = np.asarray(pulse.peak_timestamps_s, dtype=np.float64)
+    samples = np.rint(timestamps * fs_hz).astype(np.int64)
+    peak_keep = (samples >= start) & (samples < stop)
+    peak_indices = np.flatnonzero(peak_keep)
+    index_map = {int(old): new for new, old in enumerate(peak_indices)}
+    interval_starts = np.asarray(pulse.interval_start_peak_indices, dtype=np.int64)
+    interval_stops = np.asarray(pulse.interval_stop_peak_indices, dtype=np.int64)
+    interval_midpoints = 0.5 * (
+        timestamps[interval_starts] + timestamps[interval_stops]
+    ) * fs_hz
+    interval_keep = np.asarray(
+        [
+            int(left) in index_map
+            and int(right) in index_map
+            and start <= midpoint < stop
+            for left, right, midpoint in zip(
+                interval_starts, interval_stops, interval_midpoints
+            )
+        ],
+        dtype=bool,
+    )
+    interval_indices = np.flatnonzero(interval_keep)
+    original_ordinals = getattr(pulse, 'peak_ordinals', None)
+    if original_ordinals is None:
+        original_ordinals = np.arange(samples.size, dtype=np.int64)
+    rejection_reasons = tuple(getattr(pulse, 'interval_rejection_reasons', ()))
+    return replace(
+        pulse,
+        peaks=samples[peak_indices] - int(start),
+        peak_timestamps_s=timestamps[peak_indices],
+        accepted_peak_mask=np.asarray(pulse.accepted_peak_mask, dtype=bool)[peak_indices],
+        interval_start_peak_indices=np.asarray(
+            [index_map[int(interval_starts[index])] for index in interval_indices],
+            dtype=np.int64,
+        ),
+        interval_stop_peak_indices=np.asarray(
+            [index_map[int(interval_stops[index])] for index in interval_indices],
+            dtype=np.int64,
+        ),
+        ppi_s=np.asarray(pulse.ppi_s, dtype=np.float64)[interval_indices],
+        valid_interval_mask=np.asarray(pulse.valid_interval_mask, dtype=bool)[
+            interval_indices
+        ],
+        adjacency_mask=np.asarray(pulse.adjacency_mask, dtype=bool)[interval_indices],
+        confidence=np.asarray(pulse.confidence)[peak_indices],
+        interval_run_ids=np.asarray(pulse.interval_run_ids)[interval_indices],
+        interval_rejection_reasons=(
+            tuple(rejection_reasons[index] for index in interval_indices)
+            if len(rejection_reasons) == len(interval_starts)
+            else ()
+        ),
+        peak_ordinals=np.asarray(original_ordinals, dtype=np.int64)[peak_indices],
+    )
+
+
+def _route_records_window_level(
+    states: list[_RuntimeRecord],
+    config: Any,
+    report: Any,
+    sqi_config: Any | None,
+    calibrator: Any | None,
+    *,
+    motion_detector: Any | None = None,
+) -> None:
+    """Run shared native-window evidence and build one RoutingTimeline per file."""
+
+    api = _runtime_imports()
+    artifact = config.section('artifact')
+    mode = _quality_mode(config)
+    switches = api['route_module_switches_from_config'](config.to_dict())
+    detector_config = api['resolve_peak_detector_config'](config.section('signal'))
+    routing = config.section('routing')
+    representation_mode = str(config.representation_mode)
+    if switches.motion_detector_enabled != (motion_detector is not None):
+        raise _ExperimentProtocolError(
+            'motion_detector_switch_and_loaded_runtime_disagree'
+        )
+    if mode == 'diagnostics_only':
+        from .signal.sqi import SqiDiagnosticConfig
+
+        diagnostic_config = SqiDiagnosticConfig.from_resolved(config.to_dict())
+    else:
+        diagnostic_config = None
+    nonrouting_sqi_config = None
+    if mode != 'route':
+        from .signal.sqi import SqiConfig
+
+        fixed_payload = config.to_dict()
+        fixed_payload['quality'].pop('window_selection', None)
+        nonrouting_sqi_config = SqiConfig.from_resolved(fixed_payload)
+        if nonrouting_sqi_config.calibrator != 'fixed_formula_thresholds_v1':
+            nonrouting_sqi_config = api['replace'](
+                nonrouting_sqi_config,
+                calibrator='fixed_formula_thresholds_v1',
+            )
+    compact_motion = _compact_motion_provenance(motion_detector)
+
+    for state in states:
+        state.retained = False
+        state.route = api['SignalRoute'].DROPPED
+        state.intended_route = api['SignalRoute'].DIRECT
+        state.shape_features_eligible = False
+        if state.views is None:
+            continue
+        record_id = str(state.row.record_id)
+        participant_id = str(state.row.participant_id)
+        role = str(state.row.role)
+        native_windows = api['build_routing_windows'](
+            record_id,
+            int(state.views.x_filter.shape[0]),
+            fs_hz=float(routing['fs_hz']),
+            window_s=float(routing['window_s']),
+            hop_s=float(routing['hop_s']),
+        )
+        direct_pulse = None
+        if mode != 'off' or switches.denoiser_enabled:
+            pulses = _direct_pulses_for_state(state, api, detector_config)
+            direct_pulse = pulses[api['select_reference_wavelength'](pulses)]
+        direct_hr = _pulse_hr_audit(direct_pulse)
+        post_hr = _pulse_hr_audit(None)
+
+        motion_series = None
+        motion_by_id: dict[str, Any] = {}
+        if motion_detector is not None:
+            try:
+                recording = api['motion_recording_from_signal_views'](
+                    state.views,
+                    detector=motion_detector,
+                    record_id=record_id,
+                    participant_id=participant_id,
+                    role=role,
+                )
+            except ValueError as exc:
+                if 'gap-repaired native PPG' not in str(exc):
+                    raise
+                recording = None
+            motion_series = api['infer_reused_motion_windows'](
+                motion_detector, recording
+            )
+            motion_by_id = {
+                row.routing_window_id: row for row in motion_series.decisions
+            }
+
+        evidence_rows: list[Any] = []
+        window_sqi_evidence: dict[str, Any] = {}
+        for window in native_windows:
+            q_rate_score = q_rate_state = q_morph_score = q_morph_state = None
+            if mode != 'off':
+                assert direct_pulse is not None
+                local_views = _slice_signal_views_for_routing(
+                    state.views,
+                    window.start_sample_400,
+                    window.stop_sample_400,
+                )
+                local_pulse = _slice_global_pulse_for_routing(
+                    direct_pulse,
+                    window.start_sample_400,
+                    window.stop_sample_400,
+                )
+                if mode == 'route':
+                    quality = api['evaluate_quality'](
+                        local_views,
+                        config=sqi_config,
+                        calibrator=calibrator,
+                        pulse=local_pulse,
+                        **_peak_detection_runtime_kwargs(detector_config),
+                    )
+                    q_rate_score = quality.q_rate.score
+                    q_rate_state = quality.q_rate.state.value
+                    q_morph_score = quality.q_morph.score
+                    q_morph_state = quality.q_morph.state.value
+                    window_sqi_evidence[window.routing_window_id] = {
+                        'direct': to_strict_json_value(quality),
+                        'post_reduction': None,
+                    }
+                else:
+                    quality = api['evaluate_quality'](
+                        local_views,
+                        config=nonrouting_sqi_config,
+                        pulse=local_pulse,
+                        **_peak_detection_runtime_kwargs(detector_config),
+                    )
+                    q_rate_score = quality.q_rate.score
+                    q_rate_state = quality.q_rate.state.value
+                    q_morph_score = quality.q_morph.score
+                    q_morph_state = quality.q_morph.state.value
+                    diagnostics = api['evaluate_quality_diagnostics'](
+                        local_views,
+                        config=diagnostic_config,
+                        pulse=local_pulse,
+                        **_peak_detection_runtime_kwargs(detector_config),
+                    )
+                    state.diagnostic_components.setdefault(
+                        'routing_window_sqi_diagnostics', {}
+                    )[window.routing_window_id] = to_strict_json_value(diagnostics)
+                    window_sqi_evidence[window.routing_window_id] = {
+                        'direct': to_strict_json_value(quality),
+                        'raw_diagnostics': to_strict_json_value(diagnostics),
+                        'post_reduction': None,
+                    }
+            motion_row = motion_by_id.get(window.routing_window_id)
+            motion_state = (
+                'off'
+                if motion_detector is None
+                else 'unavailable'
+                if motion_row is None
+                else motion_row.motion_state
+            )
+            unresolved = api['RoutingEvidence'](
+                window=window,
+                sqi_mode=mode,
+                sqi_assessed=mode != 'off',
+                direct_q_rate_score=q_rate_score,
+                direct_q_rate_state=q_rate_state,
+                direct_q_morph_score=q_morph_score,
+                direct_q_morph_state=q_morph_state,
+                motion_detector_enabled=motion_detector is not None,
+                motion_probability=(
+                    None if motion_row is None else motion_row.probability
+                ),
+                motion_threshold=(
+                    None if motion_row is None else motion_row.threshold
+                ),
+                motion_state=motion_state,
+                denoiser_enabled=switches.denoiser_enabled,
+            )
+            evidence_rows.append(
+                api['resolve_routing_evidence'](unresolved, role=role)
+            )
+
+        requested = [row for row in evidence_rows if row.denoiser_requested]
+        if requested:
+            outcome = api['run_artifact_route'](
+                state.views,
+                report.artifact['runtime_reducer'],
+                parameters=report.artifact['parameters'],
+            )
+            state.artifact_name = outcome.result.reducer_id
+            state.artifact_version = outcome.result.reducer_version
+            if (
+                outcome.views is not None
+                and outcome.route is api['SignalRoute'].ARTIFACT_RATE_ONLY
+            ):
+                state.processed_views = outcome.views
+                state.processed_pulses_per_wavelength = api[
+                    'detect_pulses_per_wavelength'
+                ](
+                    outcome.views,
+                    **_peak_detection_runtime_kwargs(detector_config),
+                )
+                processed_pulse = state.processed_pulses_per_wavelength[
+                    api['select_reference_wavelength'](
+                        state.processed_pulses_per_wavelength
+                    )
+                ]
+                post_hr = _pulse_hr_audit(processed_pulse)
+                updated_rows = []
+                for row in evidence_rows:
+                    if not row.denoiser_requested:
+                        updated_rows.append(row)
+                        continue
+                    local_views = _slice_signal_views_for_routing(
+                        outcome.views,
+                        row.window.start_sample_400,
+                        row.window.stop_sample_400,
+                    )
+                    local_pulse = _slice_global_pulse_for_routing(
+                        processed_pulse,
+                        row.window.start_sample_400,
+                        row.window.stop_sample_400,
+                    )
+                    post = api['evaluate_quality'](
+                        local_views,
+                        config=(
+                            sqi_config if mode == 'route' else nonrouting_sqi_config
+                        ),
+                        calibrator=calibrator,
+                        pulse=local_pulse,
+                        **_peak_detection_runtime_kwargs(detector_config),
+                    )
+                    if post.q_morph.state.value != 'not_applicable':
+                        raise _ExperimentProtocolError(
+                            'processed_window_q_morph_must_be_not_applicable'
+                        )
+                    window_sqi_evidence.setdefault(
+                        row.window.routing_window_id,
+                        {'direct': None},
+                    )['post_reduction'] = to_strict_json_value(post)
+                    updated_rows.append(
+                        api['resolve_routing_evidence'](
+                            api['replace'](
+                                row,
+                                denoiser_status='success',
+                                post_q_rate_score=post.q_rate.score,
+                                post_q_rate_state=post.q_rate.state.value,
+                            ),
+                            role=role,
+                        )
+                    )
+                evidence_rows = updated_rows
+            else:
+                evidence_rows = [
+                    api['resolve_routing_evidence'](
+                        api['replace'](
+                            row,
+                            denoiser_status=outcome.result.status,
+                        ),
+                        role=role,
+                    )
+                    if row.denoiser_requested
+                    else row
+                    for row in evidence_rows
+                ]
+        else:
+            state.artifact_name = 'identity'
+            state.artifact_version = 'identity_v1'
+
+        motion_model_sha = (
+            None
+            if motion_detector is None
+            else str(motion_detector.provenance['model_artifact_sha256'])
+        )
+        motion_schema_sha = (
+            None
+            if motion_detector is None
+            else str(motion_detector.provenance['model_input_schema_sha256'])
+        )
+        sqi_hash = (
+            None
+            if mode == 'off'
+            else api['stable_payload_sha256'](
+                {
+                    'config': None if sqi_config is None else sqi_config.to_dict(),
+                    'calibrator': to_strict_json_value(calibrator),
+                }
+            )
+        )
+        state.routing_timeline = api['build_routing_timeline'](
+            record_id=record_id,
+            participant_id=participant_id,
+            role=role,
+            n_samples=int(state.views.x_filter.shape[0]),
+            evidence=evidence_rows,
+            config_sha256=str(config.sha256),
+            sqi_calibrator_sha256=sqi_hash,
+            motion_model_sha256=motion_model_sha,
+            motion_input_schema_sha256=motion_schema_sha,
+            reducer_sha256=(
+                None
+                if not requested
+                else api['stable_payload_sha256'](
+                    {
+                        'reducer': state.artifact_name,
+                        'version': state.artifact_version,
+                        'parameters': report.artifact['parameters'],
+                    }
+                )
+            ),
+        )
+        cells = state.routing_timeline.cells
+        excellent = [
+            cell for cell in cells
+            if cell.final_tier == 'excellent' and cell.source_route == 'direct'
+        ]
+        acceptable = [cell for cell in cells if cell.final_tier == 'acceptable']
+        eligible = (
+            excellent
+            if representation_mode in {'raw', 'fusion'}
+            else [*excellent, *acceptable]
+        )
+        state.retained = bool(eligible)
+        state.shape_features_eligible = bool(excellent)
+        state.quality_tier = (
+            'mixed'
+            if excellent and acceptable
+            else 'excellent'
+            if excellent
+            else 'acceptable'
+            if acceptable
+            else 'excluded'
+        )
+        state.route = (
+            api['SignalRoute'].DIRECT
+            if excellent or any(cell.source_route == 'direct' for cell in acceptable)
+            else api['SignalRoute'].ARTIFACT_RATE_ONLY
+            if any(cell.source_route == 'processed' for cell in acceptable)
+            else api['SignalRoute'].DROPPED
+        )
+        state.route_status = (
+            'retained_window_routing_timeline'
+            if state.retained
+            else 'dropped_no_representation_eligible_routing_cell'
+        )
+        state.reason = None if state.retained else state.route_status
+        state.route_artifact = to_strict_json_value(
+            {
+                'schema_version': state.routing_timeline.schema_version,
+                'state': state.route_status,
+                'routing_grid': dict(routing),
+                'cells': cells,
+                'native_window_sqi_evidence': window_sqi_evidence,
+                'motion_file_median_probability_diagnostic_only': (
+                    None
+                    if motion_series is None
+                    else motion_series.file_median_probability_diagnostic
+                ),
+                'motion_provenance': compact_motion,
+                'denoiser_invocation_count': 1 if requested else 0,
+                'canonical_hybrid_waveform_created': False,
+                'heart_rate_estimator': direct_hr['estimator'],
+                'direct_hr_bpm': direct_hr['hr_bpm'],
+                'direct_median_valid_ppi_s': direct_hr['median_valid_ppi_s'],
+                'direct_valid_ppi_count': direct_hr['valid_ppi_count'],
+                'direct_peak_count': direct_hr['peak_count'],
+                'post_denoise_hr_bpm': post_hr['hr_bpm'],
+                'post_denoise_median_valid_ppi_s': post_hr[
+                    'median_valid_ppi_s'
+                ],
+                'post_denoise_valid_ppi_count': post_hr['valid_ppi_count'],
+                'post_denoise_peak_count': post_hr['peak_count'],
+                'post_minus_direct_hr_bpm': (
+                    None
+                    if direct_hr['hr_bpm'] is None or post_hr['hr_bpm'] is None
+                    else float(post_hr['hr_bpm'] - direct_hr['hr_bpm'])
+                ),
+            }
+        )
+
+
 def _route_records(
     states: list[_RuntimeRecord],
     config: Any,
@@ -1263,6 +1867,7 @@ def _route_records(
     QualityTier = api['QualityTier']
     SignalRoute = api['SignalRoute']
     artifact = config.section('artifact')
+    denoiser_policy = str(artifact['degraded_policy'])
     switches = api['route_module_switches_from_config'](config.to_dict())
     detector = api['resolve_peak_detector_config'](config.section('signal'))
     representation_mode = str(
@@ -1290,20 +1895,25 @@ def _route_records(
             continue
         try:
             direct = None
-            if switches.sqi_enabled:
+            direct_pulse = None
+            if switches.sqi_enabled or switches.denoiser_enabled:
                 pulses = _direct_pulses_for_state(state, api, detector)
-                pulse = pulses[api['select_reference_wavelength'](pulses)]
+                direct_pulse = pulses[
+                    api['select_reference_wavelength'](pulses)
+                ]
+            if switches.sqi_enabled:
                 direct_outcome = api['run_quality_mode'](
                     state.views,
                     mode='route',
                     evaluator=api['evaluate_quality'],
                     config=sqi_config,
                     calibrator=calibrator,
-                    pulse=pulse,
+                    pulse=direct_pulse,
                     **_peak_detection_runtime_kwargs(detector),
                 )
                 direct = direct_outcome.result
                 state.direct_quality = direct
+            direct_hr = _pulse_hr_audit(direct_pulse)
 
             motion_decision = None
             motion_high: bool | None = None
@@ -1336,16 +1946,12 @@ def _route_records(
                 elif motion_decision.motion_state == 'high_motion':
                     motion_high = True
 
-            static_role = api['canonicalize_role_family'](
-                str(state.row.role)
-            ) in {'B', 'R'}
             tier = api['route_quality_tier'](
                 sqi_enabled=switches.sqi_enabled,
                 q_rate_state=(None if direct is None else direct.q_rate.state),
                 q_morph_state=(None if direct is None else direct.q_morph.state),
                 motion_enabled=switches.motion_detector_enabled,
                 motion_high=motion_high,
-                static_role=static_role,
             )
             state.quality_tier = tier.tier.value
             motion_state = (
@@ -1354,7 +1960,7 @@ def _route_records(
                 else motion_decision.motion_state
             )
             route_artifact = {
-                'schema_version': 'ppg_frailty.sqi_motion_route.v1',
+                'schema_version': 'ppg_frailty.sqi_motion_route.v2',
                 'segment_id': str(state.row.record_id),
                 'start_sample': 0,
                 'end_sample': int(state.views.x_filter.shape[0]),
@@ -1379,6 +1985,21 @@ def _route_records(
                 'direct_q_morph_coverage': (
                     None if direct is None else direct.q_morph.coverage
                 ),
+                'heart_rate_estimator': direct_hr['estimator'],
+                'direct_hr_bpm': direct_hr['hr_bpm'],
+                'direct_median_valid_ppi_s': direct_hr['median_valid_ppi_s'],
+                'direct_valid_ppi_count': direct_hr['valid_ppi_count'],
+                'direct_peak_count': direct_hr['peak_count'],
+                'direct_reference_wavelength': direct_hr[
+                    'reference_wavelength'
+                ],
+                'post_denoise_hr_bpm': None,
+                'post_denoise_median_valid_ppi_s': None,
+                'post_denoise_valid_ppi_count': 0,
+                'post_denoise_peak_count': 0,
+                'post_denoise_reference_wavelength': None,
+                'post_minus_direct_hr_bpm': None,
+                'absolute_post_minus_direct_hr_bpm': None,
                 'motion_state': motion_state,
                 'motion_record_probability': (
                     None
@@ -1397,6 +2018,7 @@ def _route_records(
                 'denoiser_attempted': False,
                 'denoiser_id': str(artifact['reducer']),
                 'denoiser_status': 'not_attempted',
+                'denoiser_recovery_policy': denoiser_policy,
             }
 
             if tier.tier in {QualityTier.EXCELLENT, QualityTier.ACCEPTABLE}:
@@ -1470,12 +2092,20 @@ def _route_records(
                 state.route_artifact = to_strict_json_value(route_artifact)
                 continue
 
+            post_pulses = api['detect_pulses_per_wavelength'](
+                outcome.views,
+                **_peak_detection_runtime_kwargs(detector),
+            )
+            post_pulse = post_pulses[
+                api['select_reference_wavelength'](post_pulses)
+            ]
             post_outcome = api['run_quality_mode'](
                 outcome.views,
                 mode='route',
                 evaluator=api['evaluate_quality'],
                 config=sqi_config,
                 calibrator=calibrator,
+                pulse=post_pulse,
                 **_peak_detection_runtime_kwargs(detector),
             )
             post = post_outcome.result
@@ -1489,22 +2119,55 @@ def _route_records(
             route_artifact['post_q_rate_state'] = post.q_rate.state.value
             route_artifact['post_q_rate_score'] = post.q_rate.score
             route_artifact['post_q_rate_coverage'] = post.q_rate.coverage
+            post_hr = _pulse_hr_audit(post_pulse)
+            route_artifact['post_denoise_hr_bpm'] = post_hr['hr_bpm']
+            route_artifact['post_denoise_median_valid_ppi_s'] = post_hr[
+                'median_valid_ppi_s'
+            ]
+            route_artifact['post_denoise_valid_ppi_count'] = post_hr[
+                'valid_ppi_count'
+            ]
+            route_artifact['post_denoise_peak_count'] = post_hr['peak_count']
+            route_artifact['post_denoise_reference_wavelength'] = post_hr[
+                'reference_wavelength'
+            ]
+            if direct_hr['hr_bpm'] is not None and post_hr['hr_bpm'] is not None:
+                hr_delta = float(post_hr['hr_bpm'] - direct_hr['hr_bpm'])
+                route_artifact['post_minus_direct_hr_bpm'] = hr_delta
+                route_artifact['absolute_post_minus_direct_hr_bpm'] = abs(
+                    hr_delta
+                )
             state.views = outcome.views
             state.final_quality = post
             state.route = SignalRoute.ARTIFACT_RATE_ONLY
             state.shape_features_eligible = False
             if post.q_rate.state is QualityState.PASS:
                 state.quality_tier = QualityTier.ACCEPTABLE.value
-                state.route_status = 'rate_only_processed'
-                state.retained = representation_mode == 'feature_vector'
                 route_artifact['quality_tier'] = QualityTier.ACCEPTABLE.value
-                route_artifact['state'] = state.route_status
-                if not state.retained:
+                if denoiser_policy == 'denoise_then_extract_rate_features':
+                    if representation_mode != 'feature_vector':
+                        raise _ExperimentProtocolError(
+                            'rate_feature_recovery_policy_requires_feature_vector'
+                        )
+                    state.route_status = 'rate_only_processed'
+                    state.retained = True
+                elif denoiser_policy == 'denoise_then_compare_rate_exclude':
+                    if representation_mode == 'feature_vector':
+                        raise _ExperimentProtocolError(
+                            'rate_diagnostic_exclusion_policy_forbids_feature_vector'
+                        )
+                    state.route_status = 'rate_only_diagnostic_excluded'
+                    state.retained = False
                     state.reason = (
-                        'acceptable_tier_requires_feature_vector_representation'
+                        'post_denoise_rate_only_diagnostic_not_classifier_input'
                     )
                     route_artifact['abstained'] = True
                     route_artifact['abstention_reason'] = state.reason
+                else:
+                    raise _ExperimentProtocolError(
+                        'unknown_denoiser_recovery_policy'
+                    )
+                route_artifact['state'] = state.route_status
             else:
                 state.route = SignalRoute.DROPPED
                 state.quality_tier = QualityTier.EXCLUDED.value
@@ -1545,28 +2208,53 @@ def _extract_vector(
         if prv_config_type is None:  # Supports lightweight injected test APIs.
             from .signal.prv import PrvConfig as prv_config_type
         prv_config = prv_config_type.from_mapping(features_config)
-        pulses_per_wavelength = (
-            state.direct_pulses_per_wavelength
-            if state.route in {SignalRoute.DIRECT, SignalRoute.IDENTITY}
-            and state.direct_pulses_per_wavelength is not None
-            else api['detect_pulses_per_wavelength'](
-                state.views,
-                **_peak_detection_runtime_kwargs(report.peak_detector),
+        if state.routing_timeline is not None:
+            pulses_per_wavelength = _direct_pulses_for_state(
+                state, api, report.peak_detector
             )
-        )
-        pulse = pulses_per_wavelength[
-            api['select_reference_wavelength'](pulses_per_wavelength)
-        ]
+            direct_pulse = pulses_per_wavelength[
+                api['select_reference_wavelength'](pulses_per_wavelength)
+            ]
+            processed_pulse = None
+            if state.processed_pulses_per_wavelength is not None:
+                processed_pulse = state.processed_pulses_per_wavelength[
+                    api['select_reference_wavelength'](
+                        state.processed_pulses_per_wavelength
+                    )
+                ]
+            pulse = api['build_route_eligible_rate_pulse'](
+                state.routing_timeline,
+                direct_pulse,
+                processed_pulse,
+            )
+            prv_route = pulse.source_route
+            q_rate_qualified = True
+        else:
+            pulses_per_wavelength = (
+                state.direct_pulses_per_wavelength
+                if state.route in {SignalRoute.DIRECT, SignalRoute.IDENTITY}
+                and state.direct_pulses_per_wavelength is not None
+                else api['detect_pulses_per_wavelength'](
+                    state.views,
+                    **_peak_detection_runtime_kwargs(report.peak_detector),
+                )
+            )
+            pulse = pulses_per_wavelength[
+                api['select_reference_wavelength'](pulses_per_wavelength)
+            ]
+            direct_pulse = pulse
+            prv_route = state.route
+            q_rate_qualified = (
+                True
+                if state.final_quality is None
+                else state.final_quality.q_rate.state is QualityState.PASS
+            )
         prv = api['compute_prv'](
             pulse,
             observation_duration_s=state.views.x_filter.shape[0] / 400.0,
             role=api['canonicalize_role_family'](str(state.row.role)),
-            route=state.route,
-            q_rate_qualified=(
-                True
-                if state.final_quality is None
-                else state.final_quality.q_rate.state is QualityState.PASS
-            ),
+            route=prv_route,
+            q_rate_qualified=q_rate_qualified,
             config=prv_config,
         )
         pulse_only = state.quality_tier == 'acceptable'
@@ -1583,6 +2271,44 @@ def _extract_vector(
                 state.views,
                 plan=plan,
             )
+            if state.routing_timeline is not None:
+                from dataclasses import replace
+
+                window_length = int(round(plan.window_seconds * 400.0))
+                eligible_rows = api['np'].asarray(
+                    [
+                        bool(cells := api['overlapping_cells'](
+                            state.routing_timeline,
+                            int(start),
+                            int(start) + window_length,
+                        ))
+                        and all(
+                            cell.final_tier == 'excellent'
+                            and cell.source_route == 'direct'
+                            for cell in cells
+                        )
+                        for start in engineering.sequence.start_samples
+                    ],
+                    dtype=bool,
+                )
+                eligible_rows &= api['np'].asarray(
+                    engineering.sequence.valid_row_mask, dtype=bool
+                )
+                engineering = replace(
+                    engineering,
+                    sequence=replace(
+                        engineering.sequence,
+                        valid_row_mask=eligible_rows,
+                    ),
+                    value_validity=(
+                        engineering.value_validity & eligible_rows[:, None]
+                    ),
+                    reasons=tuple(
+                        dict.fromkeys(
+                            (*engineering.reasons, 'routing_excellent_direct_rows_only')
+                        )
+                    ),
+                )
             state.engineering = engineering
             values, validity = api['summarize_engineering'](engineering)
         if state.final_quality is not None:
@@ -1596,26 +2322,50 @@ def _extract_vector(
         for name, value in prv.values.items():
             values[f'prv.{name}'] = value
             validity[f'prv.{name}'] = bool(prv.validity[name])
-        if (
-            state.shape_features_eligible
-            and state.route in {SignalRoute.DIRECT, SignalRoute.IDENTITY}
-        ):
-            morphology = api['extract_morphology'](state.views.x_filter, pulse, route=state.route)
-            for name, value in morphology.aggregate_values.items():
-                values[f'morphology.{name}'] = value
-                validity[f'morphology.{name}'] = bool(morphology.aggregate_validity[name])
-            optical = api['extract_dual_optical'](
-                state.views.x_native,
+        if state.shape_features_eligible:
+            morphology = api['extract_morphology'](
                 state.views.x_filter,
-                pulses_per_wavelength,
-                route=state.route,
+                direct_pulse,
+                route=SignalRoute.DIRECT,
             )
-            for name, value in optical.aggregate_values.items():
-                values[f'optical.{name}'] = value
-                validity[f'optical.{name}'] = bool(optical.aggregate_validity[name])
-            state.diagnostic_components['dual_optical_pairing'] = (
-                _compact_dual_optical_diagnostics(optical)
+            if state.routing_timeline is None:
+                morphology_values = morphology.aggregate_values
+                morphology_validity = morphology.aggregate_validity
+            else:
+                morphology_values, morphology_validity = api[
+                    'route_eligible_morphology_aggregates'
+                ](direct_pulse, morphology, state.routing_timeline)
+            for name, value in morphology_values.items():
+                values[f'morphology.{name}'] = value
+                validity[f'morphology.{name}'] = bool(morphology_validity[name])
+            optical_route_eligible = (
+                state.routing_timeline is None
+                or all(
+                    cell.final_tier == 'excellent'
+                    and cell.source_route == 'direct'
+                    for cell in state.routing_timeline.cells
+                )
             )
+            if optical_route_eligible:
+                optical = api['extract_dual_optical'](
+                    state.views.x_native,
+                    state.views.x_filter,
+                    pulses_per_wavelength,
+                    route=SignalRoute.DIRECT,
+                )
+                for name, value in optical.aggregate_values.items():
+                    values[f'optical.{name}'] = value
+                    validity[f'optical.{name}'] = bool(
+                        optical.aggregate_validity[name]
+                    )
+                state.diagnostic_components['dual_optical_pairing'] = (
+                    _compact_dual_optical_diagnostics(optical)
+                )
+            else:
+                state.diagnostic_components['dual_optical_pairing'] = {
+                    'status': 'unavailable_mixed_or_excluded_routing_cells',
+                    'affects_prediction': True,
+                }
         enabled_groups = (
             None
             if features_config is None
@@ -1687,6 +2437,14 @@ def _extract_vector(
                 'sqi_and_coverage_predictors_excluded': True,
                 'prv_config': prv_config.to_dict(),
                 'quality_tier': state.quality_tier,
+                'routing_interval_source_routes': (
+                    []
+                    if getattr(pulse, 'interval_source_routes', None) is None
+                    else sorted(
+                        set(map(str, pulse.interval_source_routes))
+                        - {'routing_boundary'}
+                    )
+                ),
                 'acceptable_contract': (
                     'record_specific_pulse_prv_only_nonpulse_slots_missing_'
                     'outer_train_imputed'
@@ -1739,26 +2497,40 @@ def _dataset(states: Iterable[_RuntimeRecord]) -> Any:
 
 
 def _extract_matrix_features(state: _RuntimeRecord, report: Any) -> None:
-    '''Extract only the physical 115-feature engineering sequence for matrices.'''
+    '''Extract the route-aware 146-feature variable-K window sequence.'''
 
     if not state.retained:
         return
-    if state.quality_tier == 'acceptable':
-        _drop_after_routing(
-            state,
-            reason='feature_matrix_requires_excellent_full_features',
-            route_status='dropped_feature_matrix_tier_ineligible',
-        )
-        return
     api = _runtime_imports()
     try:
+        if state.routing_timeline is None:
+            raise RuntimeError('feature_matrix_requires_routing_timeline')
         plan = api['WindowPlan'](
             source_record_id=state.row.record_id,
             **report.window_profiles['engineering'],
         )
-        state.engineering = api['extract_engineering_features'](
+        detector = report.peak_detector
+        pulses = _direct_pulses_for_state(state, api, detector)
+        direct_pulse = pulses[api['select_reference_wavelength'](pulses)]
+        direct_morphology = api['extract_morphology'](
+            state.views.x_filter,
+            direct_pulse,
+            route=api['SignalRoute'].DIRECT,
+        )
+        processed_pulse = None
+        if state.processed_pulses_per_wavelength is not None:
+            processed_pulse = state.processed_pulses_per_wavelength[
+                api['select_reference_wavelength'](
+                    state.processed_pulses_per_wavelength
+                )
+            ]
+        state.engineering = api['extract_window_features'](
             state.views,
             plan=plan,
+            timeline=state.routing_timeline,
+            direct_pulse=direct_pulse,
+            direct_morphology=direct_morphology,
+            processed_pulse=processed_pulse,
         )
     except Exception as exc:
         _drop_after_routing(
@@ -1789,11 +2561,55 @@ def _extract_raw(
             if not isinstance(raw_normalization, Mapping):
                 raise TypeError('signal.normalization must be a mapping')
             normalization = dict(raw_normalization)
-        state.raw_windows = api['build_raw_windows'](
+        materialized = api['build_raw_windows'](
             state.views,
             plan,
             normalization=normalization,
         )
+        if state.routing_timeline is not None:
+            from dataclasses import replace
+
+            keep = []
+            for index, start_sample in enumerate(materialized.start_samples):
+                stop_sample = int(start_sample) + int(materialized.values.shape[2])
+                if stop_sample > state.routing_timeline.n_samples:
+                    keep.append(False)
+                    continue
+                cells = api['overlapping_cells'](
+                    state.routing_timeline,
+                    int(start_sample),
+                    stop_sample,
+                )
+                keep.append(
+                    bool(cells)
+                    and all(
+                        cell.final_tier == 'excellent'
+                        and cell.source_route == 'direct'
+                        for cell in cells
+                    )
+                )
+            selected = api['np'].asarray(keep, dtype=bool)
+            materialized = replace(
+                materialized,
+                values=materialized.values[selected],
+                valid_mask=materialized.valid_mask[selected],
+                start_samples=materialized.start_samples[selected],
+                dropped_invalid_count=(
+                    int(materialized.dropped_invalid_count)
+                    + int(selected.size - api['np'].count_nonzero(selected))
+                ),
+                provenance={
+                    **dict(materialized.provenance),
+                    'routing_timeline_schema': state.routing_timeline.schema_version,
+                    'routing_eligibility': 'complete_support_excellent_direct',
+                    'routing_excluded_window_count': int(
+                        selected.size - api['np'].count_nonzero(selected)
+                    ),
+                },
+            )
+        if materialized.values.shape[0] == 0:
+            raise ValueError('no_complete_excellent_direct_raw_window')
+        state.raw_windows = materialized
     except Exception as exc:
         _drop_after_routing(
             state,
@@ -2023,7 +2839,6 @@ def _fit_representation_artifacts(
     oof_ids: tuple[str, ...],
     *,
     fitted_objects: dict[str, Any] | None = None,
-    matrix_k: int = 150,
     raw_normalization_override: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     '''Fit and apply only the transforms required by one representation mode.
@@ -2170,7 +2985,7 @@ def _fit_representation_artifacts(
             for state in matrix_states
             if str(state.row.participant_id) in set(train_ids)
         ]
-        engineering_transform = api['fit_fold_feature_transform'](
+        engineering_transform = api['fit_fold_window_feature_transform'](
             train_engineering,
             fitted_on_participant_ids=train_ids,
             outer_train_participant_ids=train_ids,
@@ -2181,24 +2996,24 @@ def _fit_representation_artifacts(
         engineering_payload = {
             'center': engineering_transform.center.tolist(),
             'scale': engineering_transform.scale.tolist(),
+            'valid_count': engineering_transform.valid_count.tolist(),
             'feature_names': engineering_transform.feature_names,
             'fitted_on_participant_ids': engineering_transform.fitted_on_participant_ids,
         }
         engineering_hash = api['stable_payload_sha256'](engineering_payload)
         for state in matrix_states:
             try:
-                state.transformed_engineering = api['transform_engineering'](
+                state.transformed_engineering = api['transform_window_features'](
                     state.engineering,
                     engineering_transform,
                 )
-                state.matrix = api['build_ordered_matrix'](
+                state.matrix = api['build_ordered_window_matrix'](
                     state.transformed_engineering,
                     provenance={
                         'route': state.route.value,
                         'record_id': state.row.record_id,
                         'engineering_transform_sha256': engineering_hash,
                     },
-                    k=matrix_k,
                 )
             except Exception as exc:
                 _drop_after_routing(
@@ -2209,9 +3024,10 @@ def _fit_representation_artifacts(
         provenance['engineering'] = {
             **engineering_payload,
             'artifact_sha256': engineering_hash,
-            'schema_version': 'engineering_outer_train_robust_v3',
-            'matrix_k': int(matrix_k),
-            'matrix_predictor_channels': 115,
+            'schema_version': 'window_feature_set_d146_outer_train_robust_v1',
+            'matrix_length_policy': 'all_complete_windows_variable_k',
+            'matrix_predictor_channels': 146,
+            'batch_padding_policy': 'batch_only_to_max_k_with_false_mask',
             'file_context_predictor_channels': 0,
             'validity_predictor_channels': 0,
         }
@@ -2648,13 +3464,15 @@ def _outer_cv_model_training_seed(config: Any, split: Mapping[str, Any]) -> int:
 _CANONICAL_RAW_CHANNEL_SCHEMA = (
     'RED', 'IR', 'A_dyn_x', 'A_dyn_y', 'A_dyn_z', 'GX', 'GY', 'GZ',
 )
+
+
 def _bind_raw_dataset_for_model(
     dataset: Any,
     model_id: str,
     *,
     declared_channel_order: Iterable[str] | None = None,
 ) -> tuple[Any, dict[str, Any]]:
-    '''Bind every frailty raw model to the same canonical 8-channel tensor.'''
+    '''Bind an explicit ordered DL-channel view from the canonical tensor.'''
 
     api = _runtime_imports()
     source_schema = _CANONICAL_RAW_CHANNEL_SCHEMA
@@ -2664,20 +3482,43 @@ def _bind_raw_dataset_for_model(
             f'canonical_frailty_raw_tensor_must_be_8_channels:{values.shape}'
         )
     declared = tuple(str(value) for value in (declared_channel_order or ()))
-    if declared != source_schema:
+    if (
+        not declared
+        or len(declared) != len(set(declared))
+        or any(value not in source_schema for value in declared)
+        or tuple(value for value in source_schema if value in declared) != declared
+    ):
         raise _ExperimentProtocolError(
-            'frailty_model_input_channel_order_must_equal_canonical_8ch_schema'
+            'frailty_model_input_channel_order_must_be_ordered_canonical_subset'
         )
+    source_indices = tuple(source_schema.index(value) for value in declared)
+    if declared == source_schema:
+        bound = dataset.__class__(
+            values,
+            dataset.identities,
+            dataset.sample_mask,
+            channel_schema=declared,
+        )
+        status = 'canonical_frailty_raw_8_identity'
+    else:
+        bound = dataset.__class__(
+            values[:, source_indices, :],
+            dataset.identities,
+            dataset.sample_mask,
+            channel_schema=declared,
+        )
+        status = 'explicit_frailty_raw_channel_subset'
     payload = {
-        'status': 'canonical_frailty_raw_8_identity',
+        'status': status,
         'model_id': str(model_id),
         'source_channel_schema': source_schema,
-        'target_channel_schema': source_schema,
-        'source_indices': tuple(range(len(source_schema))),
+        'target_channel_schema': declared,
+        'source_indices': source_indices,
         'derived_motion_channels_present': False,
         'silent_channel_slicing': False,
+        'physical_analysis_views_unchanged': True,
     }
-    return dataset, {
+    return bound, {
         **payload,
         'binding_sha256': api['stable_payload_sha256'](payload),
     }
@@ -2695,20 +3536,30 @@ def _model_input_spec(dataset: Any, mode: str) -> Any:
         )
     if mode == 'raw':
         channel_count = int(dataset.values.shape[1])
-        if channel_count != len(_CANONICAL_RAW_CHANNEL_SCHEMA):
+        channel_schema = tuple(getattr(dataset, 'channel_schema', ()))
+        if not channel_schema and channel_count == len(_CANONICAL_RAW_CHANNEL_SCHEMA):
+            channel_schema = _CANONICAL_RAW_CHANNEL_SCHEMA
+        if (
+            len(channel_schema) != channel_count
+            or any(value not in _CANONICAL_RAW_CHANNEL_SCHEMA for value in channel_schema)
+            or tuple(
+                value for value in _CANONICAL_RAW_CHANNEL_SCHEMA
+                if value in channel_schema
+            ) != channel_schema
+        ):
             raise _ExperimentProtocolError(
-                f'frailty_raw_requires_canonical_8_channels:{channel_count}'
+                f'frailty_raw_channel_schema_invalid:{channel_count}:{channel_schema}'
             )
         return api['ModelInputSpec'](
             mode,
             n_channels=channel_count,
             n_classes=3,
-            channel_schema=_CANONICAL_RAW_CHANNEL_SCHEMA,
+            channel_schema=channel_schema,
         )
     if mode == 'feature_matrix':
         return api['ModelInputSpec'](
             mode,
-            n_channels=int(dataset.values.shape[1]),
+            n_channels=int(dataset.n_channels),
             n_classes=3,
             channel_schema=tuple(dataset.channel_schema),
         )
@@ -2964,7 +3815,6 @@ def _materialize_trusted_full29(
         participant_ids,
         (),
         fitted_objects=fitted_objects,
-        matrix_k=config.section('features').get('matrix_k', 150),
     )
     if window_selection_provenance is not None:
         representation_provenance['window_quality_selection'] = (
@@ -3086,7 +3936,8 @@ def _materialize_trusted_full29(
         feature_contract = {
             'channel_schema': tuple(dataset.channel_schema),
             'transforms': representation_provenance,
-            'matrix_k': int(dataset.values.shape[2]),
+            'matrix_length_policy': 'all_complete_windows_variable_k',
+            'matrix_k_by_recording': list(dataset.sequence_lengths),
         }
     else:
         feature_schema_id = (
@@ -3669,7 +4520,6 @@ def _execute_cell_unchecked(
             mode,
             train_ids,
             oof_ids,
-            matrix_k=config.section('features').get('matrix_k', 150),
         )
     )
     if window_selection_provenance is not None:
@@ -4059,7 +4909,8 @@ def _execute_cell_unchecked(
         feature_contract = {
             'channel_schema': tuple(train_dataset.channel_schema),
             'transforms': representation_provenance,
-            'matrix_k': int(train_dataset.values.shape[2]),
+            'matrix_length_policy': 'all_complete_windows_variable_k',
+            'matrix_k_by_recording': list(train_dataset.sequence_lengths),
         }
     else:
         feature_schema_id = (
@@ -4674,7 +5525,12 @@ def _execute_cell_unchecked(
             if state.diagnostic_components or state.diagnostic_reason is not None
         ],
         'route_artifacts': [
-            _persisted_route_artifact_row(state) for state in states
+            _persisted_route_artifact_row(
+                state,
+                train_participant_ids=train_ids,
+                oof_participant_ids=oof_ids,
+            )
+            for state in states
         ],
         'physical_recording_qc': [
             {
@@ -8046,8 +8902,9 @@ def _canonical_final_bundle_materialization(
             'status': 'model_input',
             'schema_version': materialized.feature_schema_id,
             'channel_schema': list(spec.channel_schema),
-            'columns': int(materialized.dataset.values.shape[2]),
-            'mask': 'row_mask_true_for_observed_ordered_columns',
+            'columns': list(materialized.dataset.sequence_lengths),
+            'column_policy': 'variable_k_all_complete_windows',
+            'mask': 'route_eligibility_plus_batch_padding_mask',
         }
     else:
         ordered_matrix_schema = {

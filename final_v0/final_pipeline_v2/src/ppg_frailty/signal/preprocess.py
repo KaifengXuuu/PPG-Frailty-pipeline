@@ -23,7 +23,7 @@ from .motion_imu import (
     MotionImuCalibration,
     RollPitchEkfConfig,
     preprocess_motion_imu_calibrated_ekf,
-    preprocess_motion_imu_lpf_ablation,
+    preprocess_motion_imu_profile_a_lpf,
 )
 from .resample import validate_dl_resampling_config
 from .views import CANONICAL_FS_HZ, CanonicalSignalViews
@@ -454,7 +454,7 @@ def _materialize_imu_profile(
     if unknown:
         raise ValueError(f"signal.imu contains unknown fields: {unknown}")
 
-    method = str(declared.get("gravity_method", "calibrated_roll_pitch_ekf"))
+    method = str(declared.get("gravity_method", "profile_a_lowpass_0p3hz"))
     calibrated_methods = {
         "calibrated_roll_pitch_ekf",
         "profile_a_lowpass_0p3hz",
@@ -468,11 +468,12 @@ def _materialize_imu_profile(
         if method in calibrated_methods
         else "online_no_precalibration"
     )
-    derived_comparison = (
-        "profile_a_lowpass_0p3hz"
-        if method in calibrated_methods
-        else "lowpass_0p3hz"
-    )
+    derived_comparison = {
+        "calibrated_roll_pitch_ekf": "profile_a_lowpass_0p3hz",
+        "profile_a_lowpass_0p3hz": "calibrated_roll_pitch_ekf",
+        "quaternion_error_state_ekf": "lowpass_0p3hz",
+        "low_pass_0p3hz": "lowpass_0p3hz",
+    }[method]
     if (
         "initialization" in declared
         and declared["initialization"] != derived_initialization
@@ -974,20 +975,28 @@ def build_signal_views(
     ):
         raise ValueError("resolved signal.imu structural contract is invalid")
     if gravity_profile in calibrated_profiles:
+        expected_comparison = {
+            "calibrated_roll_pitch_ekf": "profile_a_lowpass_0p3hz",
+            "profile_a_lowpass_0p3hz": "calibrated_roll_pitch_ekf",
+        }[gravity_profile]
         if (
             imu_config.get("initialization")
             != "same_participant_static_calibration"
-            or imu_config.get("comparison_method") != "profile_a_lowpass_0p3hz"
+            or imu_config.get("comparison_method") != expected_comparison
         ):
             raise ValueError(
-                "calibrated EKF initialization/comparator identity drift"
+                "calibrated IMU initialization/comparator identity drift"
             )
     else:
         if set(imu_config) - common_imu_keys:
             raise ValueError("legacy signal.imu contains calibrated-only keys")
+        expected_comparison = {
+            "quaternion_error_state_ekf": "lowpass_0p3hz",
+            "low_pass_0p3hz": "lowpass_0p3hz",
+        }[gravity_profile]
         if (
             imu_config.get("initialization") != "online_no_precalibration"
-            or imu_config.get("comparison_method") != "lowpass_0p3hz"
+            or imu_config.get("comparison_method") != expected_comparison
         ):
             raise ValueError("legacy IMU profile declaration drift")
     dl_resampling = validate_dl_resampling_config(signal_config.get("dl_resampling"))
@@ -1024,7 +1033,7 @@ def build_signal_views(
         processor = (
             preprocess_motion_imu_calibrated_ekf
             if gravity_profile == "calibrated_roll_pitch_ekf"
-            else preprocess_motion_imu_lpf_ablation
+            else preprocess_motion_imu_profile_a_lpf
         )
         motion_imu = processor(
             acc,

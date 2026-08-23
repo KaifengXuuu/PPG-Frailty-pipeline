@@ -699,15 +699,31 @@ def _validate_frailty_factory_input(
 
     if spec.mode not in {RepresentationMode.RAW, RepresentationMode.FUSION}:
         return
-    if spec.n_channels != len(FRAILTY_RAW_CHANNEL_SCHEMA):
-        raise ValueError("frailty raw/fusion model factory requires exactly 8 channels")
     if require_explicit_schema and not spec.channel_schema:
         raise ValueError(
             "formal frailty raw/fusion preparation requires explicit channel_schema"
         )
-    if spec.channel_schema and spec.channel_schema != FRAILTY_RAW_CHANNEL_SCHEMA:
+    if spec.mode is RepresentationMode.FUSION:
+        if (
+            spec.n_channels != len(FRAILTY_RAW_CHANNEL_SCHEMA)
+            or spec.channel_schema != FRAILTY_RAW_CHANNEL_SCHEMA
+        ):
+            raise ValueError(
+                "frailty fusion model factory requires the canonical ordered 8 channels"
+            )
+        return
+    schema = tuple(spec.channel_schema)
+    if (
+        spec.n_channels <= 0
+        or len(schema) != spec.n_channels
+        or len(schema) != len(set(schema))
+        or any(value not in FRAILTY_RAW_CHANNEL_SCHEMA for value in schema)
+        or tuple(value for value in FRAILTY_RAW_CHANNEL_SCHEMA if value in schema)
+        != schema
+    ):
         raise ValueError(
-            "frailty raw/fusion channel_schema must equal the canonical ordered 8 channels"
+            "frailty raw channel_schema must be a non-empty ordered subset of "
+            "the canonical 8 channels"
         )
 
 

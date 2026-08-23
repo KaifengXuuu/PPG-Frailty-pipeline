@@ -21,7 +21,7 @@ search:
   runtime_sampling: false
   interpretation: "A paired ensemble-factor comparison; model architecture and representation are otherwise identical."
   controlled_factors:
-    - "Same selected Inception architecture, representation, participants, folds and preprocessing"
+    - "Same selected Inception architecture and V2-core plus B0/B2/B7 DL state, participants, folds and preprocessing"
     - "Member 0 uses seed 50042"
     - "The ensemble uses seeds 50042, 60042, 70042, 80042 and 90042"
     - "Five member probabilities are averaged within each held-out outer fold"
@@ -33,14 +33,27 @@ cases:
     catalog_entry: inception_full_member0_comparator
     screen_profile_id: matched_member0
     output_group: raw
-    overrides: {}
+    overrides: &b0_b2_b7_dl
+      signal.dl_resampling.enabled: true
+      signal.dl_resampling.target_fs_hz: 64.0
+      signal.normalization.raw_ppg: per_window_median_iqr_over_1p349_sd_finite
+      signal.normalization.raw_imu: none
+      windows.raw_dl.length_s: 5.0
+      windows.raw_dl.hop_s: 2.5
+      training.optimizer: adamw
+      training.batch_size: 32
+      training.sampler: exhaustive_shuffle_without_replacement
+      training.class_weighting: outer_train_window_inverse_frequency
+      training.class_count_basis: row
+      aggregation.balance_line: line_b_equal_role_families
     rationale: "Matched single-network comparator using fixed member 0."
     formal_profile: null
   - case_id: selected_inception__five_member
     catalog_entry: inception_full_five_member_ensemble
     screen_profile_id: five_member_probability_mean
     output_group: raw
-    overrides: {}
+    overrides:
+      <<: *b0_b2_b7_dl
     rationale: "Five fixed members combined by fold-level arithmetic mean probability."
     formal_profile: null
 execution:
@@ -59,3 +72,6 @@ report:
   write_html: true
   write_static_figures: true
   calibration_bins: 10
+  figure_modules: [all]
+  compact_mean_sd: true
+  write_excel_workbook: true

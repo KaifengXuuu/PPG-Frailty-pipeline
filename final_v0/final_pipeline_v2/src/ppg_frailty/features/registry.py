@@ -1,12 +1,13 @@
 """冻结十字段注册表与显式有效性模型编码 / Frozen registry and mask encoding.
 
 English: The public builders implement a content-addressed FeatureVectorV1
-allowlist composed from complete registered feature groups and the fixed
-115-by-150 engineering-matrix contract. Technical or unknown predictor fields
+allowlist composed from complete registered feature groups and the variable-K
+146-channel window-matrix contract. Technical or unknown predictor fields
 are rejected rather than silently appended.
 
 中文：公共构建器以完整注册 feature groups 组合内容寻址的 FeatureVectorV1 allowlist，
-并实现固定 115×150 工程特征矩阵；技术字段或未知 predictor 会被拒绝，而非静默追加。
+并实现 146 通道、可变 K 的纯窗口特征矩阵；技术字段或未知 predictor
+会被拒绝，而非静默追加。
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from ..contracts import FeatureVectorV1, OrderedFeatureMatrixV1, SignalRoute
+from ..contracts import FeatureVectorV1, SignalRoute
 from ..signal.morphology import MORPHOLOGY_NAMES
 from ..signal.optical import OPTICAL_SCHEMA_VERSION
 from ..signal.prv import SPECTRAL_METRICS, TIME_METRICS
@@ -37,9 +38,8 @@ from .engineering import (
 DIRECT_ROUTES = (SignalRoute.DIRECT.value, SignalRoute.IDENTITY.value)
 RATE_ROUTES = DIRECT_ROUTES + (SignalRoute.ARTIFACT_RATE_ONLY.value,)
 
-# The ordered matrix is exactly the chronological 115-feature engineering
-# sequence. File-level context and validity indicators remain separate
-# provenance and are not additional predictor channels.
+# The ordered matrix is exactly the chronological 146-feature window sequence.
+# File-level context and validity indicators remain provenance, not predictors.
 FEATURE_GROUP_ORDER = (
     "ppi_basic_rate",
     "hrv_time_domain",
@@ -50,9 +50,10 @@ FEATURE_GROUP_ORDER = (
     "engineering_summary",
 )
 FORMAL_REGISTRY_VERSION = "feature_vector_282_v3"
-ORDERED_MATRIX_SCHEMA_VERSION = "ordered_feature_matrix_d115_by_150_engineering_v4"
+ORDERED_MATRIX_SCHEMA_VERSION = "ordered_window_feature_matrix_d146_variable_k_v1"
 ENGINEERING_FEATURE_COUNT = 115
-MAX_ORDERED_MATRIX_K = 150  # compatibility export; the sole legal K is 150.
+WINDOW_FEATURE_COUNT = 146
+MAX_ORDERED_MATRIX_K = None  # compatibility export: no dataset-wide K cap.
 MISSING_POLICY = "NaN_internal/null_JSON_with_parallel_validity_false"
 
 # These are migration documentation/profiles, not a second pair of executable
@@ -508,114 +509,33 @@ def build_feature_vector(
     return FeatureVectorV1(values, validity, names, selected.schema_version, metadata)
 
 
-def _uniform_indices(count: int, target: int) -> np.ndarray:
-    """按 recording progress 均匀抽取 K rows / Uniformly sample progress."""
-
-    if count <= target:
-        return np.arange(count, dtype=np.int64)
-    indices = np.rint(np.linspace(0, count - 1, target)).astype(np.int64)
-    if np.unique(indices).size != target:
-        raise RuntimeError("uniform row sampler produced duplicate indices")
-    return indices
-
-
 def ordered_matrix_schema_version(
-    k: int,
+    k: int | None = None,
     registry: FeatureRegistry | None = None,
 ) -> str:
-    """Return the shape-explicit identity for the sole 115-by-150 contract."""
+    """Return the K-independent 146-channel matrix identity.
 
-    if isinstance(k, bool) or not isinstance(k, (int, np.integer)):
-        raise ValueError("matrix K must be an integer")
-    resolved = int(k)
-    if resolved != 150:
-        raise ValueError("matrix K is fixed at 150")
-    # ``registry`` remains an input-compatibility argument only. The matrix is
-    # no longer coupled to the independent file-vector feature-group registry.
+    ``k`` remains only to fail clearly for callers that still declare the retired
+    fixed matrix width; it never changes the variable-length schema.
+    """
+
+    if k is not None:
+        raise ValueError("matrix_k is retired from the variable-length schema")
     if registry is not None:
         registry.validate()
-    return f"ordered_feature_matrix_d115_by_{resolved}_engineering_v4"
+    return ORDERED_MATRIX_SCHEMA_VERSION
 
 
 def build_ordered_matrix(
-    sequence: EngineeringExtraction,
+    sequence: Any,
     *,
     provenance: Mapping[str, Any],
-    k: int = 150,
-) -> OrderedFeatureMatrixV1:
-    """Build the chronological 115-by-150 engineering feature matrix.
+    k: int | None = None,
+) -> Any:
+    """Compatibility facade for the variable-K window-matrix builder."""
 
-    Missing values are neutral zero after the outer-train robust transform;
-    feature validity remains hashed provenance rather than extra predictors.
-    Padding uses zero with ``row_mask=false``.
-    """
+    if k is not None:
+        raise ValueError("feature matrix no longer accepts a fixed matrix_k")
+    from .window_matrix import build_ordered_window_matrix
 
-    if not isinstance(sequence, EngineeringExtraction):
-        raise TypeError("canonical matrix builder requires EngineeringExtraction")
-    matrix_schema_version = ordered_matrix_schema_version(k)
-    k = int(k)
-    base = sequence.sequence
-    validate_engineering_extraction(sequence, fold_transformed=True)
-    route = sequence.route.value
-    metadata = dict(provenance)
-    if metadata.get("route") != route:
-        raise ValueError("engineering and matrix provenance routes must match")
-
-    values = np.asarray(base.values, dtype=np.float64)
-    physiological_validity = np.asarray(sequence.value_validity, dtype=bool)
-    row_mask_input = np.asarray(base.valid_row_mask, dtype=bool)
-    if (
-        values.ndim != 2
-        or physiological_validity.shape != values.shape
-        or row_mask_input.shape != (values.shape[0],)
-    ):
-        raise ValueError("engineering sequence/value masks have incompatible shapes")
-    valid_rows = np.flatnonzero(row_mask_input)
-    if valid_rows.size == 0:
-        raise ValueError("matrix requires at least one valid engineering row")
-    selected_rows = valid_rows[_uniform_indices(valid_rows.size, k)]
-    observed = min(k, selected_rows.size)
-    base_count = values.shape[1]
-    if base_count != ENGINEERING_FEATURE_COUNT:
-        raise ValueError("matrix requires exactly 115 engineering features per window")
-    output = np.zeros((base_count, k), dtype=np.float64)
-    row_mask = np.zeros(k, dtype=bool)
-
-    selected_values = values[selected_rows[:observed]]
-    selected_validity = (
-        physiological_validity[selected_rows[:observed]] & np.isfinite(selected_values)
-    )
-    output[:, :observed] = np.where(selected_validity, selected_values, 0.0).T
-    row_mask[:observed] = True
-
-    base_names = tuple(base.channel_schema)
-    channel_schema = base_names
-    context_schema: tuple[str, ...] = ()
-    schema_sha = hashlib.sha256("\n".join(channel_schema).encode("utf-8")).hexdigest()
-    metadata.update(
-        {
-            "selected_source_rows": selected_rows[:observed].tolist(),
-            "matrix_k": k,
-            "matrix_schema_version": matrix_schema_version,
-            "feature_validity_sha256": hashlib.sha256(
-                np.packbits(selected_validity, bitorder="little").tobytes()
-            ).hexdigest(),
-            "valid_feature_value_count": int(np.count_nonzero(selected_validity)),
-            "invalid_feature_value_count": int(
-                selected_validity.size - np.count_nonzero(selected_validity)
-            ),
-            "validity_encoding": "provenance_only_not_predictor_channels_v1",
-            "zero_semantics": "fold_standardized_center_or_invalid_or_right_padding",
-            "row_mask_policy": "right_padding_false",
-            "matrix_channel_schema_sha256": schema_sha,
-            "engineering_transform_version": base.schema_version,
-        }
-    )
-    return OrderedFeatureMatrixV1(
-        values=output,
-        row_mask=row_mask,
-        channel_schema=channel_schema,
-        context_schema=context_schema,
-        schema_version=matrix_schema_version,
-        provenance=metadata,
-    )
+    return build_ordered_window_matrix(sequence, provenance=provenance)

@@ -87,7 +87,7 @@
 ### U6 — reference training 与 aggregation
 
 - sentinel：`configs/reference_static_role_aware_v2.yaml`，raw `CompactCNN1D`，8 channels，kernels `[9,9,7]`，dilations `[1,1,1]`，pools `[4,4]`，dropout 0.2。
-- reference training：fixed 10 epochs、batch 64、Adam、LR 0.001、weight decay 0.0001、outer-train inverse-frequency class weights、`balance_line_weighted_v2` sampler、cross entropy、label smoothing 0、无 gradient clipping、deterministic algorithms。
+- reference training：fixed 10 epochs、batch 64、Adam、LR 0.001、weight decay 0.0001、outer-train row/window inverse-frequency class weights、`exhaustive_shuffle_without_replacement` sampler、cross entropy、label smoothing 0、无 gradient clipping、deterministic algorithms。`balance_line_weighted_v2` 与 participant-count basis 均是单因素 ablation。
 - reference balance line B：`equal_role_families`；probability hierarchy 为 `window -> file -> role -> participant`，每层 ordinary mean，participant 对 available roles 等权。
 - quality weighting 和 direct-all-window participant mean 均关闭。
 
@@ -226,17 +226,16 @@ python frailty_3class_sweep_v2.py run --plan configs/studies/single_config_v2.ya
 - **预计规模：** 2 cases、50 cells、50 fits。
 - **当前状态：** scalar CLI 为 `RUNNABLE_PATH`；无 persisted plan、未运行。
 
-#### Group 1E — sampler 与 class weighting 解耦
+#### Group 1E — Line-B sampler 与 participant-count weighting 单因素 ablation
 
-- **科学问题：** reference 同时启用 `balance_line_weighted_v2` sampler 和
-  `outer_train_inverse_frequency` class-weighted CE；性能变化来自哪一项，还是必须把二者共同
-  预注册为不可拆的 thesis design？
-- **Reference/config：** raw CompactCNN reference；reference case 保持现有 sampler + class weighting。
+- **科学问题：** 相对无放回 exhaustive reference，Line-B hierarchy sampler 或
+  participant-count class-weight basis 是否各自改善性能？
+- **Reference/config：** raw CompactCNN reference；sampler=`exhaustive_shuffle_without_replacement`，
+  inverse-frequency `class_count_basis=row`。
 - **唯一变量与取值：** 采用一个共同 reference 加两个彼此独立的单因素 alternatives：
-  (a) sampler=`exhaustive_shuffle_without_replacement`、class weighting保持
-  `outer_train_inverse_frequency`；(b) sampler保持 `balance_line_weighted_v2`、
-  class weighting=`none`。禁止构造 sampler 与 class weighting 同时关闭的第四个 case，除非
-  另建明确标为 interaction/exploratory 的 study。
+  (a) 只把 sampler 改为 `balance_line_weighted_v2`；(b) 只把 inverse-frequency
+  `class_count_basis` 改为 `participant`。两项同时开启属于 interaction case，不得解释为
+  任一模块的单因素效果。
 - **并行模块开关：** 仅训练 sampler 或 loss weight 二者之一变化；dataset、folds、model、batch、
   optimizer、LR/WD、epochs、aggregation、seeds 与全部信号/representation模块固定。
 - **固定控制：** U1–U7；所有 sampling weights 和 class weights 只能由 outer-training labels/
@@ -250,8 +249,8 @@ python frailty_3class_sweep_v2.py run --plan configs/studies/single_config_v2.ya
 - **证据规则：** alternatives 已进入统一 Trainer/config schema 并有 outer-fold isolation
   tests；只由完整25-cell OOF和人工审阅决定保留组合或简化。
 - **预计规模：** 计划3 cases、75 cells、75 fits；runtime 可运行，尚未建立本组 plan。
-- **当前状态：** `IMPLEMENTED_NEEDS_PLAN`；sampler 与 class weighting 已是独立模块，
-  可通过显式 study axes 组合，不需要修改 validator 或申请执行许可。
+- **当前状态：** `CATALOG_ONLY`；两个 alternative 已在
+  `configs/formal_ablation_profiles_v2.yaml` 登记为默认不自动执行的独立 family。
 
 ### Phase 2 — signal/preprocessing sensitivity，每次只动一个 profile
 
@@ -269,17 +268,18 @@ python frailty_3class_sweep_v2.py run --plan configs/studies/single_config_v2.ya
 - **预计规模：** 每 model 2 cases/50 cells；四 representations 各一次为 8/200。
 - **当前状态：** `CATALOG_ONLY`，无 persisted study plan。
 
-#### Group 2B — calibrated EKF 对 Profile-A low-pass
+#### Group 2B — Profile-A low-pass 对 calibrated EKF ablation
 
-- **科学问题：** calibrated roll–pitch EKF 相对 mandatory LPF ablation 是否改善 evidence？
+- **科学问题：** calibrated roll–pitch EKF 相对 Profile-A LPF reference 是否改善 evidence？
 - **Reference/config：** `imu_gravity` family。
-- **唯一变量与取值：** `calibrated_roll_pitch_ekf` 对 `profile_a_lowpass_0p3hz`。
+- **唯一变量与取值：** reference=`profile_a_lowpass_0p3hz`；单因素
+  ablation=`calibrated_roll_pitch_ekf`。
 - **并行模块开关：** 只换 gravity profile；两路均要求显式 same-participant calibration/bias，LPF 永远不是 EKF failure path。
 - **固定控制：** U1–U7；unit conversion、20/40 Hz sensor low-pass（zero-phase SOS order 3）、outer-train scaling、channels/windows/model/training/folds 不变；0.3 Hz gravity low-pass 仍为 order 4。
 - **适用性：** 所有由 processed IMU 派生的 frailty representations 和 motion profiles；先 sentinel，不能与 motion 8/11ch 同时改变。
 - **执行并行：** deep `jobs=1`。
 - **输出要求：** R0、calibration identity、unit conversions、covariances、profile ID、failure/drop counts、role-wise IMU coverage。
-- **晋级规则：** EKF unit tests 和 25 cells 全通过才保留 reference；含 silent LPF substitution 的 run 无效。
+- **晋级规则：** EKF unit tests 和 25 cells 全通过后才能作为候选模块保留；任何 silent profile substitution 的 run 无效。
 - **预计规模：** 每 selected model/profile 2 cases/50 cells。
 - **当前状态：** paired frailty study 为 `CATALOG_ONLY`；未运行。
 

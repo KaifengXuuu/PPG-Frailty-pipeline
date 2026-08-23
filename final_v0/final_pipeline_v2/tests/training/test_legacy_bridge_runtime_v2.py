@@ -306,7 +306,9 @@ class LegacyBridgeRuntimeTests(unittest.TestCase):
     def test_window_and_participant_class_weight_populations_are_distinct(self) -> None:
         dataset = _dataset()
         window_weights = outer_train_window_inverse_frequency_weights(dataset)
-        participant_weights = outer_train_inverse_frequency_weights(dataset, 3)
+        participant_weights = outer_train_inverse_frequency_weights(
+            dataset, 3, class_count_basis="participant"
+        )
         np.testing.assert_allclose(
             window_weights,
             np.asarray([12 / 21, 12 / 9, 2.0], dtype=np.float32),

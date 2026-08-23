@@ -107,6 +107,10 @@ class SsaReducer(ArtifactReducer):
 
     reducer_id = "ssa_decomposition"
     reducer_version = "ssa_hankel_cardiac_select_v1"
+    algorithm_kernel_description = (
+        "RED/IR 分别构造 Hankel 轨迹矩阵并做 SSA，选择心率频带能量占比达阈值的分量后重建；"
+        "内核：全矩阵 SVD、逐分量对角平均与 Welch 0.5–3.5 Hz 浓度筛选。"
+    )
 
     def __init__(self, config: SsaConfig = SsaConfig()) -> None:
         config.validate()

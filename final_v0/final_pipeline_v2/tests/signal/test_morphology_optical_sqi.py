@@ -250,6 +250,22 @@ class DirectFeatureTest(unittest.TestCase):
             ("train1", "train2"),
         )
 
+    def test_empirical_calibrator_gives_each_participant_equal_total_weight(self) -> None:
+        balanced = fit_sqi_calibrator(
+            [
+                *({"rate.a": 0.0} for _ in range(100)),
+                {"rate.a": 1.0},
+            ],
+            [*("many_windows" for _ in range(100)), "one_window"],
+            fitted_on_participant_ids=("many_windows", "one_window"),
+            outer_train_participant_ids=("many_windows", "one_window"),
+            outer_oof_participant_ids=("heldout",),
+            lower_quantile=0.5,
+            upper_quantile=0.9,
+        )
+        self.assertGreater(balanced.bounds["rate.a"][0], 0.0)
+        self.assertGreater(balanced.bounds["rate.a"][1], 0.5)
+
 
 if __name__ == "__main__":
     unittest.main()

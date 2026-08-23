@@ -828,20 +828,64 @@ def fit_sqi_calibrator(
     ids = tuple(str(value) for value in participant_ids)
     if len(rows) != len(ids):
         raise ValueError("component_rows and participant_ids must align")
-    selected = [row for row, participant in zip(rows, ids) if participant in fitted_set]
+    selected = [
+        (row, participant)
+        for row, participant in zip(rows, ids)
+        if participant in fitted_set
+    ]
     if not selected:
         raise ValueError("no outer-train SQI component rows were provided")
-    names = sorted({name for row in selected for name in row})
+    names = sorted({name for row, _ in selected for name in row})
     bounds: dict[str, tuple[float, float]] = {}
     for name in names:
-        values = np.asarray(
-            [row[name] for row in selected if name in row and np.isfinite(row[name])],
-            dtype=np.float64,
-        )
+        observed = [
+            (float(row[name]), participant)
+            for row, participant in selected
+            if name in row and np.isfinite(row[name])
+        ]
+        values = np.asarray([value for value, _ in observed], dtype=np.float64)
         if values.size:
+            valid_count_by_participant = {
+                participant: sum(
+                    candidate == participant for _, candidate in observed
+                )
+                for participant in fitted
+            }
+            # Each participant has total weight one, irrespective of its number
+            # of recordings/windows.  Midpoint interpolation yields a stable
+            # weighted empirical quantile without using frailty labels.
+            weights = np.asarray(
+                [
+                    1.0 / valid_count_by_participant[participant]
+                    for _, participant in observed
+                ],
+                dtype=np.float64,
+            )
+            order = np.argsort(values, kind="stable")
+            ordered_values = values[order]
+            ordered_weights = weights[order]
+            positions = (
+                np.cumsum(ordered_weights) - 0.5 * ordered_weights
+            ) / np.sum(ordered_weights)
             bounds[name] = (
-                float(np.quantile(values, lower_quantile)),
-                float(np.quantile(values, upper_quantile)),
+                float(
+                    np.interp(
+                        lower_quantile,
+                        positions,
+                        ordered_values,
+                        left=ordered_values[0],
+                        right=ordered_values[-1],
+                    )
+                ),
+                float(
+                    np.interp(
+                        upper_quantile,
+                        positions,
+                        ordered_values,
+                        left=ordered_values[0],
+                        right=ordered_values[-1],
+                    )
+                ),
             )
     return SqiCalibrator(bounds=bounds, fitted_on_participant_ids=fitted)
 

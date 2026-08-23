@@ -436,6 +436,21 @@ def parse_study_plan(
             write_excel_workbook=bool(
                 report_raw.get("write_excel_workbook", True)
             ),
+            classification_tsne_random_state=int(
+                report_raw.get("classification_tsne_random_state", 42)
+            ),
+            classification_tsne_perplexity=float(
+                report_raw.get("classification_tsne_perplexity", 30.0)
+            ),
+            classification_tsne_max_samples=int(
+                report_raw.get("classification_tsne_max_samples", 5000)
+            ),
+            classification_roc_macro_grid_points=int(
+                report_raw.get("classification_roc_macro_grid_points", 201)
+            ),
+            classification_score_histogram_bins=int(
+                report_raw.get("classification_score_histogram_bins", 40)
+            ),
         ),
         plan_path=None if plan_path is None else Path(plan_path).resolve(),
     )

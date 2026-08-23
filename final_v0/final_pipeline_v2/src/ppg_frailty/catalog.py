@@ -48,8 +48,8 @@ def _line_sections(
     source = _load_yaml(
         pipeline_root / "configs" / "reference_static_feature_vector_v2.yaml"
     )
-    training = copy.deepcopy(source["training"])
     aggregation = copy.deepcopy(source["aggregation"])
+    training = copy.deepcopy(source["training"])
     if line == "line_a":
         training["training_balance"] = "equal_files"
         aggregation.update(

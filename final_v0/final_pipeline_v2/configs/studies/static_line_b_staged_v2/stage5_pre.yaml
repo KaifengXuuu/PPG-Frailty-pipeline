@@ -77,16 +77,34 @@ denoiser_benchmark:
 
 report:
   formats: [markdown, html, json, csv, xlsx, png]
+  file_score_aggregation: median
+  classification_tsne_random_state: 42
+  classification_tsne_perplexity: 30.0
+  classification_tsne_max_samples: 2000
+  classification_roc_macro_grid_points: 201
+  classification_score_histogram_bins: 40
   required_detector_figures:
     - motion_detector_metrics
     - motion_internal_confusion_matrix
-    - motion_internal_subject_confusion_matrix
+    - motion_internal_file_confusion_matrix
     - motion_ptt_confusion_matrix
-    - motion_ptt_subject_confusion_matrix
+    - motion_ptt_file_confusion_matrix
     - motion_ptt_training_oof_confusion_matrix
-    - motion_ptt_training_oof_subject_confusion_matrix
+    - motion_ptt_training_oof_file_confusion_matrix
     - motion_internal_reverse_confusion_matrix
-    - motion_internal_reverse_subject_confusion_matrix
+    - motion_internal_reverse_file_confusion_matrix
+    - frailty29_trained_window_score_distribution
+    - frailty29_trained_file_score_distribution
+    - ptt22_trained_window_score_distribution
+    - ptt22_trained_file_score_distribution
+    - frailty29_trained_window_prediction_tsne
+    - frailty29_trained_file_prediction_tsne
+    - ptt22_trained_window_prediction_tsne
+    - ptt22_trained_file_prediction_tsne
+    - frailty29_trained_window_roc_auc_curve
+    - frailty29_trained_file_roc_auc_curve
+    - ptt22_trained_window_roc_auc_curve
+    - ptt22_trained_file_roc_auc_curve
     - motion_training_learning_curves
   denoiser_figures_when_enabled:
     - denoiser_interval_rmse

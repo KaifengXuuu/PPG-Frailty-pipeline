@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -123,9 +124,13 @@ def _validate_override_paths(overrides: Mapping[str, Any]) -> None:
         if not isinstance(raw_path, str):
             raise TypeError("catalog case override paths must be strings")
         fields = raw_path.split(".")
-        if len(fields) < 2 or any(not field.strip() for field in fields):
+        if (
+            (len(fields) < 2 and raw_path != "roles")
+            or any(not field.strip() for field in fields)
+        ):
             raise ValueError(
-                "catalog case override paths must be non-empty dotted paths"
+                "catalog case override paths must be non-empty dotted paths; "
+                "the registered top-level roles selector is also configurable"
             )
         paths.append(raw_path)
     for index, path in enumerate(paths):
@@ -1100,6 +1105,11 @@ class ReportSpec:
     figure_modules: tuple[str, ...] = ("all",)
     compact_mean_sd: bool = True
     write_excel_workbook: bool = True
+    classification_tsne_random_state: int = 42
+    classification_tsne_perplexity: float = 30.0
+    classification_tsne_max_samples: int = 5000
+    classification_roc_macro_grid_points: int = 201
+    classification_score_histogram_bins: int = 40
 
     def __post_init__(self) -> None:
         if not 1 <= int(self.top_k) <= 100:
@@ -1110,6 +1120,16 @@ class ReportSpec:
             not str(value).strip() for value in self.figure_modules
         ):
             raise ValueError("figure_modules must contain non-empty module names")
+        if not math.isfinite(float(self.classification_tsne_perplexity)) or float(
+            self.classification_tsne_perplexity
+        ) <= 0:
+            raise ValueError("classification_tsne_perplexity must be positive")
+        if int(self.classification_tsne_max_samples) < 3:
+            raise ValueError("classification_tsne_max_samples must be at least 3")
+        if int(self.classification_roc_macro_grid_points) < 2:
+            raise ValueError("classification_roc_macro_grid_points must be at least 2")
+        if int(self.classification_score_histogram_bins) < 2:
+            raise ValueError("classification_score_histogram_bins must be at least 2")
 
 
 @dataclass(frozen=True)
@@ -1182,13 +1202,36 @@ class StudyPlan:
                         "matched_ensemble_pair requires exactly two distinct "
                         "catalog entries"
                     )
-                if any(
-                    case.overrides or case.formal_profile is not None
-                    for case in self.cases
+                if any(case.formal_profile is not None for case in self.cases):
+                    raise ValueError(
+                        "matched_ensemble_pair cannot add formal profiles; the "
+                        "registered ensemble factor must be isolated"
+                    )
+                matched_overrides = tuple(
+                    copy.deepcopy(dict(case.overrides)) for case in self.cases
+                )
+                allowed_matched_paths = {
+                    "signal.dl_resampling.enabled",
+                    "signal.dl_resampling.target_fs_hz",
+                    "signal.normalization.raw_ppg",
+                    "signal.normalization.raw_imu",
+                    "windows.raw_dl.length_s",
+                    "windows.raw_dl.hop_s",
+                    "training.optimizer",
+                    "training.batch_size",
+                    "training.sampler",
+                    "training.class_weighting",
+                    "training.class_count_basis",
+                    "aggregation.balance_line",
+                }
+                if (
+                    any(value != matched_overrides[0] for value in matched_overrides[1:])
+                    or not set(matched_overrides[0]) <= allowed_matched_paths
                 ):
                     raise ValueError(
-                        "matched_ensemble_pair cannot add overrides or formal "
-                        "profiles; the registered ensemble factor must be isolated"
+                        "matched_ensemble_pair cannot add unequal or model-changing "
+                        "overrides; identical registered-input profile overrides "
+                        "are required"
                     )
             if self.legacy_bridge is not None:
                 if not isinstance(self.legacy_bridge, LegacyBridgeSpec):
@@ -1331,6 +1374,21 @@ class StudyPlan:
                 "figure_modules": list(self.report.figure_modules),
                 "compact_mean_sd": self.report.compact_mean_sd,
                 "write_excel_workbook": self.report.write_excel_workbook,
+                "classification_tsne_random_state": (
+                    self.report.classification_tsne_random_state
+                ),
+                "classification_tsne_perplexity": (
+                    self.report.classification_tsne_perplexity
+                ),
+                "classification_tsne_max_samples": (
+                    self.report.classification_tsne_max_samples
+                ),
+                "classification_roc_macro_grid_points": (
+                    self.report.classification_roc_macro_grid_points
+                ),
+                "classification_score_histogram_bins": (
+                    self.report.classification_score_histogram_bins
+                ),
             },
         }
         if self.execution.device is not None:

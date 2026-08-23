@@ -72,6 +72,14 @@ from .routing import (
     route_quality_tier,
     run_quality_mode,
 )
+from .routing_timeline import (
+    RoutingEvidence,
+    build_routing_timeline,
+    build_routing_windows,
+    matrix_row_route,
+    overlapping_cells,
+    resolve_routing_evidence,
+)
 from .window_selection import (
     LEGACY_WINDOW_SCORE_ALGORITHM,
     WINDOW_SELECTION_APPLICATION_SCOPES,
@@ -95,6 +103,8 @@ __all__ = [
     "quality_mode_from_config", "resolve_quality_mode",
     "route_module_switches_from_config", "route_quality_tier",
     "run_quality_mode",
+    "RoutingEvidence", "build_routing_timeline", "build_routing_windows",
+    "matrix_row_route", "overlapping_cells", "resolve_routing_evidence",
     "LEGACY_WINDOW_SCORE_ALGORITHM", "WINDOW_SELECTION_APPLICATION_SCOPES",
     "WINDOW_SELECTION_POLICIES",
     "WindowSelectionConfig", "legacy_per_file_top_fraction_mask",

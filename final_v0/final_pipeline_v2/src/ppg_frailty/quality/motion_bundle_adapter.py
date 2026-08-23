@@ -1,16 +1,15 @@
-"""Read-only reuse adapter for a frozen Stage5 Frailty29 motion bundle.
+"""Read-only reuse adapter for frozen Stage5 Frailty29 motion bundles.
 
 The adapter deliberately performs no fitting, calibration, threshold search,
-or cross-validation.  It reuses the all-participant model and the deployment
-threshold already stored by Stage5, applies the canonical 8 s / 2 s motion
-materializer, and reduces window probabilities to one recording-level median.
-
-Because the reused model was fitted on all 29 Frailty participants, every
-result carries an explicit ``in_sample_for_frailty29`` provenance warning.
+or cross-validation. Formal frailty OOF cells reuse the matching pre-existing
+Stage5 fold model and its train-only threshold. Final all-data/smoke inference
+may reuse the all-29 model with an explicit in-sample warning. Native 8 s / 2 s
+window probabilities are the routing output; a file median is diagnostic only.
 """
 
 from __future__ import annotations
 
+import csv
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,8 +18,9 @@ from typing import Any, Mapping
 import numpy as np
 
 from ..data.manifest import M2_DATASET_VERSION_ID
-from ..provenance import stable_payload_sha256
+from ..provenance import sha256_file, stable_payload_sha256
 from ..representations.motion import (
+    MOTION_HOP_SAMPLES,
     MOTION_NETWORK_SCHEMA_SHA256,
     MOTION_WINDOW_SAMPLES,
     build_motion_window_tensors,
@@ -61,8 +61,10 @@ class ReusedMotionDetectorConfig:
     expected_evidence_sha256: str | None = None
     device: str = "cuda"
     batch_size: int = 64
-    window_probability_aggregation: str = "median"
+    window_probability_aggregation: str = "native_windows_file_median_diagnostics_only"
     threshold_source: str = "bundle_frozen"
+    reuse_scope: str = "all29_smoke_or_final_only"
+    expected_split_registry_sha256: str | None = None
 
     def to_mapping(self, *, include_enabled: bool = True) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -74,6 +76,8 @@ class ReusedMotionDetectorConfig:
             "batch_size": self.batch_size,
             "window_probability_aggregation": self.window_probability_aggregation,
             "threshold_source": self.threshold_source,
+            "reuse_scope": self.reuse_scope,
+            "expected_split_registry_sha256": self.expected_split_registry_sha256,
         }
         if include_enabled:
             payload = {"enabled": self.enabled, **payload}
@@ -107,14 +111,27 @@ class ReusedMotionDetectorConfig:
             raise TypeError("motion detector batch_size must be int")
         if self.batch_size < 1:
             raise ValueError("motion detector batch_size must be positive")
-        if self.window_probability_aggregation != "median":
+        if self.window_probability_aggregation not in {
+            "median",  # accepted only as a source compatibility alias
+            "native_windows_file_median_diagnostics_only",
+        }:
             raise ValueError(
-                "reused motion detector currently supports recording median only"
+                "motion output must retain native windows and diagnostic file median"
             )
         if not isinstance(self.threshold_source, str) or (
             self.threshold_source != "bundle_frozen"
         ):
             raise ValueError("reused motion detector requires bundle_frozen threshold")
+        if self.reuse_scope not in {
+            "all29_smoke_or_final_only",
+            "matching_outer_fold_or_all29_final",
+        }:
+            raise ValueError("unknown reused motion detector reuse_scope")
+        if self.expected_split_registry_sha256 is not None and (
+            not isinstance(self.expected_split_registry_sha256, str)
+            or not _SHA256.fullmatch(self.expected_split_registry_sha256)
+        ):
+            raise ValueError("motion split registry identity must be lowercase SHA-256")
 
 
 def resolve_reused_motion_detector_config(
@@ -131,6 +148,8 @@ def resolve_reused_motion_detector_config(
         "batch_size",
         "window_probability_aggregation",
         "threshold_source",
+        "reuse_scope",
+        "expected_split_registry_sha256",
     }
     unknown = sorted(set(values) - allowed)
     if unknown:
@@ -184,6 +203,66 @@ class MotionRecordDecision:
             raise ValueError("usable motion decision requires probability and windows")
 
 
+@dataclass(frozen=True)
+class MotionWindowDecision:
+    """One immutable native 8 s motion output used by RoutingTimeline."""
+
+    routing_window_id: str
+    start_sample_400: int
+    stop_sample_400: int
+    centre_sample_400: int
+    probability: float | None
+    threshold: float
+    motion_state: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class MotionWindowSeries:
+    """Window-aligned decisions plus a diagnostics-only file median."""
+
+    decisions: tuple[MotionWindowDecision, ...]
+    threshold: float
+    file_median_probability_diagnostic: float | None
+    reason: str
+
+    def validate(self) -> None:
+        if not np.isfinite(self.threshold) or not 0.0 <= self.threshold <= 1.0:
+            raise ValueError("motion threshold must lie in [0,1]")
+        previous: int | None = None
+        for row in self.decisions:
+            if (
+                row.start_sample_400 < 0
+                or row.stop_sample_400 - row.start_sample_400
+                != MOTION_WINDOW_SAMPLES
+                or row.centre_sample_400
+                != row.start_sample_400 + MOTION_WINDOW_SAMPLES // 2
+                or (
+                    previous is not None
+                    and row.start_sample_400 - previous != MOTION_HOP_SAMPLES
+                )
+            ):
+                raise ValueError("motion windows must retain the frozen 8 s/2 s grid")
+            if row.motion_state not in {"low", "high", "unavailable"}:
+                raise ValueError("unknown native motion state")
+            if (
+                row.threshold != self.threshold
+                or (row.motion_state == "unavailable" and row.probability is not None)
+                or (
+                    row.motion_state != "unavailable"
+                    and (
+                        row.probability is None
+                        or not np.isfinite(row.probability)
+                        or not 0.0 <= row.probability <= 1.0
+                        or (row.motion_state == "low")
+                        != (row.probability < row.threshold)
+                    )
+                )
+            ):
+                raise ValueError("motion window probability/state contract drift")
+            previous = row.start_sample_400
+
+
 def _resolve_model_path(evidence_path: Path, value: object) -> Path:
     declared = Path(str(value)).expanduser()
     candidate = declared if declared.is_absolute() else evidence_path.parent / declared
@@ -229,10 +308,59 @@ def _validated_frozen_threshold(
     return threshold, threshold_sha256
 
 
+def _validate_matching_split_rosters(
+    evidence: Mapping[str, Any],
+    evidence_path: Path,
+    *,
+    repeat_index: int,
+    fold_index: int,
+    train_roster: tuple[str, ...],
+    oof_roster: tuple[str, ...],
+    expected_sha256: str,
+) -> Path:
+    """Verify exact Stage5 CSV identities, not only fold roster sizes."""
+
+    declared = Path(str(evidence.get("split_registry_csv_path", ""))).expanduser()
+    split_path = (
+        declared if declared.is_absolute() else evidence_path.parent / declared
+    ).resolve()
+    if not split_path.is_file() or sha256_file(split_path) != expected_sha256:
+        raise ValueError("motion split registry file/SHA-256 is unavailable or changed")
+    with split_path.open("r", encoding="utf-8", newline="") as handle:
+        rows = tuple(csv.DictReader(handle))
+    required = {"repeat_index", "fold_index", "participant_id"}
+    if not rows or not required <= set(rows[0]):
+        raise ValueError("motion split registry schema is incomplete")
+    all_participants = tuple(
+        sorted(
+            {
+                str(row["participant_id"])
+                for row in rows
+                if int(row["repeat_index"]) == repeat_index
+            }
+        )
+    )
+    expected_oof = tuple(
+        sorted(
+            str(row["participant_id"])
+            for row in rows
+            if int(row["repeat_index"]) == repeat_index
+            and int(row["fold_index"]) == fold_index
+        )
+    )
+    expected_train = tuple(sorted(set(all_participants) - set(expected_oof)))
+    if expected_oof != oof_roster or expected_train != train_roster:
+        raise ValueError("motion split registry participant identities do not match")
+    return split_path
+
+
 def load_reused_motion_detector(
     config: ReusedMotionDetectorConfig,
+    *,
+    outer_train_participant_ids: tuple[str, ...] = (),
+    outer_oof_participant_ids: tuple[str, ...] = (),
 ) -> LoadedReusedMotionDetector:
-    """Load one frozen all-29 model; never fit it inside frailty CV."""
+    """Load the matching frozen fold model, or all-29 only for final/smoke use."""
 
     config.validate()
     if (
@@ -262,23 +390,95 @@ def load_reused_motion_detector(
         trained_ekf_config_sha256
     ):
         raise ValueError("motion bundle EKF configuration SHA-256 is missing")
-    model = evidence.get("final_model")
-    if not isinstance(model, Mapping):
-        raise ValueError("motion bundle final_model is missing")
-    roster = tuple(
-        sorted(str(value) for value in model.get("training_participant_ids", ()))
-    )
-    if len(roster) != MOTION_PARTICIPANT_COUNT or len(set(roster)) != len(roster):
-        raise ValueError("reused motion model must contain the exact 29-person roster")
+    evidence_split_sha256 = evidence.get("split_registry_csv_sha256")
+    if (
+        config.expected_split_registry_sha256 is not None
+        and evidence_split_sha256 != config.expected_split_registry_sha256
+    ):
+        raise ValueError("motion evidence split registry SHA-256 mismatch")
+
+    train_roster = tuple(sorted(set(map(str, outer_train_participant_ids))))
+    oof_roster = tuple(sorted(set(map(str, outer_oof_participant_ids))))
+    if set(train_roster) & set(oof_roster):
+        raise ValueError("motion reuse train/OOF participant overlap")
+    formal_outer_oof = bool(oof_roster)
+    if formal_outer_oof:
+        if config.reuse_scope != "matching_outer_fold_or_all29_final":
+            raise ValueError("formal OOF motion routing requires matching fold reuse")
+        candidates = []
+        for raw_cell in evidence.get("cell_evidence", ()):
+            if not isinstance(raw_cell, Mapping):
+                continue
+            threshold_payload = raw_cell.get("threshold")
+            if not isinstance(threshold_payload, Mapping):
+                continue
+            threshold_roster = tuple(
+                sorted(map(str, threshold_payload.get("participant_ids", ())))
+            )
+            if threshold_roster == train_roster:
+                candidates.append((raw_cell, threshold_payload))
+        if len(candidates) != 1:
+            raise ValueError("no unique Stage5 fold artifact matches this outer cell")
+        cell, threshold_payload = candidates[0]
+        if int(cell.get("oof_participant_count", -1)) != len(oof_roster):
+            raise ValueError("matching motion fold OOF roster size drift")
+        model = {
+            "artifact_path": cell.get("model_artifact_path"),
+            "artifact_sha256": cell.get("model_artifact_sha256"),
+            "training_participant_ids": list(train_roster),
+            "parameter_count": cell.get("parameter_count"),
+            "inference_cost": cell.get("inference_cost"),
+            "model_input_schema_sha256": cell.get("model_input_schema_sha256"),
+        }
+        threshold_sha256 = stable_payload_sha256(threshold_payload)
+        if cell.get("threshold_artifact_sha256") != threshold_sha256:
+            raise ValueError("matching motion fold threshold SHA-256 mismatch")
+        frozen_threshold = float(threshold_payload["threshold"])
+        split_path = _validate_matching_split_rosters(
+            evidence,
+            evidence_path,
+            repeat_index=int(cell["repeat_index"]),
+            fold_index=int(cell["fold_index"]),
+            train_roster=train_roster,
+            oof_roster=oof_roster,
+            expected_sha256=str(evidence_split_sha256),
+        )
+        training_scope = "frailty29_matching_outer_training_participants"
+        reuse_scope = "matching_outer_fold_reused"
+        evaluation_relation = "held_out_for_frailty29_outer_oof"
+        valid_outer_oof_claim = True
+        fold_identity = {
+            "repeat_index": int(cell["repeat_index"]),
+            "fold_index": int(cell["fold_index"]),
+            "outer_oof_participant_ids": list(oof_roster),
+            "validated_split_registry_path": str(split_path),
+        }
+    else:
+        model = evidence.get("final_model")
+        if not isinstance(model, Mapping):
+            raise ValueError("motion bundle final_model is missing")
+        train_roster = tuple(
+            sorted(str(value) for value in model.get("training_participant_ids", ()))
+        )
+        if len(train_roster) != MOTION_PARTICIPANT_COUNT or len(set(train_roster)) != len(train_roster):
+            raise ValueError("reused final motion model must contain the exact 29-person roster")
+        frozen_threshold, threshold_sha256 = _validated_frozen_threshold(
+            evidence, train_roster
+        )
+        training_scope = "frailty29_all_participants"
+        reuse_scope = "all29_reused_final_or_smoke"
+        evaluation_relation = "in_sample_for_frailty29"
+        valid_outer_oof_claim = False
+        fold_identity = {"repeat_index": None, "fold_index": None}
+
     if model.get("model_input_schema_sha256") != MOTION_NETWORK_SCHEMA_SHA256:
         raise ValueError("reused motion model input schema drift")
-    frozen_threshold, threshold_sha256 = _validated_frozen_threshold(
-        evidence, roster
-    )
+    if not np.isfinite(frozen_threshold) or not 0.0 <= frozen_threshold <= 1.0:
+        raise ValueError("reused motion threshold lies outside [0,1]")
     model_path = _resolve_model_path(evidence_path, model.get("artifact_path"))
     metadata = {
         "artifact_sha256": model.get("artifact_sha256"),
-        "training_participant_ids": list(roster),
+        "training_participant_ids": list(train_roster),
         "parameter_count": model.get("parameter_count"),
         "inference_cost": model.get("inference_cost"),
         "model_input_schema_sha256": model.get("model_input_schema_sha256"),
@@ -293,10 +493,10 @@ def load_reused_motion_detector(
     provenance = {
         "schema_version": MOTION_BUNDLE_REUSE_SCHEMA,
         "execution": "inference_only_no_fit_no_recalibration",
-        "training_scope": "frailty29_all_participants",
-        "reuse_scope": "all29_reused",
-        "frailty29_evaluation_relation": "in_sample_for_frailty29",
-        "valid_outer_oof_claim": False,
+        "training_scope": training_scope,
+        "reuse_scope": reuse_scope,
+        "frailty29_evaluation_relation": evaluation_relation,
+        "valid_outer_oof_claim": valid_outer_oof_claim,
         "model_id": evidence.get("model_id"),
         "evidence_path": str(evidence_path),
         "expected_evidence_sha256": config.expected_evidence_sha256,
@@ -304,7 +504,9 @@ def load_reused_motion_detector(
         "model_artifact_path": str(model_path),
         "model_artifact_sha256": model.get("artifact_sha256"),
         "model_input_schema_sha256": model.get("model_input_schema_sha256"),
-        "training_participant_ids": list(roster),
+        "training_participant_ids": list(train_roster),
+        **fold_identity,
+        "split_registry_csv_sha256": evidence_split_sha256,
         "ekf_config_sha256": trained_ekf_config_sha256,
         "frozen_bundle_threshold": frozen_threshold,
         "frozen_bundle_threshold_sha256": threshold_sha256,
@@ -312,7 +514,9 @@ def load_reused_motion_detector(
         "selected_threshold": selected_threshold,
         "runtime_device": config.device,
         "inference_batch_size": config.batch_size,
-        "window_probability_aggregation": config.window_probability_aggregation,
+        "window_probability_aggregation": (
+            "native_windows_file_median_diagnostics_only"
+        ),
         "expected_ppg_input_source": "CanonicalSignalViews.x_native",
         "stage5_training_ppg_source": "manifest_numeric_values_columns_RED_IR",
         "ppg_source_equivalence_requirement": (
@@ -444,19 +648,49 @@ def infer_reused_motion_recording(
     detector: LoadedReusedMotionDetector,
     recording: MotionRecordingInput | None,
 ) -> MotionRecordDecision:
-    """Infer one record with median aggregation and fail-closed missing data."""
+    """Return the backward-compatible diagnostics-only recording median."""
+
+    series = infer_reused_motion_windows(detector, recording)
+    if not series.decisions or series.file_median_probability_diagnostic is None:
+        return _fail_closed_unfit(detector, reason=series.reason)
+    probability = float(series.file_median_probability_diagnostic)
+    low_motion = probability < detector.threshold
+    result = MotionRecordDecision(
+        motion_state="low_motion" if low_motion else "high_motion",
+        record_probability=probability,
+        threshold=detector.threshold,
+        window_count=len(series.decisions),
+        reason=(
+            "diagnostic_record_median_below_frozen_threshold"
+            if low_motion
+            else "diagnostic_record_median_at_or_above_frozen_threshold"
+        ),
+    )
+    result.validate()
+    return result
+
+
+def infer_reused_motion_windows(
+    detector: LoadedReusedMotionDetector,
+    recording: MotionRecordingInput | None,
+) -> MotionWindowSeries:
+    """Infer one immutable probability/state per native 8 s / 2 s window."""
 
     if recording is None:
-        return _fail_closed_unfit(
-            detector,
-            reason="motion_signal_missing",
+        result = MotionWindowSeries(
+            decisions=(), threshold=detector.threshold,
+            file_median_probability_diagnostic=None, reason="motion_signal_missing",
         )
+        result.validate()
+        return result
     motion_imu = getattr(recording, "motion_imu", None)
     if motion_imu is None or getattr(motion_imu, "values", None) is None:
-        return _fail_closed_unfit(
-            detector,
-            reason="motion_signal_missing",
+        result = MotionWindowSeries(
+            decisions=(), threshold=detector.threshold,
+            file_median_probability_diagnostic=None, reason="motion_signal_missing",
         )
+        result.validate()
+        return result
     ppg = np.asarray(recording.ppg_red_ir)
     imu_values = np.asarray(motion_imu.values)
     if (
@@ -465,15 +699,20 @@ def infer_reused_motion_recording(
         or imu_values.ndim != 2
         or imu_values.shape[1] < 6
     ):
-        return _fail_closed_unfit(
-            detector,
-            reason="motion_signal_missing",
+        result = MotionWindowSeries(
+            decisions=(), threshold=detector.threshold,
+            file_median_probability_diagnostic=None, reason="motion_signal_missing",
         )
+        result.validate()
+        return result
     if min(ppg.shape[0], imu_values.shape[0]) < MOTION_WINDOW_SAMPLES:
-        return _fail_closed_unfit(
-            detector,
+        result = MotionWindowSeries(
+            decisions=(), threshold=detector.threshold,
+            file_median_probability_diagnostic=None,
             reason="no_complete_8_second_motion_window",
         )
+        result.validate()
+        return result
 
     recording.validate()
     windows = build_motion_window_tensors(
@@ -492,20 +731,52 @@ def infer_reused_motion_recording(
         or not np.isfinite(probabilities).all()
         or np.any((probabilities < 0.0) | (probabilities > 1.0))
     ):
-        return _fail_closed_unfit(
-            detector,
+        result = MotionWindowSeries(
+            decisions=tuple(
+                MotionWindowDecision(
+                    routing_window_id=(
+                        f"{recording.record_id}::routing_{index:06d}"
+                    ),
+                    start_sample_400=int(start),
+                    stop_sample_400=int(start + MOTION_WINDOW_SAMPLES),
+                    centre_sample_400=int(start + MOTION_WINDOW_SAMPLES // 2),
+                    probability=None,
+                    threshold=detector.threshold,
+                    motion_state="unavailable",
+                    reason="motion_probability_unavailable",
+                )
+                for index, start in enumerate(windows.start_samples)
+            ),
+            threshold=detector.threshold,
+            file_median_probability_diagnostic=None,
             reason="motion_probability_unavailable",
         )
-    record_probability = float(np.median(probabilities))
-    low_motion = record_probability < detector.threshold
-    result = MotionRecordDecision(
-        motion_state="low_motion" if low_motion else "high_motion",
-        record_probability=record_probability,
+        result.validate()
+        return result
+    decisions = tuple(
+        MotionWindowDecision(
+            routing_window_id=f"{recording.record_id}::routing_{index:06d}",
+            start_sample_400=int(start),
+            stop_sample_400=int(start + MOTION_WINDOW_SAMPLES),
+            centre_sample_400=int(start + MOTION_WINDOW_SAMPLES // 2),
+            probability=float(probability),
+            threshold=detector.threshold,
+            motion_state=("low" if probability < detector.threshold else "high"),
+            reason=(
+                "window_below_frozen_threshold"
+                if probability < detector.threshold
+                else "window_at_or_above_frozen_threshold"
+            ),
+        )
+        for index, (start, probability) in enumerate(
+            zip(windows.start_samples, probabilities)
+        )
+    )
+    result = MotionWindowSeries(
+        decisions=decisions,
         threshold=detector.threshold,
-        window_count=len(rows),
-        reason="record_median_below_frozen_threshold" if low_motion else (
-            "record_median_at_or_above_frozen_threshold"
-        ),
+        file_median_probability_diagnostic=float(np.median(probabilities)),
+        reason="native_window_inference_complete_file_median_diagnostic_only",
     )
     result.validate()
     return result
@@ -515,8 +786,11 @@ __all__ = [
     "LoadedReusedMotionDetector",
     "MOTION_BUNDLE_REUSE_SCHEMA",
     "MotionRecordDecision",
+    "MotionWindowDecision",
+    "MotionWindowSeries",
     "ReusedMotionDetectorConfig",
     "infer_reused_motion_recording",
+    "infer_reused_motion_windows",
     "load_reused_motion_detector",
     "motion_recording_from_signal_views",
     "resolve_reused_motion_detector_config",

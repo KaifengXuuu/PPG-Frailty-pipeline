@@ -2,14 +2,14 @@ schema_version: ppg_frailty.study_plan.v2
 study:
   study_id: static_line_b_all_models_v2
   kind: catalog_sweep
-  purpose: "Preliminary pure-static Line B screening of the 10 active ordinary candidates with a small deterministic set of broad, model-relevant profiles."
+  purpose: "Preliminary pure-static Line B screening of the 11 active ordinary candidates with a small deterministic set of broad, model-relevant profiles."
   flow_position: "First model-family screen before deeper single-factor ablations, ensemble tests, and manual final-use-case selection."
   decision_role: screening
   reference_case_id: null
   thesis_sections:
     - "Static B/R1-R4 frailty classification"
     - "Line B role-aware aggregation"
-    - "Three currently model-backed representation branches; feature-matrix model pending"
+    - "Four model-backed representation branches including Small Matrix Inception"
 catalog:
   path: configs/formal_experiment_catalog_v2.yaml
   balance_line: line_b
@@ -119,6 +119,13 @@ cases:
       training.learning_rate: 0.003
       training.weight_decay: 0.00001
     rationale: "Sparse log-scale optimizer profile; raw input remains canonical 400 Hz."
+    formal_profile: null
+  - case_id: inception_matrix_small__reference
+    catalog_entry: inception_matrix_small
+    screen_profile_id: window_matrix_d146_variable_k_reference
+    output_group: feature_matrix
+    overrides: {}
+    rationale: "Registered 146xvariable-K Small single-network Matrix Inception reference."
     formal_profile: null
   - case_id: shapeformer_osd__lr1e4_wd1e3
     catalog_entry: shapeformer_channel_specific_osd

@@ -97,19 +97,20 @@ def route_quality_tier(
     q_morph_state: QualityState | str | None,
     motion_enabled: bool,
     motion_high: bool | None,
-    static_role: bool,
 ) -> QualityTierDecision:
     """Apply the user-authoritative SQI/motion truth table.
 
     ``UNFIT`` is intentionally not converted to ``EXCLUDED`` here.  A caller may
     independently enable one denoiser attempt and then reassess Q_rate; this pure
-    function neither runs nor selects a reducer.
+    function neither runs nor selects a reducer. When SQI and motion are both
+    disabled, every record already admitted by the configurable ``roles`` input
+    selector is Excellent; static-only versus all-role scope is therefore an
+    explicit data input choice rather than a hidden tier gate.
     """
 
     for name, value in (
         ("sqi_enabled", sqi_enabled),
         ("motion_enabled", motion_enabled),
-        ("static_role", static_role),
     ):
         if not isinstance(value, bool):
             raise TypeError(f"{name} must be boolean")
@@ -129,12 +130,9 @@ def route_quality_tier(
         elif motion_state == "low":
             tier = QualityTier.EXCELLENT
             reason = "sqi_off_low_motion_excellent"
-        elif static_role:
-            tier = QualityTier.EXCELLENT
-            reason = "sqi_and_motion_off_static_role_only"
         else:
-            tier = QualityTier.UNFIT
-            reason = "sqi_and_motion_off_nonstatic_role_unfit"
+            tier = QualityTier.EXCELLENT
+            reason = "sqi_and_motion_off_selected_role_excellent"
         return QualityTierDecision(
             tier=tier,
             sqi_enabled=False,

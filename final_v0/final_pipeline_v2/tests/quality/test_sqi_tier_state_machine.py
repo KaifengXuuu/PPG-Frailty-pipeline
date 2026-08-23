@@ -24,7 +24,6 @@ def tier(
     morph: QualityState | None = QualityState.PASS,
     motion: bool = False,
     high: bool | None = None,
-    static: bool = True,
 ) -> QualityTier:
     return route_quality_tier(
         sqi_enabled=sqi,
@@ -32,7 +31,6 @@ def tier(
         q_morph_state=morph,
         motion_enabled=motion,
         motion_high=high,
-        static_role=static,
     ).tier
 
 
@@ -66,8 +64,7 @@ class SqiTierStateMachineTest(unittest.TestCase):
                 )
 
     def test_sqi_off_truth_table(self) -> None:
-        self.assertIs(tier(sqi=False, motion=False, static=True), QualityTier.EXCELLENT)
-        self.assertIs(tier(sqi=False, motion=False, static=False), QualityTier.UNFIT)
+        self.assertIs(tier(sqi=False, motion=False), QualityTier.EXCELLENT)
         self.assertIs(tier(sqi=False, motion=True, high=False), QualityTier.EXCELLENT)
         self.assertIs(tier(sqi=False, motion=True, high=True), QualityTier.UNFIT)
 
@@ -78,7 +75,6 @@ class SqiTierStateMachineTest(unittest.TestCase):
             q_morph_state=QualityState.PASS,
             motion_enabled=True,
             motion_high=None,
-            static_role=True,
         )
         self.assertIs(decision.tier, QualityTier.UNFIT)
         self.assertIn("evidence_unavailable", decision.reasons[0])
@@ -90,7 +86,6 @@ class SqiTierStateMachineTest(unittest.TestCase):
             q_morph_state=QualityState.PASS,
             motion_enabled=False,
             motion_high=None,
-            static_role=True,
         )
         self.assertIs(decision.tier, QualityTier.UNFIT)
         self.assertFalse(decision.eligible_for_direct_input)
@@ -143,19 +138,14 @@ class SqiTierStateMachineTest(unittest.TestCase):
             resolve_artifact_config(duplicate_switch)
 
         preconfigured = dict(identity_motion)
+        # Isolate the inactive-denoiser contract: a disabled motion detector
+        # must carry its neutral default rather than the active fixture above.
+        preconfigured.pop("motion_detector")
         preconfigured.update(
             {
                 "reducer": "pca_bss",
                 "reducer_version": "pca_component_select_v2",
                 "motion_detector_enabled": False,
-                "motion_detector": {
-                    "evidence_path": None,
-                    "expected_evidence_sha256": None,
-                    "device": "cuda",
-                    "batch_size": 64,
-                    "window_probability_aggregation": "median",
-                    "threshold_source": "bundle_frozen",
-                },
             }
         )
         with self.assertRaisesRegex(ValueError, "inactive non-identity"):

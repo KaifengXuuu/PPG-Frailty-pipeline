@@ -35,7 +35,7 @@ class ModuleDescriptor:
 REPRESENTATION_MODULES = (
     ModuleDescriptor("raw", "representation", "ppg_frailty.representations.raw", ("raw",), "reference", "integration", "Line A window->file->participant; Line B window->file->role_family->participant"),
     ModuleDescriptor("feature_vector", "representation", "ppg_frailty.representations.feature_vector", ("feature_vector",), "reference", "integration", "one vector per recording"),
-    ModuleDescriptor("feature_matrix", "representation", "ppg_frailty.representations.feature_matrix", ("feature_matrix",), "reference", "integration", "one chronological 115-by-150 engineering matrix per recording; model selection pending"),
+    ModuleDescriptor("feature_matrix", "representation", "ppg_frailty.representations.feature_matrix", ("feature_matrix",), "reference", "integration", "one chronological 146-by-variable-K window matrix per recording; batch-only padding"),
     ModuleDescriptor("fusion", "representation", "ppg_frailty.representations.fusion", ("fusion",), "reference", "integration", "file-level window pooling then one vector concatenation"),
 )
 
@@ -80,11 +80,12 @@ IMU_GRAVITY_MODULES = tuple(
         "imu_gravity",
         "ppg_frailty.signal.preprocess.materialize_signal_preprocessing_config",
         _ALL_REPRESENTATION_MODES,
-        (
-            "runtime_selectable_legacy_parallel"
-            if module_id in {"quaternion_error_state_ekf", "low_pass_0p3hz"}
-            else "runtime_selectable_calibrated"
-        ),
+        {
+            "profile_a_lowpass_0p3hz": "runtime_selectable_reference",
+            "calibrated_roll_pitch_ekf": "runtime_selectable_ablation",
+            "quaternion_error_state_ekf": "runtime_selectable_legacy_ablation",
+            "low_pass_0p3hz": "runtime_selectable_legacy_parallel",
+        }[module_id],
         "signal",
         "executable gravity-separation profile with profile-specific numerical parameters and no silent fallback",
     )
@@ -165,6 +166,10 @@ SAMPLER_MODULES = tuple(
         (
             "runtime_selectable_torch_replacement_sampler"
             if module_id == "uniform_replacement"
+            else "runtime_selectable_reference"
+            if module_id == "exhaustive_shuffle_without_replacement"
+            else "runtime_selectable_ablation"
+            if module_id == "balance_line_weighted_v2"
             else "runtime_selectable"
         ),
         "training",
@@ -221,7 +226,11 @@ CLASS_COUNT_BASIS_MODULES = tuple(
         "class_count_basis",
         "ppg_frailty.training.trainer.outer_train_class_counts",
         _ALL_REPRESENTATION_MODES,
-        "runtime_selectable_outer_train_statistical_unit",
+        (
+            "runtime_selectable_reference"
+            if module_id == "row"
+            else "runtime_selectable_ablation"
+        ),
         "training",
         f"executable {module_id} count basis shared by inverse-frequency, effective-number, and balanced-softmax corrections",
     )
@@ -299,10 +308,10 @@ DENOISER_SWITCH_MODULES = (
         "enabled",
         "denoiser_switch",
         "ppg_frailty.quality.routing.route_module_switches_from_config",
-        ("feature_vector",),
+        _ALL_REPRESENTATION_MODES,
         "runtime_selectable_independent_switch",
         "quality",
-        "one configured non-identity rate-recovery reducer is executed only after Unfit; recovered Acceptable evidence is pulse-vector only",
+        "one configured reducer runs only after Unfit; recovered Acceptable evidence enters feature-vector pulse features or remains HR-only diagnostic evidence for other representations",
     ),
 )
 
@@ -413,17 +422,20 @@ FEATURE_GROUP_MODULES = tuple(
     )
 )
 
+_RATE_ONLY_ARTIFACT_MODES = _ALL_REPRESENTATION_MODES
+
+
 ARTIFACT_MODULES = (
     ModuleDescriptor("identity", "artifact", "ppg_frailty.artifact.identity.IdentityReducer", ("raw", "feature_vector", "feature_matrix", "fusion"), "direct_control", "artifacts", "exact no-op; morphology remains eligible"),
-    ModuleDescriptor("nlms_imu_anc", "artifact", "ppg_frailty.artifact.nlms.NlmsReducer", ("feature_vector",), "comparison_rate_only", "artifacts", "ANC assumption may remove physiological response; recovered rate-only endpoints enter pulse-derived vectors"),
-    ModuleDescriptor("ssa_decomposition", "artifact", "ppg_frailty.artifact.decomposition.SsaReducer", ("feature_vector",), "comparison_rate_only", "artifacts", "non-stationary decomposition comparator; recovered rate-only endpoints enter pulse-derived vectors"),
-    ModuleDescriptor("spectral_mask", "artifact", "ppg_frailty.artifact.spectral.SpectralMaskReducer", ("feature_vector",), "comparison_rate_only", "artifacts", "formal STFT plus IMU soft mask; recovered rate-only endpoints enter pulse-derived vectors"),
-    ModuleDescriptor("pca_bss", "artifact", "ppg_frailty.artifact.bss.PcaBssReducer", ("feature_vector",), "preferred_rate_recovery", "artifacts", "preferred two-wavelength PCA BSS reducer in Stage05; recovered rate-only endpoints enter pulse-derived vectors"),
-    ModuleDescriptor("fastica_bss", "artifact", "ppg_frailty.artifact.bss.FastIcaBssReducer", ("feature_vector",), "parallel_rate_recovery_ablation", "artifacts", "parallel two-wavelength FastICA BSS ablation; recovered rate-only endpoints enter pulse-derived vectors"),
-    ModuleDescriptor("nmf_bss", "artifact", "ppg_frailty.artifact.bss.NmfBssReducer", ("feature_vector",), "comparison_rate_only", "artifacts", "two-wavelength spectral BSS comparator; recovered rate-only endpoints enter pulse-derived vectors"),
-    ModuleDescriptor("emd_sifting_rate_only", "artifact", "ppg_frailty.artifact.legacy.EmdSiftingRateOnlyReducer", ("feature_vector",), "comparison_rate_only", "artifacts", "named EMD sifting ablation; never morphology-preserving; recovered rate-only endpoints enter pulse-derived vectors"),
-    ModuleDescriptor("ceemd_lite_nlms_legacy", "artifact", "ppg_frailty.artifact.legacy.CeemdLiteNlmsLegacyReducer", ("feature_vector",), "comparison_rate_only", "artifacts", "named CEEMD-lite plus NLMS legacy ablation; recovered rate-only endpoints enter pulse-derived vectors"),
-    ModuleDescriptor("dwt_a2_legacy", "artifact", "ppg_frailty.artifact.legacy.DwtA2LegacyReducer", ("feature_vector",), "comparison_rate_only", "artifacts", "named DWT A2 legacy ablation; PyWavelets is optional; recovered rate-only endpoints enter pulse-derived vectors"),
+    ModuleDescriptor("nlms_imu_anc", "artifact", "ppg_frailty.artifact.nlms.NlmsReducer", _RATE_ONLY_ARTIFACT_MODES, "comparison_rate_only", "artifacts", "ANC assumption may remove physiological response; rate-only output enters vectors or an explicit HR-only diagnostic exclusion route"),
+    ModuleDescriptor("ssa_decomposition", "artifact", "ppg_frailty.artifact.decomposition.SsaReducer", _RATE_ONLY_ARTIFACT_MODES, "comparison_rate_only", "artifacts", "non-stationary decomposition comparator; rate-only output enters vectors or an explicit HR-only diagnostic exclusion route"),
+    ModuleDescriptor("spectral_mask", "artifact", "ppg_frailty.artifact.spectral.SpectralMaskReducer", _RATE_ONLY_ARTIFACT_MODES, "comparison_rate_only", "artifacts", "formal STFT plus IMU soft mask; rate-only output enters vectors or an explicit HR-only diagnostic exclusion route"),
+    ModuleDescriptor("pca_bss", "artifact", "ppg_frailty.artifact.bss.PcaBssReducer", _RATE_ONLY_ARTIFACT_MODES, "preferred_rate_recovery", "artifacts", "preferred two-wavelength PCA BSS reducer; rate-only output enters vectors or the Stage05 CNN HR-only diagnostic exclusion route"),
+    ModuleDescriptor("fastica_bss", "artifact", "ppg_frailty.artifact.bss.FastIcaBssReducer", _RATE_ONLY_ARTIFACT_MODES, "parallel_rate_recovery_ablation", "artifacts", "parallel FastICA BSS ablation; rate-only output enters vectors or the Stage05 CNN HR-only diagnostic exclusion route"),
+    ModuleDescriptor("nmf_bss", "artifact", "ppg_frailty.artifact.bss.NmfBssReducer", _RATE_ONLY_ARTIFACT_MODES, "comparison_rate_only", "artifacts", "two-wavelength spectral BSS comparator; rate-only output enters vectors or an explicit HR-only diagnostic exclusion route"),
+    ModuleDescriptor("emd_sifting_rate_only", "artifact", "ppg_frailty.artifact.legacy.EmdSiftingRateOnlyReducer", _RATE_ONLY_ARTIFACT_MODES, "comparison_rate_only", "artifacts", "named EMD sifting ablation; rate-only output enters vectors or an explicit HR-only diagnostic exclusion route"),
+    ModuleDescriptor("ceemd_lite_nlms_legacy", "artifact", "ppg_frailty.artifact.legacy.CeemdLiteNlmsLegacyReducer", _RATE_ONLY_ARTIFACT_MODES, "comparison_rate_only", "artifacts", "named CEEMD-lite plus NLMS legacy ablation; rate-only output enters vectors or an explicit HR-only diagnostic exclusion route"),
+    ModuleDescriptor("dwt_a2_legacy", "artifact", "ppg_frailty.artifact.legacy.DwtA2LegacyReducer", _RATE_ONLY_ARTIFACT_MODES, "comparison_rate_only", "artifacts", "named DWT A2 legacy ablation; rate-only output enters vectors or an explicit HR-only diagnostic exclusion route"),
 )
 
 PRV_BACKEND_MODULES = (
@@ -479,7 +491,7 @@ MOTION_EVIDENCE_MODULES = (
         _ALL_REPRESENTATION_MODES,
         "runtime_selectable_inference_only",
         "quality",
-        "frozen Stage5 all-29 model and OOF-derived threshold; no CV refit or recalibration, and Frailty29 use is explicitly in-sample auxiliary evidence",
+        "frozen Stage5 matching-fold model/threshold for formal OOF; all-29 is in-sample auxiliary evidence for final/smoke only; native-window routing, no refit or recalibration",
     ),
     ModuleDescriptor("sqi_only", "motion_evidence", "ppg_frailty.quality.motion.resolve_motion_option", (), "external_audit_control_not_classifier_runtime", "motion_contract", "V2-010 external evidence control; core quality behavior is configured through quality.mode"),
     ModuleDescriptor("sqi_plus_motion_override", "motion_evidence", "ppg_frailty.quality.motion.resolve_motion_option", (), "external_ptt_evidence_protocol_not_classifier_runtime", "motion_contract", "independent motion/PTT audit API only; never a core classifier-pipeline selector"),
@@ -574,7 +586,7 @@ MODEL_MODULES = (
     ModuleDescriptor("CompactCNN1D", "model", "ppg_frailty.models.compact_cnn.CompactCNN1D", ("raw",), "reference_not_wang_fcn", "models", "32/64/128 legacy-reference CNN", ("torch",)),
     ModuleDescriptor("InceptionTimeFull", "model", "ppg_frailty.models.inception_time_port.InceptionTimeSingleNetwork", ("raw",), "single_network", "models", "full single network, not five-member ensemble", ("torch",)),
     ModuleDescriptor("InceptionTimeSmall", "model", "ppg_frailty.models.inception_time_port.InceptionTimeSingleNetwork", ("raw",), "single_network", "models", "small single network", ("torch",)),
-    ModuleDescriptor("InceptionTimeMatrix", "model", "ppg_frailty.models.inception_time_port.InceptionTimeSingleNetwork", ("feature_matrix",), "single_network", "models", "mask-aware registry-derived D-by-K input", ("torch",)),
+    ModuleDescriptor("InceptionTimeMatrix", "model", "ppg_frailty.models.inception_time_port.InceptionTimeSingleNetwork", ("feature_matrix",), "small_single_network", "models", "mask-aware 146-by-variable-K input; batch-only padding", ("torch",)),
     ModuleDescriptor("InceptionTimeFullFiveMemberEnsemble", "model", "ppg_frailty.models.inception_ensemble.InceptionTimeFiveMemberProbabilityEnsemble", ("raw",), "configurable_probability_ensemble_legacy_name", "models", "one or more independently seeded full raw models and exact probability mean; canonical name retained for compatibility", ("torch",)),
     ModuleDescriptor("InceptionTimeMatrixFiveMemberEnsemble", "model", "ppg_frailty.models.inception_ensemble.InceptionTimeFiveMemberProbabilityEnsemble", ("feature_matrix",), "configurable_probability_ensemble_legacy_name", "models", "one or more independently seeded full matrix models and exact probability mean; canonical name retained for compatibility", ("torch",)),
     ModuleDescriptor("LogisticRegressionL2", "model", "ppg_frailty.models.feature_models.FeatureVectorBaseline", ("feature_vector",), "reference", "models", "fold-local imputer and scaler"),
@@ -813,10 +825,15 @@ def resolve_artifact_config(section: Mapping[str, Any]) -> dict[str, Any]:
             "disabled artifact.motion_detector cannot carry active overrides"
         )
     policy = str(data["degraded_policy"])
-    if policy not in {"drop", "denoise_then_extract_rate_features"}:
+    denoiser_policies = {
+        "denoise_then_extract_rate_features",
+        "denoise_then_compare_rate_exclude",
+    }
+    if policy not in {"drop", *denoiser_policies}:
         raise ValueError(
-            "artifact.degraded_policy must be drop or "
-            "denoise_then_extract_rate_features"
+            "artifact.degraded_policy must be drop, "
+            "denoise_then_extract_rate_features, or "
+            "denoise_then_compare_rate_exclude"
         )
     denoiser_enabled = bool(data["denoiser_enabled"])
     if denoiser_enabled and declared == "identity":
@@ -828,13 +845,12 @@ def resolve_artifact_config(section: Mapping[str, Any]) -> dict[str, Any]:
             "artifact.denoiser_enabled=false requires reducer='identity'; "
             "inactive non-identity parameters may not alter runtime identity"
         )
-    expected_policy = (
-        "denoise_then_extract_rate_features" if denoiser_enabled else "drop"
-    )
-    if policy != expected_policy:
+    if (not denoiser_enabled and policy != "drop") or (
+        denoiser_enabled and policy not in denoiser_policies
+    ):
         raise ValueError(
-            f"artifact.denoiser_enabled={denoiser_enabled!r} requires "
-            f"degraded_policy={expected_policy!r}"
+            f"artifact.denoiser_enabled={denoiser_enabled!r} is incompatible "
+            f"with degraded_policy={policy!r}"
         )
     if data["non_identity_output_contract"] != "rate_only":
         raise ValueError("non-identity artifact output must be rate_only")
@@ -873,6 +889,7 @@ def resolve_artifact_config(section: Mapping[str, Any]) -> dict[str, Any]:
         "motion_detector_enabled": bool(data["motion_detector_enabled"]),
         "motion_detector": resolved_motion.to_mapping(include_enabled=False),
         "denoiser_enabled": denoiser_enabled,
+        "degraded_policy": policy,
         "parameters": dict(parameters),
     }
 
@@ -1592,7 +1609,7 @@ def validate_model_config(section: Mapping[str, Any], representation_mode: str) 
             or not data["member_seed_roster_id"].strip()
         ):
             raise ValueError("member_seed_roster_id must be a non-empty string when supplied")
-    if representation_mode in {"raw", "fusion"}:
+    if representation_mode == "fusion":
         expected_channel_order = [
             "RED", "IR", "A_dyn_x", "A_dyn_y", "A_dyn_z", "GX", "GY", "GZ"
         ]
@@ -1604,6 +1621,39 @@ def validate_model_config(section: Mapping[str, Any], representation_mode: str) 
         ):
             raise ValueError(
                 "frailty raw/fusion models require the exact canonical 8-channel schema"
+            )
+    elif representation_mode == "raw":
+        expected_channel_order = [
+            "RED", "IR", "A_dyn_x", "A_dyn_y", "A_dyn_z", "GX", "GY", "GZ"
+        ]
+        declared = data["input_channel_order"]
+        if (
+            not isinstance(declared, list)
+            or not declared
+            or len(declared) != len(set(declared))
+            or any(value not in expected_channel_order for value in declared)
+            or [value for value in expected_channel_order if value in declared]
+            != declared
+            or int(data["input_channels"]) != len(declared)
+            or data["input_channels_resolution"]
+            not in {
+                "canonical_frailty_raw_8",
+                "explicit_frailty_raw_channel_subset",
+            }
+            or (
+                len(declared) == 8
+                and data["input_channels_resolution"]
+                != "canonical_frailty_raw_8"
+            )
+            or (
+                len(declared) < 8
+                and data["input_channels_resolution"]
+                != "explicit_frailty_raw_channel_subset"
+            )
+        ):
+            raise ValueError(
+                "frailty raw models require an explicit ordered subset of the "
+                "canonical 8-channel schema"
             )
     from .models import normalize_model_id
 
@@ -2138,17 +2188,6 @@ def validate_window_profiles_for_representation(
     if not isinstance(enabled_feature_groups, (list, tuple)):
         raise ValueError("enabled_feature_groups must be a list or tuple")
     groups = tuple(str(value) for value in enabled_feature_groups)
-    if mode == "feature_matrix":
-        engineering = normalized["engineering"]
-        expected = _WINDOW_PROFILE_DEFAULTS["engineering"]
-        changed = sorted(
-            name for name, value in expected.items() if engineering[name] != value
-        )
-        if changed:
-            raise ValueError(
-                "feature_matrix requires the fixed 10 s/2 s engineering-window "
-                f"contract; changed fields: {changed}"
-            )
     inactive_profiles: list[str] = []
     if mode == "raw":
         inactive_profiles.append("engineering")
