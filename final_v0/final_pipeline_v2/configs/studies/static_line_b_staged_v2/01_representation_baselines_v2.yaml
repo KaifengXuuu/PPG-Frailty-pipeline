@@ -1,16 +1,17 @@
-# Stage 1: inexpensive representatives only. This is a representation screen,
-# not a final model winner study.
+# Stage 1: four representation/model routes on the complete frozen 5x5 budget.
+# Registered defaults are inherited instead of copied into this study plan.
 schema_version: ppg_frailty.study_plan.v2
 study:
   study_id: staged_static_01_representation_baselines_v2
   kind: catalog_sweep
-  purpose: "Compare four low-cost Line B representations, including the reviewed 146xvariable-K Small Matrix Inception route."
+  purpose: "Compare the default Matrix-Small, raw CompactCNN, and feature-vector Logistic routes with one explicitly configured Full InceptionTime route."
   flow_position: "Stage 1 of the staged pure-static finalist flow."
   decision_role: screening
-  reference_case_id: null
+  reference_case_id: raw__compact_cnn
   thesis_sections:
-    - "Executable representation lines and the Small Matrix Inception baseline"
-    - "Line B role-aware aggregation"
+    - "Executable representation routes and the Small Matrix Inception baseline"
+    - "Configured Full InceptionTime comparison"
+    - "Participant-cluster confidence intervals and paired inference"
 catalog:
   path: configs/formal_experiment_catalog_v2.yaml
   balance_line: line_b
@@ -19,68 +20,60 @@ search:
   method: deterministic_sparse_profiles
   selection_seed: 42
   runtime_sampling: false
-  interpretation: "Four executable baselines; the matrix case retains all complete 146-feature rows and uses one Small Inception network."
+  interpretation: "Four prespecified routes on the same frozen 5x5 participant splits; raw CompactCNN is only the statistical reference and is not an automatically selected winner."
   controlled_factors:
-    - "All 29 participants in repeat 0 and its five frozen held-out folds"
-    - "Static roles B, R1, R2, R3, R4; Line B aggregation"
-    - "Raw/fusion DL branches use 64 Hz, 5 s/2.5 s; routing and the variable-K 146-feature matrix remain on 400 Hz, with 10 s/2 s matrix rows"
-    - "Calibrated EKF; quality off; identity reducer; motion override disabled"
-    - "Deep models retain their registered fixed10 training profiles: raw/fusion use AdamW/batch32, while the reviewed matrix reference remains Adam/batch64; reports use B7 Line B file/role aggregation"
+    - "All 29 participants, five frozen repeats, and five held-out participant folds per repeat"
+    - "Static roles B, R1, R2, R3, R4 with Line B file/role/participant aggregation"
+    - "Raw DL inputs contain RED, IR, A_dyn_x/y/z, GX, GY, GZ and use 5 s windows with 2.5 s hop"
+    - "Matrix-Small uses the registered 146xvariable-K feature-matrix defaults: 10 s engineering windows with 2 s hop"
+    - "Deep routes use fixed 10 epochs; Logistic uses its registered deterministic LBFGS estimator contract"
   notes:
-    - "The matrix representative is Small single-network InceptionTime; ROCKET/Ridge remains retired."
-    - "Do not call the highest case here the final model."
-    - "If routes are close, rerun this plan with all repeats before pruning Stage 2."
+    - "The first three cases inherit their complete registered defaults through catalog references; no algorithm is copied into this YAML."
+    - "The Full InceptionTime case changes only the explicitly declared sampling and optimization parameters."
+    - "This is a representation/model screen, not a single-factor causal ablation and not a final-case selection."
 cases:
   - case_id: raw__compact_cnn
     catalog_entry: compact_cnn
-    screen_profile_id: v2_core_b0_b2_b7_selected
+    screen_profile_id: registered_default_fixed10
     output_group: raw
-    overrides: &b0_b2_b7_dl
-      signal.dl_resampling.enabled: true
-      signal.dl_resampling.target_fs_hz: 64.0
-      signal.normalization.raw_ppg: per_window_median_iqr_over_1p349_sd_finite
-      signal.normalization.raw_imu: none
-      windows.raw_dl.length_s: 5.0
-      windows.raw_dl.hop_s: 2.5
-      training.optimizer: adamw
-      training.batch_size: 32
-      training.sampler: exhaustive_shuffle_without_replacement
-      training.class_weighting: outer_train_window_inverse_frequency
-      training.class_count_basis: row
-      aggregation.balance_line: line_b_equal_role_families
-    rationale: "Low-cost raw-signal baseline."
+    overrides: {}
+    rationale: "Eight-channel raw CompactCNN baseline using registered defaults."
     formal_profile: null
   - case_id: feature_vector__logistic
     catalog_entry: logistic_regression
-    screen_profile_id: v2_core_b0_b2_b7_selected
+    screen_profile_id: registered_default_logistic
     output_group: feature_vector
     overrides: {}
-    rationale: "Low-cost engineered-vector baseline."
+    rationale: "Engineered feature-vector Logistic Regression baseline using registered defaults."
     formal_profile: null
   - case_id: feature_matrix__inception_small
     catalog_entry: inception_matrix_small
-    screen_profile_id: window_matrix_d146_variable_k_small_inception
+    screen_profile_id: registered_default_matrix_small_fixed10
     output_group: feature_matrix
-    overrides:
-      windows.engineering.length_s: 10.0
-      windows.engineering.hop_s: 2.0
-      model.variant: small
-      model.input_channels: 146
-      model.ensemble_size: 1
-    rationale: "Chronological 146xvariable-K window matrix with one mask-aware Small InceptionTime network."
+    overrides: {}
+    rationale: "Chronological 146xvariable-K feature matrix with the registered Small Matrix InceptionTime defaults."
     formal_profile: null
-  - case_id: fusion__compact
-    catalog_entry: fusion_compact
-    screen_profile_id: canonical
-    output_group: fusion
+  - case_id: raw__inception_full_configured
+    catalog_entry: inception_full
+    screen_profile_id: configured_64hz_fixed10_b16_lr3e4_do50_wd005_ls20
+    output_group: raw
     overrides:
-      <<: *b0_b2_b7_dl
-    rationale: "Compact raw-plus-feature fusion baseline."
+      signal.dl_resampling.enabled: true
+      signal.dl_resampling.target_fs_hz: 64.0
+      windows.raw_dl.length_s: 5.0
+      windows.raw_dl.hop_s: 2.5
+      model.dropout: 0.50
+      training.fixed_epochs: 10
+      training.batch_size: 16
+      training.learning_rate: 0.0003
+      training.weight_decay: 0.005
+      training.label_smoothing: 0.20
+    rationale: "Eight-channel Full InceptionTime with the prespecified tuned training profile."
     formal_profile: null
 execution:
-  repeats: [0]
+  repeats: [0, 1, 2, 3, 4]
   folds: [0, 1, 2, 3, 4]
-  jobs: 2
+  jobs: 1
   device: cuda
   parallel_level: cases
   continue_on_error: true

@@ -76,6 +76,26 @@ def format_mean_sd(
     return f"{rendered_mean} ± {sd_value * scale:.{decimals}f}"
 
 
+def format_interval(
+    lower: Any,
+    upper: Any,
+    *,
+    percent: bool = False,
+    decimals: int = 1,
+) -> str:
+    """Format one two-sided interval without hiding unavailable bounds."""
+
+    lower_value = _number(lower)
+    upper_value = _number(upper)
+    if lower_value is None or upper_value is None:
+        return "N/A"
+    scale = 100.0 if percent else 1.0
+    return (
+        f"[{lower_value * scale:.{decimals}f}, "
+        f"{upper_value * scale:.{decimals}f}]"
+    )
+
+
 def _mean_sd_pairs(fields: Sequence[str]) -> dict[str, tuple[str, str]]:
     """Discover conventional report mean/SD pairs without table-name checks."""
 
@@ -110,9 +130,10 @@ def _mean_sd_pairs(fields: Sequence[str]) -> dict[str, tuple[str, str]]:
 def compact_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     """Return a presentation projection with every available mean/SD collapsed.
 
-    Raw JSON retains CI, extrema, and the individual mean/SD columns.  The
-    compact projection removes only redundant distribution columns belonging
-    to a successfully paired metric.
+    Raw JSON retains numeric CI bounds, extrema, and the individual mean/SD
+    columns.  The compact projection keeps CI95 as one readable interval while
+    removing only redundant distribution columns belonging to a successfully
+    paired metric.
     """
 
     source = [dict(row) for row in rows]
@@ -122,8 +143,13 @@ def compact_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
         return source
     paired_sd = {sd for _, sd in pairs.values()}
     removable: set[str] = set(paired_sd)
+    interval_fields: dict[str, tuple[str, str, str]] = {}
     for mean_field in pairs:
         if mean_field == "mean":
+            if {"ci95_low", "ci95_high"} <= set(fields):
+                interval_fields[mean_field] = (
+                    "ci95_low", "ci95_high", "ci95"
+                )
             removable.update(
                 {
                     "population_sd",
@@ -136,6 +162,14 @@ def compact_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
             )
         elif mean_field.startswith("participant_mean_"):
             metric = mean_field[len("participant_mean_") :]
+            low = f"repeat_{metric}_ci95_low"
+            high = f"repeat_{metric}_ci95_high"
+            if {low, high} <= set(fields):
+                interval_fields[mean_field] = (
+                    low,
+                    high,
+                    f"participant_{metric}_repeat_ci95",
+                )
             removable.update(
                 {
                     f"repeat_{metric}_population_sd",
@@ -177,6 +211,18 @@ def compact_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
                         else mean_field
                     ),
                 )
+                interval = interval_fields.get(mean_field)
+                if interval is not None:
+                    low, high, rendered_interval_name = interval
+                    projected[rendered_interval_name] = format_interval(
+                        row.get(low),
+                        row.get(high),
+                        percent=_is_score_field(
+                            str(row.get("metric", mean_field))
+                            if mean_field == "mean"
+                            else mean_field
+                        ),
+                    )
             else:
                 projected[field] = row.get(field)
         output.append(projected)
@@ -363,6 +409,7 @@ __all__ = [
     "ReportTable",
     "compact_rows",
     "format_mean_sd",
+    "format_interval",
     "write_csv",
     "write_excel_workbook",
 ]

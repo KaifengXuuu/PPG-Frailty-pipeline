@@ -32,6 +32,11 @@ from ..training.aggregation import (
 )
 from ..training.oof import OofPredictionRow
 from ..training.evaluator import evaluate_predictions_with_abstentions
+from ..training.statistics import (
+    ParticipantPrediction,
+    holm_adjust_by_family_metric,
+    paired_participant_permutation,
+)
 from .collect import CollectedStudy
 from .classification_diagnostics import (
     classification_diagnostic_status_rows,
@@ -251,6 +256,218 @@ def _descriptive_statistics(values: Iterable[Any]) -> dict[str, Any]:
         "minimum": float(clean.min()),
         "maximum": float(clean.max()),
     }
+
+
+def _percent_interval_text(lower: Any, upper: Any) -> str:
+    """Return one concise percentage interval for human-facing tables."""
+
+    low = _number(lower)
+    high = _number(upper)
+    if low is None or high is None:
+        return "N/A"
+    return f"[{100.0 * low:.1f}, {100.0 * high:.1f}]"
+
+
+def _participant_prediction_contract(
+    rows: Sequence[Mapping[str, Any]],
+) -> tuple[
+    tuple[ParticipantPrediction, ...],
+    dict[tuple[str, int], tuple[int, int, int]],
+]:
+    """Normalize one complete participant OOF roster for paired inference."""
+
+    predictions: list[ParticipantPrediction] = []
+    membership: dict[tuple[str, int], tuple[int, int, int]] = {}
+    for row in rows:
+        if str(row.get("level", "participant")) != "participant":
+            raise ValueError("paired inference received non-participant OOF")
+        if not _as_bool(row.get("retained", True)):
+            raise ValueError(
+                "paired conditional inference is unavailable with abstentions"
+            )
+        participant_id = str(row.get("participant_id", "")).strip()
+        repeat = int(row.get("repeat", -1))
+        fold = int(row.get("fold", -1))
+        split_seed = int(row.get("split_seed", -1))
+        label = int(row.get("label", -1))
+        probabilities = tuple(
+            float(value) for value in row.get("probabilities", ())
+        )
+        class_order = tuple(int(value) for value in row.get("class_order", ()))
+        if (
+            not participant_id
+            or repeat < 0
+            or fold < 0
+            or split_seed < 0
+            or class_order != (0, 1, 2)
+            or label not in class_order
+            or len(probabilities) != len(class_order)
+        ):
+            raise ValueError("paired inference participant OOF contract is incomplete")
+        key = (participant_id, repeat)
+        authority = (fold, split_seed, label)
+        if key in membership:
+            raise ValueError("paired inference participant/repeat roster is duplicated")
+        membership[key] = authority
+        predictions.append(
+            ParticipantPrediction(
+                participant_id=participant_id,
+                label=label,
+                repeat=repeat,
+                probabilities=probabilities,
+            )
+        )
+    if not predictions:
+        raise ValueError("paired inference requires participant OOF predictions")
+    return tuple(predictions), membership
+
+
+def _paired_participant_inference(
+    collected: CollectedStudy,
+    *,
+    oof_by_case: Mapping[str, Sequence[Mapping[str, Any]]],
+    case_ids: Sequence[str],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Compare every eligible case with the declared reference using V2 policy."""
+
+    reference_case_id = collected.manifest.get("reference_case_id")
+    if reference_case_id in (None, ""):
+        return [], []
+    reference_case_id = str(reference_case_id)
+    status_by_case = {
+        str(row.get("case_id")): str(row.get("status", "unknown"))
+        for row in collected.case_records
+        if row.get("case_id") is not None
+    }
+    if status_by_case.get(reference_case_id, "passed") != "passed":
+        return [], [
+            "Paired P values are N/A because the declared reference case did not pass."
+        ]
+    policies = {
+        str(row.get("case_id")): dict(row["evaluation_statistics"])
+        for row in collected.resolved_aggregation_configs
+        if isinstance(row.get("evaluation_statistics"), Mapping)
+    }
+    reference_policy = policies.get(reference_case_id)
+    if reference_policy is None:
+        return [], [
+            "Paired P values are N/A because the persisted reference evaluation-statistics policy is unavailable."
+        ]
+    required_policy = {
+        "cluster_unit": "participant_with_all_five_repeat_oof_predictions",
+        "paired_exchange_unit": "participant",
+        "multiplicity_correction": "holm_within_comparison_family",
+        "affects_automatic_selection": False,
+    }
+    if any(
+        reference_policy.get(key) != value
+        for key, value in required_policy.items()
+    ):
+        return [], [
+            "Paired P values are N/A because the reference evaluation-statistics policy is not the implemented participant-cluster/Holm protocol."
+        ]
+    try:
+        n_resamples = int(reference_policy["paired_permutation_replicates"])
+        seed = int(reference_policy["seed"])
+        reference_predictions, reference_membership = (
+            _participant_prediction_contract(oof_by_case.get(reference_case_id, ()))
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        return [], [
+            "Paired P values are N/A for the declared reference: "
+            f"{type(error).__name__}: {error}"
+        ]
+    if n_resamples <= 0:
+        return [], ["Paired P values are N/A because the resample budget is invalid."]
+
+    family = (
+        str(collected.plan.get("study", {}).get("study_id", "study"))
+        + "__declared_reference"
+    )
+    raw_p_values: dict[tuple[str, str, str], float] = {}
+    raw_rows: dict[tuple[str, str], dict[str, Any]] = {}
+    limitations: list[str] = []
+    for candidate_case_id in sorted(set(str(value) for value in case_ids)):
+        if candidate_case_id == reference_case_id:
+            continue
+        if status_by_case.get(candidate_case_id, "passed") != "passed":
+            limitations.append(
+                f"{candidate_case_id}: paired P values are N/A because the case did not pass."
+            )
+            continue
+        if policies.get(candidate_case_id) != reference_policy:
+            limitations.append(
+                f"{candidate_case_id}: paired P values are N/A because its evaluation-statistics policy differs from the reference."
+            )
+            continue
+        try:
+            candidate_predictions, candidate_membership = (
+                _participant_prediction_contract(
+                    oof_by_case.get(candidate_case_id, ())
+                )
+            )
+            if candidate_membership != reference_membership:
+                raise ValueError(
+                    "participant/repeat/fold/split-seed/label roster differs"
+                )
+            comparison_id = f"{candidate_case_id}_vs_{reference_case_id}"
+            for metric in ("balanced_accuracy", "macro_f1"):
+                result = paired_participant_permutation(
+                    reference_predictions,
+                    candidate_predictions,
+                    metric=metric,
+                    n_resamples=n_resamples,
+                    seed=seed,
+                )
+                raw_p_values[(family, metric, comparison_id)] = (
+                    result.two_sided_p_value
+                )
+                raw_rows[(comparison_id, metric)] = {
+                    "comparison_family": family,
+                    "comparison_id": comparison_id,
+                    "reference_case_id": reference_case_id,
+                    "candidate_case_id": candidate_case_id,
+                    "metric": metric,
+                    "candidate_minus_reference": (
+                        result.observed_candidate_minus_reference
+                    ),
+                    "raw_two_sided_p_value": result.two_sided_p_value,
+                    "n_resamples": result.n_resamples,
+                    "seed": result.seed,
+                    "participant_count": result.n_participants,
+                    "repeat_count": result.n_repeats,
+                    "exchange_unit": result.exchange_unit,
+                    "test_method": "paired_participant_cluster_permutation",
+                    "automatic_selection": False,
+                }
+        except (TypeError, ValueError) as error:
+            limitations.append(
+                f"{candidate_case_id}: paired P values are N/A: "
+                f"{type(error).__name__}: {error}"
+            )
+    if not raw_p_values:
+        return [], limitations
+    adjusted = holm_adjust_by_family_metric(raw_p_values, alpha=0.05)
+    adjusted_by_key = {
+        (row.comparison_id, row.metric): row for row in adjusted
+    }
+    output: list[dict[str, Any]] = []
+    for key, row in sorted(raw_rows.items()):
+        holm = adjusted_by_key[key]
+        output.append(
+            {
+                **row,
+                "holm_adjusted_p_value": holm.adjusted_p_value,
+                "holm_rank": holm.rank,
+                "holm_family_size": holm.family_size,
+                "alpha": holm.alpha,
+                "reject_null_after_holm": holm.reject_null,
+                "interpretation": (
+                    "paired outer-OOF inference; no automatic winner and no causal ablation claim"
+                ),
+            }
+        )
+    return output, limitations
 
 
 def _per_class_metric_distributions(
@@ -3332,6 +3549,7 @@ class StudyAnalysis:
     confusion_row_normalized: tuple[Mapping[str, Any], ...]
     calibration_bins: tuple[Mapping[str, Any], ...]
     paired_deltas: tuple[Mapping[str, Any], ...]
+    paired_participant_inference: tuple[Mapping[str, Any], ...]
     aggregation_line_comparison: tuple[Mapping[str, Any], ...]
     aggregation_line_repeat_metrics: tuple[Mapping[str, Any], ...]
     aggregation_line_per_class_metrics: tuple[Mapping[str, Any], ...]
@@ -3824,6 +4042,44 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
                 if trusted_row
                 else _lcb95(repeat_f1)
             ),
+            "participant_cluster_balanced_accuracy_ci95_low": _number(
+                trusted_row.get(
+                    "participant_cluster_balanced_accuracy_ci95_low"
+                )
+            ),
+            "participant_cluster_balanced_accuracy_ci95_high": _number(
+                trusted_row.get(
+                    "participant_cluster_balanced_accuracy_ci95_high"
+                )
+            ),
+            "participant_cluster_balanced_accuracy_ci95": (
+                _percent_interval_text(
+                    trusted_row.get(
+                        "participant_cluster_balanced_accuracy_ci95_low"
+                    ),
+                    trusted_row.get(
+                        "participant_cluster_balanced_accuracy_ci95_high"
+                    ),
+                )
+            ),
+            "participant_cluster_macro_f1_ci95_low": _number(
+                trusted_row.get("participant_cluster_macro_f1_ci95_low")
+            ),
+            "participant_cluster_macro_f1_ci95_high": _number(
+                trusted_row.get("participant_cluster_macro_f1_ci95_high")
+            ),
+            "participant_cluster_macro_f1_ci95": _percent_interval_text(
+                trusted_row.get("participant_cluster_macro_f1_ci95_low"),
+                trusted_row.get("participant_cluster_macro_f1_ci95_high"),
+            ),
+            "participant_cluster_bootstrap_resamples": _number(
+                trusted_row.get(
+                    "participant_cluster_balanced_accuracy_n_resamples"
+                )
+            ),
+            "participant_cluster_bootstrap_seed": _number(
+                trusted_row.get("participant_cluster_balanced_accuracy_seed")
+            ),
             "repeat_balanced_accuracy_population_sd": (
                 _number(
                     variability.get("repeat_balanced_accuracy_population_sd")
@@ -3926,7 +4182,11 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
             ),
             "conditional_ci_method": (
                 "participant_cluster_bootstrap_config_metrics_v2"
-                if _number(trusted_row.get("balanced_accuracy_lcb95"))
+                if _number(
+                    trusted_row.get(
+                        "participant_cluster_balanced_accuracy_ci95_low"
+                    )
+                )
                 is not None
                 else "repeat_student_t_conditional"
             ),
@@ -4181,6 +4441,23 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
     elif len(summaries) > 1:
         notes.append("paired deltas are N/A because no reference case was declared")
 
+    paired_participant_inference: list[dict[str, Any]] = []
+    if not centered_star:
+        paired_participant_inference, paired_inference_notes = (
+            _paired_participant_inference(
+                collected,
+                oof_by_case=oof_by_case,
+                case_ids=tuple(manifest_cases),
+            )
+        )
+        notes.extend(paired_inference_notes)
+        if paired_participant_inference:
+            notes.append(
+                "Paired P values use the registered participant-cluster "
+                "permutation budget and Holm correction separately within BA "
+                "and Macro-F1; they do not trigger automatic selection."
+            )
+
     route_role_coverage, quality_distributions = _route_role_quality_tables(
         collected
     )
@@ -4272,6 +4549,7 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         confusion_row_normalized=tuple(confusion_row_normalized),
         calibration_bins=tuple(calibration),
         paired_deltas=tuple(paired),
+        paired_participant_inference=tuple(paired_participant_inference),
         aggregation_line_comparison=tuple(aggregation_line_comparison),
         aggregation_line_repeat_metrics=tuple(aggregation_line_repeat_metrics),
         aggregation_line_per_class_metrics=tuple(

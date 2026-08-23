@@ -35,24 +35,31 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
         _, stage1 = _load("01_representation_baselines_v2.yaml")
         _, stage4 = _load("04_selected_inception_ensemble_v2.yaml")
         _, stage5 = _load("05_sqi_motion_finalists_v2.yaml")
-        _, stage6 = _load("06_sequential_single_factor_ablation_v2.yaml")
+        stage6_plan, stage6 = _load(
+            "06_sequential_single_factor_ablation_v2.yaml"
+        )
         stage1_by_model = {
             case.config["model"]["model_id"]: case.config
             for case in stage1.cases
         }
 
         compact_reference = stage1_by_model["CompactCNN1D"]
+        stage6_reference = next(
+            case.config
+            for case in stage6.cases
+            if case.case_id == stage6_plan.study.reference_case_id
+        )
         for case in stage6.cases:
             for section in (
                 "manifest", "roles", "signal", "windows", "quality", "artifact",
                 "features", "model", "aggregation", "evaluation",
             ):
-                self.assertEqual(case.config[section], compact_reference[section])
+                self.assertEqual(case.config[section], stage6_reference[section])
             changed_training = {
                 key
-                for key in set(case.config["training"]) | set(compact_reference["training"])
+                for key in set(case.config["training"]) | set(stage6_reference["training"])
                 if case.config["training"].get(key)
-                != compact_reference["training"].get(key)
+                != stage6_reference["training"].get(key)
             }
             self.assertLessEqual(changed_training, {"learning_rate"})
 
@@ -76,26 +83,49 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
             ("dynamic_observation_scale", 3.0),
         ):
             stage5_signal_reference["imu"][name] = value
+        stage5_reference = next(
+            case.config
+            for case in stage5.cases
+            if case.case_id == "raw_compact_cnn__static_only"
+        )
+        for section in (
+            "manifest", "windows", "features", "model", "aggregation",
+            "evaluation",
+        ):
+            self.assertEqual(stage5_reference[section], compact_reference[section])
+        self.assertEqual(stage5_reference["signal"], stage5_signal_reference)
+        stage5_reference_training_changes = {
+            key
+            for key in set(stage5_reference["training"])
+            | set(compact_reference["training"])
+            if stage5_reference["training"].get(key)
+            != compact_reference["training"].get(key)
+        }
+        self.assertEqual(
+            stage5_reference_training_changes,
+            {"optimizer", "batch_size"},
+        )
+
         for case in stage5.cases:
             for section in (
                 "manifest", "windows", "features", "model", "aggregation",
                 "evaluation",
             ):
-                self.assertEqual(case.config[section], compact_reference[section])
-            self.assertEqual(case.config["signal"], stage5_signal_reference)
+                self.assertEqual(case.config[section], stage5_reference[section])
+            self.assertEqual(case.config["signal"], stage5_reference["signal"])
             changed_training = {
                 key
                 for key in set(case.config["training"])
-                | set(compact_reference["training"])
+                | set(stage5_reference["training"])
                 if case.config["training"].get(key)
-                != compact_reference["training"].get(key)
+                != stage5_reference["training"].get(key)
             }
             self.assertLessEqual(
                 changed_training, {"classifier_role_families"}
             )
             if case.case_id == "raw_compact_cnn__static_only":
                 self.assertEqual(
-                    case.config["roles"], compact_reference["roles"]
+                    case.config["roles"], stage5_reference["roles"]
                 )
                 self.assertFalse(changed_training)
             else:
@@ -127,20 +157,21 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
                 "compact_cnn",
                 "logistic_regression",
                 "inception_matrix_small",
-                "fusion_compact",
+                "inception_full",
             },
         )
         self.assertEqual(
             Counter(case.output_group for case in expansion.cases),
             {
-                "raw": 1,
+                "raw": 2,
                 "feature_vector": 1,
                 "feature_matrix": 1,
-                "fusion": 1,
             },
         )
-        self.assertEqual(plan.execution.repeats, (0,))
+        self.assertEqual(plan.study.reference_case_id, "raw__compact_cnn")
+        self.assertEqual(plan.execution.repeats, (0, 1, 2, 3, 4))
         self.assertEqual(plan.execution.folds, (0, 1, 2, 3, 4))
+        self.assertEqual(plan.execution.jobs, 1)
         self.assertFalse(plan.execution.allow_parallel_deep)
         matrix = next(
             case.config
@@ -155,6 +186,43 @@ class StaticLineBStagedPlanTests(unittest.TestCase):
             "ordered_window_feature_matrix_d146_variable_k_v1",
         )
         self.assertNotIn("matrix_k", matrix["features"])
+        self.assertEqual(matrix["training"]["fixed_epochs"], 10)
+        self.assertEqual(matrix["windows"]["engineering"]["length_s"], 10.0)
+        self.assertEqual(matrix["windows"]["engineering"]["hop_s"], 2.0)
+        self.assertEqual(
+            matrix["windows"]["engineering"]["padding"],
+            "none_complete_windows_only",
+        )
+
+        by_id = {case.case_id: case for case in expansion.cases}
+        compact = by_id["raw__compact_cnn"].config
+        self.assertEqual(compact["windows"]["raw_dl"]["length_s"], 5.0)
+        self.assertEqual(compact["windows"]["raw_dl"]["hop_s"], 2.5)
+        self.assertFalse(compact["signal"]["dl_resampling"]["enabled"])
+        self.assertEqual(compact["training"]["fixed_epochs"], 10)
+        self.assertEqual(compact["training"]["batch_size"], 64)
+        self.assertEqual(compact["training"]["learning_rate"], 0.001)
+
+        logistic = by_id["feature_vector__logistic"].config
+        self.assertEqual(logistic["model"]["logistic_solver"], "lbfgs")
+        self.assertEqual(logistic["model"]["logistic_max_iter"], 5000)
+        self.assertEqual(logistic["training"]["device"], "cpu")
+
+        configured = by_id["raw__inception_full_configured"].config
+        self.assertEqual(configured["model"]["model_id"], "InceptionTimeFull")
+        self.assertEqual(configured["model"]["input_channels"], 8)
+        self.assertEqual(configured["model"]["dropout"], 0.5)
+        self.assertTrue(configured["signal"]["dl_resampling"]["enabled"])
+        self.assertEqual(
+            configured["signal"]["dl_resampling"]["target_fs_hz"], 64.0
+        )
+        self.assertEqual(configured["windows"]["raw_dl"]["length_s"], 5.0)
+        self.assertEqual(configured["windows"]["raw_dl"]["hop_s"], 2.5)
+        self.assertEqual(configured["training"]["fixed_epochs"], 10)
+        self.assertEqual(configured["training"]["batch_size"], 16)
+        self.assertEqual(configured["training"]["learning_rate"], 0.0003)
+        self.assertEqual(configured["training"]["weight_decay"], 0.005)
+        self.assertEqual(configured["training"]["label_smoothing"], 0.2)
 
     def test_stage_01_jobs_override_is_reduced_for_deep_cases(self) -> None:
         plan = load_study_plan(

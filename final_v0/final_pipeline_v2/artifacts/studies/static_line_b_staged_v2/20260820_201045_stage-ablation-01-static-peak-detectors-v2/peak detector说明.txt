@@ -1,0 +1,30 @@
+aboyv1和v2的具体区别是什么
+
+
+
+
+
+
+8:17 PM
+
+
+
+
+
+
+两者共享 400 Hz、10 秒非重叠块、HRI 自适应带通、210 bpm 约束、双极性、35–210 bpm 和 MAD 清理；主要差异在预处理、极性选择和清理顺序。
+环节	aboy_project_v1	aboy_project_v2
+定位	历史 V2 实现、当前默认	你给出的七步权威合同候选
+输入	使用 canonical x_filter：线性 detrend + 三阶 0.2–8 Hz 带通	使用 repaired x_native，模块自行执行二阶 0.2 Hz 高通
+自适应带通	二阶 0.5–fH Hz	相同
+preliminary peaks	只约束 210 bpm 最小间距	相同
+P30 保留	Pd > P30	相同
+HRI 合理性检查	retained Pd 的均值，与全部 preliminary PPI 的中位数比较	retained Pd 的均值，与retained Pd 自身中位数比较
+upper 30%	历史索引算法；少于3峰时使用全部峰	严格使用最高 ceil(0.30×N) 个峰
+极性选择	正极性跑完整条记录，负极性也跑完整条记录；最后整条 wavelength 只选一个极性	每个10秒块分别比较正负极性；每块可选不同极性
+HRI 传播	正负极性分别维护各自贯穿整条记录的 HRI 链	只把当前块胜出极性的 HRI 传给下一块
+ratio reference	先做生理范围和 MAD，再以 clean PPI median 为 ratio reference	合并所有块后，先以当前 PPI median 做 ratio 检查
+ratio failure	标记 following peak 不接受，但仍保留原始 peak timeline；相邻 intervals 失效	物理删除 following peak，然后重新计算 PPI
+最终清理顺序	physiology → MAD → ratio mask	ratio peak removal → physiology → MAD
+selected_polarity	表示整条 wavelength 的唯一极性	是各块极性的汇总标记；真正选择保存在逐块 provenance
+旧结果兼容	旧运行和 20260820_144230... 对应此版本	旧结果未测试它，必须重新运行 Stage-abl

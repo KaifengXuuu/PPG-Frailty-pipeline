@@ -77,6 +77,8 @@ def _fmt(value: Any) -> str:
     if value is None:
         return "N/A"
     if isinstance(value, float):
+        if value != 0.0 and abs(value) < 1e-4:
+            return f"{value:.3e}"
         return f"{value:.4f}"
     if isinstance(value, (dict, list, tuple)):
         return json.dumps(value, ensure_ascii=False, sort_keys=True)
@@ -754,11 +756,19 @@ def _report_markdown(
                     "Conditional BA, mean ± SD (%)",
                 ),
                 (
+                    "participant_cluster_balanced_accuracy_ci95",
+                    "Conditional BA cluster 95% CI (%)",
+                ),
+                (
                     (
                         "participant_mean_macro_f1",
                         "repeat_macro_f1_sample_sd",
                     ),
                     "Conditional Macro-F1, mean ± SD (%)",
+                ),
+                (
+                    "participant_cluster_macro_f1_ci95",
+                    "Conditional Macro-F1 cluster 95% CI (%)",
                 ),
                 (
                     (
@@ -797,8 +807,9 @@ def _report_markdown(
         [
             "## Repeat-level predictive distributions",
             "",
-            "Mean and sample SD are shown in one percentage column; lossless CI, "
-            "range, mean, and SD values remain in the matching JSON table.",
+            "Mean and sample SD are shown in one percentage column and the "
+            "two-sided repeat-level Student-t 95% CI is shown beside it. "
+            "Lossless bounds, range, mean, and SD remain in the matching JSON table.",
             "",
         ]
     )
@@ -810,6 +821,7 @@ def _report_markdown(
                 ("metric", "Metric"),
                 ("n", "Repeats"),
                 ("mean_sd", "Mean ± SD (%)"),
+                ("ci95", "Repeat 95% CI (%)"),
                 ("metric_source", "Source"),
             ),
         )
@@ -831,10 +843,40 @@ def _report_markdown(
                 ("metric", "Metric"),
                 ("n", "Repeats"),
                 ("mean_sd", "Mean ± SD (%)"),
+                ("ci95", "Repeat 95% CI (%)"),
             ),
         )
     )
     lines.extend(["</details>", ""])
+    lines.extend(
+        [
+            "## Paired participant-cluster inference",
+            "",
+            "Each candidate is compared with the declared reference on the exact "
+            "participant/repeat/fold/split roster. P values are two-sided "
+            "participant-cluster permutation results; Holm adjustment is applied "
+            "separately within BA and Macro-F1. These comparisons do not select a "
+            "winner and do not turn this representation screen into a causal ablation.",
+            "",
+        ]
+    )
+    lines.extend(
+        _markdown_table(
+            getattr(analysis, "paired_participant_inference", ()),
+            (
+                ("reference_case_id", "Reference"),
+                ("candidate_case_id", "Candidate"),
+                ("metric", "Metric"),
+                ("candidate_minus_reference", "Candidate − reference"),
+                ("raw_two_sided_p_value", "Raw P"),
+                ("holm_adjusted_p_value", "Holm P"),
+                ("reject_null_after_holm", "Holm P ≤ 0.05"),
+                ("participant_count", "Participants"),
+                ("repeat_count", "Repeats"),
+                ("n_resamples", "Permutations"),
+            ),
+        )
+    )
     if _is_stage3_centered_star(collected.plan):
         for name, title, notice, columns, _description in _STAGE3_STAR_TABLES:
             lines.extend([f"## {title}", "", notice, ""])
@@ -1444,10 +1486,12 @@ Conditional values use retained participants only and do not lead the ranking.</
         ),
         "Conditional BA, mean ± SD (%)",
     ),
+    ("participant_cluster_balanced_accuracy_ci95", "Conditional BA cluster 95% CI (%)"),
     (
         ("participant_mean_macro_f1", "repeat_macro_f1_sample_sd"),
         "Conditional Macro-F1, mean ± SD (%)",
     ),
+    ("participant_cluster_macro_f1_ci95", "Conditional Macro-F1 cluster 95% CI (%)"),
     (
         (
             "participant_mean_macro_roc_auc_ovr",
@@ -1472,17 +1516,34 @@ Conditional values use retained participants only and do not lead the ranking.</
     ("ranking_interpretation", "Interpretation"),
 ))}
 <h2>Repeat-level predictive distributions</h2>
-<p>Mean and sample SD share one percentage column. Lossless CI/range values
-remain in the matching JSON table.</p>
+<p>Mean and sample SD share one percentage column; the adjacent interval is the
+two-sided repeat-level Student-t 95% CI. Lossless numeric bounds remain in the
+matching JSON table.</p>
 {_html_table(compact_rows(getattr(analysis, "metric_distribution_summary", ())), (
     ("case_id", "Case"), ("metric", "Metric"), ("n", "Repeats"),
-    ("mean_sd", "Mean ± SD (%)"), ("metric_source", "Source"),
+    ("mean_sd", "Mean ± SD (%)"), ("ci95", "Repeat 95% CI (%)"),
+    ("metric_source", "Source"),
 ))}
 <details><summary>Per-class repeat distributions</summary>
 {_html_table(compact_rows(getattr(analysis, "per_class_metric_distribution_summary", ())), (
     ("case_id", "Case"), ("class_name", "Class"), ("metric", "Metric"),
     ("n", "Repeats"), ("mean_sd", "Mean ± SD (%)"),
+    ("ci95", "Repeat 95% CI (%)"),
 ))}</details>
+<h2>Paired participant-cluster inference</h2>
+<p>Each candidate is paired to the declared reference on the exact frozen
+participant/repeat/fold/split roster. Raw two-sided permutation P values and
+Holm-adjusted P values are comparison evidence only.</p>
+{_html_table(getattr(analysis, "paired_participant_inference", ()), (
+    ("reference_case_id", "Reference"), ("candidate_case_id", "Candidate"),
+    ("metric", "Metric"),
+    ("candidate_minus_reference", "Candidate - reference"),
+    ("raw_two_sided_p_value", "Raw P"),
+    ("holm_adjusted_p_value", "Holm P"),
+    ("reject_null_after_holm", "Holm P ≤ 0.05"),
+    ("participant_count", "Participants"), ("repeat_count", "Repeats"),
+    ("n_resamples", "Permutations"),
+))}
 {bridge_html}
 <h2>Aggregation sensitivity from the same file-level OOF</h2>
 <p class="notice">The declared-source row reproduces the aggregation used by
@@ -1979,6 +2040,11 @@ def generate_study_report(
         ),
         ("calibration_bins", analysis.calibration_bins, "Top-label participant OOF reliability bins"),
         ("paired_deltas", analysis.paired_deltas, "Repeat-paired deltas versus declared reference"),
+        (
+            "paired_participant_inference",
+            analysis.paired_participant_inference,
+            "Participant-cluster permutation P values versus the declared reference with Holm correction",
+        ),
         ("coverage", analysis.coverage, "Coverage and quality diagnostic counts"),
         (
             "route_role_coverage",

@@ -385,6 +385,30 @@ def _representation_input(config: Mapping[str, Any]) -> dict[str, Any]:
     return {"representation_mode": mode, "signal_view": view, **details}
 
 
+def _trainer_component(config: Mapping[str, Any]) -> tuple[str, Mapping[str, Any]]:
+    """Report executable trainer semantics without assigning DL epochs to sklearn."""
+
+    model = dict(config.get("model", {}))
+    training = dict(config.get("training", {}))
+    if str(config.get("representation_mode")) == "feature_vector":
+        architecture = model.get("architecture_parameters")
+        architecture = (
+            dict(architecture) if isinstance(architecture, Mapping) else {}
+        )
+        estimator = str(
+            architecture.get("estimator", model.get("model_id", "sklearn_estimator"))
+        )
+        return (
+            estimator,
+            {
+                "fit_semantics": "one estimator fit on each outer-training fold",
+                "epoch_rule": "not_applicable_classical_estimator",
+                "estimator_parameters": model,
+            },
+        )
+    return str(training.get("optimizer", "unavailable")), training
+
+
 def build_pipeline_test_component_rows(
     root: str | Path,
     manifest: Mapping[str, Any],
@@ -434,6 +458,7 @@ def build_pipeline_test_component_rows(
             # its full resolved config; only missing source-local prose is blank.
             pass
         representation = _representation_input(config)
+        trainer_id, trainer_parameters = _trainer_component(config)
         rows.extend(
             (
                 _row(case_id, "dataset_adapter", common.get("dataset_id"), "enabled", common, config.get("manifest", {})),
@@ -449,7 +474,7 @@ def build_pipeline_test_component_rows(
                 _row(case_id, "feature_extractor", config.get("features", {}).get("registry_id"), "enabled" if config.get("representation_mode") in {"feature_vector", "feature_matrix", "fusion"} else "auxiliary_not_classifier_input", {**common, "input_views": ["x_analysis/x_native", "processed_imu_physical"], "engineering_window": config.get("windows", {}).get("engineering")}, config.get("features", {})),
                 _row(case_id, "representation", config.get("representation_mode"), "enabled", {**common, **representation}, {"representation_mode": config.get("representation_mode"), "input_contract": representation}),
                 _row(case_id, "classifier", model.get("model_id"), "enabled", {**common, **representation}, model),
-                _row(case_id, "trainer", config.get("training", {}).get("optimizer", "classical_estimator_fit"), "enabled", {**common, "model_input": representation, "labels": "participant frailty class"}, config.get("training", {})),
+                _row(case_id, "trainer", trainer_id, "enabled", {**common, "model_input": representation, "labels": "participant frailty class"}, trainer_parameters),
                 _row(case_id, "aggregation", config.get("aggregation", {}).get("balance_line"), "enabled", {"input_data": "held-out window/file probabilities", "roles": common.get("roles")}, config.get("aggregation", {})),
                 _row(case_id, "evaluation", config.get("evaluation", {}).get("primary_metric"), "enabled", {"input_data": "held-out participant predictions and frailty labels", "class_order": config.get("manifest", {}).get("class_name_order")}, config.get("evaluation", {})),
             )

@@ -38,6 +38,7 @@ class ReportingTabularExportTests(unittest.TestCase):
                     "metric": "balanced_accuracy",
                     "n": 5,
                     "mean_sd": "72.6 ± 6.0",
+                    "ci95": "[65.0, 80.0]",
                 }
             ],
         )

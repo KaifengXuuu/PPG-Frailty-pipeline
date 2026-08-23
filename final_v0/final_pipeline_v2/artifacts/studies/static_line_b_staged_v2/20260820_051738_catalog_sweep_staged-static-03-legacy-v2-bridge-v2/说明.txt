@@ -1,0 +1,526 @@
+400 Hz
+5s
+legacy LPF  IMU  严查EKF！L2→L3  具体变了什么，需要严格检查
+all eight channels per-window IMU normalization
+uniform replacement
+→ Adam
+→ batch64
+
+L0 baseline
+ ↓
+L1 = L0 + window plan
+ ↓
+L2 = L1 + sampling rate
+ ↓
+L3 = L2 + V2 IMU preprocessing
+ ↓
+L4 = L3 + fold-local IMU normalization
+ ↓
+L5 = L4 + replacement sampler/class weights
+ ↓
+L6 = L5 + Line-B sampler/participant class weights
+ ↓
+L7 = L6 + optimizer/batch/dropout bundle
+
+| Profile | Preprocessing | Fs | 窗口 | IMU normalization | Sampler | Class weight | Aggregation | Optimizer/batch |
+|---|---|---:|---|---|---|---|---|---|
+| L0 | legacy raw filtered | 64 | 15 s/3 s，保留90% | per-window all 8ch | exhaustive shuffle | window-count inverse | Line A | AdamW/32 |
+| L1 | legacy raw filtered | 64 | 5 s/2.5 s，cap128 | per-window all 8ch | exhaustive shuffle | window-count inverse | Line A | AdamW/32 |
+| L2 | legacy raw filtered | 400 | 5 s/2.5 s，cap128 | per-window all 8ch | exhaustive shuffle | window-count inverse | Line A | AdamW/32 |
+| L3 | V2 B-calibration+EKF | 400 | 5 s/2.5 s，cap128 | per-window all 8ch | exhaustive shuffle | window-count inverse | Line A | AdamW/32 |
+| L4 | V2 B-calibration+EKF | 400 | 5 s/2.5 s，cap128 | outer-train axes6 robust | exhaustive shuffle | window-count inverse | Line A | AdamW/32 |
+| L5 | 同 L4 | 400 | 5 s/2.5 s，cap128 | outer-train axes6 robust | uniform replacement | window-count inverse | Line A | AdamW/32 |
+| L6 | 同 L4 | 400 | 5 s/2.5 s，cap128 | outer-train axes6 robust | Line-B weighted | participant-count inverse | Line B | AdamW/32 |
+| L7 | 同 L6 | 400 | 5 s/2.5 s，cap128 | outer-train axes6 robust | Line-B weighted | participant-count inverse | Line B | **Adam/64** |
+
+| 用途                         | 是否合适 | 判断                     |
+| -------------------------- | ---: | ---------------------- |
+| 说明不同 pipeline 设计会显著影响结果    |    是 | 这是本报告最有价值的用途           |
+| 作为探索性 sensitivity analysis |    是 | 但必须注明仅一个 repeat        |
+| 作为旧版到 V2 的工程桥接诊断           |    是 | 名称和目标高度匹配              |
+| 作为完整 ablation study        |    否 | 只有部分相邻配置满足单因素条件        |
+| 选择最终模型或最终 pipeline         |    否 | 只有 repeat 0，且多处为复合因素变化 |
+| 报告最终泛化性能                   |    否 | 没有完整 5×5，也没有独立测试集      |
+| 放入附录作为完整过程记录               |  很合适 | 建议保留完整配置差异、OOF 和参与者级变化 |
+
+
+
+| Profile | 主要改变                   | Repeat-0 BA | Macro-F1 | 解释级别                  |
+| ------- | ---------------------- | ----------: | -------: | --------------------- |
+| L0      | Legacy approximate     |      0.4259 |   0.4184 | Descriptive           |
+| L1      | 5 s window plan        |      0.4583 |   0.4628 | Descriptive           |
+| L2      | 400 Hz                 |      0.5324 |   0.5404 | Candidate             |
+| L3      | V2 EKF IMU             |      0.3981 |   0.4084 | Hypothesis-generating |
+| L4      | Fold-level IMU scaling |      0.2917 |   0.2840 | Hypothesis-generating |
+| L5      | Uniform replacement    |      0.3796 |   0.3681 | Descriptive           |
+| L6      | V2 balance policy      |      0.4954 |   0.4936 | Compound profile      |
+| L7      | V2 training bundle     |      0.5000 |   0.4850 | Compound profile      |
+
+| 转换      |       BA 变化 | Macro-F1 变化 | 所改变的主要内容                                       |
+| ------- | ----------: | ----------: | ---------------------------------------------- |
+| L0 → L1 |     +0.0324 |     +0.0444 | 15 s 历史窗改为 5 s 窗口计划                            |
+| L1 → L2 |     +0.0741 |     +0.0776 | 64 Hz 改为 400 Hz                                |
+| L2 → L3 | **−0.1343** | **−0.1320** | legacy IMU 改为单位转换、校准、EKF 和动态加速度                |
+| L3 → L4 | **−0.1064** | **−0.1244** | IMU 逐窗口归一化改为 outer-train fold scaling          |
+| L4 → L5 |     +0.0879 |     +0.0841 | 无放回完整遍历改为均匀有放回抽样                               |
+| L5 → L6 |     +0.1158 |     +0.1198 | Line B hierarchy sampler 与 class-weight policy |
+| L6 → L7 |     取决于聚合视图 |     取决于聚合视图 | AdamW/batch32 等改为 V2 training bundle           |
+
+
+| 比较                     | 当前应如何命名                            |                     是否为严格单因素 ablation |
+| ---------------------- | ---------------------------------- | ------------------------------------: |
+| L0→L1                  | Window-plan sensitivity            | 部分是；长度、hop、cap 等构成一个 compound profile |
+| L1→L2                  | Sampling-rate ablation             |           是，前提是 resolved config 只改 fs |
+| L2→L3                  | IMU preprocessing-route comparison |                   否；同时改单位、校准、EKF和信号语义 |
+| L3→L4                  | IMU normalization ablation         |                                   基本是 |
+| L4→L5                  | Sampling-mechanics ablation        |                                   基本是 |
+| L5→L6                  | V2 balance-policy comparison       |      否；sampler 与 class weighting 同时变化 |
+| L6→L7                  | Training-bundle comparison         |    否；optimizer、batch、可能的 dropout 同时变化 |
+| Line A→Line B post hoc | Aggregation sensitivity            |                         不是训练 ablation |
+
+L2→L3：
+legacy filtered IMU axes
+→ unit conversion
+→ same-participant B calibration
+→ roll–pitch EKF
+→ dynamic acceleration
+
+L3→L4：
+IMU per-window robust normalization
+→ outer-training-participant fold scaler
+
+| Profile | 具体含义                                                     |
+| ------- | -------------------------------------------------------- |
+| L0      | 完整旧版近似 pipeline                                          |
+| L1      | 在 L0 基础上改成 V2 的 5 s window plan                          |
+| L2      | 在 L1 基础上把 64 Hz 改为 400 Hz                                |
+| L3      | 在 L2 基础上换成 V2 IMU/EKF，但仍全部8通道逐窗口标准化                      |
+| L4      | 在 L3 基础上把 IMU 改成 outer-train fold scaling                |
+| L5      | 在 L4 基础上把 exhaustive shuffle 改成 uniform replacement      |
+| L6      | 在 L5 基础上启用 V2 Line B sampler/class-weight balance bundle |
+| L7      | 在 L6 基础上启用 V2 training bundle                            |
+| C0      | 独立运行当前 canonical V2，用来验证 L7 是否真的等于 V2                    |
+
+| 相邻变化  | 主要回答的问题                    |
+| ----- | -------------------------- |
+| L0→L1 | 15 s 换5 s是否影响结果            |
+| L1→L2 | 64 Hz换400 Hz是否影响模型时间尺度     |
+| L2→L3 | EKF/单位/动态加速度是否影响结果         |
+| L3→L4 | IMU逐窗归一化换fold scaler是否影响结果 |
+| L4→L5 | replacement本身是否影响结果        |
+| L5→L6 | V2 balance bundle是否影响结果    |
+| L6→L7 | V2 training bundle是否影响结果   |
+| L7→C0 | bridge实现是否真正等于canonical V2 |
+
+
+fresh current CSV
+→ legacy reader behavior
+→ RED/IR 0.2–8 Hz
+→ raw AX/AY/AZ 20 Hz LP
+→ GX/GY/GZ 40 Hz LP
+→ 8ch joint resampling 400→64 Hz
+→ 15 s / 3 s
+→ 每个window的8个channel全部median/IQR标准化
+→ exhaustive shuffle
+→ AdamW
+→ batch32
+→ fixed20
+→ legacy participant all-window mean
+
+
+| 执行顺序 | Case                                           |
+| ---: | ---------------------------------------------- |
+|    2 | `compact_cnn__L7_v2_training_bundle_fixed10`   |
+|    3 | `compact_cnn__L5_uniform_replacement_fixed10`  |
+|    4 | `compact_cnn__L6_v2_line_b_balance_fixed10`    |
+|    5 | `compact_cnn__L4_v2_imu_fold_scaled_fixed10`   |
+|    6 | `compact_cnn__L3_v2_imu_window_scaled_fixed10` |
+|    7 | `compact_cnn__L2_legacy400_w5_fixed10`         |
+|    8 | `compact_cnn__L1_legacy64_w5_fixed10`          |
+|    9 | `compact_cnn__L0_legacy64_w15_fixed10`         |
+
+
+
+| Case | 相对前一case唯一改变                                                  |
+| ---- | ------------------------------------------------------------- |
+| B0   | 完整legacy input，fixed10                                        |
+| B1   | 64 Hz → 400 Hz                                                |
+| B2   | 15 s/3 s → 5 s/2.5 s                                          |
+| B3   | legacy IMU → calibrated EKF A_dyn                             |
+| B4   | all-channel window scaling → V2 PPG-window + IMU-fold scaling |
+| B5   | uniform shuffle → Line B weighted sampler                     |
+| B6   | AdamW/batch32 → Adam/batch64                                  |
+| B7   | direct-window aggregation → file/role aggregation             |
+| B8   | 完整V2                                                          |
+
+01  compact_cnn__L0_legacy64_w15
+02  compact_cnn__L1_legacy64_w5
+03  compact_cnn__L2_legacy400_w5
+04  compact_cnn__L3_v2_imu_window_scaled
+05  compact_cnn__L4_v2_imu_fold_scaled
+06  compact_cnn__L5_uniform_replacement
+07  compact_cnn__L6_v2_line_b_weighting
+08  compact_cnn__L7_v2_training_bundle
+09  compact_cnn__C0_current_v2
+
+10  inception_full__L0_legacy64_w15
+11  inception_full__L1_legacy64_w5
+12  inception_full__L2_legacy400_w5
+13  inception_full__L3_v2_imu_window_scaled
+14  inception_full__L4_v2_imu_fold_scaled
+15  inception_full__L5_uniform_replacement
+16  inception_full__L6_v2_line_b_weighting
+17  inception_full__L7_v2_training_bundle
+18  inception_full__C0_current_v2
+
+| 环节               | 20260525旧版                           | 当前V2                                   | 可能影响              |
+| ---------------- | ------------------------------------ | -------------------------------------- | ----------------- |
+| 文件来源             | 运行时目录扫描                              | 冻结manifest+source hash                 | V2更可复现            |
+| 静态文件             | 145 B/R files                        | 145 B/R files                          | 基本相同              |
+| participants     | 29                                   | 29                                     | 基本相同              |
+| 类别               | 9/12/8                               | 9/12/8                                 | 相同                |
+| 通道顺序             | RED/IR/AX/AY/AZ/GX/GY/GZ             | 同源顺序，模型输入换成A_dyn                       | 语义发生变化            |
+| NaN              | 任意插值，边界外推，全缺失→0                      | 仅内部≤100 samples；长/边界/全缺失 fail closed   | 当前更严格             |
+| PPG滤波            | 0.2–8 Hz                             | 0.2–8 Hz                               | 基本相同              |
+| IMU              | 20/40 Hz LPF，旧archive无calibrated EKF | 单位转换+B校准+EKF+A_dyn                     | **重大变化**          |
+| 模型采样率            | **64 Hz**                            | reference **400 Hz**                   | **重大变化**          |
+| 窗口               | **15 s / 3 s**                       | **5 s / 2.5 s**                        | **重大变化**          |
+| 窗口保留             | 90%均匀采样                              | 全部完整窗，cap128                           | 数据覆盖不同            |
+| PPG标准化           | per-window                           | per-window                             | 接近                |
+| IMU标准化           | **每窗口、每通道独立**                        | **outer-train fold scaler**            | **重大变化**          |
+| 网络               | CompactCNN 9/9/7                     | CompactCNN 9/9/7                       | 基本相同              |
+| batch            | 32                                   | 64                                     | 优化动态变化            |
+| optimizer        | AdamW                                | Adam                                   | weight decay语义变化  |
+| epoch            | outer fold选最佳epoch                   | fixed10                                | 旧版存在乐观偏差          |
+| training sampler | 每epoch遍历全部windows                    | WeightedRandomSampler with replacement | **训练分布变化**        |
+| role权重           | B约20%，R合计约80%                        | B family50%，R family50%                | **生理任务权重变化**      |
+| 聚合               | participant所有windows直接均值             | window→file→role→participant           | **评价目标变化**        |
+| folds            | 运行时SGKF                              | 冻结5×5                                  | V2更可复现            |
+| cache            | 路径匹配即可复用                             | content-addressed strict               | 旧版存在stale cache风险 |
+
+
+
+
+L1 — 只切换 window plan
+
+相对于 L0：
+
+15 s / 3 s / 90% windows
+→
+5 s / 2.5 s / complete windows / cap128
+
+仍然是：
+
+64 Hz
+legacy IMU
+all-channel per-window normalization
+legacy training
+
+这是低优先级 alignment control。
+
+L2 — 只切换 DL sampling rate
+
+相对于 L1：
+
+64 Hz
+→
+400 Hz
+
+其他保持不变，包括：
+
+5 s；
+legacy IMU；
+8通道全部逐窗口标准化；
+exhaustive shuffle；
+legacy training。
+
+该 case 直接检查同一卷积核样本数在不同物理时间尺度下的影响。
+
+L3 — 切换 IMU signal semantics
+
+相对于 L2：
+
+raw AX/AY/AZ + raw GX/GY/GZ
+→
+unit conversion
++ B-record calibration
++ roll–pitch EKF
++ A_dyn_x/y/z
++ GX/GY/GZ in SI units
+
+但是仍然对全部八通道逐窗口标准化。
+
+这样可以尽量单独观察：
+
+原始低通 IMU 与 calibrated EKF dynamic IMU 的差异。
+
+L4 — 切换 IMU normalization
+
+相对于 L3：
+
+IMU 每个window单独median/IQR
+→
+IMU outer-training-participant-only fold scaler
+
+PPG 仍然逐窗口标准化。
+
+该 case 检查：
+
+保留 IMU 绝对活动强度是否导致 domain shift 或性能下降。
+
+L5 — 切换 sampling mechanics
+
+相对于 L4：
+
+exhaustive shuffle without replacement
+→
+uniform sampling with replacement
+
+此时每个 row 的权重仍然相同，所以尚未加入：
+
+participant balancing；
+B/R balancing；
+file balancing。
+
+它只检查：
+
+“有放回抽样”本身带来的重复和遗漏是否影响模型。
+
+L6 — 切换 V2 balance bundle
+
+相对于 L5：
+
+equal row probability
+→
+Line B participant/role/file/window probability
+
+并同时切换为当前：
+
+outer-train participant inverse-frequency class weights
+
+这一步检查：
+
+当前 V2 的完整 balancing policy 是否解释了成绩变化。
+
+但它不能独立区分：
+
+hierarchy sampler；
+class weighting。
+
+这点非常重要。
+
+L7 — 切换 V2 training bundle
+
+相对于 L6：
+
+fixed20
+AdamW
+batch32
+legacy model dropout
+→
+fixed10
+Adam
+batch64
+current V2 model dropout
+
+其余已经是 V2：
+
+400 Hz；
+5 s；
+EKF；
+fold IMU scaler；
+Line B sampler；
+V2 class weights；
+V2 aggregation。
+C0 — 独立 current V2
+
+C0 不通过 L0→L7 的 bridge 代码逐项拼接，而是直接调用 canonical V2。
+
+目的不是增加一个新算法，而是检查：
+
+L7
+=
+?
+C0.
+
+如果：
+
+L7 和 C0 输入hash、模型hash、概率不同
+
+说明 bridge 没有真正到达当前 V2，不能解释 L0→L7 的性能变化。
+
+八、详细解释三行转换
+1. exhaustive shuffle → uniform replacement
+Exhaustive shuffle
+
+假设训练集有 N=10,000 个 windows。
+
+普通：
+
+DataLoader(shuffle=True)
+
+每个 epoch：
+
+10,000 个 windows 全部出现一次；
+没有重复；
+没有遗漏；
+只改变出现顺序。
+Uniform replacement
+
+改为：
+
+WeightedRandomSampler(
+    weights=np.ones(N),
+    num_samples=N,
+    replacement=True,
+)
+
+每次抽取后不把该 window 从候选池删除。
+
+因此一个 epoch 中：
+
+有些 windows 出现两次、三次或更多；
+有些 windows一次都没有出现；
+总抽样次数仍是 N。
+
+当 N 较大时，一个 epoch 中期望出现的不同 windows 数约为：
+
+N[1−(1−
+N
+1
+	​
+
+)
+N
+]≈0.632N.
+
+例如 N=10,000：
+
+约6320个不同windows至少出现一次
+约3680个windows该epoch没有出现
+其余抽样位置由重复windows占据
+
+L5 的目的就是隔离：
+
+V2 使用 replacement 是否降低了每 epoch 的有效数据覆盖。
+
+2. uniform replacement → V2 Line B role/class weighting
+Uniform replacement
+
+所有 row 权重相同：
+
+P(i)=
+N
+1
+	​
+
+.
+
+因此它保留原始 window 分布。例如 recovery windows 多，它们就仍然更常被抽到。
+
+Line B sampler
+
+将概率改成：
+
+P(i)=P(participant)P(role family∣participant)P(file∣family)P(window∣file).
+
+结果是：
+
+每名 participant 总概率相同；
+B/R family 各占一半；
+R1–R4 在 R family 内平分；
+file windows 越多，每条 window 的单独概率越低。
+
+然后 class-weighted cross-entropy 再放大 participant 人数较少类别的 loss。
+
+因此这一步同时改变：
+
+batch 中看见哪些 windows；
+B 与 recovery 的比例；
+每个 participant 的贡献；
+每个 class error 的 loss 大小。
+重要判断
+
+在现有18-case设计中，L6是一个：
+
+V2 balance bundle
+
+不是严格的单因素消融。
+
+为了避免第一次诊断过于庞大，先保留18 cases是合理的。若 L5→L6 出现明显大幅变化，后续再拆为：
+
+L6a：只换Line B sampler，class weights保持前一步
+L6b：再换V2 class weights
+
+这样总 case 数会从18增加到20。
+
+3. legacy training schedule → V2 fixed10/Adam/batch64/dropout bundle
+
+这一步不再改变数据或 sampler，只改变优化过程。
+
+Legacy schedule
+fixed 20 epochs
+AdamW
+batch 32
+learning rate 0.001
+weight decay 0.0001
+V2 schedule
+fixed 10 epochs
+Adam
+batch 64
+learning rate 0.001
+weight decay 0.0001
+
+以及 current model dropout。
+
+每项的可能影响
+改动	可能影响
+20→10 epochs	减少训练更新次数，可能降低过拟合，也可能欠拟合
+batch32→64	每epoch optimizer steps 约减半，梯度噪声降低
+AdamW→Adam	weight decay 的实现语义不同
+dropout变化	改变正则化强度
+
+对 CompactCNN：
+
+legacy copy 与 V2 的主要 dropout 基本相同；
+L7主要改变 epochs、optimizer 和 batch。
+
+对 InceptionFull：
+
+legacy近似设 classifier dropout 0；
+V2 classifier dropout为0.2；
+因此L7还增加了一项正则化变化。
+
+所以 L7同样是一个：
+
+current V2 training bundle
+
+它回答：
+
+当前完整训练方案是否解释剩余分数差距？
+
+它不回答：
+
+到底是 Adam、batch、epochs 还是 dropout 中哪一个造成变化？
+
+若 L6→L7 变化很大，再单独授权一个小型 follow-up，优先拆：
+
+fixed20 vs fixed10
+AdamW vs Adam
+
+不应立刻建立四维 grid。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

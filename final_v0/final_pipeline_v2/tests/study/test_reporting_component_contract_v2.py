@@ -7,6 +7,7 @@ from pathlib import Path
 
 import yaml
 
+from ppg_frailty.catalog import resolved_catalog_payloads
 from ppg_frailty.reporting.components import (
     build_motion_peak_test_component_rows,
     build_pipeline_test_component_rows,
@@ -20,6 +21,44 @@ PLAN_ROOT = ROOT / "configs/studies/static_line_b_staged_v2"
 
 
 class ReportingComponentContractTests(unittest.TestCase):
+    def test_logistic_trainer_reports_classical_fit_not_dl_epochs(self) -> None:
+        config = next(
+            value
+            for value in resolved_catalog_payloads(
+                pipeline_root=ROOT,
+                line="line_b",
+            )
+            if value["model"]["model_id"] == "LogisticRegressionL2"
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            resolved = root / "resolved_configs/logistic.yaml"
+            resolved.parent.mkdir()
+            resolved.write_text(yaml.safe_dump(config), encoding="utf-8")
+            rows = build_pipeline_test_component_rows(
+                root,
+                {
+                    "cases": [
+                        {
+                            "case_id": "logistic",
+                            "resolved_config_path": "resolved_configs/logistic.yaml",
+                        }
+                    ]
+                },
+            )
+
+        trainer = next(row for row in rows if row["component_role"] == "trainer")
+        self.assertEqual(
+            trainer["module_id"],
+            "sklearn.linear_model.LogisticRegression",
+        )
+        self.assertIn(
+            '"epoch_rule":"not_applicable_classical_estimator"',
+            trainer["fixed_parameters"],
+        )
+        self.assertIn('"logistic_max_iter":5000', trainer["fixed_parameters"])
+        self.assertNotIn('"fixed_epochs"', trainer["fixed_parameters"])
+
     def test_legacy_bridge_uses_effective_profile_not_catalog_carrier(self) -> None:
         config = {
             "manifest": {

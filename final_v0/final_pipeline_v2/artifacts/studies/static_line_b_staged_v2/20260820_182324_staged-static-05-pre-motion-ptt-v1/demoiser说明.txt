@@ -1,0 +1,112 @@
+Denoiser 的 static/dynamic 表现在按 subject-macro PPI–RR RMSE 升序排列，F1 仅作并列时的次级排序。
+Detector 保留并明确列出七项指标：
+participant-macro BA、macro-F1、sensitivity、specificity、ROC AUC、PR AUC、worst-fold BA。
+新增 subject-level confusion matrix。由于每位受试者同时有 static 和 motion 记录，统计单位定义为“participant × activity class”，使用该单元内窗口 p_active 中位数后应用冻结阈值。
+
+
+Denoiser 为什么有 F1：
+这里的 F1 不是 motion detector 的分类 F1。它是 denoise 后重新检测 PPG beats，并在消除 ECG–PPG 固定延迟后，与 ECG R-peak annotations 做一对一事件匹配得到的 beat-detection F1。
+RMSE 只在连续且成功匹配的 interval 上计算。如果算法只保留少量容易匹配的 beats，RMSE 可能看起来很好；F1 会惩罚漏检和误检。因此现在：
+PPI–RR RMSE 是主排序指标；
+beat F1 是必要的覆盖率/错误检测保护指标和并列排序指标。
+
+
+
+
+
+
+| 模块 | 算法/内核摘要 | 字符数 |
+|---|---|---:|
+| identity | 双波长 PPG 恒等映射与时间网格校验 | 48 |
+| nlms_imu_anc | 六轴 IMU 多延迟 tapped-reference、带泄漏 NLMS 自适应抵消 | 103 |
+| ssa_decomposition | Hankel SSA、全矩阵 SVD、对角平均、Welch 心率带分量筛选 | 92 |
+| spectral_mask | Hann STFT/ISTFT、IMU 分位数归一化、软谱掩膜 | 84 |
+| pca_bss | 双源 full-SVD PCA、心率带/IMU 相关评分、mixing 回投 | 96 |
+| fastica_bss | unit-variance whitening、固定 seed FastICA 不动点迭代、mixing 回投 | 109 |
+| nmf_bss | 双波长共享谱基、NNDSVDA 坐标下降 NMF、原相位 ISTFT | 93 |
+
+
+
+
+
+
+
+DETECTOR：
+Internal Frailty29 OOF：
+指标	结果
+Participant-macro BA	0.95547
+Macro-F1	0.88080
+Sensitivity	0.93386
+Specificity	0.97708
+ROC AUC	0.99278
+PR AUC	0.92808
+Worst-fold BA	0.90661
+
+
+Frailty29-trained → PTT：
+指标	结果
+Participant-macro BA	0.79464
+Macro-F1	0.72013
+Sensitivity	0.58928
+Specificity	1.00000
+ROC AUC	0.99830
+PR AUC	0.99900
+Worst-fold BA	0.72444
+
+
+文件级当前冻结为：
+\[
+p_{\text{file}}=\operatorname{median}_{w\in file}p_{\text{motion},w}
+\]然后应用该文件对应的冻结 threshold。该聚合已做成 YAML 参数，支持 median/mean/maximum，当前为 median。
+225546 的主要结果：
+模型/测试	Window BA / F1	File BA / F1
+Frailty29 OOF	0.9489 / 0.7286	0.9682 / 0.9682
+Frailty29 → PTT22	0.7889 / 0.7178	0.7841 / 0.7115
+PTT22 OOF	1.0000 / 1.0000	1.0000 / 1.0000
+PTT22 → Frailty29	0.5000 / 0.0232	0.5000 / 0.3025
+
+
+新增的四张双数据域分布图：
+- [Frailty29 模型，window level](/home/trinker/Code/github/PPG-Frailty-pipeline/final_v0/final_pipeline_v2/artifacts/studies/static_line_b_staged_v2/20260820_225546_staged-static-05-pre-motion-ptt-v1/figures/frailty29_trained_window_score_distribution.png)
+- [Frailty29 模型，file level](/home/trinker/Code/github/PPG-Frailty-pipeline/final_v0/final_pipeline_v2/artifacts/studies/static_line_b_staged_v2/20260820_225546_staged-static-05-pre-motion-ptt-v1/figures/frailty29_trained_file_score_distribution.png)
+- [PTT22 模型，window level](/home/trinker/Code/github/PPG-Frailty-pipeline/final_v0/final_pipeline_v2/artifacts/studies/static_line_b_staged_v2/20260820_225546_staged-static-05-pre-motion-ptt-v1/figures/ptt22_trained_window_score_distribution.png)
+- [PTT22 模型，file level](/home/trinker/Code/github/PPG-Frailty-pipeline/final_v0/final_pipeline_v2/artifacts/studies/static_line_b_staged_v2/20260820_225546_staged-static-05-pre-motion-ptt-v1/figures/ptt22_trained_file_score_distribution.png)
+旧的错误 subject_confusion 表格和图片已经从报告及 result_backup 清除。
+2. Threshold adaptation：应如何做
+不能手动看 Frailty29 结果后移动 threshold 并将同一结果登记为正式成绩。正式流程应为“固定模型、仅在训练参与者上拟合一个标量 threshold”：
+对于参与者 \(i\)、类别 \(y\)：
+\[
+c_{i,y}=\operatorname{median}\{p_{ij}:Y_{ij}=y\}
+\]\[
+C_y=\operatorname{median}_i(c_{i,y}),\qquad
+\tau=\frac{C_0+C_1}{2}
+\]用于 PTT 模型适配 Frailty29 时：
+1. 完全冻结 PTT 模型和 scaler。
+2. 对 Frailty29 生成概率，不重新训练网络。
+3. 按 participant-grouped 5-fold：
+   - 在四折参与者上计算 \(\tau_k\)；
+   - 只对第五折应用 \(\tau_k\)；
+   - 汇总五折 threshold-adapted OOF window/file 成绩。
+4. 完成正式 OOF 评价后，才可用全部29人拟合一个部署 threshold。
+5. 全29 threshold 对同一29人的 in-sample 成绩不能登记为正式性能。
+论文中可把第3步登记为：
+PTT-pretrained, target-domain threshold-adapted grouped-OOF evaluation
+
+但不能称为 untouched external validation，也不能把它和原始 PTT threshold 的 frozen transfer 混为一项结果。
+当前模型能否仅靠 threshold 恢复？
+不能。
+PTT→Frailty29 当前 threshold 为 0.4999995576，但 Frailty29 上：
+- static 分数中位数：0.9999990463
+- motion 分数中位数：0.9999990463
+- window ROC AUC：0.5635
+- file ROC AUC：0.5674
+两个 participant-balanced class centres 完全相同，所以当前严格 midpoint 合同会拒绝生成 threshold。
+即使违规地在全部29人上寻找最大 BA threshold，理论上也只有：
+- window BA：约 0.5384
+- file BA：约 0.5503
+这说明不是简单 threshold 偏移，而是严重的目标域概率饱和和类别排序能力不足。Platt scaling、isotonic calibration 等单调校准也不能提高 AUC。
+结论：
+- 可保留原始 PTT→Frailty29 作为正式的失败型 frozen-transfer ablation。
+- 不建议把 threshold-adapted PTT 模型作为 Stage05 SQI 正式路线。
+- 如果以后仍做适配，只能作为独立的 fold-local threshold-adaptation ablation。
+- 单个用全29人拟合的 threshold 不应放进 Stage05 的 held-out CV；否则 threshold 看过验证参与者的 activity labels。

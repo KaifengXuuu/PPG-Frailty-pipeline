@@ -1,0 +1,360 @@
+schema_version: ppg_frailty.pipeline_config.v2
+config_id: formal_inception_full_line_b_v2__v2_core_b0_b2_b7_selected
+manifest:
+  path: manifests/internal_records_v2.csv
+  manifest_version: internal_records_v2
+  source_dataset_id: frailty3_m2_20260815_a054800abda272f6
+  source_manifest_sha256: bd429ae9c56974ba9ffcb924dfbad0ed930f7d2d47418365754a1929ada06e90
+  expected_record_count: 261
+  expected_participant_count: 29
+  class_id_order:
+  - 0
+  - 1
+  - 2
+  class_name_order:
+  - Pre-Frail
+  - Robust/Non-Frail
+  - Young
+  channel_order:
+  - RED
+  - IR
+  - AX
+  - AY
+  - AZ
+  - GX
+  - GY
+  - GZ
+  allow_qc_excluded_records: false
+splits:
+  path: splits/sgkf5_repeated_grouped_5x5_v2.csv
+  registry_id: frailty3_future_corrected_sgkf5_v2
+  source_registry_file_sha256: c80e780d60162ff1132101ee368ee3a55d95f3c7a6d51a5c9a8feec8605d388c
+  source_registry_payload_sha256: 0bca827fa8e4f9679b6ee9435b5497a60d91e74ddb366e058fc69614fb007f46
+  n_splits: 5
+  n_repeats: 5
+  split_seeds:
+  - 42
+  - 10042
+  - 20042
+  - 30042
+  - 40042
+  runtime_recompute: false
+output:
+  root: artifacts/runs
+  overwrite_existing: false
+  strict_json: true
+  write_parquet: true
+  parquet_missing_dependency_action: fail_closed
+  write_window_oof: true
+  write_file_oof: true
+  write_subject_oof: true
+  write_member_oof: false
+representation_mode: raw
+roles:
+- B
+- R1
+- R2
+- R3
+- R4
+signal:
+  internal_fs_hz: 400.0
+  channel_order:
+  - RED
+  - IR
+  - AX
+  - AY
+  - AZ
+  - GX
+  - GY
+  - GZ
+  ppg_native_unit: raw_counts
+  accelerometer_input_unit: g
+  gyroscope_input_unit: deg/s
+  peak_detector:
+    detector_id: aboy_project_v1
+    failure_action: fail_closed_no_fallback
+    min_observation_sec: 8.0
+    min_peaks: 5
+  ppg_filter:
+    family: butterworth_sos
+    order: 3
+    low_hz: 0.2
+    high_hz: 8.0
+    phase: zero_phase
+    short_signal_policy: reject
+    notch_enabled: false
+  analysis_view:
+    direct_source: x_filter_0p2_to_8hz
+    non_identity_source: aligned_x_ar
+    non_identity_semantics: rate_only
+    additional_filter: none
+  gap_repair:
+    method: linear_inside_only
+    max_gap_samples: 100
+    edge_extrapolation: false
+    all_missing_channel_action: reject_record
+  imu:
+    gravity_method: profile_a_lowpass_0p3hz
+    initialization: same_participant_static_calibration
+    comparison_method: calibrated_roll_pitch_ekf
+    sensor_lowpass_acc_hz: 20.0
+    sensor_lowpass_gyro_hz: 40.0
+    sensor_filter_order: 3
+    gravity_lowpass_hz: 0.3
+    gravity_filter_order: 4
+    calibration_start_s: 5.0
+    calibration_stop_s: 100.0
+    gravity_mps2: 9.81
+    output_units:
+      acceleration: m/s^2
+      gyroscope: rad/s
+      jerk: m/s^3
+    required_axes: 6
+    failure_action: fail_closed
+  dl_resampling:
+    enabled: true
+    target_fs_hz: 64.0
+    method: polyphase_anti_alias
+    preserve_feature_grid_hz: 400.0
+  normalization:
+    raw_ppg: per_window_robust
+    raw_imu: none
+    iqr_fallback: standard_deviation_then_finite_one
+    clip_after_scale:
+    - -8.0
+    - 8.0
+    robust_iqr_divisor: 1.349
+    mad_consistency_divisor: 0.6744897501960817
+    scale_epsilon: 1.0e-08
+    standard_ddof: 0
+windows:
+  shared_planner_version: window_plan_v1
+  engineering:
+    length_s: 10.0
+    hop_s: 2.0
+    end_alignment: left_start_regular_grid
+    padding: none_complete_windows_only
+    cap_per_file: null
+    cap_fraction_per_file: null
+    min_valid_fraction: 1.0
+  raw_dl:
+    length_s: 5.0
+    hop_s: 2.5
+    end_alignment: include_right_aligned_if_distinct
+    padding: none_complete_windows_only
+    cap_per_file: 128
+    cap_fraction_per_file: null
+    min_valid_fraction: 1.0
+quality:
+  mode: 'off'
+  fit_scope: not_applied_off
+  components: []
+  high_quality_rule: not_applied
+  failure_action: fail_closed
+  window_selection:
+    policy: none
+    keep_fraction: 1.0
+    score_algorithm: legacy_cardiac_motion_window_sqi_v1
+    application_scope: outer_train_only
+  long_gap_max_samples: 100
+  flatline_duration_s: 1.0
+artifact:
+  reducer: identity
+  reducer_version: identity_v1
+  selection_scope: run_before_evaluation
+  degraded_policy: drop
+  motion_detector_enabled: false
+  non_identity_output_contract: rate_only
+  failure_action: no_result_no_fallback
+  parameters: {}
+  denoiser_enabled: false
+  motion_detector:
+    evidence_path: null
+    expected_evidence_sha256: null
+    device: cuda
+    batch_size: 64
+    window_probability_aggregation: median
+    threshold_source: bundle_frozen
+features:
+  prv_primary_backend: local_manual
+  prv_library_comparison_scope: fixed_ppi_vectors_only_no_classifier
+  engineering_sequence_schema: engineering_10s_hop2s_thesis_115_v3
+  technical_metadata_allowed: false
+  missing_physiology_encoding: nan_and_validity_false
+  file_aggregation:
+  - mean
+  - population_sd
+  matrix_k: 150
+  enabled_groups:
+  - ppi_basic_rate
+  - hrv_time_domain
+  - hrv_spectral
+  - hrv_nonlinear
+  - morphology
+  - dual_optical
+  - engineering_summary
+  rate_prv_min_duration_s: 8.0
+  rate_prv_min_peaks: 5
+  time_prv_min_duration_s: 60.0
+  time_prv_min_coverage: 0.8
+  time_prv_min_intervals: 30
+  spectral_prv_min_duration_s: 300.0
+  spectral_prv_min_coverage: 0.8
+  spectral_prv_min_intervals: 200
+  tachogram_fs_hz: 4.0
+  spectral_bands_hz:
+    vlf:
+    - 0.003
+    - 0.04
+    lf:
+    - 0.04
+    - 0.15
+    hf:
+    - 0.15
+    - 0.4
+  sample_entropy:
+    m: 2
+    r_sd_fraction: 0.2
+    min_intervals: 200
+  registry_id: feature_vector_282_v3
+  file_vector_schema: feature_vector_282_v3
+  matrix_schema: ordered_feature_matrix_d115_by_150_engineering_v4
+model:
+  model_id: InceptionTimeFull
+  input_channels: 8
+  input_channels_resolution: canonical_frailty_raw_8
+  input_channel_order:
+  - RED
+  - IR
+  - A_dyn_x
+  - A_dyn_y
+  - A_dyn_z
+  - GX
+  - GY
+  - GZ
+  n_classes: 3
+  seed_policy: outer_cv_repeat_seed_equals_split_seed
+  dropout: 0.2
+  kernel_sizes:
+  - 39
+  - 19
+  - 9
+  dilation: 1
+  ensemble_size: 1
+  variant: single_network
+  mask_aware_pooling: true
+  architecture_parameters:
+    bottleneck_channels: 32
+    branch_count: 4
+    classifier_dropout: 0.2
+    depth: 6
+    dilation: 1
+    global_pooling: mask_aware_global_average
+    kernel_sizes:
+    - 39
+    - 19
+    - 9
+    model_id: inception_full
+    n_classes: 3
+    out_channels: 32
+    pool_size: 3
+    representation_mode: raw
+    residual_interval: 3
+    variant: full
+training:
+  epoch_rule: fixed_epoch
+  epoch_profile: default_10
+  execution_mode: formal
+  fixed_epochs: 10
+  maximum_inner_epochs: 0
+  inner_patience: 0
+  batch_size: 16
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  device: cuda
+  num_workers: 0
+  seed: 42
+  optimizer: adamw
+  optimizer_parameters:
+    betas:
+    - 0.9
+    - 0.999
+    eps: 1.0e-08
+    amsgrad: false
+    maximize: false
+  class_weighting: inverse_frequency
+  class_count_basis: row
+  training_balance: equal_role_families
+  sampler: exhaustive_shuffle_without_replacement
+  samples_per_epoch: null
+  participant_window_quota: all
+  classifier_role_families:
+  - B
+  - R
+  loss: cross_entropy
+  focal_gamma: 2.0
+  class_weight_beta: 0.999
+  label_smoothing: 0.0
+  gradient_clip_norm: null
+  deterministic_algorithms: true
+  cache_policy: disabled
+  outer_labels_visible_to_trainer: false
+  inner_grouped_folds: 0
+  refit_on_all_outer_training: true
+  n_classes: 3
+aggregation:
+  balance_line: line_b_equal_role_families
+  hierarchy:
+  - window
+  - file
+  - role
+  - participant
+  file_to_role: ordinary_mean
+  role_to_participant: ordinary_mean
+  missing_role_policy: mean_available_roles
+  window_to_file: ordinary_mean
+  quality_weighting: false
+  quality_weight_source: none
+  quality_weight_levels: []
+  direct_all_window_participant_mean: false
+evaluation:
+  unit: participant
+  primary_metric: balanced_accuracy
+  metrics:
+  - balanced_accuracy
+  - macro_f1
+  - per_class_precision_recall_f1
+  - worst_class_recall
+  - worst_class_f1
+  - confusion_matrix
+  - coverage
+  confidence_interval: participant_cluster_bootstrap_two_sided_95
+  paired_delta_key:
+  - repeat_index
+  - fold_index
+  - participant_id
+  rank_incomplete_configs: false
+  independent_test_available: false
+  metric_prefix: oof_validation_
+  calibration_metrics:
+  - multiclass_brier
+  - expected_calibration_error
+  statistics:
+    cluster_unit: participant_with_all_five_repeat_oof_predictions
+    bootstrap_replicates: 10000
+    confidence_interval: two_sided_95_percentile
+    lcb95_percentile: 2.5
+    lcb95_metrics:
+    - participant_level_mean_balanced_accuracy
+    - participant_level_mean_macro_f1
+    paired_permutation_replicates: 100000
+    seed: 42
+    paired_exchange_unit: participant
+    multiplicity_correction: holm_within_comparison_family
+    affects_automatic_selection: false
+  ranking:
+    sort_key: participant_level_mean_balanced_accuracy
+    max_qualified_per_comparison_group: 10
+    automatic_final_selection: false
+    manual_multiple_final_versions_allowed: true
+    preserve_ablation_provenance: true

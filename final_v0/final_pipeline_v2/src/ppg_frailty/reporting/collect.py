@@ -275,9 +275,9 @@ def _resolved_aggregation_config(
     """Read the persisted per-case aggregation controls for report replay.
 
     Report-time Line A/Line B reaggregation must retain scientific modifiers
-    from the fitted case.  Only the small aggregation block is retained in the
-    in-memory collection; the full resolved config remains the source of truth
-    on disk.
+    from the fitted case.  The aggregation block and evaluation-statistics
+    policy are retained in memory; the full resolved config remains the source
+    of truth on disk.
     """
 
     raw = case.get("resolved_config_path")
@@ -297,11 +297,19 @@ def _resolved_aggregation_config(
         aggregation = payload.get("aggregation")
         if not isinstance(aggregation, Mapping):
             raise TypeError("resolved config aggregation must be a mapping")
+        evaluation = payload.get("evaluation")
+        if not isinstance(evaluation, Mapping) or not isinstance(
+            evaluation.get("statistics"), Mapping
+        ):
+            raise TypeError(
+                "resolved config evaluation.statistics must be a mapping"
+            )
         return (
             {
                 "case_id": case_id,
                 "resolved_config_path": relative.as_posix(),
                 "aggregation": dict(aggregation),
+                "evaluation_statistics": dict(evaluation["statistics"]),
             },
             None,
         )
@@ -429,9 +437,33 @@ def _config_metrics(case_id: str, case_directory: Path) -> dict[str, Any] | None
     metrics = payload.get("config_metrics")
     if not isinstance(metrics, Mapping):
         return None
+    bootstrap_fields: dict[str, Any] = {}
+    bootstrap_results = payload.get("bootstrap_results", ())
+    if isinstance(bootstrap_results, list):
+        for raw in bootstrap_results:
+            if not isinstance(raw, Mapping):
+                continue
+            metric = str(raw.get("metric", "")).strip()
+            if metric not in {"balanced_accuracy", "macro_f1"}:
+                continue
+            prefix = f"participant_cluster_{metric}"
+            bootstrap_fields.update(
+                {
+                    f"{prefix}_estimate": raw.get("estimate"),
+                    f"{prefix}_ci95_low": raw.get("ci95_lower"),
+                    f"{prefix}_ci95_high": raw.get("ci95_upper"),
+                    f"{prefix}_n_resamples": raw.get("n_resamples"),
+                    f"{prefix}_seed": raw.get("seed"),
+                    f"{prefix}_n_participants": raw.get("n_participants"),
+                    f"{prefix}_n_repeats": raw.get("n_repeats"),
+                    f"{prefix}_interval_method": raw.get("interval_method"),
+                    f"{prefix}_cluster_unit": raw.get("cluster_unit"),
+                }
+            )
     return {
         "case_id": case_id,
         **dict(metrics),
+        **bootstrap_fields,
         "metrics_source": "config_metrics_v2",
         "metrics_status": payload.get("status"),
     }

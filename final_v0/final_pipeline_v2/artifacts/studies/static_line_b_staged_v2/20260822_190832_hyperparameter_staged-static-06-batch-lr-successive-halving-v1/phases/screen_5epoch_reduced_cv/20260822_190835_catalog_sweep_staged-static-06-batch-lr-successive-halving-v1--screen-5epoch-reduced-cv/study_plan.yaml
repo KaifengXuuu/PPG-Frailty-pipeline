@@ -1,0 +1,182 @@
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: staged_static_06_batch_lr_successive_halving_v1__screen_5epoch_reduced_cv
+  kind: catalog_sweep
+  purpose: Tune batch size and learning rate for InceptionTimeFull using a reduced-resource
+    first rung and complete 5x5 tuning CV for promoted configurations. Phase=screen_5epoch_reduced_cv.
+  flow_position: Stage 6 after B0/B2/B7 selection and before regularization/channel
+    ablations.
+  decision_role: screening
+  reference_case_id: null
+  thesis_sections:
+  - Successive-halving batch-size and learning-rate tuning
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: Declared screen_5epoch_reduced_cv tuning phase; no final-test claim
+    and no automatic final-model selection.
+  controlled_factors:
+  - Participant-grouped registered splits and split seeds
+  - V2-core plus selected B0/B2/B7 DL state
+  - 'Fixed resource: epochs=5, repeats=[0, 1, 2, 3, 4], folds=[0]'
+  notes:
+  - Candidate ranking is tuning-only and cannot be reported as independent validation.
+  - Every candidate uses the same declared resource within this phase.
+cases:
+- case_id: b16_lr1e-4
+  catalog_entry: inception_full
+  screen_profile_id: v2_core_b0_b2_b7_selected
+  output_group: raw
+  overrides:
+    signal.dl_resampling.enabled: true
+    signal.dl_resampling.target_fs_hz: 64.0
+    signal.normalization.raw_ppg: per_window_median_iqr_over_1p349_sd_finite
+    signal.normalization.raw_imu: none
+    windows.raw_dl.length_s: 5.0
+    windows.raw_dl.hop_s: 2.5
+    training.optimizer: adamw
+    training.sampler: exhaustive_shuffle_without_replacement
+    training.class_weighting: outer_train_window_inverse_frequency
+    training.class_count_basis: row
+    aggregation.balance_line: line_b_equal_role_families
+    training.batch_size: 16
+    training.learning_rate: 0.0001
+    training.fixed_epochs: 5
+  rationale: Small batch and conservative learning rate.
+  formal_profile: null
+- case_id: b16_lr3e-4
+  catalog_entry: inception_full
+  screen_profile_id: v2_core_b0_b2_b7_selected
+  output_group: raw
+  overrides:
+    signal.dl_resampling.enabled: true
+    signal.dl_resampling.target_fs_hz: 64.0
+    signal.normalization.raw_ppg: per_window_median_iqr_over_1p349_sd_finite
+    signal.normalization.raw_imu: none
+    windows.raw_dl.length_s: 5.0
+    windows.raw_dl.hop_s: 2.5
+    training.optimizer: adamw
+    training.sampler: exhaustive_shuffle_without_replacement
+    training.class_weighting: outer_train_window_inverse_frequency
+    training.class_count_basis: row
+    aggregation.balance_line: line_b_equal_role_families
+    training.batch_size: 16
+    training.learning_rate: 0.0003
+    training.fixed_epochs: 5
+  rationale: Small batch and intermediate learning rate.
+  formal_profile: null
+- case_id: b16_lr1e-3
+  catalog_entry: inception_full
+  screen_profile_id: v2_core_b0_b2_b7_selected
+  output_group: raw
+  overrides:
+    signal.dl_resampling.enabled: true
+    signal.dl_resampling.target_fs_hz: 64.0
+    signal.normalization.raw_ppg: per_window_median_iqr_over_1p349_sd_finite
+    signal.normalization.raw_imu: none
+    windows.raw_dl.length_s: 5.0
+    windows.raw_dl.hop_s: 2.5
+    training.optimizer: adamw
+    training.sampler: exhaustive_shuffle_without_replacement
+    training.class_weighting: outer_train_window_inverse_frequency
+    training.class_count_basis: row
+    aggregation.balance_line: line_b_equal_role_families
+    training.batch_size: 16
+    training.learning_rate: 0.001
+    training.fixed_epochs: 5
+  rationale: Small batch and B0 learning rate.
+  formal_profile: null
+- case_id: b32_lr1e-4
+  catalog_entry: inception_full
+  screen_profile_id: v2_core_b0_b2_b7_selected
+  output_group: raw
+  overrides:
+    signal.dl_resampling.enabled: true
+    signal.dl_resampling.target_fs_hz: 64.0
+    signal.normalization.raw_ppg: per_window_median_iqr_over_1p349_sd_finite
+    signal.normalization.raw_imu: none
+    windows.raw_dl.length_s: 5.0
+    windows.raw_dl.hop_s: 2.5
+    training.optimizer: adamw
+    training.sampler: exhaustive_shuffle_without_replacement
+    training.class_weighting: outer_train_window_inverse_frequency
+    training.class_count_basis: row
+    aggregation.balance_line: line_b_equal_role_families
+    training.batch_size: 32
+    training.learning_rate: 0.0001
+    training.fixed_epochs: 5
+  rationale: B0 batch size and conservative learning rate.
+  formal_profile: null
+- case_id: b32_lr3e-4
+  catalog_entry: inception_full
+  screen_profile_id: v2_core_b0_b2_b7_selected
+  output_group: raw
+  overrides:
+    signal.dl_resampling.enabled: true
+    signal.dl_resampling.target_fs_hz: 64.0
+    signal.normalization.raw_ppg: per_window_median_iqr_over_1p349_sd_finite
+    signal.normalization.raw_imu: none
+    windows.raw_dl.length_s: 5.0
+    windows.raw_dl.hop_s: 2.5
+    training.optimizer: adamw
+    training.sampler: exhaustive_shuffle_without_replacement
+    training.class_weighting: outer_train_window_inverse_frequency
+    training.class_count_basis: row
+    aggregation.balance_line: line_b_equal_role_families
+    training.batch_size: 32
+    training.learning_rate: 0.0003
+    training.fixed_epochs: 5
+  rationale: B0 batch size and intermediate learning rate.
+  formal_profile: null
+- case_id: b32_lr1e-3
+  catalog_entry: inception_full
+  screen_profile_id: v2_core_b0_b2_b7_selected
+  output_group: raw
+  overrides:
+    signal.dl_resampling.enabled: true
+    signal.dl_resampling.target_fs_hz: 64.0
+    signal.normalization.raw_ppg: per_window_median_iqr_over_1p349_sd_finite
+    signal.normalization.raw_imu: none
+    windows.raw_dl.length_s: 5.0
+    windows.raw_dl.hop_s: 2.5
+    training.optimizer: adamw
+    training.sampler: exhaustive_shuffle_without_replacement
+    training.class_weighting: outer_train_window_inverse_frequency
+    training.class_count_basis: row
+    aggregation.balance_line: line_b_equal_role_families
+    training.batch_size: 32
+    training.learning_rate: 0.001
+    training.fixed_epochs: 5
+  rationale: Exact B0 optimizer/batch/LR reference within the selected V2-core state.
+  formal_profile: null
+execution:
+  repeats:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  folds:
+  - 0
+  jobs: 1
+  parallel_level: cases
+  continue_on_error: false
+  allow_parallel_deep: false
+  measure_operational_costs: false
+  device: cuda
+output:
+  root: .
+report:
+  top_k: 6
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10
+  figure_modules:
+  - all
+  compact_mean_sd: true
+  write_excel_workbook: true

@@ -758,6 +758,7 @@ class StudyProductTests(unittest.TestCase):
         self.assertIn("report-only evidence", summary)
         self.assertIn("Deployment measurements", summary)
         self.assertIn("Macro-F1 LCB95", summary)
+        self.assertIn("Paired participant-cluster inference", summary)
         self.assertIn(
             "Aggregation sensitivity from the same file-level OOF",
             summary,
@@ -788,6 +789,7 @@ class StudyProductTests(unittest.TestCase):
         self.assertTrue(any(path.startswith("cases/") for path in paths))
         self.assertIn("tables/predictive_leaderboard.csv", paths)
         self.assertIn("tables/metric_distribution_summary.csv", paths)
+        self.assertIn("tables/paired_participant_inference.csv", paths)
         self.assertIn("tables/test_components.csv", paths)
         self.assertIn("TEST_COMPONENTS.md", paths)
         self.assertIn("tables/worst_class_f1_stability.csv", paths)
@@ -862,6 +864,12 @@ class StudyProductTests(unittest.TestCase):
         self.assertTrue(all(row["n"] == 2 for row in ba_rows))
         self.assertTrue(all(row["ci95_high"] is not None for row in ba_rows))
         self.assertTrue(all(row["minimum"] <= row["maximum"] for row in ba_rows))
+        compact_distribution_csv = (
+            result.output_directory
+            / "tables"
+            / "metric_distribution_summary.csv"
+        ).read_text(encoding="utf-8")
+        self.assertIn("ci95", compact_distribution_csv.splitlines()[0])
         per_class = json.loads(
             (
                 result.output_directory / "tables" / "per_class_metrics.json"
