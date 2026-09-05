@@ -88,6 +88,8 @@ _COMPACT_CELL_FIELDS = (
     "class_order",
     "metrics",
     "operational_metrics",
+    "preprocessing_cache_artifact",
+    "preprocessing_cache_summary",
 )
 
 
@@ -356,6 +358,7 @@ def default_experiment_executor(
             folds=plan.execution.folds,
             progress_callback=emit,
             measure_operational_costs=plan.execution.measure_operational_costs,
+            preprocessing_cache=plan.execution.preprocessing_cache.to_dict(),
         )
         compact = _compact_experiment_result(result)
         del result
@@ -414,6 +417,10 @@ def default_experiment_executor(
                     plan.execution.measure_operational_costs
                 ),
             }
+            if bridge is None:
+                call_kwargs["preprocessing_cache"] = (
+                    plan.execution.preprocessing_cache.to_dict()
+                )
             if bridge is not None:
                 call_kwargs["profile_id"] = bridge_profile_id
                 if bridge.uses_inline_profiles:
@@ -824,6 +831,123 @@ class StudyRunner:
             raise ValueError(f"resume result config drift for {case.case_id}")
         return _compact_case_record(payload) if payload.get("status") == "passed" else None
 
+    def _recover_complete_interrupted_pass(
+        self,
+        case: ResolvedCase,
+        config_path: Path,
+        case_directory: Path,
+        plan: StudyPlan,
+    ) -> Mapping[str, Any] | None:
+        """Finalize a complete 5x5 staging tree without repeating model fits.
+
+        This deliberately applies only to the canonical full runner.  A custom
+        executor or Legacy Bridge may have a different artifact contract and is
+        therefore never inferred to be recoverable here.
+        """
+
+        if (
+            self.executor is not None
+            or plan.legacy_bridge is not None
+            or tuple(plan.execution.repeats) != tuple(range(5))
+            or tuple(plan.execution.folds) != tuple(range(5))
+        ):
+            return None
+        attempts_directory = case_directory / "attempts"
+        if not attempts_directory.is_dir():
+            return None
+        candidates: list[tuple[int, Path, Path | None, bool]] = []
+        for attempt_directory in attempts_directory.glob("attempt_[0-9][0-9][0-9]"):
+            try:
+                attempt = int(attempt_directory.name.removeprefix("attempt_"))
+            except ValueError:
+                continue
+            if (attempt_directory / "attempt_result.json").exists():
+                continue
+            staging_values = tuple(
+                path
+                for path in attempt_directory.glob(".experiment.staging.*")
+                if path.is_dir()
+            )
+            published = (attempt_directory / "experiment").is_dir()
+            if published or len(staging_values) == 1:
+                candidates.append(
+                    (
+                        attempt,
+                        attempt_directory,
+                        staging_values[0] if len(staging_values) == 1 else None,
+                        published,
+                    )
+                )
+        if not candidates:
+            return None
+
+        attempt, attempt_directory, interrupted_staging, published = max(
+            candidates,
+            key=lambda item: item[0],
+        )
+        from .recovery import (
+            recover_completed_full_experiment_staging,
+            validate_published_recovered_experiment,
+        )
+
+        started = time.perf_counter()
+        started_utc = _utc_now()
+        emit = _executor_progress_adapter(
+            self.progress_sink,
+            case.case_id,
+            repeats=tuple(plan.execution.repeats),
+            folds=tuple(plan.execution.folds),
+        )
+        if published:
+            result = validate_published_recovered_experiment(
+                config_path,
+                output_dir=attempt_directory / "experiment",
+                repeats=plan.execution.repeats,
+                folds=plan.execution.folds,
+            )
+        elif interrupted_staging is not None:
+            result = recover_completed_full_experiment_staging(
+                config_path,
+                interrupted_staging=interrupted_staging,
+                output_dir=attempt_directory / "experiment",
+                repeats=plan.execution.repeats,
+                folds=plan.execution.folds,
+                measure_operational_costs=plan.execution.measure_operational_costs,
+                progress_callback=emit,
+            )
+        else:  # pragma: no cover - guarded by candidate construction.
+            result = None
+        if result is None:
+            return None
+        normalized_result = _compact_experiment_result(result)
+        payload: dict[str, Any] = {
+            "schema_version": "ppg_frailty.study_case_result.v2",
+            "case_id": case.case_id,
+            "config_sha256": case.config_sha256,
+            "status": "passed",
+            "attempt": attempt,
+            "attempt_directory": attempt_directory.relative_to(
+                case_directory
+            ).as_posix(),
+            "artifact_root": (attempt_directory / "experiment").relative_to(
+                case_directory
+            ).as_posix(),
+            "started_utc": started_utc,
+            "finished_utc": _utc_now(),
+            "elapsed_seconds": time.perf_counter() - started,
+            "result": normalized_result,
+            "recovered_from_complete_interrupted_staging": True,
+            "recovery_index_only": published,
+            "interrupted_staging_preserved": (
+                None
+                if interrupted_staging is None
+                else interrupted_staging.relative_to(case_directory).as_posix()
+            ),
+        }
+        _atomic_json(attempt_directory / "attempt_result.json", payload)
+        _atomic_json(case_directory / "case_result.json", payload)
+        return _compact_case_record(payload)
+
     def _run_one(
         self,
         case: ResolvedCase,
@@ -956,6 +1080,13 @@ class StudyRunner:
         for case in expansion.cases:
             config_path, case_directory = self._case_paths(output, case)
             existing = self._existing_pass(case, case_directory) if resumed_run else None
+            if existing is None and resumed_run:
+                existing = self._recover_complete_interrupted_pass(
+                    case,
+                    config_path,
+                    case_directory,
+                    plan,
+                )
             if existing is not None:
                 resumed_count += 1
                 records.append(existing)

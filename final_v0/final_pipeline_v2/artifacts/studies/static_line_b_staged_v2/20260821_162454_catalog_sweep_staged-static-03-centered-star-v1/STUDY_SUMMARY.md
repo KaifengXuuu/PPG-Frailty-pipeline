@@ -26,56 +26,100 @@
 
 The identical standalone table is in [TEST_COMPONENTS.md](TEST_COMPONENTS.md); machine-readable copies are `tables/test_components.csv` and `.json`. Input data are reported as dataset/path, signal view, channels, units, rate, and windows—not hashes.
 
-| Cases / phases | Component role | Model / module | State | Input data (values and paths; no hashes) | Detailed fixed parameters | Algorithm and kernel (≤300 chars) |
-|---|---|---|---|---|---|---|
-| compact_cnn__b7_star_fixed10; inception_full__b7_star_fixed10 | aggregation | line_b_equal_role_families | enabled | {"input_data":"held-out window/file probabilities","roles":["B","R1","R2","R3","R4"]} | {"primary_report_aggregation_view":"line_b_equal_role_families","training_metric_aggregation_rule":"line_a_equal_files"} |  |
-| compact_cnn__b0_star_fixed10; compact_cnn__b1_star_fixed10; compact_cnn__b2_star_fixed10; compact_cnn__b3_star_fixed10; compact_cnn__b4_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; inception_full__b0_star_fixed10; inception_full__b1_star_fixed10; inception_full__b2_star_fixed10; inception_full__b3_star_fixed10; inception_full__b4_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10 | aggregation | window_balanced_to_participant | enabled | {"input_data":"held-out window/file probabilities","roles":["B","R1","R2","R3","R4"]} | {"primary_report_aggregation_view":"window_balanced_to_participant","training_metric_aggregation_rule":"line_a_equal_files"} |  |
-| compact_cnn__b0_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10 | classifier | CompactCNN1D | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"architecture_parameters":{"classifier_dropout":0.2,"dilations":[1,1,1],"global_pooling":"adaptive_average_1","kernel_sizes":[9,9,7],"model_id":"compact_cnn","n_classes":3,"pool_sizes":[4,4],"representation_mode":"raw","stage_channels":[32,64,128],"stage_dropouts":[0.1,0.15]},"dilations":[1,1,1],"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[9,9,7],"mask_aware_pooling":true,"model_id":"CompactCNN1D","n_classes":3,"pool_sizes":[4,4],"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"reference_not_wang_fcn"} |  |
-| compact_cnn__b1_star_fixed10 | classifier | CompactCNN1D | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":400,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"architecture_parameters":{"classifier_dropout":0.2,"dilations":[1,1,1],"global_pooling":"adaptive_average_1","kernel_sizes":[9,9,7],"model_id":"compact_cnn","n_classes":3,"pool_sizes":[4,4],"representation_mode":"raw","stage_channels":[32,64,128],"stage_dropouts":[0.1,0.15]},"dilations":[1,1,1],"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[9,9,7],"mask_aware_pooling":true,"model_id":"CompactCNN1D","n_classes":3,"pool_sizes":[4,4],"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"reference_not_wang_fcn"} |  |
-| compact_cnn__b2_star_fixed10 | classifier | CompactCNN1D | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0}} | {"architecture_parameters":{"classifier_dropout":0.2,"dilations":[1,1,1],"global_pooling":"adaptive_average_1","kernel_sizes":[9,9,7],"model_id":"compact_cnn","n_classes":3,"pool_sizes":[4,4],"representation_mode":"raw","stage_channels":[32,64,128],"stage_dropouts":[0.1,0.15]},"dilations":[1,1,1],"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[9,9,7],"mask_aware_pooling":true,"model_id":"CompactCNN1D","n_classes":3,"pool_sizes":[4,4],"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"reference_not_wang_fcn"} |  |
-| compact_cnn__b3_star_fixed10 | classifier | CompactCNN1D | enabled | {"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"calibrated_ekf_adyn","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"architecture_parameters":{"classifier_dropout":0.2,"dilations":[1,1,1],"global_pooling":"adaptive_average_1","kernel_sizes":[9,9,7],"model_id":"compact_cnn","n_classes":3,"pool_sizes":[4,4],"representation_mode":"raw","stage_channels":[32,64,128],"stage_dropouts":[0.1,0.15]},"dilations":[1,1,1],"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[9,9,7],"mask_aware_pooling":true,"model_id":"CompactCNN1D","n_classes":3,"pool_sizes":[4,4],"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"reference_not_wang_fcn"} |  |
-| compact_cnn__b4_star_fixed10 | classifier | CompactCNN1D | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"ppg_window_imu_outer_train_fold","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"architecture_parameters":{"classifier_dropout":0.2,"dilations":[1,1,1],"global_pooling":"adaptive_average_1","kernel_sizes":[9,9,7],"model_id":"compact_cnn","n_classes":3,"pool_sizes":[4,4],"representation_mode":"raw","stage_channels":[32,64,128],"stage_dropouts":[0.1,0.15]},"dilations":[1,1,1],"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[9,9,7],"mask_aware_pooling":true,"model_id":"CompactCNN1D","n_classes":3,"pool_sizes":[4,4],"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"reference_not_wang_fcn"} |  |
-| inception_full__b0_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | classifier | InceptionTimeFull | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"architecture_parameters":{"bottleneck_channels":32,"branch_count":4,"classifier_dropout":0.2,"depth":6,"dilation":1,"global_pooling":"mask_aware_global_average","kernel_sizes":[39,19,9],"model_id":"inception_full","n_classes":3,"out_channels":32,"pool_size":3,"representation_mode":"raw","residual_interval":3,"variant":"full"},"dilation":1,"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[39,19,9],"mask_aware_pooling":true,"model_id":"InceptionTimeFull","n_classes":3,"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"single_network"} |  |
-| inception_full__b1_star_fixed10 | classifier | InceptionTimeFull | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":400,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"architecture_parameters":{"bottleneck_channels":32,"branch_count":4,"classifier_dropout":0.2,"depth":6,"dilation":1,"global_pooling":"mask_aware_global_average","kernel_sizes":[39,19,9],"model_id":"inception_full","n_classes":3,"out_channels":32,"pool_size":3,"representation_mode":"raw","residual_interval":3,"variant":"full"},"dilation":1,"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[39,19,9],"mask_aware_pooling":true,"model_id":"InceptionTimeFull","n_classes":3,"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"single_network"} |  |
-| inception_full__b2_star_fixed10 | classifier | InceptionTimeFull | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0}} | {"architecture_parameters":{"bottleneck_channels":32,"branch_count":4,"classifier_dropout":0.2,"depth":6,"dilation":1,"global_pooling":"mask_aware_global_average","kernel_sizes":[39,19,9],"model_id":"inception_full","n_classes":3,"out_channels":32,"pool_size":3,"representation_mode":"raw","residual_interval":3,"variant":"full"},"dilation":1,"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[39,19,9],"mask_aware_pooling":true,"model_id":"InceptionTimeFull","n_classes":3,"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"single_network"} |  |
-| inception_full__b3_star_fixed10 | classifier | InceptionTimeFull | enabled | {"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"calibrated_ekf_adyn","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"architecture_parameters":{"bottleneck_channels":32,"branch_count":4,"classifier_dropout":0.2,"depth":6,"dilation":1,"global_pooling":"mask_aware_global_average","kernel_sizes":[39,19,9],"model_id":"inception_full","n_classes":3,"out_channels":32,"pool_size":3,"representation_mode":"raw","residual_interval":3,"variant":"full"},"dilation":1,"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[39,19,9],"mask_aware_pooling":true,"model_id":"InceptionTimeFull","n_classes":3,"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"single_network"} |  |
-| inception_full__b4_star_fixed10 | classifier | InceptionTimeFull | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"ppg_window_imu_outer_train_fold","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"architecture_parameters":{"bottleneck_channels":32,"branch_count":4,"classifier_dropout":0.2,"depth":6,"dilation":1,"global_pooling":"mask_aware_global_average","kernel_sizes":[39,19,9],"model_id":"inception_full","n_classes":3,"out_channels":32,"pool_size":3,"representation_mode":"raw","residual_interval":3,"variant":"full"},"dilation":1,"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[39,19,9],"mask_aware_pooling":true,"model_id":"InceptionTimeFull","n_classes":3,"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"single_network"} |  |
-| compact_cnn__b0_star_fixed10; compact_cnn__b1_star_fixed10; compact_cnn__b2_star_fixed10; compact_cnn__b3_star_fixed10; compact_cnn__b4_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b1_star_fixed10; inception_full__b2_star_fixed10; inception_full__b3_star_fixed10; inception_full__b4_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | dataset_adapter | frailty3_m2_20260815_a054800abda272f6 | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"allow_qc_excluded_records":false,"channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"class_id_order":[0,1,2],"class_name_order":["Pre-Frail","Robust/Non-Frail","Young"],"expected_participant_count":29,"expected_record_count":261,"manifest_version":"internal_records_v2","path":"manifests/internal_records_v2.csv","source_dataset_id":"frailty3_m2_20260815_a054800abda272f6"} |  |
-| compact_cnn__b0_star_fixed10; compact_cnn__b1_star_fixed10; compact_cnn__b2_star_fixed10; compact_cnn__b3_star_fixed10; compact_cnn__b4_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b1_star_fixed10; inception_full__b2_star_fixed10; inception_full__b3_star_fixed10; inception_full__b4_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | evaluation | balanced_accuracy | enabled | {"class_order":["Pre-Frail","Robust/Non-Frail","Young"],"input_data":"held-out participant predictions and frailty labels"} | {"calibration_metrics":["multiclass_brier","expected_calibration_error"],"confidence_interval":"participant_cluster_bootstrap_two_sided_95","independent_test_available":false,"metric_prefix":"oof_validation_","metrics":["balanced_accuracy","macro_f1","per_class_precision_recall_f1","worst_class_recall","worst_class_f1","confusion_matrix","coverage"],"paired_delta_key":["repeat_index","fold_index","participant_id"],"primary_metric":"balanced_accuracy","rank_incomplete_configs":false,"ranking":{"automatic_final_selection":false,"manual_multiple_final_versions_allowed":true,"max_qualified_per_comparison_group":10,"preserve_ablation_provenance":true,"sort_key":"participant_level_mean_balanced_accuracy"},"statistics":{"affects_automatic_selection":false,"bootstrap_replicates":10000,"cluster_unit":"participant_with_all_five_repeat_oof_predictions","confidence_interval":"two_sided_95_percentile","lcb95_metrics":["participant_level_mean_balanced_accuracy","participant_level_mean_macro_f1"],"lcb95_percentile":2.5,"multiplicity_correction":"holm_within_comparison_family","paired_exchange_unit":"participant","paired_permutation_replicates":100000,"seed":42},"unit":"participant"} |  |
-| compact_cnn__b3_star_fixed10; inception_full__b3_star_fixed10 | imu_preprocessing | calibrated_ekf_adyn | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_channels":["AX","AY","AZ","GX","GY","GZ"],"manifest_path":"manifests/internal_records_v2.csv","output_channels":["A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"method":"calibrated_ekf_adyn"} |  |
-| compact_cnn__b0_star_fixed10; compact_cnn__b1_star_fixed10; compact_cnn__b2_star_fixed10; compact_cnn__b4_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b1_star_fixed10; inception_full__b2_star_fixed10; inception_full__b4_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | imu_preprocessing | legacy_filtered_axes | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_channels":["AX","AY","AZ","GX","GY","GZ"],"manifest_path":"manifests/internal_records_v2.csv","output_channels":["AX","AY","AZ","GX","GY","GZ"],"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"method":"legacy_filtered_axes"} |  |
-| compact_cnn__b0_star_fixed10; inception_full__b0_star_fixed10 | legacy_bridge_effective_profile | B0 | executed_hash_bound_controls | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"changed_control_paths":[],"controls":{"allow_short_record_padding":true,"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","fixed_epochs":10,"historical_retained_fraction":0.9,"hop_seconds":3.0,"imu_preprocessing":"legacy_filtered_axes","learning_rate":0.001,"max_windows_per_file":null,"normalization":"per_window_all_eight","optimizer":"adamw","ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","primary_report_aggregation_view":"window_balanced_to_participant","sampler":"exhaustive_shuffle_without_replacement","target_fs_hz":64,"training_metric_aggregation_rule":"line_a_equal_files","weight_decay":0.0001,"window_seconds":15.0},"factor_id":"baseline","interpretation":"complete legacy baseline"} |  |
-| compact_cnn__b1_star_fixed10; inception_full__b1_star_fixed10 | legacy_bridge_effective_profile | B1 | executed_hash_bound_controls | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":400,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"changed_control_paths":["controls.target_fs_hz"],"controls":{"allow_short_record_padding":true,"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","fixed_epochs":10,"historical_retained_fraction":0.9,"hop_seconds":3.0,"imu_preprocessing":"legacy_filtered_axes","learning_rate":0.001,"max_windows_per_file":null,"normalization":"per_window_all_eight","optimizer":"adamw","ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","primary_report_aggregation_view":"window_balanced_to_participant","sampler":"exhaustive_shuffle_without_replacement","target_fs_hz":400,"training_metric_aggregation_rule":"line_a_equal_files","weight_decay":0.0001,"window_seconds":15.0},"factor_id":"sampling_rate","interpretation":"Target sample rate only: 64 to 400 Hz."} |  |
-| compact_cnn__b2_star_fixed10; inception_full__b2_star_fixed10 | legacy_bridge_effective_profile | B2 | executed_hash_bound_controls | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0}} | {"changed_control_paths":["controls.window_seconds","controls.hop_seconds"],"controls":{"allow_short_record_padding":true,"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","fixed_epochs":10,"historical_retained_fraction":0.9,"hop_seconds":2.5,"imu_preprocessing":"legacy_filtered_axes","learning_rate":0.001,"max_windows_per_file":null,"normalization":"per_window_all_eight","optimizer":"adamw","ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","primary_report_aggregation_view":"window_balanced_to_participant","sampler":"exhaustive_shuffle_without_replacement","target_fs_hz":64,"training_metric_aggregation_rule":"line_a_equal_files","weight_decay":0.0001,"window_seconds":5.0},"factor_id":"window_plan","interpretation":"Window plan only: 15/3 to 5/2.5 seconds; retain fraction 0.9 and no cap."} |  |
-| compact_cnn__b3_star_fixed10; inception_full__b3_star_fixed10 | legacy_bridge_effective_profile | B3 | executed_hash_bound_controls | {"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"calibrated_ekf_adyn","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"changed_control_paths":["controls.imu_preprocessing"],"controls":{"allow_short_record_padding":true,"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","fixed_epochs":10,"historical_retained_fraction":0.9,"hop_seconds":3.0,"imu_preprocessing":"calibrated_ekf_adyn","learning_rate":0.001,"max_windows_per_file":null,"normalization":"per_window_all_eight","optimizer":"adamw","ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","primary_report_aggregation_view":"window_balanced_to_participant","sampler":"exhaustive_shuffle_without_replacement","target_fs_hz":64,"training_metric_aggregation_rule":"line_a_equal_files","weight_decay":0.0001,"window_seconds":15.0},"factor_id":"imu_preprocessing","interpretation":"IMU semantics only: legacy axes to calibrated EKF dynamic acceleration."} |  |
-| compact_cnn__b4_star_fixed10; inception_full__b4_star_fixed10 | legacy_bridge_effective_profile | B4 | executed_hash_bound_controls | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"ppg_window_imu_outer_train_fold","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"changed_control_paths":["controls.normalization"],"controls":{"allow_short_record_padding":true,"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","fixed_epochs":10,"historical_retained_fraction":0.9,"hop_seconds":3.0,"imu_preprocessing":"legacy_filtered_axes","learning_rate":0.001,"max_windows_per_file":null,"normalization":"ppg_window_imu_outer_train_fold","optimizer":"adamw","ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","primary_report_aggregation_view":"window_balanced_to_participant","sampler":"exhaustive_shuffle_without_replacement","target_fs_hz":64,"training_metric_aggregation_rule":"line_a_equal_files","weight_decay":0.0001,"window_seconds":15.0},"factor_id":"normalization","interpretation":"Normalization only: all-eight per-window to PPG-window plus outer-train IMU-fold scaling."} |  |
-| compact_cnn__b5_star_fixed10; inception_full__b5_star_fixed10 | legacy_bridge_effective_profile | B5 | executed_hash_bound_controls | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"changed_control_paths":["controls.sampler"],"controls":{"allow_short_record_padding":true,"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","fixed_epochs":10,"historical_retained_fraction":0.9,"hop_seconds":3.0,"imu_preprocessing":"legacy_filtered_axes","learning_rate":0.001,"max_windows_per_file":null,"normalization":"per_window_all_eight","optimizer":"adamw","ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","primary_report_aggregation_view":"window_balanced_to_participant","sampler":"balance_line_weighted_v2","target_fs_hz":64,"training_metric_aggregation_rule":"line_a_equal_files","weight_decay":0.0001,"window_seconds":15.0},"factor_id":"sampler","interpretation":"Sampler only: exhaustive uniform shuffle to Line B weighted sampling."} |  |
-| compact_cnn__b6_star_fixed10; inception_full__b6_star_fixed10 | legacy_bridge_effective_profile | B6 | executed_hash_bound_controls | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"changed_control_paths":["controls.optimizer","controls.batch_size"],"controls":{"allow_short_record_padding":true,"batch_size":64,"class_weighting":"outer_train_window_inverse_frequency","fixed_epochs":10,"historical_retained_fraction":0.9,"hop_seconds":3.0,"imu_preprocessing":"legacy_filtered_axes","learning_rate":0.001,"max_windows_per_file":null,"normalization":"per_window_all_eight","optimizer":"adam","ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","primary_report_aggregation_view":"window_balanced_to_participant","sampler":"exhaustive_shuffle_without_replacement","target_fs_hz":64,"training_metric_aggregation_rule":"line_a_equal_files","weight_decay":0.0001,"window_seconds":15.0},"factor_id":"optimizer_and_batch_size","interpretation":"Declared training bundle only: AdamW/batch32 to Adam/batch64."} |  |
-| compact_cnn__b7_star_fixed10; inception_full__b7_star_fixed10 | legacy_bridge_effective_profile | B7 | executed_hash_bound_controls | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"changed_control_paths":["controls.primary_report_aggregation_view"],"controls":{"allow_short_record_padding":true,"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","fixed_epochs":10,"historical_retained_fraction":0.9,"hop_seconds":3.0,"imu_preprocessing":"legacy_filtered_axes","learning_rate":0.001,"max_windows_per_file":null,"normalization":"per_window_all_eight","optimizer":"adamw","ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","primary_report_aggregation_view":"line_b_equal_role_families","sampler":"exhaustive_shuffle_without_replacement","target_fs_hz":64,"training_metric_aggregation_rule":"line_a_equal_files","weight_decay":0.0001,"window_seconds":15.0},"factor_id":"primary_aggregation","interpretation":"Native primary reporting only: direct-window participant mean to file/role participant mean."} |  |
-| compact_cnn__b0_star_fixed10; compact_cnn__b1_star_fixed10; compact_cnn__b2_star_fixed10; compact_cnn__b3_star_fixed10; compact_cnn__b4_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b1_star_fixed10; inception_full__b2_star_fixed10; inception_full__b3_star_fixed10; inception_full__b4_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | ppg_preprocessing | legacy_detrend_bandpass_0p2_8 | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_channels":["RED","IR"],"manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"method":"legacy_detrend_bandpass_0p2_8"} |  |
-| compact_cnn__b0_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | representation | raw | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"input_contract":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"representation_mode":"raw"} |  |
-| compact_cnn__b1_star_fixed10; inception_full__b1_star_fixed10 | representation | raw | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":400,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"input_contract":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":400,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"representation_mode":"raw"} |  |
-| compact_cnn__b2_star_fixed10; inception_full__b2_star_fixed10 | representation | raw | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0}} | {"input_contract":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0}},"representation_mode":"raw"} |  |
-| compact_cnn__b3_star_fixed10; inception_full__b3_star_fixed10 | representation | raw | enabled | {"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"calibrated_ekf_adyn","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"input_contract":{"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"calibrated_ekf_adyn","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"representation_mode":"raw"} |  |
-| compact_cnn__b4_star_fixed10; inception_full__b4_star_fixed10 | representation | raw | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"ppg_window_imu_outer_train_fold","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"input_contract":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"ppg_window_imu_outer_train_fold","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"representation_mode":"raw"} |  |
-| compact_cnn__b0_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | signal_views_and_scaling | per_window_all_eight | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"normalization":"per_window_all_eight","sampling_rate_hz":64} |  |
-| compact_cnn__b1_star_fixed10; inception_full__b1_star_fixed10 | signal_views_and_scaling | per_window_all_eight | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":400,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"normalization":"per_window_all_eight","sampling_rate_hz":400} |  |
-| compact_cnn__b2_star_fixed10; inception_full__b2_star_fixed10 | signal_views_and_scaling | per_window_all_eight | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0}} | {"normalization":"per_window_all_eight","sampling_rate_hz":64} |  |
-| compact_cnn__b3_star_fixed10; inception_full__b3_star_fixed10 | signal_views_and_scaling | per_window_all_eight | enabled | {"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"calibrated_ekf_adyn","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"normalization":"per_window_all_eight","sampling_rate_hz":64} |  |
-| compact_cnn__b4_star_fixed10; inception_full__b4_star_fixed10 | signal_views_and_scaling | ppg_window_imu_outer_train_fold | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"ppg_window_imu_outer_train_fold","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"normalization":"ppg_window_imu_outer_train_fold","sampling_rate_hz":64} |  |
-| compact_cnn__b0_star_fixed10; compact_cnn__b1_star_fixed10; compact_cnn__b2_star_fixed10; compact_cnn__b3_star_fixed10; compact_cnn__b4_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b1_star_fixed10; inception_full__b2_star_fixed10; inception_full__b3_star_fixed10; inception_full__b4_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | split_registry | frailty3_future_corrected_sgkf5_v2 | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","groups":"participant_id","labels":"frailty_class","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"n_repeats":5,"n_splits":5,"path":"splits/sgkf5_repeated_grouped_5x5_v2.csv","registry_id":"frailty3_future_corrected_sgkf5_v2","runtime_recompute":false,"split_seeds":[42,10042,20042,30042,40042]} |  |
-| compact_cnn__b6_star_fixed10; inception_full__b6_star_fixed10 | trainer | adam | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":64,"class_weighting":"outer_train_window_inverse_frequency","device":"cuda","fixed_epochs":10,"learning_rate":0.001,"optimizer":"adam","outer_labels_visible_to_trainer":false,"sampler":"exhaustive_shuffle_without_replacement","training_metric_aggregation_rule":"line_a_equal_files","training_seed":42,"weight_decay":0.0001} |  |
-| compact_cnn__b0_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b7_star_fixed10 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","device":"cuda","fixed_epochs":10,"learning_rate":0.001,"optimizer":"adamw","outer_labels_visible_to_trainer":false,"sampler":"exhaustive_shuffle_without_replacement","training_metric_aggregation_rule":"line_a_equal_files","training_seed":42,"weight_decay":0.0001} |  |
-| compact_cnn__b1_star_fixed10; inception_full__b1_star_fixed10 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":400,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","device":"cuda","fixed_epochs":10,"learning_rate":0.001,"optimizer":"adamw","outer_labels_visible_to_trainer":false,"sampler":"exhaustive_shuffle_without_replacement","training_metric_aggregation_rule":"line_a_equal_files","training_seed":42,"weight_decay":0.0001} |  |
-| compact_cnn__b2_star_fixed10; inception_full__b2_star_fixed10 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","device":"cuda","fixed_epochs":10,"learning_rate":0.001,"optimizer":"adamw","outer_labels_visible_to_trainer":false,"sampler":"exhaustive_shuffle_without_replacement","training_metric_aggregation_rule":"line_a_equal_files","training_seed":42,"weight_decay":0.0001} |  |
-| compact_cnn__b3_star_fixed10; inception_full__b3_star_fixed10 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"calibrated_ekf_adyn","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","device":"cuda","fixed_epochs":10,"learning_rate":0.001,"optimizer":"adamw","outer_labels_visible_to_trainer":false,"sampler":"exhaustive_shuffle_without_replacement","training_metric_aggregation_rule":"line_a_equal_files","training_seed":42,"weight_decay":0.0001} |  |
-| compact_cnn__b4_star_fixed10; inception_full__b4_star_fixed10 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"ppg_window_imu_outer_train_fold","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","device":"cuda","fixed_epochs":10,"learning_rate":0.001,"optimizer":"adamw","outer_labels_visible_to_trainer":false,"sampler":"exhaustive_shuffle_without_replacement","training_metric_aggregation_rule":"line_a_equal_files","training_seed":42,"weight_decay":0.0001} |  |
-| compact_cnn__b5_star_fixed10; inception_full__b5_star_fixed10 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","device":"cuda","fixed_epochs":10,"learning_rate":0.001,"optimizer":"adamw","outer_labels_visible_to_trainer":false,"sampler":"balance_line_weighted_v2","training_metric_aggregation_rule":"line_a_equal_files","training_seed":42,"weight_decay":0.0001} |  |
-| compact_cnn__b0_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | window_planner | legacy_bridge_reviewed_window_plan_v1 | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0} |  |
-| compact_cnn__b1_star_fixed10; inception_full__b1_star_fixed10 | window_planner | legacy_bridge_reviewed_window_plan_v1 | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":400,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0} |  |
-| compact_cnn__b2_star_fixed10; inception_full__b2_star_fixed10 | window_planner | legacy_bridge_reviewed_window_plan_v1 | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0}} | {"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0} |  |
-| compact_cnn__b3_star_fixed10; inception_full__b3_star_fixed10 | window_planner | legacy_bridge_reviewed_window_plan_v1 | enabled | {"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"calibrated_ekf_adyn","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0} |  |
-| compact_cnn__b4_star_fixed10; inception_full__b4_star_fixed10 | window_planner | legacy_bridge_reviewed_window_plan_v1 | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"ppg_window_imu_outer_train_fold","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0} |  |
+| Cases / phases | Component role | Model / module | State | Input data (values and paths; no hashes) | Detailed fixed parameters | Algorithm and kernel (≤300 chars) | Reporter profile | Model reporter extension | Algorithm / literature source |
+|---|---|---|---|---|---|---|---|---|---|
+| compact_cnn__b7_star_fixed10; inception_full__b7_star_fixed10 | aggregation | line_b_equal_role_families | enabled | {"input_data":"held-out window/file probabilities","roles":["B","R1","R2","R3","R4"]} | {"primary_report_aggregation_view":"line_b_equal_role_families","training_metric_aggregation_rule":"line_a_equal_files"} | executable line_b_equal_role_families hierarchy ending in participant-balanced output | audit_provenance_v1 | audit_provenance_v1 | Project registry implementation: ppg_frailty.training.aggregation.aggregate_hierarchy; no separate external literature source claimed |
+| compact_cnn__b0_star_fixed10; compact_cnn__b1_star_fixed10; compact_cnn__b2_star_fixed10; compact_cnn__b3_star_fixed10; compact_cnn__b4_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; inception_full__b0_star_fixed10; inception_full__b1_star_fixed10; inception_full__b2_star_fixed10; inception_full__b3_star_fixed10; inception_full__b4_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10 | aggregation | window_balanced_to_participant | enabled | {"input_data":"held-out window/file probabilities","roles":["B","R1","R2","R3","R4"]} | {"primary_report_aggregation_view":"window_balanced_to_participant","training_metric_aggregation_rule":"line_a_equal_files"} | Explicit historical bridge identity for aggregation; no V2 module-equivalence claim. | audit_provenance_v1 | audit_provenance_v1 | Project legacy bridge execution contract: src/ppg_frailty/legacy_bridge.py |
+| compact_cnn__b0_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10 | classifier | CompactCNN1D | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"architecture_parameters":{"classifier_dropout":0.2,"dilations":[1,1,1],"global_pooling":"adaptive_average_1","kernel_sizes":[9,9,7],"model_id":"compact_cnn","n_classes":3,"pool_sizes":[4,4],"representation_mode":"raw","stage_channels":[32,64,128],"stage_dropouts":[0.1,0.15]},"dilations":[1,1,1],"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[9,9,7],"mask_aware_pooling":true,"model_id":"CompactCNN1D","n_classes":3,"pool_sizes":[4,4],"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"reference_not_wang_fcn"} | Project CompactCNN1D: three temporal convolution stages with a pooled classification head. | multiclass_participant_oof_v1 | compactcnn_model_v1 | Project implementation: src/ppg_frailty/models/compact_cnn.py |
+| compact_cnn__b1_star_fixed10 | classifier | CompactCNN1D | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":400,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"architecture_parameters":{"classifier_dropout":0.2,"dilations":[1,1,1],"global_pooling":"adaptive_average_1","kernel_sizes":[9,9,7],"model_id":"compact_cnn","n_classes":3,"pool_sizes":[4,4],"representation_mode":"raw","stage_channels":[32,64,128],"stage_dropouts":[0.1,0.15]},"dilations":[1,1,1],"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[9,9,7],"mask_aware_pooling":true,"model_id":"CompactCNN1D","n_classes":3,"pool_sizes":[4,4],"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"reference_not_wang_fcn"} | Project CompactCNN1D: three temporal convolution stages with a pooled classification head. | multiclass_participant_oof_v1 | compactcnn_model_v1 | Project implementation: src/ppg_frailty/models/compact_cnn.py |
+| compact_cnn__b2_star_fixed10 | classifier | CompactCNN1D | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0}} | {"architecture_parameters":{"classifier_dropout":0.2,"dilations":[1,1,1],"global_pooling":"adaptive_average_1","kernel_sizes":[9,9,7],"model_id":"compact_cnn","n_classes":3,"pool_sizes":[4,4],"representation_mode":"raw","stage_channels":[32,64,128],"stage_dropouts":[0.1,0.15]},"dilations":[1,1,1],"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[9,9,7],"mask_aware_pooling":true,"model_id":"CompactCNN1D","n_classes":3,"pool_sizes":[4,4],"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"reference_not_wang_fcn"} | Project CompactCNN1D: three temporal convolution stages with a pooled classification head. | multiclass_participant_oof_v1 | compactcnn_model_v1 | Project implementation: src/ppg_frailty/models/compact_cnn.py |
+| compact_cnn__b3_star_fixed10 | classifier | CompactCNN1D | enabled | {"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"calibrated_ekf_adyn","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"architecture_parameters":{"classifier_dropout":0.2,"dilations":[1,1,1],"global_pooling":"adaptive_average_1","kernel_sizes":[9,9,7],"model_id":"compact_cnn","n_classes":3,"pool_sizes":[4,4],"representation_mode":"raw","stage_channels":[32,64,128],"stage_dropouts":[0.1,0.15]},"dilations":[1,1,1],"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[9,9,7],"mask_aware_pooling":true,"model_id":"CompactCNN1D","n_classes":3,"pool_sizes":[4,4],"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"reference_not_wang_fcn"} | Project CompactCNN1D: three temporal convolution stages with a pooled classification head. | multiclass_participant_oof_v1 | compactcnn_model_v1 | Project implementation: src/ppg_frailty/models/compact_cnn.py |
+| compact_cnn__b4_star_fixed10 | classifier | CompactCNN1D | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"ppg_window_imu_outer_train_fold","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"architecture_parameters":{"classifier_dropout":0.2,"dilations":[1,1,1],"global_pooling":"adaptive_average_1","kernel_sizes":[9,9,7],"model_id":"compact_cnn","n_classes":3,"pool_sizes":[4,4],"representation_mode":"raw","stage_channels":[32,64,128],"stage_dropouts":[0.1,0.15]},"dilations":[1,1,1],"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[9,9,7],"mask_aware_pooling":true,"model_id":"CompactCNN1D","n_classes":3,"pool_sizes":[4,4],"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"reference_not_wang_fcn"} | Project CompactCNN1D: three temporal convolution stages with a pooled classification head. | multiclass_participant_oof_v1 | compactcnn_model_v1 | Project implementation: src/ppg_frailty/models/compact_cnn.py |
+| inception_full__b0_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | classifier | InceptionTimeFull | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"architecture_parameters":{"bottleneck_channels":32,"branch_count":4,"classifier_dropout":0.2,"depth":6,"dilation":1,"global_pooling":"mask_aware_global_average","kernel_sizes":[39,19,9],"model_id":"inception_full","n_classes":3,"out_channels":32,"pool_size":3,"representation_mode":"raw","residual_interval":3,"variant":"full"},"dilation":1,"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[39,19,9],"mask_aware_pooling":true,"model_id":"InceptionTimeFull","n_classes":3,"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"single_network"} | Six-block, single-network InceptionTime adaptation with bottleneck and parallel fixed-sample kernels; not the paper's five-member ensemble. | multiclass_participant_oof_v1 | inceptiontime_single_network_model_v1 | Fawaz et al. (2020), InceptionTime, DOI:10.1007/s10618-020-00710-y |
+| inception_full__b1_star_fixed10 | classifier | InceptionTimeFull | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":400,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"architecture_parameters":{"bottleneck_channels":32,"branch_count":4,"classifier_dropout":0.2,"depth":6,"dilation":1,"global_pooling":"mask_aware_global_average","kernel_sizes":[39,19,9],"model_id":"inception_full","n_classes":3,"out_channels":32,"pool_size":3,"representation_mode":"raw","residual_interval":3,"variant":"full"},"dilation":1,"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[39,19,9],"mask_aware_pooling":true,"model_id":"InceptionTimeFull","n_classes":3,"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"single_network"} | Six-block, single-network InceptionTime adaptation with bottleneck and parallel fixed-sample kernels; not the paper's five-member ensemble. | multiclass_participant_oof_v1 | inceptiontime_single_network_model_v1 | Fawaz et al. (2020), InceptionTime, DOI:10.1007/s10618-020-00710-y |
+| inception_full__b2_star_fixed10 | classifier | InceptionTimeFull | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0}} | {"architecture_parameters":{"bottleneck_channels":32,"branch_count":4,"classifier_dropout":0.2,"depth":6,"dilation":1,"global_pooling":"mask_aware_global_average","kernel_sizes":[39,19,9],"model_id":"inception_full","n_classes":3,"out_channels":32,"pool_size":3,"representation_mode":"raw","residual_interval":3,"variant":"full"},"dilation":1,"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[39,19,9],"mask_aware_pooling":true,"model_id":"InceptionTimeFull","n_classes":3,"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"single_network"} | Six-block, single-network InceptionTime adaptation with bottleneck and parallel fixed-sample kernels; not the paper's five-member ensemble. | multiclass_participant_oof_v1 | inceptiontime_single_network_model_v1 | Fawaz et al. (2020), InceptionTime, DOI:10.1007/s10618-020-00710-y |
+| inception_full__b3_star_fixed10 | classifier | InceptionTimeFull | enabled | {"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"calibrated_ekf_adyn","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"architecture_parameters":{"bottleneck_channels":32,"branch_count":4,"classifier_dropout":0.2,"depth":6,"dilation":1,"global_pooling":"mask_aware_global_average","kernel_sizes":[39,19,9],"model_id":"inception_full","n_classes":3,"out_channels":32,"pool_size":3,"representation_mode":"raw","residual_interval":3,"variant":"full"},"dilation":1,"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[39,19,9],"mask_aware_pooling":true,"model_id":"InceptionTimeFull","n_classes":3,"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"single_network"} | Six-block, single-network InceptionTime adaptation with bottleneck and parallel fixed-sample kernels; not the paper's five-member ensemble. | multiclass_participant_oof_v1 | inceptiontime_single_network_model_v1 | Fawaz et al. (2020), InceptionTime, DOI:10.1007/s10618-020-00710-y |
+| inception_full__b4_star_fixed10 | classifier | InceptionTimeFull | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"ppg_window_imu_outer_train_fold","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"architecture_parameters":{"bottleneck_channels":32,"branch_count":4,"classifier_dropout":0.2,"depth":6,"dilation":1,"global_pooling":"mask_aware_global_average","kernel_sizes":[39,19,9],"model_id":"inception_full","n_classes":3,"out_channels":32,"pool_size":3,"representation_mode":"raw","residual_interval":3,"variant":"full"},"dilation":1,"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[39,19,9],"mask_aware_pooling":true,"model_id":"InceptionTimeFull","n_classes":3,"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"single_network"} | Six-block, single-network InceptionTime adaptation with bottleneck and parallel fixed-sample kernels; not the paper's five-member ensemble. | multiclass_participant_oof_v1 | inceptiontime_single_network_model_v1 | Fawaz et al. (2020), InceptionTime, DOI:10.1007/s10618-020-00710-y |
+| compact_cnn__b0_star_fixed10; compact_cnn__b1_star_fixed10; compact_cnn__b2_star_fixed10; compact_cnn__b3_star_fixed10; compact_cnn__b4_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b1_star_fixed10; inception_full__b2_star_fixed10; inception_full__b3_star_fixed10; inception_full__b4_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | dataset_adapter | frailty3_m2_20260815_a054800abda272f6 | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"allow_qc_excluded_records":false,"channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"class_id_order":[0,1,2],"class_name_order":["Pre-Frail","Robust/Non-Frail","Young"],"expected_participant_count":29,"expected_record_count":261,"manifest_version":"internal_records_v2","path":"manifests/internal_records_v2.csv","source_dataset_id":"frailty3_m2_20260815_a054800abda272f6"} | Persisted dataset_adapter contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: dataset_adapter; no separate external literature source claimed |
+| compact_cnn__b0_star_fixed10; compact_cnn__b1_star_fixed10; compact_cnn__b2_star_fixed10; compact_cnn__b3_star_fixed10; compact_cnn__b4_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b1_star_fixed10; inception_full__b2_star_fixed10; inception_full__b3_star_fixed10; inception_full__b4_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | evaluation | balanced_accuracy | enabled | {"class_order":["Pre-Frail","Robust/Non-Frail","Young"],"input_data":"held-out participant predictions and frailty labels"} | {"calibration_metrics":["multiclass_brier","expected_calibration_error"],"confidence_interval":"participant_cluster_bootstrap_two_sided_95","independent_test_available":false,"metric_prefix":"oof_validation_","metrics":["balanced_accuracy","macro_f1","per_class_precision_recall_f1","worst_class_recall","worst_class_f1","confusion_matrix","coverage"],"paired_delta_key":["repeat_index","fold_index","participant_id"],"primary_metric":"balanced_accuracy","rank_incomplete_configs":false,"ranking":{"automatic_final_selection":false,"manual_multiple_final_versions_allowed":true,"max_qualified_per_comparison_group":10,"preserve_ablation_provenance":true,"sort_key":"participant_level_mean_balanced_accuracy"},"statistics":{"affects_automatic_selection":false,"bootstrap_replicates":10000,"cluster_unit":"participant_with_all_five_repeat_oof_predictions","confidence_interval":"two_sided_95_percentile","lcb95_metrics":["participant_level_mean_balanced_accuracy","participant_level_mean_macro_f1"],"lcb95_percentile":2.5,"multiplicity_correction":"holm_within_comparison_family","paired_exchange_unit":"participant","paired_permutation_replicates":100000,"seed":42},"unit":"participant"} | Persisted evaluation contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: evaluation; no separate external literature source claimed |
+| compact_cnn__b3_star_fixed10; inception_full__b3_star_fixed10 | imu_preprocessing | calibrated_ekf_adyn | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_channels":["AX","AY","AZ","GX","GY","GZ"],"manifest_path":"manifests/internal_records_v2.csv","output_channels":["A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"method":"calibrated_ekf_adyn"} | Explicit historical bridge identity for imu_preprocessing; no V2 module-equivalence claim. | audit_provenance_v1 | audit_provenance_v1 | Project legacy bridge execution contract: src/ppg_frailty/legacy_bridge.py |
+| compact_cnn__b0_star_fixed10; compact_cnn__b1_star_fixed10; compact_cnn__b2_star_fixed10; compact_cnn__b4_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b1_star_fixed10; inception_full__b2_star_fixed10; inception_full__b4_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | imu_preprocessing | legacy_filtered_axes | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_channels":["AX","AY","AZ","GX","GY","GZ"],"manifest_path":"manifests/internal_records_v2.csv","output_channels":["AX","AY","AZ","GX","GY","GZ"],"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"method":"legacy_filtered_axes"} | Explicit historical bridge identity for imu_preprocessing; no V2 module-equivalence claim. | audit_provenance_v1 | audit_provenance_v1 | Project legacy bridge execution contract: src/ppg_frailty/legacy_bridge.py |
+| compact_cnn__b0_star_fixed10; inception_full__b0_star_fixed10 | legacy_bridge_effective_profile | B0 | executed_hash_bound_controls | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"changed_control_paths":[],"controls":{"allow_short_record_padding":true,"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","fixed_epochs":10,"historical_retained_fraction":0.9,"hop_seconds":3.0,"imu_preprocessing":"legacy_filtered_axes","learning_rate":0.001,"max_windows_per_file":null,"normalization":"per_window_all_eight","optimizer":"adamw","ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","primary_report_aggregation_view":"window_balanced_to_participant","sampler":"exhaustive_shuffle_without_replacement","target_fs_hz":64,"training_metric_aggregation_rule":"line_a_equal_files","weight_decay":0.0001,"window_seconds":15.0},"factor_id":"baseline","interpretation":"complete legacy baseline"} | Persisted legacy_bridge_effective_profile contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: legacy_bridge_effective_profile; no separate external literature source claimed |
+| compact_cnn__b1_star_fixed10; inception_full__b1_star_fixed10 | legacy_bridge_effective_profile | B1 | executed_hash_bound_controls | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":400,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"changed_control_paths":["controls.target_fs_hz"],"controls":{"allow_short_record_padding":true,"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","fixed_epochs":10,"historical_retained_fraction":0.9,"hop_seconds":3.0,"imu_preprocessing":"legacy_filtered_axes","learning_rate":0.001,"max_windows_per_file":null,"normalization":"per_window_all_eight","optimizer":"adamw","ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","primary_report_aggregation_view":"window_balanced_to_participant","sampler":"exhaustive_shuffle_without_replacement","target_fs_hz":400,"training_metric_aggregation_rule":"line_a_equal_files","weight_decay":0.0001,"window_seconds":15.0},"factor_id":"sampling_rate","interpretation":"Target sample rate only: 64 to 400 Hz."} | Persisted legacy_bridge_effective_profile contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: legacy_bridge_effective_profile; no separate external literature source claimed |
+| compact_cnn__b2_star_fixed10; inception_full__b2_star_fixed10 | legacy_bridge_effective_profile | B2 | executed_hash_bound_controls | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0}} | {"changed_control_paths":["controls.window_seconds","controls.hop_seconds"],"controls":{"allow_short_record_padding":true,"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","fixed_epochs":10,"historical_retained_fraction":0.9,"hop_seconds":2.5,"imu_preprocessing":"legacy_filtered_axes","learning_rate":0.001,"max_windows_per_file":null,"normalization":"per_window_all_eight","optimizer":"adamw","ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","primary_report_aggregation_view":"window_balanced_to_participant","sampler":"exhaustive_shuffle_without_replacement","target_fs_hz":64,"training_metric_aggregation_rule":"line_a_equal_files","weight_decay":0.0001,"window_seconds":5.0},"factor_id":"window_plan","interpretation":"Window plan only: 15/3 to 5/2.5 seconds; retain fraction 0.9 and no cap."} | Persisted legacy_bridge_effective_profile contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: legacy_bridge_effective_profile; no separate external literature source claimed |
+| compact_cnn__b3_star_fixed10; inception_full__b3_star_fixed10 | legacy_bridge_effective_profile | B3 | executed_hash_bound_controls | {"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"calibrated_ekf_adyn","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"changed_control_paths":["controls.imu_preprocessing"],"controls":{"allow_short_record_padding":true,"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","fixed_epochs":10,"historical_retained_fraction":0.9,"hop_seconds":3.0,"imu_preprocessing":"calibrated_ekf_adyn","learning_rate":0.001,"max_windows_per_file":null,"normalization":"per_window_all_eight","optimizer":"adamw","ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","primary_report_aggregation_view":"window_balanced_to_participant","sampler":"exhaustive_shuffle_without_replacement","target_fs_hz":64,"training_metric_aggregation_rule":"line_a_equal_files","weight_decay":0.0001,"window_seconds":15.0},"factor_id":"imu_preprocessing","interpretation":"IMU semantics only: legacy axes to calibrated EKF dynamic acceleration."} | Persisted legacy_bridge_effective_profile contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: legacy_bridge_effective_profile; no separate external literature source claimed |
+| compact_cnn__b4_star_fixed10; inception_full__b4_star_fixed10 | legacy_bridge_effective_profile | B4 | executed_hash_bound_controls | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"ppg_window_imu_outer_train_fold","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"changed_control_paths":["controls.normalization"],"controls":{"allow_short_record_padding":true,"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","fixed_epochs":10,"historical_retained_fraction":0.9,"hop_seconds":3.0,"imu_preprocessing":"legacy_filtered_axes","learning_rate":0.001,"max_windows_per_file":null,"normalization":"ppg_window_imu_outer_train_fold","optimizer":"adamw","ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","primary_report_aggregation_view":"window_balanced_to_participant","sampler":"exhaustive_shuffle_without_replacement","target_fs_hz":64,"training_metric_aggregation_rule":"line_a_equal_files","weight_decay":0.0001,"window_seconds":15.0},"factor_id":"normalization","interpretation":"Normalization only: all-eight per-window to PPG-window plus outer-train IMU-fold scaling."} | Persisted legacy_bridge_effective_profile contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: legacy_bridge_effective_profile; no separate external literature source claimed |
+| compact_cnn__b5_star_fixed10; inception_full__b5_star_fixed10 | legacy_bridge_effective_profile | B5 | executed_hash_bound_controls | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"changed_control_paths":["controls.sampler"],"controls":{"allow_short_record_padding":true,"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","fixed_epochs":10,"historical_retained_fraction":0.9,"hop_seconds":3.0,"imu_preprocessing":"legacy_filtered_axes","learning_rate":0.001,"max_windows_per_file":null,"normalization":"per_window_all_eight","optimizer":"adamw","ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","primary_report_aggregation_view":"window_balanced_to_participant","sampler":"balance_line_weighted_v2","target_fs_hz":64,"training_metric_aggregation_rule":"line_a_equal_files","weight_decay":0.0001,"window_seconds":15.0},"factor_id":"sampler","interpretation":"Sampler only: exhaustive uniform shuffle to Line B weighted sampling."} | Persisted legacy_bridge_effective_profile contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: legacy_bridge_effective_profile; no separate external literature source claimed |
+| compact_cnn__b6_star_fixed10; inception_full__b6_star_fixed10 | legacy_bridge_effective_profile | B6 | executed_hash_bound_controls | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"changed_control_paths":["controls.optimizer","controls.batch_size"],"controls":{"allow_short_record_padding":true,"batch_size":64,"class_weighting":"outer_train_window_inverse_frequency","fixed_epochs":10,"historical_retained_fraction":0.9,"hop_seconds":3.0,"imu_preprocessing":"legacy_filtered_axes","learning_rate":0.001,"max_windows_per_file":null,"normalization":"per_window_all_eight","optimizer":"adam","ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","primary_report_aggregation_view":"window_balanced_to_participant","sampler":"exhaustive_shuffle_without_replacement","target_fs_hz":64,"training_metric_aggregation_rule":"line_a_equal_files","weight_decay":0.0001,"window_seconds":15.0},"factor_id":"optimizer_and_batch_size","interpretation":"Declared training bundle only: AdamW/batch32 to Adam/batch64."} | Persisted legacy_bridge_effective_profile contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: legacy_bridge_effective_profile; no separate external literature source claimed |
+| compact_cnn__b7_star_fixed10; inception_full__b7_star_fixed10 | legacy_bridge_effective_profile | B7 | executed_hash_bound_controls | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"changed_control_paths":["controls.primary_report_aggregation_view"],"controls":{"allow_short_record_padding":true,"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","fixed_epochs":10,"historical_retained_fraction":0.9,"hop_seconds":3.0,"imu_preprocessing":"legacy_filtered_axes","learning_rate":0.001,"max_windows_per_file":null,"normalization":"per_window_all_eight","optimizer":"adamw","ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","primary_report_aggregation_view":"line_b_equal_role_families","sampler":"exhaustive_shuffle_without_replacement","target_fs_hz":64,"training_metric_aggregation_rule":"line_a_equal_files","weight_decay":0.0001,"window_seconds":15.0},"factor_id":"primary_aggregation","interpretation":"Native primary reporting only: direct-window participant mean to file/role participant mean."} | Persisted legacy_bridge_effective_profile contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: legacy_bridge_effective_profile; no separate external literature source claimed |
+| compact_cnn__b0_star_fixed10; compact_cnn__b1_star_fixed10; compact_cnn__b2_star_fixed10; compact_cnn__b3_star_fixed10; compact_cnn__b4_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b1_star_fixed10; inception_full__b2_star_fixed10; inception_full__b3_star_fixed10; inception_full__b4_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | ppg_preprocessing | legacy_detrend_bandpass_0p2_8 | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_channels":["RED","IR"],"manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"method":"legacy_detrend_bandpass_0p2_8"} | Explicit historical bridge identity for ppg_preprocessing; no V2 module-equivalence claim. | audit_provenance_v1 | audit_provenance_v1 | Project legacy bridge execution contract: src/ppg_frailty/legacy_bridge.py |
+| compact_cnn__b0_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | representation | raw | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"input_contract":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"representation_mode":"raw"} | Line A window->file->participant; Line B window->file->role_family->participant | audit_provenance_v1 | audit_provenance_v1 | Project registry implementation: ppg_frailty.representations.raw; no separate external literature source claimed |
+| compact_cnn__b1_star_fixed10; inception_full__b1_star_fixed10 | representation | raw | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":400,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"input_contract":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":400,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"representation_mode":"raw"} | Line A window->file->participant; Line B window->file->role_family->participant | audit_provenance_v1 | audit_provenance_v1 | Project registry implementation: ppg_frailty.representations.raw; no separate external literature source claimed |
+| compact_cnn__b2_star_fixed10; inception_full__b2_star_fixed10 | representation | raw | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0}} | {"input_contract":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0}},"representation_mode":"raw"} | Line A window->file->participant; Line B window->file->role_family->participant | audit_provenance_v1 | audit_provenance_v1 | Project registry implementation: ppg_frailty.representations.raw; no separate external literature source claimed |
+| compact_cnn__b3_star_fixed10; inception_full__b3_star_fixed10 | representation | raw | enabled | {"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"calibrated_ekf_adyn","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"input_contract":{"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"calibrated_ekf_adyn","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"representation_mode":"raw"} | Line A window->file->participant; Line B window->file->role_family->participant | audit_provenance_v1 | audit_provenance_v1 | Project registry implementation: ppg_frailty.representations.raw; no separate external literature source claimed |
+| compact_cnn__b4_star_fixed10; inception_full__b4_star_fixed10 | representation | raw | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"ppg_window_imu_outer_train_fold","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"input_contract":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"ppg_window_imu_outer_train_fold","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"representation_mode":"raw"} | Line A window->file->participant; Line B window->file->role_family->participant | audit_provenance_v1 | audit_provenance_v1 | Project registry implementation: ppg_frailty.representations.raw; no separate external literature source claimed |
+| compact_cnn__b0_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | signal_views_and_scaling | per_window_all_eight | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"normalization":"per_window_all_eight","sampling_rate_hz":64} | Persisted signal_views_and_scaling contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: signal_views_and_scaling; no separate external literature source claimed |
+| compact_cnn__b1_star_fixed10; inception_full__b1_star_fixed10 | signal_views_and_scaling | per_window_all_eight | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":400,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"normalization":"per_window_all_eight","sampling_rate_hz":400} | Persisted signal_views_and_scaling contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: signal_views_and_scaling; no separate external literature source claimed |
+| compact_cnn__b2_star_fixed10; inception_full__b2_star_fixed10 | signal_views_and_scaling | per_window_all_eight | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0}} | {"normalization":"per_window_all_eight","sampling_rate_hz":64} | Persisted signal_views_and_scaling contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: signal_views_and_scaling; no separate external literature source claimed |
+| compact_cnn__b3_star_fixed10; inception_full__b3_star_fixed10 | signal_views_and_scaling | per_window_all_eight | enabled | {"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"calibrated_ekf_adyn","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"normalization":"per_window_all_eight","sampling_rate_hz":64} | Persisted signal_views_and_scaling contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: signal_views_and_scaling; no separate external literature source claimed |
+| compact_cnn__b4_star_fixed10; inception_full__b4_star_fixed10 | signal_views_and_scaling | ppg_window_imu_outer_train_fold | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"ppg_window_imu_outer_train_fold","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"normalization":"ppg_window_imu_outer_train_fold","sampling_rate_hz":64} | Persisted signal_views_and_scaling contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: signal_views_and_scaling; no separate external literature source claimed |
+| compact_cnn__b0_star_fixed10; compact_cnn__b1_star_fixed10; compact_cnn__b2_star_fixed10; compact_cnn__b3_star_fixed10; compact_cnn__b4_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b1_star_fixed10; inception_full__b2_star_fixed10; inception_full__b3_star_fixed10; inception_full__b4_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | split_registry | frailty3_future_corrected_sgkf5_v2 | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","groups":"participant_id","labels":"frailty_class","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"n_repeats":5,"n_splits":5,"path":"splits/sgkf5_repeated_grouped_5x5_v2.csv","registry_id":"frailty3_future_corrected_sgkf5_v2","runtime_recompute":false,"split_seeds":[42,10042,20042,30042,40042]} | Persisted split_registry contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: split_registry; no separate external literature source claimed |
+| compact_cnn__b6_star_fixed10; inception_full__b6_star_fixed10 | trainer | adam | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":64,"class_weighting":"outer_train_window_inverse_frequency","device":"cuda","fixed_epochs":10,"learning_rate":0.001,"optimizer":"adam","outer_labels_visible_to_trainer":false,"sampler":"exhaustive_shuffle_without_replacement","training_metric_aggregation_rule":"line_a_equal_files","training_seed":42,"weight_decay":0.0001} | Adam optimizer with persisted learning-rate, beta and epsilon parameters. | audit_provenance_v1 | audit_provenance_v1 | Kingma & Ba (2015), Adam, DOI:10.48550/arXiv.1412.6980 |
+| compact_cnn__b0_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b7_star_fixed10 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","device":"cuda","fixed_epochs":10,"learning_rate":0.001,"optimizer":"adamw","outer_labels_visible_to_trainer":false,"sampler":"exhaustive_shuffle_without_replacement","training_metric_aggregation_rule":"line_a_equal_files","training_seed":42,"weight_decay":0.0001} | AdamW optimizer with decoupled weight decay and persisted hyperparameters. | audit_provenance_v1 | audit_provenance_v1 | Loshchilov & Hutter (2019), DOI:10.48550/arXiv.1711.05101 |
+| compact_cnn__b1_star_fixed10; inception_full__b1_star_fixed10 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":400,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","device":"cuda","fixed_epochs":10,"learning_rate":0.001,"optimizer":"adamw","outer_labels_visible_to_trainer":false,"sampler":"exhaustive_shuffle_without_replacement","training_metric_aggregation_rule":"line_a_equal_files","training_seed":42,"weight_decay":0.0001} | AdamW optimizer with decoupled weight decay and persisted hyperparameters. | audit_provenance_v1 | audit_provenance_v1 | Loshchilov & Hutter (2019), DOI:10.48550/arXiv.1711.05101 |
+| compact_cnn__b2_star_fixed10; inception_full__b2_star_fixed10 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","device":"cuda","fixed_epochs":10,"learning_rate":0.001,"optimizer":"adamw","outer_labels_visible_to_trainer":false,"sampler":"exhaustive_shuffle_without_replacement","training_metric_aggregation_rule":"line_a_equal_files","training_seed":42,"weight_decay":0.0001} | AdamW optimizer with decoupled weight decay and persisted hyperparameters. | audit_provenance_v1 | audit_provenance_v1 | Loshchilov & Hutter (2019), DOI:10.48550/arXiv.1711.05101 |
+| compact_cnn__b3_star_fixed10; inception_full__b3_star_fixed10 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"calibrated_ekf_adyn","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","device":"cuda","fixed_epochs":10,"learning_rate":0.001,"optimizer":"adamw","outer_labels_visible_to_trainer":false,"sampler":"exhaustive_shuffle_without_replacement","training_metric_aggregation_rule":"line_a_equal_files","training_seed":42,"weight_decay":0.0001} | AdamW optimizer with decoupled weight decay and persisted hyperparameters. | audit_provenance_v1 | audit_provenance_v1 | Loshchilov & Hutter (2019), DOI:10.48550/arXiv.1711.05101 |
+| compact_cnn__b4_star_fixed10; inception_full__b4_star_fixed10 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"ppg_window_imu_outer_train_fold","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","device":"cuda","fixed_epochs":10,"learning_rate":0.001,"optimizer":"adamw","outer_labels_visible_to_trainer":false,"sampler":"exhaustive_shuffle_without_replacement","training_metric_aggregation_rule":"line_a_equal_files","training_seed":42,"weight_decay":0.0001} | AdamW optimizer with decoupled weight decay and persisted hyperparameters. | audit_provenance_v1 | audit_provenance_v1 | Loshchilov & Hutter (2019), DOI:10.48550/arXiv.1711.05101 |
+| compact_cnn__b5_star_fixed10; inception_full__b5_star_fixed10 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":32,"class_weighting":"outer_train_window_inverse_frequency","device":"cuda","fixed_epochs":10,"learning_rate":0.001,"optimizer":"adamw","outer_labels_visible_to_trainer":false,"sampler":"balance_line_weighted_v2","training_metric_aggregation_rule":"line_a_equal_files","training_seed":42,"weight_decay":0.0001} | AdamW optimizer with decoupled weight decay and persisted hyperparameters. | audit_provenance_v1 | audit_provenance_v1 | Loshchilov & Hutter (2019), DOI:10.48550/arXiv.1711.05101 |
+| compact_cnn__b0_star_fixed10; compact_cnn__b5_star_fixed10; compact_cnn__b6_star_fixed10; compact_cnn__b7_star_fixed10; inception_full__b0_star_fixed10; inception_full__b5_star_fixed10; inception_full__b6_star_fixed10; inception_full__b7_star_fixed10 | window_planner | legacy_bridge_reviewed_window_plan_v1 | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0} | Persisted window_planner contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: window_planner; no separate external literature source claimed |
+| compact_cnn__b1_star_fixed10; inception_full__b1_star_fixed10 | window_planner | legacy_bridge_reviewed_window_plan_v1 | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":400,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0} | Persisted window_planner contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: window_planner; no separate external literature source claimed |
+| compact_cnn__b2_star_fixed10; inception_full__b2_star_fixed10 | window_planner | legacy_bridge_reviewed_window_plan_v1 | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0}} | {"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":2.5,"length_s":5.0} | Persisted window_planner contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: window_planner; no separate external literature source claimed |
+| compact_cnn__b3_star_fixed10; inception_full__b3_star_fixed10 | window_planner | legacy_bridge_reviewed_window_plan_v1 | enabled | {"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"calibrated_ekf_adyn","manifest_path":"manifests/internal_records_v2.csv","normalization":"per_window_all_eight","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0} | Persisted window_planner contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: window_planner; no separate external literature source claimed |
+| compact_cnn__b4_star_fixed10; inception_full__b4_star_fixed10 | window_planner | legacy_bridge_reviewed_window_plan_v1 | enabled | {"channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","imu_preprocessing":"legacy_filtered_axes","manifest_path":"manifests/internal_records_v2.csv","normalization":"ppg_window_imu_outer_train_fold","participants":29,"pipeline_fs_hz":400.0,"ppg_preprocessing":"legacy_detrend_bandpass_0p2_8","records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"sampling_rate_hz":64,"signal_view":"legacy_bridge_effective_DL_tensor","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0}} | {"allow_short_record_padding":true,"cap_per_file":null,"historical_retained_fraction":0.9,"hop_s":3.0,"length_s":15.0} | Persisted window_planner contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: window_planner; no separate external literature source claimed |
+
+## Model/module-owned reporter contracts and literature
+
+The complete generated methods record is in [REPORT_METHODS.md](REPORT_METHODS.md). Profiles are selected from the persisted component identities and affect presentation only—not training, predictions, thresholds, or ranking.
+
+| Profile | Kind | Scope | Components | Required tables | Required figures | Literature | Module sources |
+|---|---|---|---|---|---|---|---|
+| audit_provenance_v1 | endpoint_or_module | Configuration and provenance audit | ["aggregation:line_b_equal_role_families", "aggregation:window_balanced_to_participant", "dataset_adapter:frailty3_m2_20260815_a054800abda272f6", "evaluation:balanced_accuracy", "imu_preprocessing:calibrated_ekf_adyn", "imu_preprocessing:legacy_filtered_axes", "legacy_bridge_effective_profile:B0", "legacy_bridge_effective_profile:B1", "legacy_bridge_effective_profile:B2", "legacy_bridge_effective_profile:B3", "legacy_bridge_effective_profile:B4", "legacy_bridge_effective_profile:B5", "legacy_bridge_effective_profile:B6", "legacy_bridge_effective_profile:B7", "ppg_preprocessing:legacy_detrend_bandpass_0p2_8", "representation:raw", "signal_views_and_scaling:per_window_all_eight", "signal_views_and_scaling:ppg_window_imu_outer_train_fold", "split_registry:frailty3_future_corrected_sgkf5_v2", "trainer:adam", "trainer:adamw", "window_planner:legacy_bridge_reviewed_window_plan_v1"] | ["test_components", "reproducibility_summary"] | [] | [] | ["Kingma & Ba (2015), Adam, DOI:10.48550/arXiv.1412.6980", "Loshchilov & Hutter (2019), DOI:10.48550/arXiv.1711.05101", "Project component-role audit binding: dataset_adapter; no separate external literature source claimed", "Project component-role audit binding: evaluation; no separate external literature source claimed", "Project component-role audit binding: legacy_bridge_effective_profile; no separate external literature source claimed", "Project component-role audit binding: signal_views_and_scaling; no separate external literature source claimed", "Project component-role audit binding: split_registry; no separate external literature source claimed", "Project component-role audit binding: window_planner; no separate external literature source claimed", "Project legacy bridge execution contract: src/ppg_frailty/legacy_bridge.py", "Project registry implementation: ppg_frailty.representations.raw; no separate external literature source claimed", "Project registry implementation: ppg_frailty.training.aggregation.aggregate_hierarchy; no separate external literature source claimed"] |
+| compactcnn_model_v1 | model_or_module_extension | CompactCNN1D model extension | ["classifier:CompactCNN1D"] | ["training_history_raw", "test_components"] | ["learning_curves", "top_learning_curves", "balanced_accuracy_learning_curves"] | [] | ["Project implementation: src/ppg_frailty/models/compact_cnn.py"] |
+| inceptiontime_single_network_model_v1 | model_or_module_extension | InceptionTime single-network model extension | ["classifier:InceptionTimeFull"] | ["training_history_raw", "test_components"] | ["learning_curves", "top_learning_curves", "balanced_accuracy_learning_curves", "top_balanced_accuracy_learning_curves"] | [] | ["Fawaz et al. (2020), InceptionTime, DOI:10.1007/s10618-020-00710-y"] |
+| multiclass_participant_oof_v1 | endpoint_or_module | Multiclass frailty classifier | ["classifier:CompactCNN1D", "classifier:InceptionTimeFull"] | ["case_summary", "metric_distribution_summary", "repeat_metrics", "repeat_per_class_metrics", "per_class_metrics", "confusion_matrices", "classification_prediction_scores", "classification_prediction_tsne", "classification_roc_curves", "classification_diagnostic_status", "paired_participant_inference", "comparison_conclusions"] | ["classification_prediction_scores", "classification_prediction_tsne", "classification_roc_auc_curves", "leaderboard", "stability", "macro_f1_stability", "roc_pr_auc_stability", "per_class_metric_stability", "confusion_matrices", "confusion_matrices_row_normalized", "per_class", "calibration"] | ["Brodersen et al. (2010), balanced accuracy, DOI:10.1109/ICPR.2010.764", "Sokolova & Lapalme (2009), classification measures including F-score, DOI:10.1016/j.ipm.2009.03.002", "Fawcett (2006), ROC analysis, DOI:10.1016/j.patrec.2005.10.010", "Efron & Tibshirani (1993), An Introduction to the Bootstrap, DOI:10.1007/978-1-4899-4541-9", "Holm (1979), sequentially rejective multiple testing, DOI:10.2307/4615733"] | ["Fawaz et al. (2020), InceptionTime, DOI:10.1007/s10618-020-00710-y", "Project implementation: src/ppg_frailty/models/compact_cnn.py"] |
+
+## Comprehensive comparison and confidence-qualified conclusion
+
+P values are null-hypothesis tail probabilities, not the probability that a model is best. Repeat Student-t CIs and participant-cluster bootstrap CIs are kept separate. The lossless table and full narrative are in [RESULT_INTERPRETATION.md](RESULT_INTERPRETATION.md) and `tables/comparison_conclusions.json`.
+
+| Rank | Case | BA mean ± SD (%) | BA participant-cluster 95% CI (%) | Macro-F1 mean ± SD (%) | Macro-F1 participant-cluster 95% CI (%) | Macro ROC-AUC mean ± SD (%) | Worst-fold BA (%) | Worst-class F1 (%) | BA Holm P | F1 Holm P | P-value role |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | compact_cnn__b2_star_fixed10 | 56.9 ± 5.9 | N/A | 57.2 ± 6.9 | N/A | 74.7 ± 4.4 | 16.7 | 53.8 | 1.0000 | 1.0000 | declared_reference_confirmatory |
+| 2 | inception_full__b0_star_fixed10 | 56.8 ± 2.4 | N/A | 57.2 ± 2.5 | N/A | 72.8 ± 2.5 | 33.3 | 49.2 | N/A | N/A | N/A_no_eligible_paired_comparison |
+| 3 | inception_full__b7_star_fixed10 | 56.8 ± 2.4 | N/A | 57.2 ± 2.5 | N/A | 72.8 ± 2.5 | 33.3 | 49.2 | 1.0000 | 1.0000 | declared_reference_confirmatory |
+| 4 | inception_full__b6_star_fixed10 | 56.0 ± 3.8 | N/A | 56.2 ± 4.7 | N/A | 72.5 ± 4.0 | 16.7 | 49.6 | 1.0000 | 1.0000 | declared_reference_confirmatory |
+| 5 | compact_cnn__b0_star_fixed10 | 53.8 ± 6.8 | N/A | 52.9 ± 6.6 | N/A | 69.2 ± 4.3 | 16.7 | 48.3 | N/A | N/A | N/A_no_eligible_paired_comparison |
+| 6 | compact_cnn__b7_star_fixed10 | 53.8 ± 6.8 | N/A | 52.9 ± 6.6 | N/A | 69.2 ± 4.3 | 16.7 | 48.3 | 1.0000 | 1.0000 | declared_reference_confirmatory |
+| 7 | compact_cnn__b5_star_fixed10 | 52.3 ± 3.5 | N/A | 53.4 ± 4.5 | N/A | 69.4 ± 3.1 | 0.0 | 49.2 | 1.0000 | 1.0000 | declared_reference_confirmatory |
+| 8 | inception_full__b5_star_fixed10 | 51.8 ± 3.9 | N/A | 51.5 ± 3.7 | N/A | 69.5 ± 2.7 | 27.8 | 42.4 | 0.8514 | 0.5615 | declared_reference_confirmatory |
+| 9 | inception_full__b2_star_fixed10 | 50.9 ± 5.2 | N/A | 51.8 ± 4.7 | N/A | 71.5 ± 2.9 | 16.7 | 45.5 | 1.0000 | 0.9745 | declared_reference_confirmatory |
+| 10 | inception_full__b1_star_fixed10 | 50.3 ± 2.3 | N/A | 50.5 ± 2.3 | N/A | 68.0 ± 6.6 | 16.7 | 48.6 | 1.0000 | 0.9745 | declared_reference_confirmatory |
+| 11 | inception_full__b3_star_fixed10 | 49.7 ± 5.9 | N/A | 50.3 ± 7.3 | N/A | 68.8 ± 1.4 | 16.7 | 46.4 | 0.7768 | 0.7080 | declared_reference_confirmatory |
+| 12 | compact_cnn__b6_star_fixed10 | 49.2 ± 6.9 | N/A | 48.7 ± 6.7 | N/A | 67.4 ± 3.7 | 16.7 | 42.1 | 0.8767 | 0.9865 | declared_reference_confirmatory |
+| 13 | compact_cnn__b3_star_fixed10 | 47.2 ± 9.4 | N/A | 47.6 ± 9.5 | N/A | 66.9 ± 4.0 | 16.7 | 44.7 | 0.8767 | 0.9865 | declared_reference_confirmatory |
+| 14 | compact_cnn__b1_star_fixed10 | 44.9 ± 9.3 | N/A | 43.9 ± 11.0 | N/A | 63.7 ± 2.9 | 16.7 | 34.9 | 0.8767 | 0.9833 | declared_reference_confirmatory |
+| 15 | compact_cnn__b4_star_fixed10 | 43.3 ± 3.7 | N/A | 42.8 ± 3.4 | N/A | 59.5 ± 6.3 | 0.0 | 42.0 | 0.8767 | 0.9833 | declared_reference_confirmatory |
+| 16 | inception_full__b4_star_fixed10 | 43.0 ± 7.3 | N/A | 43.1 ± 7.3 | N/A | 57.2 ± 6.3 | 0.0 | 39.6 | 0.5755 | 0.4817 | declared_reference_confirmatory |
+
+### Conclusions by evidence angle
+
+| Angle | Case | Finding | Confidence | Selection effect |
+|---|---|---|---|---|
+| point_estimates | compact_cnn__b2_star_fixed10 | Highest participant-OOF BA is compact_cnn__b2_star_fixed10: 56.9 ± 5.9 percent; Macro-F1 57.2 ± 6.9 percent; macro ROC-AUC 74.7 ± 4.4 percent. | descriptive | none_by_itself |
+| uncertainty | compact_cnn__b2_star_fixed10 | Repeat t-CI and participant-cluster percentile CI are reported separately; marginal CI overlap is not used as a significance test. | evidence_completeness_moderate_reduced_resource_or_ci | supports_precision_audit_only |
+| paired_inference | N/A | 14 candidate contrasts use declared_reference_confirmatory paired participant-cluster P values with metric-wise Holm correction. | confirmatory | none_automatic |
+| robustness | compact_cnn__b2_star_fixed10 | Worst-fold BA=16.7%; worst-class F1=53.8%. These stress metrics can disagree with mean BA ranking. | evidence_completeness_moderate_reduced_resource_or_ci | secondary_review |
+| selection | N/A | Persisted choice=none by manual review only; no automatic selection in ordinary study reporter; participant-OOF point-estimate top=compact_cnn__b2_star_fixed10; agreement=N/A. This is a ablation choice, not an independent final-test winner. | not_established_no_selection | retain_persisted_choice_without_rewriting_history |
 
 ## Seed and data-split reproducibility
 
@@ -789,422 +833,428 @@ The complete resolved varied/controlled tables are [varied_parameters.csv](table
 
 Primary ranking is by participant-level, repeat-recomputed abstention-aware balanced accuracy, then participant coverage and abstention-aware Macro-F1. Conditional retained-only metrics remain visible but never lead the ranking; deployment measurements do not filter this table.
 
-| Rank | Case | Abstention-aware BA, mean ± SD (%) | Abstention-aware precision | Abstention-aware recall | Abstention-aware Macro-F1, mean ± SD (%) | Participant coverage | Abstentions | Abstentions by class | Conditional BA, mean ± SD (%) | Conditional Macro-F1, mean ± SD (%) | Macro ROC AUC, mean ± SD (%) | Macro PR AUC, mean ± SD (%) | Conditional BA LCB95 | Conditional Macro-F1 LCB95 | Aware worst-fold BA | Conditional worst-fold BA | Worst recall | Worst F1 | Source | Frailty endpoint | Motion auxiliary outer-OOF | Interpretation |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | compact_cnn__b2_star_fixed10 | 56.9 ± 5.9 | 0.6104 | 0.5685 | 57.2 ± 6.9 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 56.9 ± 5.9 | 57.2 ± 6.9 | 74.7 ± 4.4 | 66.1 ± 5.6 | 0.5120 | 0.5057 | 0.1667 | 0.1667 | 0.5500 | 0.5376 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
-| 2 | inception_full__b0_star_fixed10 | 56.8 ± 2.4 | 0.5865 | 0.5676 | 57.2 ± 2.5 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 56.8 ± 2.4 | 57.2 ± 2.5 | 72.8 ± 2.5 | 64.6 ± 4.0 | 0.5447 | 0.5490 | 0.3333 | 0.3333 | 0.5000 | 0.4918 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
-| 3 | inception_full__b7_star_fixed10 | 56.8 ± 2.4 | 0.5865 | 0.5676 | 57.2 ± 2.5 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 56.8 ± 2.4 | 57.2 ± 2.5 | 72.8 ± 2.5 | 64.6 ± 4.0 | 0.5447 | 0.5490 | 0.3333 | 0.3333 | 0.5000 | 0.4918 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
-| 4 | inception_full__b6_star_fixed10 | 56.0 ± 3.8 | 0.5717 | 0.5602 | 56.2 ± 4.7 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 56.0 ± 3.8 | 56.2 ± 4.7 | 72.5 ± 4.0 | 63.6 ± 5.0 | 0.5239 | 0.5175 | 0.1667 | 0.1667 | 0.5000 | 0.4959 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
-| 5 | compact_cnn__b0_star_fixed10 | 53.8 ± 6.8 | 0.5635 | 0.5380 | 52.9 ± 6.6 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 53.8 ± 6.8 | 52.9 ± 6.6 | 69.2 ± 4.3 | 61.0 ± 7.0 | 0.4731 | 0.4660 | 0.1667 | 0.1667 | 0.4667 | 0.4828 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
-| 6 | compact_cnn__b7_star_fixed10 | 53.8 ± 6.8 | 0.5635 | 0.5380 | 52.9 ± 6.6 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 53.8 ± 6.8 | 52.9 ± 6.6 | 69.2 ± 4.3 | 61.0 ± 7.0 | 0.4731 | 0.4660 | 0.1667 | 0.1667 | 0.4667 | 0.4828 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
-| 7 | compact_cnn__b5_star_fixed10 | 52.3 ± 3.5 | 0.5650 | 0.5231 | 53.4 ± 4.5 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 52.3 ± 3.5 | 53.4 ± 4.5 | 69.4 ± 3.1 | 60.3 ± 4.7 | 0.4894 | 0.4905 | 0.0000 | 0.0000 | 0.5111 | 0.4923 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
-| 8 | inception_full__b5_star_fixed10 | 51.8 ± 3.9 | 0.5228 | 0.5176 | 51.5 ± 3.7 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 51.8 ± 3.9 | 51.5 ± 3.7 | 69.5 ± 2.7 | 61.3 ± 3.4 | 0.4802 | 0.4802 | 0.2778 | 0.2778 | 0.4167 | 0.4237 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
-| 9 | inception_full__b2_star_fixed10 | 50.9 ± 5.2 | 0.5755 | 0.5093 | 51.8 ± 4.7 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 50.9 ± 5.2 | 51.8 ± 4.7 | 71.5 ± 2.9 | 64.2 ± 1.2 | 0.4596 | 0.4731 | 0.1667 | 0.1667 | 0.4444 | 0.4545 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
-| 10 | inception_full__b1_star_fixed10 | 50.3 ± 2.3 | 0.5281 | 0.5028 | 50.5 ± 2.3 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 50.3 ± 2.3 | 50.5 ± 2.3 | 68.0 ± 6.6 | 61.5 ± 5.0 | 0.4812 | 0.4829 | 0.1667 | 0.1667 | 0.4250 | 0.4857 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
-| 11 | inception_full__b3_star_fixed10 | 49.7 ± 5.9 | 0.5416 | 0.4972 | 50.3 ± 7.3 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 49.7 ± 5.9 | 50.3 ± 7.3 | 68.8 ± 1.4 | 60.7 ± 4.1 | 0.4411 | 0.4336 | 0.1667 | 0.1667 | 0.4750 | 0.4640 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
-| 12 | compact_cnn__b6_star_fixed10 | 49.2 ± 6.9 | 0.5014 | 0.4917 | 48.7 ± 6.7 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 49.2 ± 6.9 | 48.7 ± 6.7 | 67.4 ± 3.7 | 58.3 ± 4.8 | 0.4262 | 0.4229 | 0.1667 | 0.1667 | 0.4000 | 0.4211 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
-| 13 | compact_cnn__b3_star_fixed10 | 47.2 ± 9.4 | 0.5345 | 0.4722 | 47.6 ± 9.5 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 47.2 ± 9.4 | 47.6 ± 9.5 | 66.9 ± 4.0 | 57.7 ± 4.0 | 0.3827 | 0.3857 | 0.1667 | 0.1667 | 0.4000 | 0.4468 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
-| 14 | compact_cnn__b1_star_fixed10 | 44.9 ± 9.3 | 0.4492 | 0.4491 | 43.9 ± 11.0 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 44.9 ± 9.3 | 43.9 ± 11.0 | 63.7 ± 2.9 | 54.2 ± 4.5 | 0.3604 | 0.3343 | 0.1667 | 0.1667 | 0.2750 | 0.3492 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
-| 15 | compact_cnn__b4_star_fixed10 | 43.3 ± 3.7 | 0.4400 | 0.4333 | 42.8 ± 3.4 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 43.3 ± 3.7 | 42.8 ± 3.4 | 59.5 ± 6.3 | 51.8 ± 6.3 | 0.3985 | 0.3951 | 0.0000 | 0.0000 | 0.4000 | 0.4200 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
-| 16 | inception_full__b4_star_fixed10 | 43.0 ± 7.3 | 0.4464 | 0.4296 | 43.1 ± 7.3 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 43.0 ± 7.3 | 43.1 ± 7.3 | 57.2 ± 6.3 | 47.7 ± 7.1 | 0.3597 | 0.3613 | 0.0000 | 0.0000 | 0.3500 | 0.3958 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| Rank | Case | Abstention-aware BA, mean ± SD (%) | Abstention-aware precision | Abstention-aware recall | Abstention-aware Macro-F1, mean ± SD (%) | Participant coverage | Abstentions | Abstentions by class | Conditional BA, mean ± SD (%) | Conditional BA cluster 95% CI (%) | Conditional Macro-F1, mean ± SD (%) | Conditional Macro-F1 cluster 95% CI (%) | Macro ROC AUC, mean ± SD (%) | Macro PR AUC, mean ± SD (%) | Conditional BA LCB95 | Conditional Macro-F1 LCB95 | Aware worst-fold BA | Conditional worst-fold BA | Worst recall | Worst F1 | Source | Frailty endpoint | Motion auxiliary outer-OOF | Interpretation |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | compact_cnn__b2_star_fixed10 | 56.9 ± 5.9 | 0.6104 | 0.5685 | 57.2 ± 6.9 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 56.9 ± 5.9 | N/A | 57.2 ± 6.9 | N/A | 74.7 ± 4.4 | 66.1 ± 5.6 | 0.5120 | 0.5057 | 0.1667 | 0.1667 | 0.5500 | 0.5376 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| 2 | inception_full__b0_star_fixed10 | 56.8 ± 2.4 | 0.5865 | 0.5676 | 57.2 ± 2.5 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 56.8 ± 2.4 | N/A | 57.2 ± 2.5 | N/A | 72.8 ± 2.5 | 64.6 ± 4.0 | 0.5447 | 0.5490 | 0.3333 | 0.3333 | 0.5000 | 0.4918 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| 3 | inception_full__b7_star_fixed10 | 56.8 ± 2.4 | 0.5865 | 0.5676 | 57.2 ± 2.5 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 56.8 ± 2.4 | N/A | 57.2 ± 2.5 | N/A | 72.8 ± 2.5 | 64.6 ± 4.0 | 0.5447 | 0.5490 | 0.3333 | 0.3333 | 0.5000 | 0.4918 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| 4 | inception_full__b6_star_fixed10 | 56.0 ± 3.8 | 0.5717 | 0.5602 | 56.2 ± 4.7 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 56.0 ± 3.8 | N/A | 56.2 ± 4.7 | N/A | 72.5 ± 4.0 | 63.6 ± 5.0 | 0.5239 | 0.5175 | 0.1667 | 0.1667 | 0.5000 | 0.4959 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| 5 | compact_cnn__b0_star_fixed10 | 53.8 ± 6.8 | 0.5635 | 0.5380 | 52.9 ± 6.6 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 53.8 ± 6.8 | N/A | 52.9 ± 6.6 | N/A | 69.2 ± 4.3 | 61.0 ± 7.0 | 0.4731 | 0.4660 | 0.1667 | 0.1667 | 0.4667 | 0.4828 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| 6 | compact_cnn__b7_star_fixed10 | 53.8 ± 6.8 | 0.5635 | 0.5380 | 52.9 ± 6.6 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 53.8 ± 6.8 | N/A | 52.9 ± 6.6 | N/A | 69.2 ± 4.3 | 61.0 ± 7.0 | 0.4731 | 0.4660 | 0.1667 | 0.1667 | 0.4667 | 0.4828 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| 7 | compact_cnn__b5_star_fixed10 | 52.3 ± 3.5 | 0.5650 | 0.5231 | 53.4 ± 4.5 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 52.3 ± 3.5 | N/A | 53.4 ± 4.5 | N/A | 69.4 ± 3.1 | 60.3 ± 4.7 | 0.4894 | 0.4905 | 0.0000 | 0.0000 | 0.5111 | 0.4923 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| 8 | inception_full__b5_star_fixed10 | 51.8 ± 3.9 | 0.5228 | 0.5176 | 51.5 ± 3.7 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 51.8 ± 3.9 | N/A | 51.5 ± 3.7 | N/A | 69.5 ± 2.7 | 61.3 ± 3.4 | 0.4802 | 0.4802 | 0.2778 | 0.2778 | 0.4167 | 0.4237 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| 9 | inception_full__b2_star_fixed10 | 50.9 ± 5.2 | 0.5755 | 0.5093 | 51.8 ± 4.7 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 50.9 ± 5.2 | N/A | 51.8 ± 4.7 | N/A | 71.5 ± 2.9 | 64.2 ± 1.2 | 0.4596 | 0.4731 | 0.1667 | 0.1667 | 0.4444 | 0.4545 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| 10 | inception_full__b1_star_fixed10 | 50.3 ± 2.3 | 0.5281 | 0.5028 | 50.5 ± 2.3 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 50.3 ± 2.3 | N/A | 50.5 ± 2.3 | N/A | 68.0 ± 6.6 | 61.5 ± 5.0 | 0.4812 | 0.4829 | 0.1667 | 0.1667 | 0.4250 | 0.4857 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| 11 | inception_full__b3_star_fixed10 | 49.7 ± 5.9 | 0.5416 | 0.4972 | 50.3 ± 7.3 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 49.7 ± 5.9 | N/A | 50.3 ± 7.3 | N/A | 68.8 ± 1.4 | 60.7 ± 4.1 | 0.4411 | 0.4336 | 0.1667 | 0.1667 | 0.4750 | 0.4640 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| 12 | compact_cnn__b6_star_fixed10 | 49.2 ± 6.9 | 0.5014 | 0.4917 | 48.7 ± 6.7 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 49.2 ± 6.9 | N/A | 48.7 ± 6.7 | N/A | 67.4 ± 3.7 | 58.3 ± 4.8 | 0.4262 | 0.4229 | 0.1667 | 0.1667 | 0.4000 | 0.4211 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| 13 | compact_cnn__b3_star_fixed10 | 47.2 ± 9.4 | 0.5345 | 0.4722 | 47.6 ± 9.5 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 47.2 ± 9.4 | N/A | 47.6 ± 9.5 | N/A | 66.9 ± 4.0 | 57.7 ± 4.0 | 0.3827 | 0.3857 | 0.1667 | 0.1667 | 0.4000 | 0.4468 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| 14 | compact_cnn__b1_star_fixed10 | 44.9 ± 9.3 | 0.4492 | 0.4491 | 43.9 ± 11.0 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 44.9 ± 9.3 | N/A | 43.9 ± 11.0 | N/A | 63.7 ± 2.9 | 54.2 ± 4.5 | 0.3604 | 0.3343 | 0.1667 | 0.1667 | 0.2750 | 0.3492 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| 15 | compact_cnn__b4_star_fixed10 | 43.3 ± 3.7 | 0.4400 | 0.4333 | 42.8 ± 3.4 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 43.3 ± 3.7 | N/A | 42.8 ± 3.4 | N/A | 59.5 ± 6.3 | 51.8 ± 6.3 | 0.3985 | 0.3951 | 0.0000 | 0.0000 | 0.4000 | 0.4200 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| 16 | inception_full__b4_star_fixed10 | 43.0 ± 7.3 | 0.4464 | 0.4296 | 43.1 ± 7.3 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 43.0 ± 7.3 | N/A | 43.1 ± 7.3 | N/A | 57.2 ± 6.3 | 47.7 ± 7.1 | 0.3597 | 0.3613 | 0.0000 | 0.0000 | 0.3500 | 0.3958 | participant_oof | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
 
 ## Repeat-level predictive distributions
 
-Mean and sample SD are shown in one percentage column; lossless CI, range, mean, and SD values remain in the matching JSON table.
+Mean and sample SD are shown in one percentage column and the two-sided repeat-level Student-t 95% CI is shown beside it. Lossless bounds, range, mean, and SD remain in the matching JSON table.
 
-| Case | Metric | Repeats | Mean ± SD (%) | Source |
-|---|---|---|---|---|
-| compact_cnn__b0_star_fixed10 | balanced_accuracy | 5 | 53.8 ± 6.8 | participant_oof |
-| compact_cnn__b0_star_fixed10 | macro_f1 | 5 | 52.9 ± 6.6 | participant_oof |
-| compact_cnn__b0_star_fixed10 | macro_roc_auc_ovr | 5 | 69.2 ± 4.3 | participant_oof |
-| compact_cnn__b0_star_fixed10 | macro_pr_auc_ovr | 5 | 61.0 ± 7.0 | participant_oof |
-| compact_cnn__b0_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 53.8 ± 6.8 | participant_oof |
-| compact_cnn__b0_star_fixed10 | abstention_aware_macro_f1 | 5 | 52.9 ± 6.6 | participant_oof |
-| inception_full__b0_star_fixed10 | balanced_accuracy | 5 | 56.8 ± 2.4 | participant_oof |
-| inception_full__b0_star_fixed10 | macro_f1 | 5 | 57.2 ± 2.5 | participant_oof |
-| inception_full__b0_star_fixed10 | macro_roc_auc_ovr | 5 | 72.8 ± 2.5 | participant_oof |
-| inception_full__b0_star_fixed10 | macro_pr_auc_ovr | 5 | 64.6 ± 4.0 | participant_oof |
-| inception_full__b0_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 56.8 ± 2.4 | participant_oof |
-| inception_full__b0_star_fixed10 | abstention_aware_macro_f1 | 5 | 57.2 ± 2.5 | participant_oof |
-| compact_cnn__b1_star_fixed10 | balanced_accuracy | 5 | 44.9 ± 9.3 | participant_oof |
-| compact_cnn__b1_star_fixed10 | macro_f1 | 5 | 43.9 ± 11.0 | participant_oof |
-| compact_cnn__b1_star_fixed10 | macro_roc_auc_ovr | 5 | 63.7 ± 2.9 | participant_oof |
-| compact_cnn__b1_star_fixed10 | macro_pr_auc_ovr | 5 | 54.2 ± 4.5 | participant_oof |
-| compact_cnn__b1_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 44.9 ± 9.3 | participant_oof |
-| compact_cnn__b1_star_fixed10 | abstention_aware_macro_f1 | 5 | 43.9 ± 11.0 | participant_oof |
-| inception_full__b1_star_fixed10 | balanced_accuracy | 5 | 50.3 ± 2.3 | participant_oof |
-| inception_full__b1_star_fixed10 | macro_f1 | 5 | 50.5 ± 2.3 | participant_oof |
-| inception_full__b1_star_fixed10 | macro_roc_auc_ovr | 5 | 68.0 ± 6.6 | participant_oof |
-| inception_full__b1_star_fixed10 | macro_pr_auc_ovr | 5 | 61.5 ± 5.0 | participant_oof |
-| inception_full__b1_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 50.3 ± 2.3 | participant_oof |
-| inception_full__b1_star_fixed10 | abstention_aware_macro_f1 | 5 | 50.5 ± 2.3 | participant_oof |
-| compact_cnn__b2_star_fixed10 | balanced_accuracy | 5 | 56.9 ± 5.9 | participant_oof |
-| compact_cnn__b2_star_fixed10 | macro_f1 | 5 | 57.2 ± 6.9 | participant_oof |
-| compact_cnn__b2_star_fixed10 | macro_roc_auc_ovr | 5 | 74.7 ± 4.4 | participant_oof |
-| compact_cnn__b2_star_fixed10 | macro_pr_auc_ovr | 5 | 66.1 ± 5.6 | participant_oof |
-| compact_cnn__b2_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 56.9 ± 5.9 | participant_oof |
-| compact_cnn__b2_star_fixed10 | abstention_aware_macro_f1 | 5 | 57.2 ± 6.9 | participant_oof |
-| inception_full__b2_star_fixed10 | balanced_accuracy | 5 | 50.9 ± 5.2 | participant_oof |
-| inception_full__b2_star_fixed10 | macro_f1 | 5 | 51.8 ± 4.7 | participant_oof |
-| inception_full__b2_star_fixed10 | macro_roc_auc_ovr | 5 | 71.5 ± 2.9 | participant_oof |
-| inception_full__b2_star_fixed10 | macro_pr_auc_ovr | 5 | 64.2 ± 1.2 | participant_oof |
-| inception_full__b2_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 50.9 ± 5.2 | participant_oof |
-| inception_full__b2_star_fixed10 | abstention_aware_macro_f1 | 5 | 51.8 ± 4.7 | participant_oof |
-| compact_cnn__b3_star_fixed10 | balanced_accuracy | 5 | 47.2 ± 9.4 | participant_oof |
-| compact_cnn__b3_star_fixed10 | macro_f1 | 5 | 47.6 ± 9.5 | participant_oof |
-| compact_cnn__b3_star_fixed10 | macro_roc_auc_ovr | 5 | 66.9 ± 4.0 | participant_oof |
-| compact_cnn__b3_star_fixed10 | macro_pr_auc_ovr | 5 | 57.7 ± 4.0 | participant_oof |
-| compact_cnn__b3_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 47.2 ± 9.4 | participant_oof |
-| compact_cnn__b3_star_fixed10 | abstention_aware_macro_f1 | 5 | 47.6 ± 9.5 | participant_oof |
-| inception_full__b3_star_fixed10 | balanced_accuracy | 5 | 49.7 ± 5.9 | participant_oof |
-| inception_full__b3_star_fixed10 | macro_f1 | 5 | 50.3 ± 7.3 | participant_oof |
-| inception_full__b3_star_fixed10 | macro_roc_auc_ovr | 5 | 68.8 ± 1.4 | participant_oof |
-| inception_full__b3_star_fixed10 | macro_pr_auc_ovr | 5 | 60.7 ± 4.1 | participant_oof |
-| inception_full__b3_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 49.7 ± 5.9 | participant_oof |
-| inception_full__b3_star_fixed10 | abstention_aware_macro_f1 | 5 | 50.3 ± 7.3 | participant_oof |
-| compact_cnn__b4_star_fixed10 | balanced_accuracy | 5 | 43.3 ± 3.7 | participant_oof |
-| compact_cnn__b4_star_fixed10 | macro_f1 | 5 | 42.8 ± 3.4 | participant_oof |
-| compact_cnn__b4_star_fixed10 | macro_roc_auc_ovr | 5 | 59.5 ± 6.3 | participant_oof |
-| compact_cnn__b4_star_fixed10 | macro_pr_auc_ovr | 5 | 51.8 ± 6.3 | participant_oof |
-| compact_cnn__b4_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 43.3 ± 3.7 | participant_oof |
-| compact_cnn__b4_star_fixed10 | abstention_aware_macro_f1 | 5 | 42.8 ± 3.4 | participant_oof |
-| inception_full__b4_star_fixed10 | balanced_accuracy | 5 | 43.0 ± 7.3 | participant_oof |
-| inception_full__b4_star_fixed10 | macro_f1 | 5 | 43.1 ± 7.3 | participant_oof |
-| inception_full__b4_star_fixed10 | macro_roc_auc_ovr | 5 | 57.2 ± 6.3 | participant_oof |
-| inception_full__b4_star_fixed10 | macro_pr_auc_ovr | 5 | 47.7 ± 7.1 | participant_oof |
-| inception_full__b4_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 43.0 ± 7.3 | participant_oof |
-| inception_full__b4_star_fixed10 | abstention_aware_macro_f1 | 5 | 43.1 ± 7.3 | participant_oof |
-| compact_cnn__b5_star_fixed10 | balanced_accuracy | 5 | 52.3 ± 3.5 | participant_oof |
-| compact_cnn__b5_star_fixed10 | macro_f1 | 5 | 53.4 ± 4.5 | participant_oof |
-| compact_cnn__b5_star_fixed10 | macro_roc_auc_ovr | 5 | 69.4 ± 3.1 | participant_oof |
-| compact_cnn__b5_star_fixed10 | macro_pr_auc_ovr | 5 | 60.3 ± 4.7 | participant_oof |
-| compact_cnn__b5_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 52.3 ± 3.5 | participant_oof |
-| compact_cnn__b5_star_fixed10 | abstention_aware_macro_f1 | 5 | 53.4 ± 4.5 | participant_oof |
-| inception_full__b5_star_fixed10 | balanced_accuracy | 5 | 51.8 ± 3.9 | participant_oof |
-| inception_full__b5_star_fixed10 | macro_f1 | 5 | 51.5 ± 3.7 | participant_oof |
-| inception_full__b5_star_fixed10 | macro_roc_auc_ovr | 5 | 69.5 ± 2.7 | participant_oof |
-| inception_full__b5_star_fixed10 | macro_pr_auc_ovr | 5 | 61.3 ± 3.4 | participant_oof |
-| inception_full__b5_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 51.8 ± 3.9 | participant_oof |
-| inception_full__b5_star_fixed10 | abstention_aware_macro_f1 | 5 | 51.5 ± 3.7 | participant_oof |
-| compact_cnn__b6_star_fixed10 | balanced_accuracy | 5 | 49.2 ± 6.9 | participant_oof |
-| compact_cnn__b6_star_fixed10 | macro_f1 | 5 | 48.7 ± 6.7 | participant_oof |
-| compact_cnn__b6_star_fixed10 | macro_roc_auc_ovr | 5 | 67.4 ± 3.7 | participant_oof |
-| compact_cnn__b6_star_fixed10 | macro_pr_auc_ovr | 5 | 58.3 ± 4.8 | participant_oof |
-| compact_cnn__b6_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 49.2 ± 6.9 | participant_oof |
-| compact_cnn__b6_star_fixed10 | abstention_aware_macro_f1 | 5 | 48.7 ± 6.7 | participant_oof |
-| inception_full__b6_star_fixed10 | balanced_accuracy | 5 | 56.0 ± 3.8 | participant_oof |
-| inception_full__b6_star_fixed10 | macro_f1 | 5 | 56.2 ± 4.7 | participant_oof |
-| inception_full__b6_star_fixed10 | macro_roc_auc_ovr | 5 | 72.5 ± 4.0 | participant_oof |
-| inception_full__b6_star_fixed10 | macro_pr_auc_ovr | 5 | 63.6 ± 5.0 | participant_oof |
-| inception_full__b6_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 56.0 ± 3.8 | participant_oof |
-| inception_full__b6_star_fixed10 | abstention_aware_macro_f1 | 5 | 56.2 ± 4.7 | participant_oof |
-| compact_cnn__b7_star_fixed10 | balanced_accuracy | 5 | 53.8 ± 6.8 | participant_oof |
-| compact_cnn__b7_star_fixed10 | macro_f1 | 5 | 52.9 ± 6.6 | participant_oof |
-| compact_cnn__b7_star_fixed10 | macro_roc_auc_ovr | 5 | 69.2 ± 4.3 | participant_oof |
-| compact_cnn__b7_star_fixed10 | macro_pr_auc_ovr | 5 | 61.0 ± 7.0 | participant_oof |
-| compact_cnn__b7_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 53.8 ± 6.8 | participant_oof |
-| compact_cnn__b7_star_fixed10 | abstention_aware_macro_f1 | 5 | 52.9 ± 6.6 | participant_oof |
-| inception_full__b7_star_fixed10 | balanced_accuracy | 5 | 56.8 ± 2.4 | participant_oof |
-| inception_full__b7_star_fixed10 | macro_f1 | 5 | 57.2 ± 2.5 | participant_oof |
-| inception_full__b7_star_fixed10 | macro_roc_auc_ovr | 5 | 72.8 ± 2.5 | participant_oof |
-| inception_full__b7_star_fixed10 | macro_pr_auc_ovr | 5 | 64.6 ± 4.0 | participant_oof |
-| inception_full__b7_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 56.8 ± 2.4 | participant_oof |
-| inception_full__b7_star_fixed10 | abstention_aware_macro_f1 | 5 | 57.2 ± 2.5 | participant_oof |
+| Case | Metric | Repeats | Mean ± SD (%) | Repeat 95% CI (%) | Source |
+|---|---|---|---|---|---|
+| compact_cnn__b0_star_fixed10 | balanced_accuracy | 5 | 53.8 ± 6.8 | [45.3, 62.2] | participant_oof |
+| compact_cnn__b0_star_fixed10 | macro_f1 | 5 | 52.9 ± 6.6 | [44.7, 61.2] | participant_oof |
+| compact_cnn__b0_star_fixed10 | macro_roc_auc_ovr | 5 | 69.2 ± 4.3 | [63.8, 74.6] | participant_oof |
+| compact_cnn__b0_star_fixed10 | macro_pr_auc_ovr | 5 | 61.0 ± 7.0 | [52.3, 69.7] | participant_oof |
+| compact_cnn__b0_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 53.8 ± 6.8 | [45.3, 62.2] | participant_oof |
+| compact_cnn__b0_star_fixed10 | abstention_aware_macro_f1 | 5 | 52.9 ± 6.6 | [44.7, 61.2] | participant_oof |
+| inception_full__b0_star_fixed10 | balanced_accuracy | 5 | 56.8 ± 2.4 | [53.8, 59.7] | participant_oof |
+| inception_full__b0_star_fixed10 | macro_f1 | 5 | 57.2 ± 2.5 | [54.2, 60.3] | participant_oof |
+| inception_full__b0_star_fixed10 | macro_roc_auc_ovr | 5 | 72.8 ± 2.5 | [69.7, 76.0] | participant_oof |
+| inception_full__b0_star_fixed10 | macro_pr_auc_ovr | 5 | 64.6 ± 4.0 | [59.6, 69.5] | participant_oof |
+| inception_full__b0_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 56.8 ± 2.4 | [53.8, 59.7] | participant_oof |
+| inception_full__b0_star_fixed10 | abstention_aware_macro_f1 | 5 | 57.2 ± 2.5 | [54.2, 60.3] | participant_oof |
+| compact_cnn__b1_star_fixed10 | balanced_accuracy | 5 | 44.9 ± 9.3 | [33.4, 56.5] | participant_oof |
+| compact_cnn__b1_star_fixed10 | macro_f1 | 5 | 43.9 ± 11.0 | [30.3, 57.5] | participant_oof |
+| compact_cnn__b1_star_fixed10 | macro_roc_auc_ovr | 5 | 63.7 ± 2.9 | [60.1, 67.4] | participant_oof |
+| compact_cnn__b1_star_fixed10 | macro_pr_auc_ovr | 5 | 54.2 ± 4.5 | [48.6, 59.7] | participant_oof |
+| compact_cnn__b1_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 44.9 ± 9.3 | [33.4, 56.5] | participant_oof |
+| compact_cnn__b1_star_fixed10 | abstention_aware_macro_f1 | 5 | 43.9 ± 11.0 | [30.3, 57.5] | participant_oof |
+| inception_full__b1_star_fixed10 | balanced_accuracy | 5 | 50.3 ± 2.3 | [47.5, 53.1] | participant_oof |
+| inception_full__b1_star_fixed10 | macro_f1 | 5 | 50.5 ± 2.3 | [47.6, 53.3] | participant_oof |
+| inception_full__b1_star_fixed10 | macro_roc_auc_ovr | 5 | 68.0 ± 6.6 | [59.8, 76.2] | participant_oof |
+| inception_full__b1_star_fixed10 | macro_pr_auc_ovr | 5 | 61.5 ± 5.0 | [55.3, 67.7] | participant_oof |
+| inception_full__b1_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 50.3 ± 2.3 | [47.5, 53.1] | participant_oof |
+| inception_full__b1_star_fixed10 | abstention_aware_macro_f1 | 5 | 50.5 ± 2.3 | [47.6, 53.3] | participant_oof |
+| compact_cnn__b2_star_fixed10 | balanced_accuracy | 5 | 56.9 ± 5.9 | [49.5, 64.2] | participant_oof |
+| compact_cnn__b2_star_fixed10 | macro_f1 | 5 | 57.2 ± 6.9 | [48.6, 65.8] | participant_oof |
+| compact_cnn__b2_star_fixed10 | macro_roc_auc_ovr | 5 | 74.7 ± 4.4 | [69.2, 80.2] | participant_oof |
+| compact_cnn__b2_star_fixed10 | macro_pr_auc_ovr | 5 | 66.1 ± 5.6 | [59.2, 73.1] | participant_oof |
+| compact_cnn__b2_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 56.9 ± 5.9 | [49.5, 64.2] | participant_oof |
+| compact_cnn__b2_star_fixed10 | abstention_aware_macro_f1 | 5 | 57.2 ± 6.9 | [48.6, 65.8] | participant_oof |
+| inception_full__b2_star_fixed10 | balanced_accuracy | 5 | 50.9 ± 5.2 | [44.5, 57.4] | participant_oof |
+| inception_full__b2_star_fixed10 | macro_f1 | 5 | 51.8 ± 4.7 | [45.9, 57.7] | participant_oof |
+| inception_full__b2_star_fixed10 | macro_roc_auc_ovr | 5 | 71.5 ± 2.9 | [67.8, 75.1] | participant_oof |
+| inception_full__b2_star_fixed10 | macro_pr_auc_ovr | 5 | 64.2 ± 1.2 | [62.7, 65.7] | participant_oof |
+| inception_full__b2_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 50.9 ± 5.2 | [44.5, 57.4] | participant_oof |
+| inception_full__b2_star_fixed10 | abstention_aware_macro_f1 | 5 | 51.8 ± 4.7 | [45.9, 57.7] | participant_oof |
+| compact_cnn__b3_star_fixed10 | balanced_accuracy | 5 | 47.2 ± 9.4 | [35.6, 58.9] | participant_oof |
+| compact_cnn__b3_star_fixed10 | macro_f1 | 5 | 47.6 ± 9.5 | [35.8, 59.5] | participant_oof |
+| compact_cnn__b3_star_fixed10 | macro_roc_auc_ovr | 5 | 66.9 ± 4.0 | [61.9, 71.9] | participant_oof |
+| compact_cnn__b3_star_fixed10 | macro_pr_auc_ovr | 5 | 57.7 ± 4.0 | [52.8, 62.6] | participant_oof |
+| compact_cnn__b3_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 47.2 ± 9.4 | [35.6, 58.9] | participant_oof |
+| compact_cnn__b3_star_fixed10 | abstention_aware_macro_f1 | 5 | 47.6 ± 9.5 | [35.8, 59.5] | participant_oof |
+| inception_full__b3_star_fixed10 | balanced_accuracy | 5 | 49.7 ± 5.9 | [42.4, 57.0] | participant_oof |
+| inception_full__b3_star_fixed10 | macro_f1 | 5 | 50.3 ± 7.3 | [41.2, 59.4] | participant_oof |
+| inception_full__b3_star_fixed10 | macro_roc_auc_ovr | 5 | 68.8 ± 1.4 | [67.1, 70.6] | participant_oof |
+| inception_full__b3_star_fixed10 | macro_pr_auc_ovr | 5 | 60.7 ± 4.1 | [55.6, 65.8] | participant_oof |
+| inception_full__b3_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 49.7 ± 5.9 | [42.4, 57.0] | participant_oof |
+| inception_full__b3_star_fixed10 | abstention_aware_macro_f1 | 5 | 50.3 ± 7.3 | [41.2, 59.4] | participant_oof |
+| compact_cnn__b4_star_fixed10 | balanced_accuracy | 5 | 43.3 ± 3.7 | [38.8, 47.9] | participant_oof |
+| compact_cnn__b4_star_fixed10 | macro_f1 | 5 | 42.8 ± 3.4 | [38.5, 47.1] | participant_oof |
+| compact_cnn__b4_star_fixed10 | macro_roc_auc_ovr | 5 | 59.5 ± 6.3 | [51.7, 67.3] | participant_oof |
+| compact_cnn__b4_star_fixed10 | macro_pr_auc_ovr | 5 | 51.8 ± 6.3 | [44.0, 59.6] | participant_oof |
+| compact_cnn__b4_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 43.3 ± 3.7 | [38.8, 47.9] | participant_oof |
+| compact_cnn__b4_star_fixed10 | abstention_aware_macro_f1 | 5 | 42.8 ± 3.4 | [38.5, 47.1] | participant_oof |
+| inception_full__b4_star_fixed10 | balanced_accuracy | 5 | 43.0 ± 7.3 | [33.9, 52.1] | participant_oof |
+| inception_full__b4_star_fixed10 | macro_f1 | 5 | 43.1 ± 7.3 | [34.0, 52.1] | participant_oof |
+| inception_full__b4_star_fixed10 | macro_roc_auc_ovr | 5 | 57.2 ± 6.3 | [49.4, 65.0] | participant_oof |
+| inception_full__b4_star_fixed10 | macro_pr_auc_ovr | 5 | 47.7 ± 7.1 | [38.9, 56.5] | participant_oof |
+| inception_full__b4_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 43.0 ± 7.3 | [33.9, 52.1] | participant_oof |
+| inception_full__b4_star_fixed10 | abstention_aware_macro_f1 | 5 | 43.1 ± 7.3 | [34.0, 52.1] | participant_oof |
+| compact_cnn__b5_star_fixed10 | balanced_accuracy | 5 | 52.3 ± 3.5 | [47.9, 56.7] | participant_oof |
+| compact_cnn__b5_star_fixed10 | macro_f1 | 5 | 53.4 ± 4.5 | [47.7, 59.0] | participant_oof |
+| compact_cnn__b5_star_fixed10 | macro_roc_auc_ovr | 5 | 69.4 ± 3.1 | [65.6, 73.2] | participant_oof |
+| compact_cnn__b5_star_fixed10 | macro_pr_auc_ovr | 5 | 60.3 ± 4.7 | [54.5, 66.2] | participant_oof |
+| compact_cnn__b5_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 52.3 ± 3.5 | [47.9, 56.7] | participant_oof |
+| compact_cnn__b5_star_fixed10 | abstention_aware_macro_f1 | 5 | 53.4 ± 4.5 | [47.7, 59.0] | participant_oof |
+| inception_full__b5_star_fixed10 | balanced_accuracy | 5 | 51.8 ± 3.9 | [46.9, 56.6] | participant_oof |
+| inception_full__b5_star_fixed10 | macro_f1 | 5 | 51.5 ± 3.7 | [47.0, 56.1] | participant_oof |
+| inception_full__b5_star_fixed10 | macro_roc_auc_ovr | 5 | 69.5 ± 2.7 | [66.2, 72.9] | participant_oof |
+| inception_full__b5_star_fixed10 | macro_pr_auc_ovr | 5 | 61.3 ± 3.4 | [57.1, 65.5] | participant_oof |
+| inception_full__b5_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 51.8 ± 3.9 | [46.9, 56.6] | participant_oof |
+| inception_full__b5_star_fixed10 | abstention_aware_macro_f1 | 5 | 51.5 ± 3.7 | [47.0, 56.1] | participant_oof |
+| compact_cnn__b6_star_fixed10 | balanced_accuracy | 5 | 49.2 ± 6.9 | [40.6, 57.7] | participant_oof |
+| compact_cnn__b6_star_fixed10 | macro_f1 | 5 | 48.7 ± 6.7 | [40.3, 57.1] | participant_oof |
+| compact_cnn__b6_star_fixed10 | macro_roc_auc_ovr | 5 | 67.4 ± 3.7 | [62.8, 72.0] | participant_oof |
+| compact_cnn__b6_star_fixed10 | macro_pr_auc_ovr | 5 | 58.3 ± 4.8 | [52.3, 64.2] | participant_oof |
+| compact_cnn__b6_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 49.2 ± 6.9 | [40.6, 57.7] | participant_oof |
+| compact_cnn__b6_star_fixed10 | abstention_aware_macro_f1 | 5 | 48.7 ± 6.7 | [40.3, 57.1] | participant_oof |
+| inception_full__b6_star_fixed10 | balanced_accuracy | 5 | 56.0 ± 3.8 | [51.3, 60.7] | participant_oof |
+| inception_full__b6_star_fixed10 | macro_f1 | 5 | 56.2 ± 4.7 | [50.4, 62.1] | participant_oof |
+| inception_full__b6_star_fixed10 | macro_roc_auc_ovr | 5 | 72.5 ± 4.0 | [67.5, 77.5] | participant_oof |
+| inception_full__b6_star_fixed10 | macro_pr_auc_ovr | 5 | 63.6 ± 5.0 | [57.3, 69.8] | participant_oof |
+| inception_full__b6_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 56.0 ± 3.8 | [51.3, 60.7] | participant_oof |
+| inception_full__b6_star_fixed10 | abstention_aware_macro_f1 | 5 | 56.2 ± 4.7 | [50.4, 62.1] | participant_oof |
+| compact_cnn__b7_star_fixed10 | balanced_accuracy | 5 | 53.8 ± 6.8 | [45.3, 62.2] | participant_oof |
+| compact_cnn__b7_star_fixed10 | macro_f1 | 5 | 52.9 ± 6.6 | [44.7, 61.2] | participant_oof |
+| compact_cnn__b7_star_fixed10 | macro_roc_auc_ovr | 5 | 69.2 ± 4.3 | [63.8, 74.6] | participant_oof |
+| compact_cnn__b7_star_fixed10 | macro_pr_auc_ovr | 5 | 61.0 ± 7.0 | [52.3, 69.7] | participant_oof |
+| compact_cnn__b7_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 53.8 ± 6.8 | [45.3, 62.2] | participant_oof |
+| compact_cnn__b7_star_fixed10 | abstention_aware_macro_f1 | 5 | 52.9 ± 6.6 | [44.7, 61.2] | participant_oof |
+| inception_full__b7_star_fixed10 | balanced_accuracy | 5 | 56.8 ± 2.4 | [53.8, 59.7] | participant_oof |
+| inception_full__b7_star_fixed10 | macro_f1 | 5 | 57.2 ± 2.5 | [54.2, 60.3] | participant_oof |
+| inception_full__b7_star_fixed10 | macro_roc_auc_ovr | 5 | 72.8 ± 2.5 | [69.7, 76.0] | participant_oof |
+| inception_full__b7_star_fixed10 | macro_pr_auc_ovr | 5 | 64.6 ± 4.0 | [59.6, 69.5] | participant_oof |
+| inception_full__b7_star_fixed10 | abstention_aware_balanced_accuracy | 5 | 56.8 ± 2.4 | [53.8, 59.7] | participant_oof |
+| inception_full__b7_star_fixed10 | abstention_aware_macro_f1 | 5 | 57.2 ± 2.5 | [54.2, 60.3] | participant_oof |
 
 <details><summary>Per-class repeat distributions</summary>
 
-| Case | Class | Metric | Repeats | Mean ± SD (%) |
-|---|---|---|---|---|
-| compact_cnn__b0_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 69.1 ± 5.3 |
-| compact_cnn__b0_star_fixed10 | Pre-Frail | f1 | 5 | 57.0 ± 7.0 |
-| compact_cnn__b0_star_fixed10 | Pre-Frail | recall | 5 | 62.2 ± 16.9 |
-| compact_cnn__b0_star_fixed10 | Pre-Frail | specificity | 5 | 76.0 ± 8.2 |
-| compact_cnn__b0_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 74.8 ± 6.7 |
-| compact_cnn__b0_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 68.6 ± 7.3 |
-| compact_cnn__b0_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 56.9 ± 6.0 |
-| compact_cnn__b0_star_fixed10 | Robust/Non-Frail | f1 | 5 | 48.1 ± 8.4 |
-| compact_cnn__b0_star_fixed10 | Robust/Non-Frail | recall | 5 | 46.7 ± 9.5 |
-| compact_cnn__b0_star_fixed10 | Robust/Non-Frail | specificity | 5 | 67.1 ± 3.2 |
-| compact_cnn__b0_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 58.7 ± 5.9 |
-| compact_cnn__b0_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 52.3 ± 5.7 |
-| compact_cnn__b0_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 68.6 ± 8.1 |
-| compact_cnn__b0_star_fixed10 | Young | f1 | 5 | 53.7 ± 12.0 |
-| compact_cnn__b0_star_fixed10 | Young | recall | 5 | 52.5 ± 18.5 |
-| compact_cnn__b0_star_fixed10 | Young | specificity | 5 | 84.8 ± 12.3 |
-| compact_cnn__b0_star_fixed10 | Young | roc_auc_ovr | 5 | 74.0 ± 2.7 |
-| compact_cnn__b0_star_fixed10 | Young | pr_auc_ovr | 5 | 62.0 ± 10.5 |
-| compact_cnn__b1_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 62.8 ± 9.6 |
-| compact_cnn__b1_star_fixed10 | Pre-Frail | f1 | 5 | 51.0 ± 10.5 |
-| compact_cnn__b1_star_fixed10 | Pre-Frail | recall | 5 | 55.6 ± 7.9 |
-| compact_cnn__b1_star_fixed10 | Pre-Frail | specificity | 5 | 70.0 ± 15.8 |
-| compact_cnn__b1_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 70.3 ± 5.9 |
-| compact_cnn__b1_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 59.6 ± 7.6 |
-| compact_cnn__b1_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 54.7 ± 5.8 |
-| compact_cnn__b1_star_fixed10 | Robust/Non-Frail | f1 | 5 | 48.5 ± 7.3 |
-| compact_cnn__b1_star_fixed10 | Robust/Non-Frail | recall | 5 | 51.7 ± 10.9 |
-| compact_cnn__b1_star_fixed10 | Robust/Non-Frail | specificity | 5 | 57.6 ± 7.7 |
-| compact_cnn__b1_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 58.0 ± 2.1 |
-| compact_cnn__b1_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 52.4 ± 4.9 |
-| compact_cnn__b1_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 58.0 ± 11.1 |
-| compact_cnn__b1_star_fixed10 | Young | f1 | 5 | 32.1 ± 24.2 |
-| compact_cnn__b1_star_fixed10 | Young | recall | 5 | 27.5 ± 22.4 |
-| compact_cnn__b1_star_fixed10 | Young | specificity | 5 | 88.6 ± 2.6 |
-| compact_cnn__b1_star_fixed10 | Young | roc_auc_ovr | 5 | 62.7 ± 5.1 |
-| compact_cnn__b1_star_fixed10 | Young | pr_auc_ovr | 5 | 50.5 ± 10.6 |
-| compact_cnn__b2_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 66.3 ± 9.3 |
-| compact_cnn__b2_star_fixed10 | Pre-Frail | f1 | 5 | 52.6 ± 14.0 |
-| compact_cnn__b2_star_fixed10 | Pre-Frail | recall | 5 | 55.6 ± 22.2 |
-| compact_cnn__b2_star_fixed10 | Pre-Frail | specificity | 5 | 77.0 ± 11.5 |
-| compact_cnn__b2_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 78.8 ± 6.2 |
-| compact_cnn__b2_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 68.4 ± 9.0 |
-| compact_cnn__b2_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 60.6 ± 6.6 |
-| compact_cnn__b2_star_fixed10 | Robust/Non-Frail | f1 | 5 | 54.4 ± 12.0 |
-| compact_cnn__b2_star_fixed10 | Robust/Non-Frail | recall | 5 | 60.0 ± 20.7 |
-| compact_cnn__b2_star_fixed10 | Robust/Non-Frail | specificity | 5 | 61.2 ± 9.8 |
-| compact_cnn__b2_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 64.3 ± 6.0 |
-| compact_cnn__b2_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 59.4 ± 6.5 |
-| compact_cnn__b2_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 74.6 ± 6.8 |
-| compact_cnn__b2_star_fixed10 | Young | f1 | 5 | 64.5 ± 11.8 |
-| compact_cnn__b2_star_fixed10 | Young | recall | 5 | 55.0 ± 11.2 |
-| compact_cnn__b2_star_fixed10 | Young | specificity | 5 | 94.3 ± 4.0 |
-| compact_cnn__b2_star_fixed10 | Young | roc_auc_ovr | 5 | 81.0 ± 4.6 |
-| compact_cnn__b2_star_fixed10 | Young | pr_auc_ovr | 5 | 70.6 ± 11.8 |
-| compact_cnn__b3_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 59.3 ± 9.8 |
-| compact_cnn__b3_star_fixed10 | Pre-Frail | f1 | 5 | 43.8 ± 12.8 |
-| compact_cnn__b3_star_fixed10 | Pre-Frail | recall | 5 | 46.7 ± 19.9 |
-| compact_cnn__b3_star_fixed10 | Pre-Frail | specificity | 5 | 72.0 ± 10.4 |
-| compact_cnn__b3_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 72.0 ± 4.9 |
-| compact_cnn__b3_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 57.1 ± 3.5 |
-| compact_cnn__b3_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 53.4 ± 10.0 |
-| compact_cnn__b3_star_fixed10 | Robust/Non-Frail | f1 | 5 | 48.4 ± 13.6 |
-| compact_cnn__b3_star_fixed10 | Robust/Non-Frail | recall | 5 | 55.0 ± 19.2 |
-| compact_cnn__b3_star_fixed10 | Robust/Non-Frail | specificity | 5 | 51.8 ± 9.7 |
-| compact_cnn__b3_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 56.1 ± 2.3 |
-| compact_cnn__b3_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 48.8 ± 3.7 |
-| compact_cnn__b3_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 67.1 ± 9.1 |
-| compact_cnn__b3_star_fixed10 | Young | f1 | 5 | 50.7 ± 17.0 |
-| compact_cnn__b3_star_fixed10 | Young | recall | 5 | 40.0 ± 16.3 |
-| compact_cnn__b3_star_fixed10 | Young | specificity | 5 | 94.3 ± 5.2 |
-| compact_cnn__b3_star_fixed10 | Young | roc_auc_ovr | 5 | 72.5 ± 6.3 |
-| compact_cnn__b3_star_fixed10 | Young | pr_auc_ovr | 5 | 67.3 ± 6.5 |
-| compact_cnn__b4_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 56.3 ± 4.7 |
-| compact_cnn__b4_star_fixed10 | Pre-Frail | f1 | 5 | 41.4 ± 7.5 |
-| compact_cnn__b4_star_fixed10 | Pre-Frail | recall | 5 | 46.7 ± 14.5 |
-| compact_cnn__b4_star_fixed10 | Pre-Frail | specificity | 5 | 66.0 ± 10.2 |
-| compact_cnn__b4_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 60.8 ± 10.6 |
-| compact_cnn__b4_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 45.7 ± 10.3 |
-| compact_cnn__b4_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 53.4 ± 4.6 |
-| compact_cnn__b4_star_fixed10 | Robust/Non-Frail | f1 | 5 | 43.5 ± 9.4 |
-| compact_cnn__b4_star_fixed10 | Robust/Non-Frail | recall | 5 | 43.3 ± 14.9 |
-| compact_cnn__b4_star_fixed10 | Robust/Non-Frail | specificity | 5 | 63.5 ± 11.3 |
-| compact_cnn__b4_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 53.0 ± 8.0 |
-| compact_cnn__b4_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 50.8 ± 10.0 |
-| compact_cnn__b4_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 61.9 ± 5.7 |
-| compact_cnn__b4_star_fixed10 | Young | f1 | 5 | 43.5 ± 9.5 |
-| compact_cnn__b4_star_fixed10 | Young | recall | 5 | 40.0 ± 10.5 |
-| compact_cnn__b4_star_fixed10 | Young | specificity | 5 | 83.8 ± 2.6 |
-| compact_cnn__b4_star_fixed10 | Young | roc_auc_ovr | 5 | 64.6 ± 5.7 |
-| compact_cnn__b4_star_fixed10 | Young | pr_auc_ovr | 5 | 58.8 ± 6.9 |
-| compact_cnn__b5_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 64.6 ± 5.0 |
-| compact_cnn__b5_star_fixed10 | Pre-Frail | f1 | 5 | 51.3 ± 7.0 |
-| compact_cnn__b5_star_fixed10 | Pre-Frail | recall | 5 | 51.1 ± 6.1 |
-| compact_cnn__b5_star_fixed10 | Pre-Frail | specificity | 5 | 78.0 ± 7.6 |
-| compact_cnn__b5_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 74.0 ± 3.5 |
-| compact_cnn__b5_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 62.3 ± 4.2 |
-| compact_cnn__b5_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 54.3 ± 4.2 |
-| compact_cnn__b5_star_fixed10 | Robust/Non-Frail | f1 | 5 | 48.7 ± 7.3 |
-| compact_cnn__b5_star_fixed10 | Robust/Non-Frail | recall | 5 | 53.3 ± 12.6 |
-| compact_cnn__b5_star_fixed10 | Robust/Non-Frail | specificity | 5 | 55.3 ± 5.3 |
-| compact_cnn__b5_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 57.2 ± 5.3 |
-| compact_cnn__b5_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 50.9 ± 6.4 |
-| compact_cnn__b5_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 72.0 ± 6.6 |
-| compact_cnn__b5_star_fixed10 | Young | f1 | 5 | 60.1 ± 11.5 |
-| compact_cnn__b5_star_fixed10 | Young | recall | 5 | 52.5 ± 10.5 |
-| compact_cnn__b5_star_fixed10 | Young | specificity | 5 | 91.4 ± 6.2 |
-| compact_cnn__b5_star_fixed10 | Young | roc_auc_ovr | 5 | 77.1 ± 6.8 |
-| compact_cnn__b5_star_fixed10 | Young | pr_auc_ovr | 5 | 67.9 ± 11.5 |
-| compact_cnn__b6_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 64.0 ± 7.0 |
-| compact_cnn__b6_star_fixed10 | Pre-Frail | f1 | 5 | 51.7 ± 8.6 |
-| compact_cnn__b6_star_fixed10 | Pre-Frail | recall | 5 | 60.0 ± 12.7 |
-| compact_cnn__b6_star_fixed10 | Pre-Frail | specificity | 5 | 68.0 ± 8.4 |
-| compact_cnn__b6_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 74.2 ± 6.4 |
-| compact_cnn__b6_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 61.6 ± 6.6 |
-| compact_cnn__b6_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 52.4 ± 4.4 |
-| compact_cnn__b6_star_fixed10 | Robust/Non-Frail | f1 | 5 | 41.8 ± 7.3 |
-| compact_cnn__b6_star_fixed10 | Robust/Non-Frail | recall | 5 | 40.0 ± 9.1 |
-| compact_cnn__b6_star_fixed10 | Robust/Non-Frail | specificity | 5 | 64.7 ± 8.3 |
-| compact_cnn__b6_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 54.6 ± 4.6 |
-| compact_cnn__b6_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 48.5 ± 3.9 |
-| compact_cnn__b6_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 67.6 ± 5.9 |
-| compact_cnn__b6_star_fixed10 | Young | f1 | 5 | 52.6 ± 9.6 |
-| compact_cnn__b6_star_fixed10 | Young | recall | 5 | 47.5 ± 10.5 |
-| compact_cnn__b6_star_fixed10 | Young | specificity | 5 | 87.6 ± 4.3 |
-| compact_cnn__b6_star_fixed10 | Young | roc_auc_ovr | 5 | 73.3 ± 9.8 |
-| compact_cnn__b6_star_fixed10 | Young | pr_auc_ovr | 5 | 64.8 ± 9.7 |
-| compact_cnn__b7_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 69.1 ± 5.3 |
-| compact_cnn__b7_star_fixed10 | Pre-Frail | f1 | 5 | 57.0 ± 7.0 |
-| compact_cnn__b7_star_fixed10 | Pre-Frail | recall | 5 | 62.2 ± 16.9 |
-| compact_cnn__b7_star_fixed10 | Pre-Frail | specificity | 5 | 76.0 ± 8.2 |
-| compact_cnn__b7_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 74.8 ± 6.7 |
-| compact_cnn__b7_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 68.6 ± 7.3 |
-| compact_cnn__b7_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 56.9 ± 6.0 |
-| compact_cnn__b7_star_fixed10 | Robust/Non-Frail | f1 | 5 | 48.1 ± 8.4 |
-| compact_cnn__b7_star_fixed10 | Robust/Non-Frail | recall | 5 | 46.7 ± 9.5 |
-| compact_cnn__b7_star_fixed10 | Robust/Non-Frail | specificity | 5 | 67.1 ± 3.2 |
-| compact_cnn__b7_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 58.7 ± 5.9 |
-| compact_cnn__b7_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 52.3 ± 5.7 |
-| compact_cnn__b7_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 68.6 ± 8.1 |
-| compact_cnn__b7_star_fixed10 | Young | f1 | 5 | 53.7 ± 12.0 |
-| compact_cnn__b7_star_fixed10 | Young | recall | 5 | 52.5 ± 18.5 |
-| compact_cnn__b7_star_fixed10 | Young | specificity | 5 | 84.8 ± 12.3 |
-| compact_cnn__b7_star_fixed10 | Young | roc_auc_ovr | 5 | 74.0 ± 2.7 |
-| compact_cnn__b7_star_fixed10 | Young | pr_auc_ovr | 5 | 62.0 ± 10.5 |
-| inception_full__b0_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 67.4 ± 2.5 |
-| inception_full__b0_star_fixed10 | Pre-Frail | f1 | 5 | 55.1 ± 3.9 |
-| inception_full__b0_star_fixed10 | Pre-Frail | recall | 5 | 57.8 ± 9.3 |
-| inception_full__b0_star_fixed10 | Pre-Frail | specificity | 5 | 77.0 ± 5.7 |
-| inception_full__b0_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 75.9 ± 5.0 |
-| inception_full__b0_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 62.1 ± 5.5 |
-| inception_full__b0_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 56.2 ± 5.9 |
-| inception_full__b0_star_fixed10 | Robust/Non-Frail | f1 | 5 | 48.9 ± 7.8 |
-| inception_full__b0_star_fixed10 | Robust/Non-Frail | recall | 5 | 50.0 ± 10.2 |
-| inception_full__b0_star_fixed10 | Robust/Non-Frail | specificity | 5 | 62.4 ± 3.2 |
-| inception_full__b0_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 59.6 ± 2.0 |
-| inception_full__b0_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 53.8 ± 4.4 |
-| inception_full__b0_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 77.0 ± 2.0 |
-| inception_full__b0_star_fixed10 | Young | f1 | 5 | 67.7 ± 3.8 |
-| inception_full__b0_star_fixed10 | Young | recall | 5 | 62.5 ± 0.0 |
-| inception_full__b0_star_fixed10 | Young | specificity | 5 | 91.4 ± 4.0 |
-| inception_full__b0_star_fixed10 | Young | roc_auc_ovr | 5 | 83.0 ± 5.7 |
-| inception_full__b0_star_fixed10 | Young | pr_auc_ovr | 5 | 77.7 ± 5.1 |
-| inception_full__b1_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 64.7 ± 4.3 |
-| inception_full__b1_star_fixed10 | Pre-Frail | f1 | 5 | 51.6 ± 5.4 |
-| inception_full__b1_star_fixed10 | Pre-Frail | recall | 5 | 53.3 ± 9.3 |
-| inception_full__b1_star_fixed10 | Pre-Frail | specificity | 5 | 76.0 ± 9.6 |
-| inception_full__b1_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 75.0 ± 6.1 |
-| inception_full__b1_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 67.8 ± 3.9 |
-| inception_full__b1_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 57.5 ± 2.1 |
-| inception_full__b1_star_fixed10 | Robust/Non-Frail | f1 | 5 | 51.5 ± 5.3 |
-| inception_full__b1_star_fixed10 | Robust/Non-Frail | recall | 5 | 55.0 ± 12.6 |
-| inception_full__b1_star_fixed10 | Robust/Non-Frail | specificity | 5 | 60.0 ± 9.7 |
-| inception_full__b1_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 60.7 ± 5.2 |
-| inception_full__b1_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 56.6 ± 6.8 |
-| inception_full__b1_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 65.1 ± 6.3 |
-| inception_full__b1_star_fixed10 | Young | f1 | 5 | 48.4 ± 11.4 |
-| inception_full__b1_star_fixed10 | Young | recall | 5 | 42.5 ± 11.2 |
-| inception_full__b1_star_fixed10 | Young | specificity | 5 | 87.6 ± 5.4 |
-| inception_full__b1_star_fixed10 | Young | roc_auc_ovr | 5 | 68.3 ± 10.1 |
-| inception_full__b1_star_fixed10 | Young | pr_auc_ovr | 5 | 60.0 ± 10.4 |
-| inception_full__b2_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 60.7 ± 6.0 |
-| inception_full__b2_star_fixed10 | Pre-Frail | f1 | 5 | 44.8 ± 9.1 |
-| inception_full__b2_star_fixed10 | Pre-Frail | recall | 5 | 44.4 ± 15.7 |
-| inception_full__b2_star_fixed10 | Pre-Frail | specificity | 5 | 77.0 ± 12.0 |
-| inception_full__b2_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 72.4 ± 5.9 |
-| inception_full__b2_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 61.1 ± 2.3 |
-| inception_full__b2_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 55.6 ± 6.8 |
-| inception_full__b2_star_fixed10 | Robust/Non-Frail | f1 | 5 | 51.2 ± 9.8 |
-| inception_full__b2_star_fixed10 | Robust/Non-Frail | recall | 5 | 58.3 ± 15.6 |
-| inception_full__b2_star_fixed10 | Robust/Non-Frail | specificity | 5 | 52.9 ± 11.8 |
-| inception_full__b2_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 58.6 ± 4.5 |
-| inception_full__b2_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 55.2 ± 7.7 |
-| inception_full__b2_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 71.7 ± 2.1 |
-| inception_full__b2_star_fixed10 | Young | f1 | 5 | 59.5 ± 3.4 |
-| inception_full__b2_star_fixed10 | Young | recall | 5 | 50.0 ± 8.8 |
-| inception_full__b2_star_fixed10 | Young | specificity | 5 | 93.3 ± 5.4 |
-| inception_full__b2_star_fixed10 | Young | roc_auc_ovr | 5 | 83.3 ± 6.8 |
-| inception_full__b2_star_fixed10 | Young | pr_auc_ovr | 5 | 76.3 ± 5.9 |
-| inception_full__b3_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 62.2 ± 3.9 |
-| inception_full__b3_star_fixed10 | Pre-Frail | f1 | 5 | 48.9 ± 4.7 |
-| inception_full__b3_star_fixed10 | Pre-Frail | recall | 5 | 53.3 ± 9.3 |
-| inception_full__b3_star_fixed10 | Pre-Frail | specificity | 5 | 71.0 ± 8.9 |
-| inception_full__b3_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 74.4 ± 2.1 |
-| inception_full__b3_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 61.0 ± 4.6 |
-| inception_full__b3_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 53.0 ± 7.3 |
-| inception_full__b3_star_fixed10 | Robust/Non-Frail | f1 | 5 | 45.6 ± 11.7 |
-| inception_full__b3_star_fixed10 | Robust/Non-Frail | recall | 5 | 48.3 ± 16.0 |
-| inception_full__b3_star_fixed10 | Robust/Non-Frail | specificity | 5 | 57.6 ± 7.7 |
-| inception_full__b3_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 55.9 ± 3.9 |
-| inception_full__b3_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 50.7 ± 6.6 |
-| inception_full__b3_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 69.9 ± 8.4 |
-| inception_full__b3_star_fixed10 | Young | f1 | 5 | 56.6 ± 15.3 |
-| inception_full__b3_star_fixed10 | Young | recall | 5 | 47.5 ± 13.7 |
-| inception_full__b3_star_fixed10 | Young | specificity | 5 | 92.4 ± 7.2 |
-| inception_full__b3_star_fixed10 | Young | roc_auc_ovr | 5 | 76.2 ± 3.8 |
-| inception_full__b3_star_fixed10 | Young | pr_auc_ovr | 5 | 70.5 ± 6.6 |
-| inception_full__b4_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 55.1 ± 9.3 |
-| inception_full__b4_star_fixed10 | Pre-Frail | f1 | 5 | 39.3 ± 12.6 |
-| inception_full__b4_star_fixed10 | Pre-Frail | recall | 5 | 42.2 ± 14.5 |
-| inception_full__b4_star_fixed10 | Pre-Frail | specificity | 5 | 68.0 ± 5.7 |
-| inception_full__b4_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 58.6 ± 11.9 |
-| inception_full__b4_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 40.8 ± 7.7 |
-| inception_full__b4_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 55.8 ± 5.3 |
-| inception_full__b4_star_fixed10 | Robust/Non-Frail | f1 | 5 | 49.4 ± 6.3 |
-| inception_full__b4_star_fixed10 | Robust/Non-Frail | recall | 5 | 51.7 ± 9.1 |
-| inception_full__b4_star_fixed10 | Robust/Non-Frail | specificity | 5 | 60.0 ± 7.7 |
-| inception_full__b4_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 58.2 ± 8.2 |
-| inception_full__b4_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 55.6 ± 7.9 |
-| inception_full__b4_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 60.4 ± 6.6 |
-| inception_full__b4_star_fixed10 | Young | f1 | 5 | 40.5 ± 10.5 |
-| inception_full__b4_star_fixed10 | Young | recall | 5 | 35.0 ± 10.5 |
-| inception_full__b4_star_fixed10 | Young | specificity | 5 | 85.7 ± 5.8 |
-| inception_full__b4_star_fixed10 | Young | roc_auc_ovr | 5 | 54.8 ± 6.8 |
-| inception_full__b4_star_fixed10 | Young | pr_auc_ovr | 5 | 46.8 ± 11.2 |
-| inception_full__b5_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 65.6 ± 5.1 |
-| inception_full__b5_star_fixed10 | Pre-Frail | f1 | 5 | 52.4 ± 6.6 |
-| inception_full__b5_star_fixed10 | Pre-Frail | recall | 5 | 51.1 ± 6.1 |
-| inception_full__b5_star_fixed10 | Pre-Frail | specificity | 5 | 80.0 ± 6.1 |
-| inception_full__b5_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 73.1 ± 5.6 |
-| inception_full__b5_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 62.3 ± 4.6 |
-| inception_full__b5_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 51.4 ± 4.8 |
-| inception_full__b5_star_fixed10 | Robust/Non-Frail | f1 | 5 | 42.2 ± 5.9 |
-| inception_full__b5_star_fixed10 | Robust/Non-Frail | recall | 5 | 41.7 ± 8.3 |
-| inception_full__b5_star_fixed10 | Robust/Non-Frail | specificity | 5 | 61.2 ± 9.8 |
-| inception_full__b5_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 53.1 ± 3.9 |
-| inception_full__b5_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 50.6 ± 8.1 |
-| inception_full__b5_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 72.2 ± 5.8 |
-| inception_full__b5_star_fixed10 | Young | f1 | 5 | 60.0 ± 8.7 |
-| inception_full__b5_star_fixed10 | Young | recall | 5 | 62.5 ± 8.8 |
-| inception_full__b5_star_fixed10 | Young | specificity | 5 | 81.9 ± 9.2 |
-| inception_full__b5_star_fixed10 | Young | roc_auc_ovr | 5 | 82.4 ± 4.2 |
-| inception_full__b5_star_fixed10 | Young | pr_auc_ovr | 5 | 71.0 ± 6.6 |
-| inception_full__b6_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 66.8 ± 1.4 |
-| inception_full__b6_star_fixed10 | Pre-Frail | f1 | 5 | 54.4 ± 1.6 |
-| inception_full__b6_star_fixed10 | Pre-Frail | recall | 5 | 55.6 ± 0.0 |
-| inception_full__b6_star_fixed10 | Pre-Frail | specificity | 5 | 78.0 ± 2.7 |
-| inception_full__b6_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 78.1 ± 5.5 |
-| inception_full__b6_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 67.2 ± 3.9 |
-| inception_full__b6_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 56.8 ± 2.8 |
-| inception_full__b6_star_fixed10 | Robust/Non-Frail | f1 | 5 | 49.2 ± 6.5 |
-| inception_full__b6_star_fixed10 | Robust/Non-Frail | recall | 5 | 50.0 ± 10.2 |
-| inception_full__b6_star_fixed10 | Robust/Non-Frail | specificity | 5 | 63.5 ± 4.9 |
-| inception_full__b6_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 57.9 ± 2.9 |
-| inception_full__b6_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 50.8 ± 5.6 |
-| inception_full__b6_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 75.5 ± 5.7 |
-| inception_full__b6_star_fixed10 | Young | f1 | 5 | 65.2 ± 8.6 |
-| inception_full__b6_star_fixed10 | Young | recall | 5 | 62.5 ± 8.8 |
-| inception_full__b6_star_fixed10 | Young | specificity | 5 | 88.6 ± 7.2 |
-| inception_full__b6_star_fixed10 | Young | roc_auc_ovr | 5 | 81.4 ± 6.8 |
-| inception_full__b6_star_fixed10 | Young | pr_auc_ovr | 5 | 72.7 ± 10.6 |
-| inception_full__b7_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 67.4 ± 2.5 |
-| inception_full__b7_star_fixed10 | Pre-Frail | f1 | 5 | 55.1 ± 3.9 |
-| inception_full__b7_star_fixed10 | Pre-Frail | recall | 5 | 57.8 ± 9.3 |
-| inception_full__b7_star_fixed10 | Pre-Frail | specificity | 5 | 77.0 ± 5.7 |
-| inception_full__b7_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 75.9 ± 5.0 |
-| inception_full__b7_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 62.1 ± 5.5 |
-| inception_full__b7_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 56.2 ± 5.9 |
-| inception_full__b7_star_fixed10 | Robust/Non-Frail | f1 | 5 | 48.9 ± 7.8 |
-| inception_full__b7_star_fixed10 | Robust/Non-Frail | recall | 5 | 50.0 ± 10.2 |
-| inception_full__b7_star_fixed10 | Robust/Non-Frail | specificity | 5 | 62.4 ± 3.2 |
-| inception_full__b7_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 59.6 ± 2.0 |
-| inception_full__b7_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 53.8 ± 4.4 |
-| inception_full__b7_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 77.0 ± 2.0 |
-| inception_full__b7_star_fixed10 | Young | f1 | 5 | 67.7 ± 3.8 |
-| inception_full__b7_star_fixed10 | Young | recall | 5 | 62.5 ± 0.0 |
-| inception_full__b7_star_fixed10 | Young | specificity | 5 | 91.4 ± 4.0 |
-| inception_full__b7_star_fixed10 | Young | roc_auc_ovr | 5 | 83.0 ± 5.7 |
-| inception_full__b7_star_fixed10 | Young | pr_auc_ovr | 5 | 77.7 ± 5.1 |
+| Case | Class | Metric | Repeats | Mean ± SD (%) | Repeat 95% CI (%) |
+|---|---|---|---|---|---|
+| compact_cnn__b0_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 69.1 ± 5.3 | [62.5, 75.7] |
+| compact_cnn__b0_star_fixed10 | Pre-Frail | f1 | 5 | 57.0 ± 7.0 | [48.3, 65.8] |
+| compact_cnn__b0_star_fixed10 | Pre-Frail | recall | 5 | 62.2 ± 16.9 | [41.3, 83.1] |
+| compact_cnn__b0_star_fixed10 | Pre-Frail | specificity | 5 | 76.0 ± 8.2 | [65.8, 86.2] |
+| compact_cnn__b0_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 74.8 ± 6.7 | [66.5, 83.0] |
+| compact_cnn__b0_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 68.6 ± 7.3 | [59.6, 77.7] |
+| compact_cnn__b0_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 56.9 ± 6.0 | [49.4, 64.3] |
+| compact_cnn__b0_star_fixed10 | Robust/Non-Frail | f1 | 5 | 48.1 ± 8.4 | [37.6, 58.5] |
+| compact_cnn__b0_star_fixed10 | Robust/Non-Frail | recall | 5 | 46.7 ± 9.5 | [34.9, 58.5] |
+| compact_cnn__b0_star_fixed10 | Robust/Non-Frail | specificity | 5 | 67.1 ± 3.2 | [63.1, 71.1] |
+| compact_cnn__b0_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 58.7 ± 5.9 | [51.3, 66.1] |
+| compact_cnn__b0_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 52.3 ± 5.7 | [45.2, 59.3] |
+| compact_cnn__b0_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 68.6 ± 8.1 | [58.6, 78.7] |
+| compact_cnn__b0_star_fixed10 | Young | f1 | 5 | 53.7 ± 12.0 | [38.7, 68.6] |
+| compact_cnn__b0_star_fixed10 | Young | recall | 5 | 52.5 ± 18.5 | [29.5, 75.5] |
+| compact_cnn__b0_star_fixed10 | Young | specificity | 5 | 84.8 ± 12.3 | [69.5, 100.1] |
+| compact_cnn__b0_star_fixed10 | Young | roc_auc_ovr | 5 | 74.0 ± 2.7 | [70.7, 77.4] |
+| compact_cnn__b0_star_fixed10 | Young | pr_auc_ovr | 5 | 62.0 ± 10.5 | [49.0, 75.1] |
+| compact_cnn__b1_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 62.8 ± 9.6 | [50.9, 74.7] |
+| compact_cnn__b1_star_fixed10 | Pre-Frail | f1 | 5 | 51.0 ± 10.5 | [37.9, 64.1] |
+| compact_cnn__b1_star_fixed10 | Pre-Frail | recall | 5 | 55.6 ± 7.9 | [45.8, 65.3] |
+| compact_cnn__b1_star_fixed10 | Pre-Frail | specificity | 5 | 70.0 ± 15.8 | [50.4, 89.6] |
+| compact_cnn__b1_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 70.3 ± 5.9 | [63.0, 77.6] |
+| compact_cnn__b1_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 59.6 ± 7.6 | [50.2, 69.0] |
+| compact_cnn__b1_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 54.7 ± 5.8 | [47.5, 61.8] |
+| compact_cnn__b1_star_fixed10 | Robust/Non-Frail | f1 | 5 | 48.5 ± 7.3 | [39.5, 57.6] |
+| compact_cnn__b1_star_fixed10 | Robust/Non-Frail | recall | 5 | 51.7 ± 10.9 | [38.2, 65.2] |
+| compact_cnn__b1_star_fixed10 | Robust/Non-Frail | specificity | 5 | 57.6 ± 7.7 | [48.1, 67.2] |
+| compact_cnn__b1_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 58.0 ± 2.1 | [55.5, 60.6] |
+| compact_cnn__b1_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 52.4 ± 4.9 | [46.3, 58.5] |
+| compact_cnn__b1_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 58.0 ± 11.1 | [44.3, 71.8] |
+| compact_cnn__b1_star_fixed10 | Young | f1 | 5 | 32.1 ± 24.2 | [2.0, 62.2] |
+| compact_cnn__b1_star_fixed10 | Young | recall | 5 | 27.5 ± 22.4 | [-0.3, 55.3] |
+| compact_cnn__b1_star_fixed10 | Young | specificity | 5 | 88.6 ± 2.6 | [85.3, 91.8] |
+| compact_cnn__b1_star_fixed10 | Young | roc_auc_ovr | 5 | 62.7 ± 5.1 | [56.4, 69.0] |
+| compact_cnn__b1_star_fixed10 | Young | pr_auc_ovr | 5 | 50.5 ± 10.6 | [37.4, 63.7] |
+| compact_cnn__b2_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 66.3 ± 9.3 | [54.7, 77.9] |
+| compact_cnn__b2_star_fixed10 | Pre-Frail | f1 | 5 | 52.6 ± 14.0 | [35.1, 70.0] |
+| compact_cnn__b2_star_fixed10 | Pre-Frail | recall | 5 | 55.6 ± 22.2 | [28.0, 83.1] |
+| compact_cnn__b2_star_fixed10 | Pre-Frail | specificity | 5 | 77.0 ± 11.5 | [62.7, 91.3] |
+| compact_cnn__b2_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 78.8 ± 6.2 | [71.0, 86.5] |
+| compact_cnn__b2_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 68.4 ± 9.0 | [57.2, 79.6] |
+| compact_cnn__b2_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 60.6 ± 6.6 | [52.4, 68.8] |
+| compact_cnn__b2_star_fixed10 | Robust/Non-Frail | f1 | 5 | 54.4 ± 12.0 | [39.6, 69.3] |
+| compact_cnn__b2_star_fixed10 | Robust/Non-Frail | recall | 5 | 60.0 ± 20.7 | [34.2, 85.8] |
+| compact_cnn__b2_star_fixed10 | Robust/Non-Frail | specificity | 5 | 61.2 ± 9.8 | [49.0, 73.4] |
+| compact_cnn__b2_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 64.3 ± 6.0 | [56.8, 71.8] |
+| compact_cnn__b2_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 59.4 ± 6.5 | [51.3, 67.5] |
+| compact_cnn__b2_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 74.6 ± 6.8 | [66.3, 83.0] |
+| compact_cnn__b2_star_fixed10 | Young | f1 | 5 | 64.5 ± 11.8 | [50.0, 79.1] |
+| compact_cnn__b2_star_fixed10 | Young | recall | 5 | 55.0 ± 11.2 | [41.1, 68.9] |
+| compact_cnn__b2_star_fixed10 | Young | specificity | 5 | 94.3 ± 4.0 | [89.3, 99.2] |
+| compact_cnn__b2_star_fixed10 | Young | roc_auc_ovr | 5 | 81.0 ± 4.6 | [75.3, 86.6] |
+| compact_cnn__b2_star_fixed10 | Young | pr_auc_ovr | 5 | 70.6 ± 11.8 | [55.9, 85.3] |
+| compact_cnn__b3_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 59.3 ± 9.8 | [47.2, 71.4] |
+| compact_cnn__b3_star_fixed10 | Pre-Frail | f1 | 5 | 43.8 ± 12.8 | [27.9, 59.6] |
+| compact_cnn__b3_star_fixed10 | Pre-Frail | recall | 5 | 46.7 ± 19.9 | [22.0, 71.3] |
+| compact_cnn__b3_star_fixed10 | Pre-Frail | specificity | 5 | 72.0 ± 10.4 | [59.1, 84.9] |
+| compact_cnn__b3_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 72.0 ± 4.9 | [66.0, 78.0] |
+| compact_cnn__b3_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 57.1 ± 3.5 | [52.7, 61.4] |
+| compact_cnn__b3_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 53.4 ± 10.0 | [40.9, 65.8] |
+| compact_cnn__b3_star_fixed10 | Robust/Non-Frail | f1 | 5 | 48.4 ± 13.6 | [31.5, 65.4] |
+| compact_cnn__b3_star_fixed10 | Robust/Non-Frail | recall | 5 | 55.0 ± 19.2 | [31.2, 78.8] |
+| compact_cnn__b3_star_fixed10 | Robust/Non-Frail | specificity | 5 | 51.8 ± 9.7 | [39.8, 63.8] |
+| compact_cnn__b3_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 56.1 ± 2.3 | [53.2, 59.0] |
+| compact_cnn__b3_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 48.8 ± 3.7 | [44.1, 53.4] |
+| compact_cnn__b3_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 67.1 ± 9.1 | [55.9, 78.4] |
+| compact_cnn__b3_star_fixed10 | Young | f1 | 5 | 50.7 ± 17.0 | [29.6, 71.9] |
+| compact_cnn__b3_star_fixed10 | Young | recall | 5 | 40.0 ± 16.3 | [19.8, 60.2] |
+| compact_cnn__b3_star_fixed10 | Young | specificity | 5 | 94.3 ± 5.2 | [87.8, 100.8] |
+| compact_cnn__b3_star_fixed10 | Young | roc_auc_ovr | 5 | 72.5 ± 6.3 | [64.7, 80.3] |
+| compact_cnn__b3_star_fixed10 | Young | pr_auc_ovr | 5 | 67.3 ± 6.5 | [59.2, 75.3] |
+| compact_cnn__b4_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 56.3 ± 4.7 | [50.5, 62.1] |
+| compact_cnn__b4_star_fixed10 | Pre-Frail | f1 | 5 | 41.4 ± 7.5 | [32.1, 50.7] |
+| compact_cnn__b4_star_fixed10 | Pre-Frail | recall | 5 | 46.7 ± 14.5 | [28.7, 64.7] |
+| compact_cnn__b4_star_fixed10 | Pre-Frail | specificity | 5 | 66.0 ± 10.2 | [53.3, 78.7] |
+| compact_cnn__b4_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 60.8 ± 10.6 | [47.6, 74.0] |
+| compact_cnn__b4_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 45.7 ± 10.3 | [32.9, 58.5] |
+| compact_cnn__b4_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 53.4 ± 4.6 | [47.7, 59.2] |
+| compact_cnn__b4_star_fixed10 | Robust/Non-Frail | f1 | 5 | 43.5 ± 9.4 | [31.7, 55.2] |
+| compact_cnn__b4_star_fixed10 | Robust/Non-Frail | recall | 5 | 43.3 ± 14.9 | [24.8, 61.8] |
+| compact_cnn__b4_star_fixed10 | Robust/Non-Frail | specificity | 5 | 63.5 ± 11.3 | [49.5, 77.6] |
+| compact_cnn__b4_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 53.0 ± 8.0 | [43.1, 63.0] |
+| compact_cnn__b4_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 50.8 ± 10.0 | [38.4, 63.2] |
+| compact_cnn__b4_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 61.9 ± 5.7 | [54.9, 68.9] |
+| compact_cnn__b4_star_fixed10 | Young | f1 | 5 | 43.5 ± 9.5 | [31.7, 55.3] |
+| compact_cnn__b4_star_fixed10 | Young | recall | 5 | 40.0 ± 10.5 | [27.0, 53.0] |
+| compact_cnn__b4_star_fixed10 | Young | specificity | 5 | 83.8 ± 2.6 | [80.6, 87.0] |
+| compact_cnn__b4_star_fixed10 | Young | roc_auc_ovr | 5 | 64.6 ± 5.7 | [57.6, 71.7] |
+| compact_cnn__b4_star_fixed10 | Young | pr_auc_ovr | 5 | 58.8 ± 6.9 | [50.3, 67.4] |
+| compact_cnn__b5_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 64.6 ± 5.0 | [58.3, 70.8] |
+| compact_cnn__b5_star_fixed10 | Pre-Frail | f1 | 5 | 51.3 ± 7.0 | [42.7, 60.0] |
+| compact_cnn__b5_star_fixed10 | Pre-Frail | recall | 5 | 51.1 ± 6.1 | [43.6, 58.7] |
+| compact_cnn__b5_star_fixed10 | Pre-Frail | specificity | 5 | 78.0 ± 7.6 | [68.6, 87.4] |
+| compact_cnn__b5_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 74.0 ± 3.5 | [69.6, 78.4] |
+| compact_cnn__b5_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 62.3 ± 4.2 | [57.1, 67.4] |
+| compact_cnn__b5_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 54.3 ± 4.2 | [49.1, 59.5] |
+| compact_cnn__b5_star_fixed10 | Robust/Non-Frail | f1 | 5 | 48.7 ± 7.3 | [39.7, 57.8] |
+| compact_cnn__b5_star_fixed10 | Robust/Non-Frail | recall | 5 | 53.3 ± 12.6 | [37.6, 69.0] |
+| compact_cnn__b5_star_fixed10 | Robust/Non-Frail | specificity | 5 | 55.3 ± 5.3 | [48.8, 61.8] |
+| compact_cnn__b5_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 57.2 ± 5.3 | [50.5, 63.8] |
+| compact_cnn__b5_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 50.9 ± 6.4 | [42.9, 58.8] |
+| compact_cnn__b5_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 72.0 ± 6.6 | [63.8, 80.1] |
+| compact_cnn__b5_star_fixed10 | Young | f1 | 5 | 60.1 ± 11.5 | [45.8, 74.4] |
+| compact_cnn__b5_star_fixed10 | Young | recall | 5 | 52.5 ± 10.5 | [39.5, 65.5] |
+| compact_cnn__b5_star_fixed10 | Young | specificity | 5 | 91.4 ± 6.2 | [83.7, 99.1] |
+| compact_cnn__b5_star_fixed10 | Young | roc_auc_ovr | 5 | 77.1 ± 6.8 | [68.6, 85.6] |
+| compact_cnn__b5_star_fixed10 | Young | pr_auc_ovr | 5 | 67.9 ± 11.5 | [53.6, 82.2] |
+| compact_cnn__b6_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 64.0 ± 7.0 | [55.3, 72.7] |
+| compact_cnn__b6_star_fixed10 | Pre-Frail | f1 | 5 | 51.7 ± 8.6 | [41.0, 62.5] |
+| compact_cnn__b6_star_fixed10 | Pre-Frail | recall | 5 | 60.0 ± 12.7 | [44.3, 75.7] |
+| compact_cnn__b6_star_fixed10 | Pre-Frail | specificity | 5 | 68.0 ± 8.4 | [57.6, 78.4] |
+| compact_cnn__b6_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 74.2 ± 6.4 | [66.3, 82.2] |
+| compact_cnn__b6_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 61.6 ± 6.6 | [53.5, 69.7] |
+| compact_cnn__b6_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 52.4 ± 4.4 | [46.8, 57.9] |
+| compact_cnn__b6_star_fixed10 | Robust/Non-Frail | f1 | 5 | 41.8 ± 7.3 | [32.8, 50.8] |
+| compact_cnn__b6_star_fixed10 | Robust/Non-Frail | recall | 5 | 40.0 ± 9.1 | [28.7, 51.3] |
+| compact_cnn__b6_star_fixed10 | Robust/Non-Frail | specificity | 5 | 64.7 ± 8.3 | [54.4, 75.0] |
+| compact_cnn__b6_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 54.6 ± 4.6 | [48.9, 60.3] |
+| compact_cnn__b6_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 48.5 ± 3.9 | [43.7, 53.3] |
+| compact_cnn__b6_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 67.6 ± 5.9 | [60.2, 74.9] |
+| compact_cnn__b6_star_fixed10 | Young | f1 | 5 | 52.6 ± 9.6 | [40.7, 64.5] |
+| compact_cnn__b6_star_fixed10 | Young | recall | 5 | 47.5 ± 10.5 | [34.5, 60.5] |
+| compact_cnn__b6_star_fixed10 | Young | specificity | 5 | 87.6 ± 4.3 | [82.3, 92.9] |
+| compact_cnn__b6_star_fixed10 | Young | roc_auc_ovr | 5 | 73.3 ± 9.8 | [61.2, 85.5] |
+| compact_cnn__b6_star_fixed10 | Young | pr_auc_ovr | 5 | 64.8 ± 9.7 | [52.7, 76.8] |
+| compact_cnn__b7_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 69.1 ± 5.3 | [62.5, 75.7] |
+| compact_cnn__b7_star_fixed10 | Pre-Frail | f1 | 5 | 57.0 ± 7.0 | [48.3, 65.8] |
+| compact_cnn__b7_star_fixed10 | Pre-Frail | recall | 5 | 62.2 ± 16.9 | [41.3, 83.1] |
+| compact_cnn__b7_star_fixed10 | Pre-Frail | specificity | 5 | 76.0 ± 8.2 | [65.8, 86.2] |
+| compact_cnn__b7_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 74.8 ± 6.7 | [66.5, 83.0] |
+| compact_cnn__b7_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 68.6 ± 7.3 | [59.6, 77.7] |
+| compact_cnn__b7_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 56.9 ± 6.0 | [49.4, 64.3] |
+| compact_cnn__b7_star_fixed10 | Robust/Non-Frail | f1 | 5 | 48.1 ± 8.4 | [37.6, 58.5] |
+| compact_cnn__b7_star_fixed10 | Robust/Non-Frail | recall | 5 | 46.7 ± 9.5 | [34.9, 58.5] |
+| compact_cnn__b7_star_fixed10 | Robust/Non-Frail | specificity | 5 | 67.1 ± 3.2 | [63.1, 71.1] |
+| compact_cnn__b7_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 58.7 ± 5.9 | [51.3, 66.1] |
+| compact_cnn__b7_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 52.3 ± 5.7 | [45.2, 59.3] |
+| compact_cnn__b7_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 68.6 ± 8.1 | [58.6, 78.7] |
+| compact_cnn__b7_star_fixed10 | Young | f1 | 5 | 53.7 ± 12.0 | [38.7, 68.6] |
+| compact_cnn__b7_star_fixed10 | Young | recall | 5 | 52.5 ± 18.5 | [29.5, 75.5] |
+| compact_cnn__b7_star_fixed10 | Young | specificity | 5 | 84.8 ± 12.3 | [69.5, 100.1] |
+| compact_cnn__b7_star_fixed10 | Young | roc_auc_ovr | 5 | 74.0 ± 2.7 | [70.7, 77.4] |
+| compact_cnn__b7_star_fixed10 | Young | pr_auc_ovr | 5 | 62.0 ± 10.5 | [49.0, 75.1] |
+| inception_full__b0_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 67.4 ± 2.5 | [64.3, 70.5] |
+| inception_full__b0_star_fixed10 | Pre-Frail | f1 | 5 | 55.1 ± 3.9 | [50.2, 59.9] |
+| inception_full__b0_star_fixed10 | Pre-Frail | recall | 5 | 57.8 ± 9.3 | [46.2, 69.3] |
+| inception_full__b0_star_fixed10 | Pre-Frail | specificity | 5 | 77.0 ± 5.7 | [69.9, 84.1] |
+| inception_full__b0_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 75.9 ± 5.0 | [69.7, 82.1] |
+| inception_full__b0_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 62.1 ± 5.5 | [55.3, 69.0] |
+| inception_full__b0_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 56.2 ± 5.9 | [48.9, 63.5] |
+| inception_full__b0_star_fixed10 | Robust/Non-Frail | f1 | 5 | 48.9 ± 7.8 | [39.2, 58.6] |
+| inception_full__b0_star_fixed10 | Robust/Non-Frail | recall | 5 | 50.0 ± 10.2 | [37.3, 62.7] |
+| inception_full__b0_star_fixed10 | Robust/Non-Frail | specificity | 5 | 62.4 ± 3.2 | [58.4, 66.4] |
+| inception_full__b0_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 59.6 ± 2.0 | [57.2, 62.1] |
+| inception_full__b0_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 53.8 ± 4.4 | [48.4, 59.3] |
+| inception_full__b0_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 77.0 ± 2.0 | [74.5, 79.4] |
+| inception_full__b0_star_fixed10 | Young | f1 | 5 | 67.7 ± 3.8 | [63.1, 72.4] |
+| inception_full__b0_star_fixed10 | Young | recall | 5 | 62.5 ± 0.0 | [62.5, 62.5] |
+| inception_full__b0_star_fixed10 | Young | specificity | 5 | 91.4 ± 4.0 | [86.5, 96.4] |
+| inception_full__b0_star_fixed10 | Young | roc_auc_ovr | 5 | 83.0 ± 5.7 | [75.9, 90.1] |
+| inception_full__b0_star_fixed10 | Young | pr_auc_ovr | 5 | 77.7 ± 5.1 | [71.4, 84.1] |
+| inception_full__b1_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 64.7 ± 4.3 | [59.3, 70.0] |
+| inception_full__b1_star_fixed10 | Pre-Frail | f1 | 5 | 51.6 ± 5.4 | [44.9, 58.3] |
+| inception_full__b1_star_fixed10 | Pre-Frail | recall | 5 | 53.3 ± 9.3 | [41.8, 64.9] |
+| inception_full__b1_star_fixed10 | Pre-Frail | specificity | 5 | 76.0 ± 9.6 | [64.1, 87.9] |
+| inception_full__b1_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 75.0 ± 6.1 | [67.4, 82.6] |
+| inception_full__b1_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 67.8 ± 3.9 | [62.9, 72.6] |
+| inception_full__b1_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 57.5 ± 2.1 | [54.9, 60.1] |
+| inception_full__b1_star_fixed10 | Robust/Non-Frail | f1 | 5 | 51.5 ± 5.3 | [44.8, 58.1] |
+| inception_full__b1_star_fixed10 | Robust/Non-Frail | recall | 5 | 55.0 ± 12.6 | [39.3, 70.7] |
+| inception_full__b1_star_fixed10 | Robust/Non-Frail | specificity | 5 | 60.0 ± 9.7 | [48.0, 72.0] |
+| inception_full__b1_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 60.7 ± 5.2 | [54.2, 67.1] |
+| inception_full__b1_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 56.6 ± 6.8 | [48.2, 65.1] |
+| inception_full__b1_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 65.1 ± 6.3 | [57.2, 72.9] |
+| inception_full__b1_star_fixed10 | Young | f1 | 5 | 48.4 ± 11.4 | [34.3, 62.5] |
+| inception_full__b1_star_fixed10 | Young | recall | 5 | 42.5 ± 11.2 | [28.6, 56.4] |
+| inception_full__b1_star_fixed10 | Young | specificity | 5 | 87.6 ± 5.4 | [80.9, 94.4] |
+| inception_full__b1_star_fixed10 | Young | roc_auc_ovr | 5 | 68.3 ± 10.1 | [55.9, 80.8] |
+| inception_full__b1_star_fixed10 | Young | pr_auc_ovr | 5 | 60.0 ± 10.4 | [47.1, 72.9] |
+| inception_full__b2_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 60.7 ± 6.0 | [53.3, 68.1] |
+| inception_full__b2_star_fixed10 | Pre-Frail | f1 | 5 | 44.8 ± 9.1 | [33.5, 56.0] |
+| inception_full__b2_star_fixed10 | Pre-Frail | recall | 5 | 44.4 ± 15.7 | [24.9, 64.0] |
+| inception_full__b2_star_fixed10 | Pre-Frail | specificity | 5 | 77.0 ± 12.0 | [62.0, 92.0] |
+| inception_full__b2_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 72.4 ± 5.9 | [65.1, 79.8] |
+| inception_full__b2_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 61.1 ± 2.3 | [58.2, 64.0] |
+| inception_full__b2_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 55.6 ± 6.8 | [47.2, 64.1] |
+| inception_full__b2_star_fixed10 | Robust/Non-Frail | f1 | 5 | 51.2 ± 9.8 | [39.1, 63.4] |
+| inception_full__b2_star_fixed10 | Robust/Non-Frail | recall | 5 | 58.3 ± 15.6 | [39.0, 77.7] |
+| inception_full__b2_star_fixed10 | Robust/Non-Frail | specificity | 5 | 52.9 ± 11.8 | [38.3, 67.5] |
+| inception_full__b2_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 58.6 ± 4.5 | [53.1, 64.2] |
+| inception_full__b2_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 55.2 ± 7.7 | [45.6, 64.7] |
+| inception_full__b2_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 71.7 ± 2.1 | [69.0, 74.3] |
+| inception_full__b2_star_fixed10 | Young | f1 | 5 | 59.5 ± 3.4 | [55.2, 63.7] |
+| inception_full__b2_star_fixed10 | Young | recall | 5 | 50.0 ± 8.8 | [39.0, 61.0] |
+| inception_full__b2_star_fixed10 | Young | specificity | 5 | 93.3 ± 5.4 | [86.6, 100.1] |
+| inception_full__b2_star_fixed10 | Young | roc_auc_ovr | 5 | 83.3 ± 6.8 | [74.9, 91.8] |
+| inception_full__b2_star_fixed10 | Young | pr_auc_ovr | 5 | 76.3 ± 5.9 | [69.0, 83.6] |
+| inception_full__b3_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 62.2 ± 3.9 | [57.3, 67.0] |
+| inception_full__b3_star_fixed10 | Pre-Frail | f1 | 5 | 48.9 ± 4.7 | [43.0, 54.7] |
+| inception_full__b3_star_fixed10 | Pre-Frail | recall | 5 | 53.3 ± 9.3 | [41.8, 64.9] |
+| inception_full__b3_star_fixed10 | Pre-Frail | specificity | 5 | 71.0 ± 8.9 | [59.9, 82.1] |
+| inception_full__b3_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 74.4 ± 2.1 | [71.8, 77.1] |
+| inception_full__b3_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 61.0 ± 4.6 | [55.2, 66.7] |
+| inception_full__b3_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 53.0 ± 7.3 | [43.9, 62.0] |
+| inception_full__b3_star_fixed10 | Robust/Non-Frail | f1 | 5 | 45.6 ± 11.7 | [31.1, 60.1] |
+| inception_full__b3_star_fixed10 | Robust/Non-Frail | recall | 5 | 48.3 ± 16.0 | [28.4, 68.2] |
+| inception_full__b3_star_fixed10 | Robust/Non-Frail | specificity | 5 | 57.6 ± 7.7 | [48.1, 67.2] |
+| inception_full__b3_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 55.9 ± 3.9 | [51.0, 60.8] |
+| inception_full__b3_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 50.7 ± 6.6 | [42.5, 58.9] |
+| inception_full__b3_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 69.9 ± 8.4 | [59.5, 80.4] |
+| inception_full__b3_star_fixed10 | Young | f1 | 5 | 56.6 ± 15.3 | [37.7, 75.5] |
+| inception_full__b3_star_fixed10 | Young | recall | 5 | 47.5 ± 13.7 | [30.5, 64.5] |
+| inception_full__b3_star_fixed10 | Young | specificity | 5 | 92.4 ± 7.2 | [83.4, 101.3] |
+| inception_full__b3_star_fixed10 | Young | roc_auc_ovr | 5 | 76.2 ± 3.8 | [71.5, 80.9] |
+| inception_full__b3_star_fixed10 | Young | pr_auc_ovr | 5 | 70.5 ± 6.6 | [62.3, 78.7] |
+| inception_full__b4_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 55.1 ± 9.3 | [43.6, 66.6] |
+| inception_full__b4_star_fixed10 | Pre-Frail | f1 | 5 | 39.3 ± 12.6 | [23.7, 55.0] |
+| inception_full__b4_star_fixed10 | Pre-Frail | recall | 5 | 42.2 ± 14.5 | [24.2, 60.2] |
+| inception_full__b4_star_fixed10 | Pre-Frail | specificity | 5 | 68.0 ± 5.7 | [60.9, 75.1] |
+| inception_full__b4_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 58.6 ± 11.9 | [43.7, 73.4] |
+| inception_full__b4_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 40.8 ± 7.7 | [31.2, 50.4] |
+| inception_full__b4_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 55.8 ± 5.3 | [49.2, 62.4] |
+| inception_full__b4_star_fixed10 | Robust/Non-Frail | f1 | 5 | 49.4 ± 6.3 | [41.6, 57.3] |
+| inception_full__b4_star_fixed10 | Robust/Non-Frail | recall | 5 | 51.7 ± 9.1 | [40.3, 63.0] |
+| inception_full__b4_star_fixed10 | Robust/Non-Frail | specificity | 5 | 60.0 ± 7.7 | [50.5, 69.5] |
+| inception_full__b4_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 58.2 ± 8.2 | [48.0, 68.5] |
+| inception_full__b4_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 55.6 ± 7.9 | [45.7, 65.4] |
+| inception_full__b4_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 60.4 ± 6.6 | [52.2, 68.5] |
+| inception_full__b4_star_fixed10 | Young | f1 | 5 | 40.5 ± 10.5 | [27.4, 53.6] |
+| inception_full__b4_star_fixed10 | Young | recall | 5 | 35.0 ± 10.5 | [22.0, 48.0] |
+| inception_full__b4_star_fixed10 | Young | specificity | 5 | 85.7 ± 5.8 | [78.5, 93.0] |
+| inception_full__b4_star_fixed10 | Young | roc_auc_ovr | 5 | 54.8 ± 6.8 | [46.4, 63.2] |
+| inception_full__b4_star_fixed10 | Young | pr_auc_ovr | 5 | 46.8 ± 11.2 | [32.9, 60.7] |
+| inception_full__b5_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 65.6 ± 5.1 | [59.3, 71.8] |
+| inception_full__b5_star_fixed10 | Pre-Frail | f1 | 5 | 52.4 ± 6.6 | [44.2, 60.6] |
+| inception_full__b5_star_fixed10 | Pre-Frail | recall | 5 | 51.1 ± 6.1 | [43.6, 58.7] |
+| inception_full__b5_star_fixed10 | Pre-Frail | specificity | 5 | 80.0 ± 6.1 | [72.4, 87.6] |
+| inception_full__b5_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 73.1 ± 5.6 | [66.1, 80.1] |
+| inception_full__b5_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 62.3 ± 4.6 | [56.6, 68.0] |
+| inception_full__b5_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 51.4 ± 4.8 | [45.4, 57.4] |
+| inception_full__b5_star_fixed10 | Robust/Non-Frail | f1 | 5 | 42.2 ± 5.9 | [34.8, 49.6] |
+| inception_full__b5_star_fixed10 | Robust/Non-Frail | recall | 5 | 41.7 ± 8.3 | [31.3, 52.0] |
+| inception_full__b5_star_fixed10 | Robust/Non-Frail | specificity | 5 | 61.2 ± 9.8 | [49.0, 73.4] |
+| inception_full__b5_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 53.1 ± 3.9 | [48.3, 58.0] |
+| inception_full__b5_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 50.6 ± 8.1 | [40.5, 60.7] |
+| inception_full__b5_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 72.2 ± 5.8 | [65.1, 79.3] |
+| inception_full__b5_star_fixed10 | Young | f1 | 5 | 60.0 ± 8.7 | [49.1, 70.8] |
+| inception_full__b5_star_fixed10 | Young | recall | 5 | 62.5 ± 8.8 | [51.5, 73.5] |
+| inception_full__b5_star_fixed10 | Young | specificity | 5 | 81.9 ± 9.2 | [70.5, 93.3] |
+| inception_full__b5_star_fixed10 | Young | roc_auc_ovr | 5 | 82.4 ± 4.2 | [77.2, 87.6] |
+| inception_full__b5_star_fixed10 | Young | pr_auc_ovr | 5 | 71.0 ± 6.6 | [62.8, 79.3] |
+| inception_full__b6_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 66.8 ± 1.4 | [65.1, 68.5] |
+| inception_full__b6_star_fixed10 | Pre-Frail | f1 | 5 | 54.4 ± 1.6 | [52.4, 56.4] |
+| inception_full__b6_star_fixed10 | Pre-Frail | recall | 5 | 55.6 ± 0.0 | [55.6, 55.6] |
+| inception_full__b6_star_fixed10 | Pre-Frail | specificity | 5 | 78.0 ± 2.7 | [74.6, 81.4] |
+| inception_full__b6_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 78.1 ± 5.5 | [71.3, 84.9] |
+| inception_full__b6_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 67.2 ± 3.9 | [62.3, 72.0] |
+| inception_full__b6_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 56.8 ± 2.8 | [53.3, 60.2] |
+| inception_full__b6_star_fixed10 | Robust/Non-Frail | f1 | 5 | 49.2 ± 6.5 | [41.1, 57.2] |
+| inception_full__b6_star_fixed10 | Robust/Non-Frail | recall | 5 | 50.0 ± 10.2 | [37.3, 62.7] |
+| inception_full__b6_star_fixed10 | Robust/Non-Frail | specificity | 5 | 63.5 ± 4.9 | [57.4, 69.6] |
+| inception_full__b6_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 57.9 ± 2.9 | [54.3, 61.6] |
+| inception_full__b6_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 50.8 ± 5.6 | [43.9, 57.7] |
+| inception_full__b6_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 75.5 ± 5.7 | [68.4, 82.6] |
+| inception_full__b6_star_fixed10 | Young | f1 | 5 | 65.2 ± 8.6 | [54.5, 75.8] |
+| inception_full__b6_star_fixed10 | Young | recall | 5 | 62.5 ± 8.8 | [51.5, 73.5] |
+| inception_full__b6_star_fixed10 | Young | specificity | 5 | 88.6 ± 7.2 | [79.6, 97.5] |
+| inception_full__b6_star_fixed10 | Young | roc_auc_ovr | 5 | 81.4 ± 6.8 | [72.9, 89.9] |
+| inception_full__b6_star_fixed10 | Young | pr_auc_ovr | 5 | 72.7 ± 10.6 | [59.5, 85.8] |
+| inception_full__b7_star_fixed10 | Pre-Frail | balanced_accuracy_ovr | 5 | 67.4 ± 2.5 | [64.3, 70.5] |
+| inception_full__b7_star_fixed10 | Pre-Frail | f1 | 5 | 55.1 ± 3.9 | [50.2, 59.9] |
+| inception_full__b7_star_fixed10 | Pre-Frail | recall | 5 | 57.8 ± 9.3 | [46.2, 69.3] |
+| inception_full__b7_star_fixed10 | Pre-Frail | specificity | 5 | 77.0 ± 5.7 | [69.9, 84.1] |
+| inception_full__b7_star_fixed10 | Pre-Frail | roc_auc_ovr | 5 | 75.9 ± 5.0 | [69.7, 82.1] |
+| inception_full__b7_star_fixed10 | Pre-Frail | pr_auc_ovr | 5 | 62.1 ± 5.5 | [55.3, 69.0] |
+| inception_full__b7_star_fixed10 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 56.2 ± 5.9 | [48.9, 63.5] |
+| inception_full__b7_star_fixed10 | Robust/Non-Frail | f1 | 5 | 48.9 ± 7.8 | [39.2, 58.6] |
+| inception_full__b7_star_fixed10 | Robust/Non-Frail | recall | 5 | 50.0 ± 10.2 | [37.3, 62.7] |
+| inception_full__b7_star_fixed10 | Robust/Non-Frail | specificity | 5 | 62.4 ± 3.2 | [58.4, 66.4] |
+| inception_full__b7_star_fixed10 | Robust/Non-Frail | roc_auc_ovr | 5 | 59.6 ± 2.0 | [57.2, 62.1] |
+| inception_full__b7_star_fixed10 | Robust/Non-Frail | pr_auc_ovr | 5 | 53.8 ± 4.4 | [48.4, 59.3] |
+| inception_full__b7_star_fixed10 | Young | balanced_accuracy_ovr | 5 | 77.0 ± 2.0 | [74.5, 79.4] |
+| inception_full__b7_star_fixed10 | Young | f1 | 5 | 67.7 ± 3.8 | [63.1, 72.4] |
+| inception_full__b7_star_fixed10 | Young | recall | 5 | 62.5 ± 0.0 | [62.5, 62.5] |
+| inception_full__b7_star_fixed10 | Young | specificity | 5 | 91.4 ± 4.0 | [86.5, 96.4] |
+| inception_full__b7_star_fixed10 | Young | roc_auc_ovr | 5 | 83.0 ± 5.7 | [75.9, 90.1] |
+| inception_full__b7_star_fixed10 | Young | pr_auc_ovr | 5 | 77.7 ± 5.1 | [71.4, 84.1] |
 
 </details>
+
+## Paired participant-cluster inference
+
+Each candidate is compared with the declared reference on the exact participant/repeat/fold/split roster. P values are two-sided participant-cluster permutation results; Holm adjustment is applied separately within BA and Macro-F1. These comparisons do not select a winner and do not turn this representation screen into a causal ablation.
+
+N/A — no rows were available.
 
 ## Stage 3 InceptionTime B0–B7 comparison
 
@@ -1771,1048 +1821,1288 @@ All three rows reuse the same fitted held-out OOF probabilities; they are not th
 
 <details><summary>Hierarchy coverage: B/R1–R4 window/file views and B/R role-balanced view</summary>
 
-| Case | Repeat | Level | View | Group | OOF units | Retained units | Participants |
-|---|---|---|---|---|---|---|---|
-| compact_cnn__b0_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b0_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b0_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b0_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b0_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b0_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b0_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b0_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b0_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b0_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b0_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b0_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b0_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b0_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b0_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b0_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b0_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b0_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b0_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b0_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b0_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b0_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b0_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b0_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b0_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b0_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b1_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b1_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b1_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b1_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b1_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b1_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b1_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b1_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b1_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b1_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b1_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b1_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b1_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b1_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b1_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b1_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b1_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b1_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b1_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b1_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b1_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b1_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b1_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b1_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b1_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b1_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b2_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 0 | window | window_balanced_to_participant | B | 3155 | 3155 | 29 |
-| compact_cnn__b2_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 29 |
-| compact_cnn__b2_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 29 |
-| compact_cnn__b2_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 29 |
-| compact_cnn__b2_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 29 |
-| compact_cnn__b2_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 1 | window | window_balanced_to_participant | B | 3155 | 3155 | 29 |
-| compact_cnn__b2_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 29 |
-| compact_cnn__b2_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 29 |
-| compact_cnn__b2_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 29 |
-| compact_cnn__b2_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 29 |
-| compact_cnn__b2_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 2 | window | window_balanced_to_participant | B | 3155 | 3155 | 29 |
-| compact_cnn__b2_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 29 |
-| compact_cnn__b2_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 29 |
-| compact_cnn__b2_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 29 |
-| compact_cnn__b2_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 29 |
-| compact_cnn__b2_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 3 | window | window_balanced_to_participant | B | 3155 | 3155 | 29 |
-| compact_cnn__b2_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 29 |
-| compact_cnn__b2_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 29 |
-| compact_cnn__b2_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 29 |
-| compact_cnn__b2_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 29 |
-| compact_cnn__b2_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b2_star_fixed10 | 4 | window | window_balanced_to_participant | B | 3155 | 3155 | 29 |
-| compact_cnn__b2_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 29 |
-| compact_cnn__b2_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 29 |
-| compact_cnn__b2_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 29 |
-| compact_cnn__b2_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 29 |
-| compact_cnn__b3_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b3_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b3_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b3_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b3_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b3_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b3_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b3_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b3_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b3_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b3_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b3_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b3_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b3_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b3_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b3_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b3_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b3_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b3_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b3_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b3_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b3_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b3_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b3_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b3_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b3_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b4_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b4_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b4_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b4_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b4_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b4_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b4_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b4_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b4_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b4_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b4_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b4_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b4_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b4_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b4_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b4_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b4_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b4_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b4_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b4_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b4_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b4_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b4_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b4_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b4_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b4_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b5_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b5_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b5_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b5_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b5_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b5_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b5_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b5_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b5_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b5_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b5_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b5_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b5_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b5_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b5_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b5_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b5_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b5_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b5_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b5_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b5_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b5_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b5_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b5_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b5_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b5_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b6_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b6_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b6_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b6_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b6_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b6_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b6_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b6_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b6_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b6_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b6_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b6_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b6_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b6_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b6_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b6_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b6_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b6_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b6_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b6_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b6_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b6_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b6_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b6_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b6_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b6_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b7_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b7_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b7_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b7_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b7_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b7_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b7_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b7_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b7_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b7_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b7_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b7_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b7_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b7_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b7_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b7_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b7_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b7_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b7_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b7_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| compact_cnn__b7_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| compact_cnn__b7_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| compact_cnn__b7_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| compact_cnn__b7_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| compact_cnn__b7_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| compact_cnn__b7_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b0_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b0_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b0_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b0_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b0_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b0_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b0_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b0_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b0_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b0_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b0_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b0_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b0_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b0_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b0_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b0_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b0_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b0_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b0_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b0_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b0_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b0_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b0_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b0_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b0_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b0_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b1_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b1_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b1_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b1_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b1_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b1_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b1_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b1_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b1_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b1_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b1_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b1_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b1_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b1_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b1_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b1_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b1_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b1_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b1_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b1_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b1_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b1_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b1_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b1_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b1_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b1_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b2_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 0 | window | window_balanced_to_participant | B | 3155 | 3155 | 29 |
-| inception_full__b2_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 29 |
-| inception_full__b2_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 29 |
-| inception_full__b2_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 29 |
-| inception_full__b2_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 29 |
-| inception_full__b2_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 1 | window | window_balanced_to_participant | B | 3155 | 3155 | 29 |
-| inception_full__b2_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 29 |
-| inception_full__b2_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 29 |
-| inception_full__b2_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 29 |
-| inception_full__b2_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 29 |
-| inception_full__b2_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 2 | window | window_balanced_to_participant | B | 3155 | 3155 | 29 |
-| inception_full__b2_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 29 |
-| inception_full__b2_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 29 |
-| inception_full__b2_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 29 |
-| inception_full__b2_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 29 |
-| inception_full__b2_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 3 | window | window_balanced_to_participant | B | 3155 | 3155 | 29 |
-| inception_full__b2_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 29 |
-| inception_full__b2_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 29 |
-| inception_full__b2_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 29 |
-| inception_full__b2_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 29 |
-| inception_full__b2_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b2_star_fixed10 | 4 | window | window_balanced_to_participant | B | 3155 | 3155 | 29 |
-| inception_full__b2_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 29 |
-| inception_full__b2_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 29 |
-| inception_full__b2_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 29 |
-| inception_full__b2_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 29 |
-| inception_full__b3_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b3_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b3_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b3_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b3_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b3_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b3_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b3_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b3_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b3_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b3_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b3_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b3_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b3_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b3_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b3_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b3_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b3_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b3_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b3_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b3_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b3_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b3_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b3_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b3_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b3_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b4_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b4_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b4_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b4_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b4_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b4_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b4_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b4_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b4_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b4_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b4_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b4_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b4_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b4_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b4_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b4_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b4_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b4_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b4_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b4_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b4_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b4_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b4_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b4_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b4_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b4_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b5_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b5_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b5_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b5_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b5_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b5_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b5_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b5_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b5_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b5_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b5_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b5_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b5_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b5_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b5_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b5_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b5_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b5_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b5_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b5_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b5_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b5_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b5_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b5_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b5_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b5_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b6_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b6_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b6_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b6_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b6_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b6_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b6_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b6_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b6_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b6_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b6_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b6_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b6_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b6_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b6_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b6_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b6_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b6_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b6_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b6_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b6_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b6_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b6_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b6_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b6_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b6_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b7_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b7_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b7_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b7_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b7_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b7_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b7_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b7_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b7_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b7_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b7_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b7_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b7_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b7_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b7_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b7_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b7_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b7_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b7_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b7_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
-| inception_full__b7_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| inception_full__b7_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 29 |
-| inception_full__b7_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 29 |
-| inception_full__b7_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 29 |
-| inception_full__b7_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 29 |
-| inception_full__b7_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 29 |
+| Case | Repeat | Level | View | Group | OOF units | Retained units | Dropped units | Retained coverage | All participants | Retained participants | Dropped participants |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| compact_cnn__b0_star_fixed10 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 0 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 1 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 2 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 3 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 4 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b0_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 0 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 1 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 2 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 3 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 4 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b1_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 0 | window | window_balanced_to_participant | ALL | 15657 | 15657 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 0 | window | window_balanced_to_participant | B | 3155 | 3155 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 1 | window | window_balanced_to_participant | ALL | 15657 | 15657 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 1 | window | window_balanced_to_participant | B | 3155 | 3155 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 2 | window | window_balanced_to_participant | ALL | 15657 | 15657 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 2 | window | window_balanced_to_participant | B | 3155 | 3155 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 3 | window | window_balanced_to_participant | ALL | 15657 | 15657 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 3 | window | window_balanced_to_participant | B | 3155 | 3155 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 4 | window | window_balanced_to_participant | ALL | 15657 | 15657 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 4 | window | window_balanced_to_participant | B | 3155 | 3155 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b2_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 0 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 1 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 2 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 3 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 4 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b3_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 0 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 1 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 2 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 3 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 4 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b4_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 0 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 1 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 2 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 3 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 4 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b5_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 0 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 1 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 2 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 3 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 4 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b6_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 0 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 1 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 2 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 3 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 4 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| compact_cnn__b7_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 0 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 1 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 2 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 3 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 4 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b0_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 0 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 1 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 2 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 3 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 4 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b1_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 0 | window | window_balanced_to_participant | ALL | 15657 | 15657 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 0 | window | window_balanced_to_participant | B | 3155 | 3155 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 1 | window | window_balanced_to_participant | ALL | 15657 | 15657 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 1 | window | window_balanced_to_participant | B | 3155 | 3155 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 2 | window | window_balanced_to_participant | ALL | 15657 | 15657 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 2 | window | window_balanced_to_participant | B | 3155 | 3155 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 3 | window | window_balanced_to_participant | ALL | 15657 | 15657 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 3 | window | window_balanced_to_participant | B | 3155 | 3155 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 4 | window | window_balanced_to_participant | ALL | 15657 | 15657 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 4 | window | window_balanced_to_participant | B | 3155 | 3155 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 3110 | 3110 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 3115 | 3115 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 3133 | 3133 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b2_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 3144 | 3144 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 0 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 1 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 2 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 3 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 4 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b3_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 0 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 1 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 2 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 3 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 4 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b4_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 0 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 1 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 2 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 3 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 4 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b5_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 0 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 1 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 2 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 3 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 4 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b6_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 0 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 0 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 0 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 0 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 0 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 0 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 1 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 1 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 1 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 1 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 1 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 1 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 2 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 2 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 2 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 2 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 2 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 2 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 3 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 3 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 3 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 3 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 3 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 3 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 4 | window | window_balanced_to_participant | ALL | 12706 | 12706 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 4 | window | window_balanced_to_participant | B | 2560 | 2560 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 4 | window | window_balanced_to_participant | R1 | 2525 | 2525 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 4 | window | window_balanced_to_participant | R2 | 2528 | 2528 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 4 | window | window_balanced_to_participant | R3 | 2544 | 2544 | 0 | 1.0000 | 29 | 29 | 0 |
+| inception_full__b7_star_fixed10 | 4 | window | window_balanced_to_participant | R4 | 2549 | 2549 | 0 | 1.0000 | 29 | 29 | 0 |
 
 </details>
 
@@ -2862,88 +3152,88 @@ N/A — no rows were available.
 
 This table separates direct and processed rate paths, retained coverage, unavailable predictors, and reducer failures for each role/route state.
 
-| Case | Role | Quality tier | Motion | Route state | Signal route | Retained coverage | Abstention | Abstention reasons | Direct | Processed | Unavailable predictors | Denoiser attempts | Denoiser successes | Reducer failures |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| compact_cnn__b0_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b0_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b0_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b0_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b0_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b1_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b1_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b1_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b1_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b1_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b2_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b2_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b2_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b2_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b2_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b3_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b3_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b3_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b3_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b3_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b4_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b4_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b4_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b4_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b4_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b5_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b5_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b5_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b5_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b5_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b6_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b6_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b6_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b6_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b6_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b7_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b7_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b7_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b7_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| compact_cnn__b7_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b0_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b0_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b0_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b0_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b0_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b1_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b1_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b1_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b1_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b1_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b2_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b2_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b2_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b2_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b2_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b3_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b3_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b3_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b3_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b3_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b4_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b4_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b4_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b4_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b4_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b5_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b5_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b5_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b5_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b5_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b6_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b6_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b6_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b6_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b6_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b7_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b7_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b7_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b7_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| inception_full__b7_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
+| Case | Role | Quality tier | Motion | Route state | Signal route | Files | Retained files | Dropped files | Retained coverage | Abstention | Abstention reasons | Direct | Processed | Unavailable predictors | Denoiser attempts | Denoiser successes | Reducer failures | Reducer failure rate | Post Q_rate pass rate | Recovery eligible | Q_rate recovered | Q_rate recovery rate |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| compact_cnn__b0_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b0_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b0_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b0_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b0_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b1_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b1_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b1_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b1_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b1_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b2_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b2_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b2_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b2_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b2_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b3_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b3_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b3_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b3_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b3_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b4_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b4_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b4_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b4_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b4_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b5_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b5_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b5_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b5_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b5_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b6_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b6_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b6_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b6_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b6_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b7_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b7_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b7_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b7_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| compact_cnn__b7_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b0_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b0_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b0_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b0_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b0_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b1_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b1_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b1_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b1_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b1_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b2_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b2_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b2_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b2_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b2_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b3_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b3_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b3_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b3_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b3_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b4_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b4_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b4_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b4_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b4_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b5_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b5_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b5_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b5_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b5_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b6_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b6_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b6_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b6_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b6_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b7_star_fixed10 | B | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b7_star_fixed10 | R1 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b7_star_fixed10 | R2 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b7_star_fixed10 | R3 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| inception_full__b7_star_fixed10 | R4 | not_reported | not_reported | direct_fresh_raw_csv | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
 
 ## SQI state, score, and coverage provenance by each route
 
@@ -3032,9 +3322,9 @@ Direct and post-denoiser coverage are reported separately so the configured mini
 | inception_full__b7_star_fixed10 | R3 | not_reported | not_reported | N/A | N/A | not_reported | N/A | N/A | not_reported | N/A | N/A |
 | inception_full__b7_star_fixed10 | R4 | not_reported | not_reported | N/A | N/A | not_reported | N/A | N/A | not_reported | N/A | N/A |
 
-## Denoiser paired heart-rate comparison
+## Denoiser paired HR/PPI endpoint audit
 
-HR is calculated as `60 / median(valid PPI seconds)` from the same registered peak detector before and after the single denoiser attempt. Rows are paired within recording and averaged within participant before the participant-macro summary. Use the `outer_oof` rows for the primary held-out comparison; outer-train rows remain audit-only.
+HR is calculated as `60 / median(valid PPI seconds)` from the same registered peak detector before and after the single denoiser attempt. Rows are paired within recording and averaged within participant before the participant-macro summary. Use the `outer_oof` rows for the primary held-out comparison; outer-train rows remain audit-only. HR/PPI endpoint error here is absolute post-denoise minus same-record direct-PPG change; Frailty29 has no ECG reference, so it is not physiological accuracy.
 
 N/A — no rows were available.
 

@@ -1,164 +1,218 @@
 [
   {
-    "algorithm_kernel_description": "",
+    "algorithm_kernel_description": "executable line_b_equal_role_families hierarchy ending in participant-balanced output",
+    "algorithm_references": "Project registry implementation: ppg_frailty.training.aggregation.aggregate_hierarchy; no separate external literature source claimed",
     "component_role": "aggregation",
     "execution_state": "enabled",
     "fixed_parameters": "{\"balance_line\":\"line_b_equal_role_families\",\"direct_all_window_participant_mean\":false,\"file_to_role\":\"ordinary_mean\",\"hierarchy\":[\"window\",\"file\",\"role\",\"participant\"],\"missing_role_policy\":\"mean_available_roles\",\"quality_weight_levels\":[],\"quality_weight_source\":\"none\",\"quality_weighting\":false,\"role_to_participant\":\"ordinary_mean\",\"window_to_file\":\"ordinary_mean\"}",
     "input_data": "{\"input_data\":\"held-out window/file probabilities\",\"roles\":[\"B\",\"R1\",\"R2\",\"R3\",\"R4\"]}",
+    "model_reporter_extension_id": "audit_provenance_v1",
     "module_id": "line_b_equal_role_families",
-    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4"
+    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4",
+    "reporter_profile_id": "audit_provenance_v1"
   },
   {
-    "algorithm_kernel_description": "",
+    "algorithm_kernel_description": "Six-block, single-network InceptionTime adaptation with bottleneck and parallel fixed-sample kernels; not the paper's five-member ensemble.",
+    "algorithm_references": "Fawaz et al. (2020), InceptionTime, DOI:10.1007/s10618-020-00710-y",
     "component_role": "classifier",
     "execution_state": "enabled",
     "fixed_parameters": "{\"architecture_parameters\":{\"bottleneck_channels\":32,\"branch_count\":4,\"classifier_dropout\":0.2,\"depth\":6,\"dilation\":1,\"global_pooling\":\"mask_aware_global_average\",\"kernel_sizes\":[39,19,9],\"model_id\":\"inception_full\",\"n_classes\":3,\"out_channels\":32,\"pool_size\":3,\"representation_mode\":\"raw\",\"residual_interval\":3,\"variant\":\"full\"},\"dilation\":1,\"dropout\":0.2,\"ensemble_size\":1,\"input_channel_order\":[\"RED\",\"IR\",\"A_dyn_x\",\"A_dyn_y\",\"A_dyn_z\",\"GX\",\"GY\",\"GZ\"],\"input_channels\":8,\"input_channels_resolution\":\"canonical_frailty_raw_8\",\"kernel_sizes\":[39,19,9],\"mask_aware_pooling\":true,\"model_id\":\"InceptionTimeFull\",\"n_classes\":3,\"seed_policy\":\"outer_cv_repeat_seed_equals_split_seed\",\"variant\":\"single_network\"}",
     "input_data": "{\"channels\":[\"RED\",\"IR\",\"A_dyn_x\",\"A_dyn_y\",\"A_dyn_z\",\"GX\",\"GY\",\"GZ\"],\"dataset_id\":\"frailty3_m2_20260815_a054800abda272f6\",\"manifest_path\":\"manifests/internal_records_v2.csv\",\"participants\":29,\"pipeline_fs_hz\":400.0,\"records\":261,\"representation_mode\":\"raw\",\"roles\":[\"B\",\"R1\",\"R2\",\"R3\",\"R4\"],\"signal_view\":\"x_dl_all8_window_norm\",\"source_channels\":[\"RED\",\"IR\",\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"source_units\":{\"ACC\":\"g\",\"GYRO\":\"deg/s\",\"PPG\":\"raw_counts\"},\"window\":{\"cap_fraction_per_file\":null,\"cap_per_file\":128,\"end_alignment\":\"include_right_aligned_if_distinct\",\"hop_s\":2.5,\"length_s\":5.0,\"min_valid_fraction\":1.0,\"padding\":\"none_complete_windows_only\"}}",
+    "model_reporter_extension_id": "inceptiontime_single_network_model_v1",
     "module_id": "InceptionTimeFull",
-    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4"
+    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4",
+    "reporter_profile_id": "multiclass_participant_oof_v1"
   },
   {
-    "algorithm_kernel_description": "",
+    "algorithm_kernel_description": "Persisted dataset_adapter contract; detailed values remain in the component input and fixed-parameter fields.",
+    "algorithm_references": "Project component-role audit binding: dataset_adapter; no separate external literature source claimed",
     "component_role": "dataset_adapter",
     "execution_state": "enabled",
     "fixed_parameters": "{\"allow_qc_excluded_records\":false,\"channel_order\":[\"RED\",\"IR\",\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"class_id_order\":[0,1,2],\"class_name_order\":[\"Pre-Frail\",\"Robust/Non-Frail\",\"Young\"],\"expected_participant_count\":29,\"expected_record_count\":261,\"manifest_version\":\"internal_records_v2\",\"path\":\"manifests/internal_records_v2.csv\",\"source_dataset_id\":\"frailty3_m2_20260815_a054800abda272f6\"}",
     "input_data": "{\"dataset_id\":\"frailty3_m2_20260815_a054800abda272f6\",\"manifest_path\":\"manifests/internal_records_v2.csv\",\"participants\":29,\"pipeline_fs_hz\":400.0,\"records\":261,\"roles\":[\"B\",\"R1\",\"R2\",\"R3\",\"R4\"],\"source_channels\":[\"RED\",\"IR\",\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"source_units\":{\"ACC\":\"g\",\"GYRO\":\"deg/s\",\"PPG\":\"raw_counts\"}}",
+    "model_reporter_extension_id": "audit_provenance_v1",
     "module_id": "frailty3_m2_20260815_a054800abda272f6",
-    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4"
+    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4",
+    "reporter_profile_id": "audit_provenance_v1"
   },
   {
     "algorithm_kernel_description": "逐样本复制双波长 PPG，不估计或抑制伪影；内核：恒等映射与同时间网格校验，作为未去噪直接对照。",
+    "algorithm_references": "N/A — component was not executed",
     "component_role": "denoiser",
     "execution_state": "identity_or_disabled_control",
     "fixed_parameters": "{\"declared_reducer_version\":\"identity_v1\",\"degraded_policy\":\"drop\",\"denoiser_enabled\":false,\"failure_action\":\"no_result_no_fallback\",\"reducer\":\"identity\",\"resolved_parameters\":{},\"runtime_reducer_version\":\"identity_exact_v1\"}",
     "input_data": "{\"dataset_id\":\"frailty3_m2_20260815_a054800abda272f6\",\"input_views\":[\"filtered RED/IR\",\"processed_imu_physical\"],\"manifest_path\":\"manifests/internal_records_v2.csv\",\"participants\":29,\"pipeline_fs_hz\":400.0,\"records\":261,\"roles\":[\"B\",\"R1\",\"R2\",\"R3\",\"R4\"],\"source_channels\":[\"RED\",\"IR\",\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"source_units\":{\"ACC\":\"g\",\"GYRO\":\"deg/s\",\"PPG\":\"raw_counts\"}}",
+    "model_reporter_extension_id": "not_applicable",
     "module_id": "identity",
-    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4"
+    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4",
+    "reporter_profile_id": "audit_provenance_v1"
   },
   {
-    "algorithm_kernel_description": "",
+    "algorithm_kernel_description": "Persisted evaluation contract; detailed values remain in the component input and fixed-parameter fields.",
+    "algorithm_references": "Project component-role audit binding: evaluation; no separate external literature source claimed",
     "component_role": "evaluation",
     "execution_state": "enabled",
     "fixed_parameters": "{\"calibration_metrics\":[\"multiclass_brier\",\"expected_calibration_error\"],\"confidence_interval\":\"participant_cluster_bootstrap_two_sided_95\",\"independent_test_available\":false,\"metric_prefix\":\"oof_validation_\",\"metrics\":[\"balanced_accuracy\",\"macro_f1\",\"per_class_precision_recall_f1\",\"worst_class_recall\",\"worst_class_f1\",\"confusion_matrix\",\"coverage\"],\"paired_delta_key\":[\"repeat_index\",\"fold_index\",\"participant_id\"],\"primary_metric\":\"balanced_accuracy\",\"rank_incomplete_configs\":false,\"ranking\":{\"automatic_final_selection\":false,\"manual_multiple_final_versions_allowed\":true,\"max_qualified_per_comparison_group\":10,\"preserve_ablation_provenance\":true,\"sort_key\":\"participant_level_mean_balanced_accuracy\"},\"statistics\":{\"affects_automatic_selection\":false,\"bootstrap_replicates\":10000,\"cluster_unit\":\"participant_with_all_five_repeat_oof_predictions\",\"confidence_interval\":\"two_sided_95_percentile\",\"lcb95_metrics\":[\"participant_level_mean_balanced_accuracy\",\"participant_level_mean_macro_f1\"],\"lcb95_percentile\":2.5,\"multiplicity_correction\":\"holm_within_comparison_family\",\"paired_exchange_unit\":\"participant\",\"paired_permutation_replicates\":100000,\"seed\":42},\"unit\":\"participant\"}",
     "input_data": "{\"class_order\":[\"Pre-Frail\",\"Robust/Non-Frail\",\"Young\"],\"input_data\":\"held-out participant predictions and frailty labels\"}",
+    "model_reporter_extension_id": "audit_provenance_v1",
     "module_id": "balanced_accuracy",
-    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4"
+    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4",
+    "reporter_profile_id": "audit_provenance_v1"
   },
   {
-    "algorithm_kernel_description": "",
+    "algorithm_kernel_description": "Persisted feature_extractor contract; detailed values remain in the component input and fixed-parameter fields.",
+    "algorithm_references": "Project component-role audit binding: feature_extractor; no separate external literature source claimed",
     "component_role": "feature_extractor",
     "execution_state": "auxiliary_not_classifier_input",
     "fixed_parameters": "{\"enabled_groups\":[\"ppi_basic_rate\",\"hrv_time_domain\",\"hrv_spectral\",\"hrv_nonlinear\",\"morphology\",\"dual_optical\",\"engineering_summary\"],\"engineering_sequence_schema\":\"engineering_10s_hop2s_thesis_115_v3\",\"file_aggregation\":[\"mean\",\"population_sd\"],\"file_vector_schema\":\"feature_vector_282_v3\",\"matrix_k\":150,\"matrix_schema\":\"ordered_feature_matrix_d115_by_150_engineering_v4\",\"missing_physiology_encoding\":\"nan_and_validity_false\",\"prv_library_comparison_scope\":\"fixed_ppi_vectors_only_no_classifier\",\"prv_primary_backend\":\"local_manual\",\"rate_prv_min_duration_s\":8.0,\"rate_prv_min_peaks\":5,\"registry_id\":\"feature_vector_282_v3\",\"sample_entropy\":{\"m\":2,\"min_intervals\":200,\"r_sd_fraction\":0.2},\"spectral_bands_hz\":{\"hf\":[0.15,0.4],\"lf\":[0.04,0.15],\"vlf\":[0.003,0.04]},\"spectral_prv_min_coverage\":0.8,\"spectral_prv_min_duration_s\":300.0,\"spectral_prv_min_intervals\":200,\"tachogram_fs_hz\":4.0,\"technical_metadata_allowed\":false,\"time_prv_min_coverage\":0.8,\"time_prv_min_duration_s\":60.0,\"time_prv_min_intervals\":30}",
     "input_data": "{\"dataset_id\":\"frailty3_m2_20260815_a054800abda272f6\",\"engineering_window\":{\"cap_fraction_per_file\":null,\"cap_per_file\":null,\"end_alignment\":\"left_start_regular_grid\",\"hop_s\":2.0,\"length_s\":10.0,\"min_valid_fraction\":1.0,\"padding\":\"none_complete_windows_only\"},\"input_views\":[\"x_analysis/x_native\",\"processed_imu_physical\"],\"manifest_path\":\"manifests/internal_records_v2.csv\",\"participants\":29,\"pipeline_fs_hz\":400.0,\"records\":261,\"roles\":[\"B\",\"R1\",\"R2\",\"R3\",\"R4\"],\"source_channels\":[\"RED\",\"IR\",\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"source_units\":{\"ACC\":\"g\",\"GYRO\":\"deg/s\",\"PPG\":\"raw_counts\"}}",
+    "model_reporter_extension_id": "audit_provenance_v1",
     "module_id": "feature_vector_282_v3",
-    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4"
+    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4",
+    "reporter_profile_id": "audit_provenance_v1"
   },
   {
-    "algorithm_kernel_description": "",
+    "algorithm_kernel_description": "executable gravity-separation profile with profile-specific numerical parameters and no silent fallback",
+    "algorithm_references": "Project registry implementation: ppg_frailty.signal.preprocess.materialize_signal_preprocessing_config; no separate external literature source claimed",
     "component_role": "imu_preprocessing",
     "execution_state": "enabled",
     "fixed_parameters": "{\"calibration_start_s\":5.0,\"calibration_stop_s\":100.0,\"comparison_method\":\"calibrated_roll_pitch_ekf\",\"failure_action\":\"fail_closed\",\"gravity_filter_order\":4,\"gravity_lowpass_hz\":0.3,\"gravity_method\":\"profile_a_lowpass_0p3hz\",\"gravity_mps2\":9.81,\"initialization\":\"same_participant_static_calibration\",\"output_units\":{\"acceleration\":\"m/s^2\",\"gyroscope\":\"rad/s\",\"jerk\":\"m/s^3\"},\"required_axes\":6,\"sensor_filter_order\":3,\"sensor_lowpass_acc_hz\":20.0,\"sensor_lowpass_gyro_hz\":40.0}",
     "input_data": "{\"dataset_id\":\"frailty3_m2_20260815_a054800abda272f6\",\"input_channels\":[\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"manifest_path\":\"manifests/internal_records_v2.csv\",\"output_view\":\"processed_imu_physical\",\"participants\":29,\"pipeline_fs_hz\":400.0,\"records\":261,\"roles\":[\"B\",\"R1\",\"R2\",\"R3\",\"R4\"],\"source_channels\":[\"RED\",\"IR\",\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"source_units\":{\"ACC\":\"g\",\"GYRO\":\"deg/s\",\"PPG\":\"raw_counts\"}}",
+    "model_reporter_extension_id": "audit_provenance_v1",
     "module_id": "profile_a_lowpass_0p3hz",
-    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4"
+    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4",
+    "reporter_profile_id": "audit_provenance_v1"
   },
   {
     "algorithm_kernel_description": "",
+    "algorithm_references": "N/A — component was not executed",
     "component_role": "motion_detector",
     "execution_state": "disabled_control",
     "fixed_parameters": "{\"batch_size\":64,\"device\":\"cuda\",\"enabled\":false,\"evidence_path\":null,\"threshold_source\":\"bundle_frozen\",\"window_probability_aggregation\":\"median\"}",
     "input_data": "{\"dataset_id\":\"frailty3_m2_20260815_a054800abda272f6\",\"input_view\":\"RED/IR + processed physical A_dyn/GX/GY/GZ\",\"manifest_path\":\"manifests/internal_records_v2.csv\",\"participants\":29,\"pipeline_fs_hz\":400.0,\"records\":261,\"roles\":[\"B\",\"R1\",\"R2\",\"R3\",\"R4\"],\"source_channels\":[\"RED\",\"IR\",\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"source_units\":{\"ACC\":\"g\",\"GYRO\":\"deg/s\",\"PPG\":\"raw_counts\"}}",
+    "model_reporter_extension_id": "not_applicable",
     "module_id": "formal_local_supervised_motion_detector_v2",
-    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4"
+    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4",
+    "reporter_profile_id": "audit_provenance_v1"
   },
   {
-    "algorithm_kernel_description": "",
+    "algorithm_kernel_description": "Historical shared-preprocessing Aboy-family project detector.",
+    "algorithm_references": "Historical project adaptation; algorithm family: Aboy et al. (2005), DOI:10.1109/TBME.2005.855725",
     "component_role": "peak_detector",
     "execution_state": "enabled",
     "fixed_parameters": "{\"detector_id\":\"aboy_project_v1\",\"failure_action\":\"fail_closed_no_fallback\",\"min_observation_sec\":8.0,\"min_peaks\":5}",
     "input_data": "{\"channels\":[\"RED\",\"IR\"],\"dataset_id\":\"frailty3_m2_20260815_a054800abda272f6\",\"input_view\":\"x_analysis/x_native\",\"manifest_path\":\"manifests/internal_records_v2.csv\",\"participants\":29,\"pipeline_fs_hz\":400.0,\"records\":261,\"roles\":[\"B\",\"R1\",\"R2\",\"R3\",\"R4\"],\"source_channels\":[\"RED\",\"IR\",\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"source_units\":{\"ACC\":\"g\",\"GYRO\":\"deg/s\",\"PPG\":\"raw_counts\"}}",
+    "model_reporter_extension_id": "audit_provenance_v1",
     "module_id": "aboy_project_v1",
-    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4"
+    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4",
+    "reporter_profile_id": "audit_provenance_v1"
   },
   {
-    "algorithm_kernel_description": "",
+    "algorithm_kernel_description": "executable PPG filter family; order, passband, phase, notch and short-signal policy are validated config parameters rather than separate profile IDs",
+    "algorithm_references": "Project registry implementation: ppg_frailty.signal.preprocess.materialize_signal_preprocessing_config; no separate external literature source claimed",
     "component_role": "ppg_preprocessing",
     "execution_state": "enabled",
     "fixed_parameters": "{\"analysis_view\":{\"additional_filter\":\"none\",\"direct_source\":\"x_filter_0p2_to_8hz\",\"non_identity_semantics\":\"rate_only\",\"non_identity_source\":\"aligned_x_ar\"},\"gap_repair\":{\"all_missing_channel_action\":\"reject_record\",\"edge_extrapolation\":false,\"max_gap_samples\":100,\"method\":\"linear_inside_only\"},\"ppg_filter\":{\"family\":\"butterworth_sos\",\"high_hz\":8.0,\"low_hz\":0.2,\"notch_enabled\":false,\"order\":3,\"phase\":\"zero_phase\",\"short_signal_policy\":\"reject\"}}",
     "input_data": "{\"dataset_id\":\"frailty3_m2_20260815_a054800abda272f6\",\"input_channels\":[\"RED\",\"IR\"],\"input_view\":\"repaired native PPG\",\"manifest_path\":\"manifests/internal_records_v2.csv\",\"participants\":29,\"pipeline_fs_hz\":400.0,\"records\":261,\"roles\":[\"B\",\"R1\",\"R2\",\"R3\",\"R4\"],\"source_channels\":[\"RED\",\"IR\",\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"source_units\":{\"ACC\":\"g\",\"GYRO\":\"deg/s\",\"PPG\":\"raw_counts\"}}",
+    "model_reporter_extension_id": "audit_provenance_v1",
     "module_id": "butterworth_sos",
-    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4"
+    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4",
+    "reporter_profile_id": "audit_provenance_v1"
   },
   {
-    "algorithm_kernel_description": "",
+    "algorithm_kernel_description": "Line A window->file->participant; Line B window->file->role_family->participant",
+    "algorithm_references": "Project registry implementation: ppg_frailty.representations.raw; no separate external literature source claimed",
     "component_role": "representation",
     "execution_state": "enabled",
     "fixed_parameters": "{\"input_contract\":{\"channels\":[\"RED\",\"IR\",\"A_dyn_x\",\"A_dyn_y\",\"A_dyn_z\",\"GX\",\"GY\",\"GZ\"],\"representation_mode\":\"raw\",\"signal_view\":\"x_dl_all8_window_norm\",\"window\":{\"cap_fraction_per_file\":null,\"cap_per_file\":128,\"end_alignment\":\"include_right_aligned_if_distinct\",\"hop_s\":2.5,\"length_s\":5.0,\"min_valid_fraction\":1.0,\"padding\":\"none_complete_windows_only\"}},\"representation_mode\":\"raw\"}",
     "input_data": "{\"channels\":[\"RED\",\"IR\",\"A_dyn_x\",\"A_dyn_y\",\"A_dyn_z\",\"GX\",\"GY\",\"GZ\"],\"dataset_id\":\"frailty3_m2_20260815_a054800abda272f6\",\"manifest_path\":\"manifests/internal_records_v2.csv\",\"participants\":29,\"pipeline_fs_hz\":400.0,\"records\":261,\"representation_mode\":\"raw\",\"roles\":[\"B\",\"R1\",\"R2\",\"R3\",\"R4\"],\"signal_view\":\"x_dl_all8_window_norm\",\"source_channels\":[\"RED\",\"IR\",\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"source_units\":{\"ACC\":\"g\",\"GYRO\":\"deg/s\",\"PPG\":\"raw_counts\"},\"window\":{\"cap_fraction_per_file\":null,\"cap_per_file\":128,\"end_alignment\":\"include_right_aligned_if_distinct\",\"hop_s\":2.5,\"length_s\":5.0,\"min_valid_fraction\":1.0,\"padding\":\"none_complete_windows_only\"}}",
+    "model_reporter_extension_id": "audit_provenance_v1",
     "module_id": "raw",
-    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4"
+    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4",
+    "reporter_profile_id": "audit_provenance_v1"
   },
   {
-    "algorithm_kernel_description": "",
+    "algorithm_kernel_description": "Persisted signal_views_and_scaling contract; detailed values remain in the component input and fixed-parameter fields.",
+    "algorithm_references": "Project component-role audit binding: signal_views_and_scaling; no separate external literature source claimed",
     "component_role": "signal_views_and_scaling",
     "execution_state": "enabled",
     "fixed_parameters": "{\"dl_resampling\":{\"enabled\":true,\"method\":\"polyphase_anti_alias\",\"preserve_feature_grid_hz\":400.0,\"target_fs_hz\":64.0},\"normalization\":{\"clip_after_scale\":[-8.0,8.0],\"iqr_fallback\":\"standard_deviation_then_finite_one\",\"mad_consistency_divisor\":0.6744897501960817,\"raw_imu\":\"none\",\"raw_ppg\":\"per_window_robust\",\"robust_iqr_divisor\":1.349,\"scale_epsilon\":1e-08,\"standard_ddof\":0}}",
     "input_data": "{\"dataset_id\":\"frailty3_m2_20260815_a054800abda272f6\",\"manifest_path\":\"manifests/internal_records_v2.csv\",\"participants\":29,\"pipeline_fs_hz\":400.0,\"records\":261,\"roles\":[\"B\",\"R1\",\"R2\",\"R3\",\"R4\"],\"source_channels\":[\"RED\",\"IR\",\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"source_units\":{\"ACC\":\"g\",\"GYRO\":\"deg/s\",\"PPG\":\"raw_counts\"},\"views\":[\"processed_imu_physical\",\"x_dl_all8_window_norm\",\"x_analysis/x_native\"]}",
+    "model_reporter_extension_id": "audit_provenance_v1",
     "module_id": "parallel_physical_analysis_and_dl_views",
-    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4"
+    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4",
+    "reporter_profile_id": "audit_provenance_v1"
   },
   {
-    "algorithm_kernel_description": "",
+    "algorithm_kernel_description": "Persisted split_registry contract; detailed values remain in the component input and fixed-parameter fields.",
+    "algorithm_references": "Project component-role audit binding: split_registry; no separate external literature source claimed",
     "component_role": "split_registry",
     "execution_state": "enabled",
     "fixed_parameters": "{\"n_repeats\":5,\"n_splits\":5,\"path\":\"splits/sgkf5_repeated_grouped_5x5_v2.csv\",\"registry_id\":\"frailty3_future_corrected_sgkf5_v2\",\"runtime_recompute\":false,\"split_seeds\":[42,10042,20042,30042,40042]}",
     "input_data": "{\"dataset_id\":\"frailty3_m2_20260815_a054800abda272f6\",\"groups\":\"participant_id\",\"labels\":\"frailty_class\",\"manifest_path\":\"manifests/internal_records_v2.csv\",\"participants\":29,\"pipeline_fs_hz\":400.0,\"records\":261,\"roles\":[\"B\",\"R1\",\"R2\",\"R3\",\"R4\"],\"source_channels\":[\"RED\",\"IR\",\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"source_units\":{\"ACC\":\"g\",\"GYRO\":\"deg/s\",\"PPG\":\"raw_counts\"}}",
+    "model_reporter_extension_id": "audit_provenance_v1",
     "module_id": "frailty3_future_corrected_sgkf5_v2",
-    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4"
+    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4",
+    "reporter_profile_id": "audit_provenance_v1"
   },
   {
     "algorithm_kernel_description": "",
+    "algorithm_references": "N/A — component was not executed",
     "component_role": "sqi",
     "execution_state": "disabled_control",
     "fixed_parameters": "{\"components\":[],\"failure_action\":\"fail_closed\",\"fit_scope\":\"not_applied_off\",\"flatline_duration_s\":1.0,\"high_quality_rule\":\"not_applied\",\"long_gap_max_samples\":100,\"mode\":\"off\",\"window_selection\":{\"application_scope\":\"outer_train_only\",\"keep_fraction\":1.0,\"policy\":\"none\",\"score_algorithm\":\"legacy_cardiac_motion_window_sqi_v1\"}}",
     "input_data": "{\"dataset_id\":\"frailty3_m2_20260815_a054800abda272f6\",\"input_views\":[\"x_analysis\",\"pulse train\",\"processed_imu_physical\"],\"manifest_path\":\"manifests/internal_records_v2.csv\",\"participants\":29,\"pipeline_fs_hz\":400.0,\"records\":261,\"roles\":[\"B\",\"R1\",\"R2\",\"R3\",\"R4\"],\"source_channels\":[\"RED\",\"IR\",\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"source_units\":{\"ACC\":\"g\",\"GYRO\":\"deg/s\",\"PPG\":\"raw_counts\"}}",
+    "model_reporter_extension_id": "not_applicable",
     "module_id": "quality_off",
-    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4"
+    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4",
+    "reporter_profile_id": "audit_provenance_v1"
   },
   {
-    "algorithm_kernel_description": "",
+    "algorithm_kernel_description": "AdamW optimizer with decoupled weight decay and persisted hyperparameters.",
+    "algorithm_references": "Loshchilov & Hutter (2019), DOI:10.48550/arXiv.1711.05101",
     "component_role": "trainer",
     "execution_state": "enabled",
     "fixed_parameters": "{\"batch_size\":16,\"cache_policy\":\"disabled\",\"class_count_basis\":\"row\",\"class_weight_beta\":0.999,\"class_weighting\":\"inverse_frequency\",\"classifier_role_families\":[\"B\",\"R\"],\"deterministic_algorithms\":true,\"device\":\"cuda\",\"epoch_profile\":\"default_10\",\"epoch_rule\":\"fixed_epoch\",\"execution_mode\":\"formal\",\"fixed_epochs\":10,\"focal_gamma\":2.0,\"gradient_clip_norm\":null,\"inner_grouped_folds\":0,\"inner_patience\":0,\"label_smoothing\":0.0,\"learning_rate\":0.001,\"loss\":\"cross_entropy\",\"maximum_inner_epochs\":0,\"n_classes\":3,\"num_workers\":0,\"optimizer\":\"adamw\",\"optimizer_parameters\":{\"amsgrad\":false,\"betas\":[0.9,0.999],\"eps\":1e-08,\"maximize\":false},\"outer_labels_visible_to_trainer\":false,\"participant_window_quota\":\"all\",\"refit_on_all_outer_training\":true,\"sampler\":\"exhaustive_shuffle_without_replacement\",\"samples_per_epoch\":null,\"seed\":42,\"training_balance\":\"equal_role_families\",\"weight_decay\":0.0001}",
     "input_data": "{\"dataset_id\":\"frailty3_m2_20260815_a054800abda272f6\",\"labels\":\"participant frailty class\",\"manifest_path\":\"manifests/internal_records_v2.csv\",\"model_input\":{\"channels\":[\"RED\",\"IR\",\"A_dyn_x\",\"A_dyn_y\",\"A_dyn_z\",\"GX\",\"GY\",\"GZ\"],\"representation_mode\":\"raw\",\"signal_view\":\"x_dl_all8_window_norm\",\"window\":{\"cap_fraction_per_file\":null,\"cap_per_file\":128,\"end_alignment\":\"include_right_aligned_if_distinct\",\"hop_s\":2.5,\"length_s\":5.0,\"min_valid_fraction\":1.0,\"padding\":\"none_complete_windows_only\"}},\"participants\":29,\"pipeline_fs_hz\":400.0,\"records\":261,\"roles\":[\"B\",\"R1\",\"R2\",\"R3\",\"R4\"],\"source_channels\":[\"RED\",\"IR\",\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"source_units\":{\"ACC\":\"g\",\"GYRO\":\"deg/s\",\"PPG\":\"raw_counts\"}}",
+    "model_reporter_extension_id": "audit_provenance_v1",
     "module_id": "adamw",
-    "participating_cases": "b16_lr1e-3"
+    "participating_cases": "b16_lr1e-3",
+    "reporter_profile_id": "audit_provenance_v1"
   },
   {
-    "algorithm_kernel_description": "",
+    "algorithm_kernel_description": "AdamW optimizer with decoupled weight decay and persisted hyperparameters.",
+    "algorithm_references": "Loshchilov & Hutter (2019), DOI:10.48550/arXiv.1711.05101",
     "component_role": "trainer",
     "execution_state": "enabled",
     "fixed_parameters": "{\"batch_size\":16,\"cache_policy\":\"disabled\",\"class_count_basis\":\"row\",\"class_weight_beta\":0.999,\"class_weighting\":\"inverse_frequency\",\"classifier_role_families\":[\"B\",\"R\"],\"deterministic_algorithms\":true,\"device\":\"cuda\",\"epoch_profile\":\"default_10\",\"epoch_rule\":\"fixed_epoch\",\"execution_mode\":\"formal\",\"fixed_epochs\":10,\"focal_gamma\":2.0,\"gradient_clip_norm\":null,\"inner_grouped_folds\":0,\"inner_patience\":0,\"label_smoothing\":0.0,\"learning_rate\":0.0003,\"loss\":\"cross_entropy\",\"maximum_inner_epochs\":0,\"n_classes\":3,\"num_workers\":0,\"optimizer\":\"adamw\",\"optimizer_parameters\":{\"amsgrad\":false,\"betas\":[0.9,0.999],\"eps\":1e-08,\"maximize\":false},\"outer_labels_visible_to_trainer\":false,\"participant_window_quota\":\"all\",\"refit_on_all_outer_training\":true,\"sampler\":\"exhaustive_shuffle_without_replacement\",\"samples_per_epoch\":null,\"seed\":42,\"training_balance\":\"equal_role_families\",\"weight_decay\":0.0001}",
     "input_data": "{\"dataset_id\":\"frailty3_m2_20260815_a054800abda272f6\",\"labels\":\"participant frailty class\",\"manifest_path\":\"manifests/internal_records_v2.csv\",\"model_input\":{\"channels\":[\"RED\",\"IR\",\"A_dyn_x\",\"A_dyn_y\",\"A_dyn_z\",\"GX\",\"GY\",\"GZ\"],\"representation_mode\":\"raw\",\"signal_view\":\"x_dl_all8_window_norm\",\"window\":{\"cap_fraction_per_file\":null,\"cap_per_file\":128,\"end_alignment\":\"include_right_aligned_if_distinct\",\"hop_s\":2.5,\"length_s\":5.0,\"min_valid_fraction\":1.0,\"padding\":\"none_complete_windows_only\"}},\"participants\":29,\"pipeline_fs_hz\":400.0,\"records\":261,\"roles\":[\"B\",\"R1\",\"R2\",\"R3\",\"R4\"],\"source_channels\":[\"RED\",\"IR\",\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"source_units\":{\"ACC\":\"g\",\"GYRO\":\"deg/s\",\"PPG\":\"raw_counts\"}}",
+    "model_reporter_extension_id": "audit_provenance_v1",
     "module_id": "adamw",
-    "participating_cases": "b16_lr3e-4"
+    "participating_cases": "b16_lr3e-4",
+    "reporter_profile_id": "audit_provenance_v1"
   },
   {
-    "algorithm_kernel_description": "",
+    "algorithm_kernel_description": "AdamW optimizer with decoupled weight decay and persisted hyperparameters.",
+    "algorithm_references": "Loshchilov & Hutter (2019), DOI:10.48550/arXiv.1711.05101",
     "component_role": "trainer",
     "execution_state": "enabled",
     "fixed_parameters": "{\"batch_size\":32,\"cache_policy\":\"disabled\",\"class_count_basis\":\"row\",\"class_weight_beta\":0.999,\"class_weighting\":\"inverse_frequency\",\"classifier_role_families\":[\"B\",\"R\"],\"deterministic_algorithms\":true,\"device\":\"cuda\",\"epoch_profile\":\"default_10\",\"epoch_rule\":\"fixed_epoch\",\"execution_mode\":\"formal\",\"fixed_epochs\":10,\"focal_gamma\":2.0,\"gradient_clip_norm\":null,\"inner_grouped_folds\":0,\"inner_patience\":0,\"label_smoothing\":0.0,\"learning_rate\":0.0003,\"loss\":\"cross_entropy\",\"maximum_inner_epochs\":0,\"n_classes\":3,\"num_workers\":0,\"optimizer\":\"adamw\",\"optimizer_parameters\":{\"amsgrad\":false,\"betas\":[0.9,0.999],\"eps\":1e-08,\"maximize\":false},\"outer_labels_visible_to_trainer\":false,\"participant_window_quota\":\"all\",\"refit_on_all_outer_training\":true,\"sampler\":\"exhaustive_shuffle_without_replacement\",\"samples_per_epoch\":null,\"seed\":42,\"training_balance\":\"equal_role_families\",\"weight_decay\":0.0001}",
     "input_data": "{\"dataset_id\":\"frailty3_m2_20260815_a054800abda272f6\",\"labels\":\"participant frailty class\",\"manifest_path\":\"manifests/internal_records_v2.csv\",\"model_input\":{\"channels\":[\"RED\",\"IR\",\"A_dyn_x\",\"A_dyn_y\",\"A_dyn_z\",\"GX\",\"GY\",\"GZ\"],\"representation_mode\":\"raw\",\"signal_view\":\"x_dl_all8_window_norm\",\"window\":{\"cap_fraction_per_file\":null,\"cap_per_file\":128,\"end_alignment\":\"include_right_aligned_if_distinct\",\"hop_s\":2.5,\"length_s\":5.0,\"min_valid_fraction\":1.0,\"padding\":\"none_complete_windows_only\"}},\"participants\":29,\"pipeline_fs_hz\":400.0,\"records\":261,\"roles\":[\"B\",\"R1\",\"R2\",\"R3\",\"R4\"],\"source_channels\":[\"RED\",\"IR\",\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"source_units\":{\"ACC\":\"g\",\"GYRO\":\"deg/s\",\"PPG\":\"raw_counts\"}}",
+    "model_reporter_extension_id": "audit_provenance_v1",
     "module_id": "adamw",
-    "participating_cases": "b32_lr3e-4"
+    "participating_cases": "b32_lr3e-4",
+    "reporter_profile_id": "audit_provenance_v1"
   },
   {
-    "algorithm_kernel_description": "",
+    "algorithm_kernel_description": "Persisted window_planner contract; detailed values remain in the component input and fixed-parameter fields.",
+    "algorithm_references": "Project component-role audit binding: window_planner; no separate external literature source claimed",
     "component_role": "window_planner",
     "execution_state": "enabled",
     "fixed_parameters": "{\"engineering\":{\"cap_fraction_per_file\":null,\"cap_per_file\":null,\"end_alignment\":\"left_start_regular_grid\",\"hop_s\":2.0,\"length_s\":10.0,\"min_valid_fraction\":1.0,\"padding\":\"none_complete_windows_only\"},\"raw_dl\":{\"cap_fraction_per_file\":null,\"cap_per_file\":128,\"end_alignment\":\"include_right_aligned_if_distinct\",\"hop_s\":2.5,\"length_s\":5.0,\"min_valid_fraction\":1.0,\"padding\":\"none_complete_windows_only\"},\"shared_planner_version\":\"window_plan_v1\"}",
     "input_data": "{\"dataset_id\":\"frailty3_m2_20260815_a054800abda272f6\",\"input_views\":[\"x_dl_all8_window_norm\",\"x_analysis/x_native\",\"processed_imu_physical\"],\"manifest_path\":\"manifests/internal_records_v2.csv\",\"participants\":29,\"pipeline_fs_hz\":400.0,\"records\":261,\"roles\":[\"B\",\"R1\",\"R2\",\"R3\",\"R4\"],\"source_channels\":[\"RED\",\"IR\",\"AX\",\"AY\",\"AZ\",\"GX\",\"GY\",\"GZ\"],\"source_units\":{\"ACC\":\"g\",\"GYRO\":\"deg/s\",\"PPG\":\"raw_counts\"}}",
+    "model_reporter_extension_id": "audit_provenance_v1",
     "module_id": "window_plan_v1",
-    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4"
+    "participating_cases": "b16_lr1e-3; b16_lr3e-4; b32_lr3e-4",
+    "reporter_profile_id": "audit_provenance_v1"
   }
 ]

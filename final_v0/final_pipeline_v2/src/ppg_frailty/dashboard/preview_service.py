@@ -165,6 +165,7 @@ class PipelinePreviewService:
         if str(imu_config["gravity_method"]) in {
             "calibrated_roll_pitch_ekf",
             "profile_a_lowpass_0p3hz",
+            "sensor_filter_only_no_gravity_removal",
         }:
             candidates = sorted(
                 (

@@ -14,13 +14,32 @@ from typing import Any, Iterable, Mapping
 import uuid
 
 import numpy as np
-from sklearn.metrics import balanced_accuracy_score, confusion_matrix, f1_score, recall_score
+from sklearn.metrics import (
+    balanced_accuracy_score,
+    confusion_matrix,
+    f1_score,
+    recall_score,
+    roc_auc_score,
+)
 
 from ..provenance import stable_payload_sha256
 
 
 DEFAULT_BOOTSTRAP_RESAMPLES = 10_000
 DEFAULT_PERMUTATION_RESAMPLES = 100_000
+PAIRED_PERMUTATION_IMPLEMENTATION_VERSION = (
+    "participant_confusion_vectorized_rowwise_rng_v2"
+)
+PAIRED_PERMUTATION_RNG_CONTRACT = (
+    "numpy_default_rng_pcg64_int8_one_participant_mask_call_per_resample"
+)
+CLUSTER_BOOTSTRAP_IMPLEMENTATION_VERSION = (
+    "stratified_participant_count_weighted_vectorized_metrics_v2"
+)
+CLUSTER_BOOTSTRAP_RNG_CONTRACT = (
+    "numpy_default_rng_pcg64_one_choice_per_resample_per_class_in_class_order"
+)
+_CLUSTER_BOOTSTRAP_CHUNK_SIZE = 10_000
 _ARCHIVE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 
@@ -34,8 +53,10 @@ class ParticipantPrediction:
     probabilities: tuple[float, ...]
 
     def __post_init__(self) -> None:
-        if not str(self.participant_id).strip() or int(self.repeat) < 0:
+        participant_id = str(self.participant_id).strip()
+        if not participant_id or int(self.repeat) < 0:
             raise ValueError("participant_id must be non-empty and repeat non-negative")
+        object.__setattr__(self, "participant_id", participant_id)
         probability = np.asarray(self.probabilities, dtype=np.float64)
         if probability.ndim != 1 or probability.size < 2:
             raise ValueError("probabilities must be a one-dimensional multiclass vector")
@@ -62,6 +83,30 @@ class ClusterBootstrapResult:
     cluster_unit: str = "participant_with_all_repeats"
     interval_method: str = "percentile_two_sided_95"
     lcb_definition: str = "lower_2.5_percentile"
+    valid_resamples: int | None = None
+    implementation_version: str = CLUSTER_BOOTSTRAP_IMPLEMENTATION_VERSION
+    rng_contract: str = CLUSTER_BOOTSTRAP_RNG_CONTRACT
+
+
+@dataclass(frozen=True)
+class PairedClusterBootstrapResult:
+    """Paired percentile interval with participant as the shared resampling unit."""
+
+    metric: str
+    observed_candidate_minus_reference: float
+    ci95_lower: float
+    ci95_upper: float
+    n_resamples: int
+    seed: int
+    n_participants: int
+    n_repeats: int
+    valid_resamples: int
+    stratified_by_class: bool = True
+    cluster_unit: str = "participant_with_all_repeats"
+    interval_method: str = "percentile_two_sided_95"
+    comparison_direction: str = "candidate_minus_reference"
+    implementation_version: str = CLUSTER_BOOTSTRAP_IMPLEMENTATION_VERSION
+    rng_contract: str = CLUSTER_BOOTSTRAP_RNG_CONTRACT
 
 
 @dataclass(frozen=True)
@@ -78,6 +123,8 @@ class PairedPermutationResult:
     null_mean: float
     null_standard_deviation: float
     exchange_unit: str = "participant_with_all_repeats"
+    implementation_version: str = PAIRED_PERMUTATION_IMPLEMENTATION_VERSION
+    rng_contract: str = PAIRED_PERMUTATION_RNG_CONTRACT
 
 
 @dataclass(frozen=True)
@@ -333,10 +380,312 @@ def _mean_repeat_metric(
                 average="macro",
                 zero_division=0,
             )
+        elif metric == "macro_roc_auc_ovr":
+            value = np.mean(
+                [
+                    roc_auc_score(
+                        labels[selected] == class_label,
+                        probability[selected, class_index],
+                    )
+                    for class_index, class_label in enumerate(class_order)
+                ]
+            )
         else:
-            raise ValueError("metric must be balanced_accuracy or macro_f1")
+            raise ValueError(
+                "metric must be balanced_accuracy, macro_f1 or "
+                "macro_roc_auc_ovr"
+            )
         values.append(float(value))
     return float(np.mean(values))
+
+
+def _validate_bootstrap_controls(n_resamples: int, seed: int) -> tuple[int, int]:
+    """Normalize deterministic bootstrap controls without accepting booleans."""
+
+    if (
+        isinstance(n_resamples, bool)
+        or int(n_resamples) != n_resamples
+        or int(n_resamples) <= 0
+    ):
+        raise ValueError("n_resamples must be a positive integer")
+    if isinstance(seed, bool) or int(seed) != seed or int(seed) < 0:
+        raise ValueError("seed must be a non-negative integer")
+    return int(n_resamples), int(seed)
+
+
+def _participant_repeat_metric_arrays(
+    participant: np.ndarray,
+    labels: np.ndarray,
+    repeats: np.ndarray,
+    probability: np.ndarray,
+    class_order: tuple[int, ...],
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    tuple[np.ndarray, ...],
+    np.ndarray,
+]:
+    """Materialize the complete participant-by-repeat OOF tensor once.
+
+    ``_freeze_predictions`` has already established that every participant has
+    exactly one row for every repeat.  The dense layout lets a bootstrap draw
+    be represented by one participant-count vector; duplicate participant
+    draws therefore carry every repeat without physically duplicating rows.
+    """
+
+    unique_participants = np.asarray(
+        sorted(set(participant.tolist())),
+        dtype=object,
+    )
+    repeat_values = np.asarray(sorted(set(repeats.tolist())), dtype=np.int64)
+    participant_position = {
+        value: index for index, value in enumerate(unique_participants.tolist())
+    }
+    repeat_position = {
+        int(value): index for index, value in enumerate(repeat_values.tolist())
+    }
+    class_position = {int(value): index for index, value in enumerate(class_order)}
+    n_participants = int(unique_participants.size)
+    n_repeats = int(repeat_values.size)
+    n_classes = len(class_order)
+
+    participant_labels = np.full(n_participants, -1, dtype=np.int64)
+    probabilities = np.empty(
+        (n_participants, n_repeats, n_classes),
+        dtype=np.float64,
+    )
+    populated = np.zeros((n_participants, n_repeats), dtype=bool)
+    for row_index in range(participant.size):
+        participant_index = participant_position[str(participant[row_index])]
+        repeat_index = repeat_position[int(repeats[row_index])]
+        participant_labels[participant_index] = class_position[int(labels[row_index])]
+        probabilities[participant_index, repeat_index] = probability[row_index]
+        populated[participant_index, repeat_index] = True
+    if not populated.all():  # defensive invariant; normally caught by freezing.
+        raise ValueError("participant-by-repeat prediction grid is incomplete")
+
+    predicted = probabilities.argmax(axis=-1)
+    confusion_flat = np.zeros(
+        (n_participants, n_repeats * n_classes * n_classes),
+        dtype=np.float64,
+    )
+    repeat_offsets = (
+        np.arange(n_repeats, dtype=np.int64) * n_classes * n_classes
+    )
+    for participant_index in range(n_participants):
+        cells = (
+            repeat_offsets
+            + participant_labels[participant_index] * n_classes
+            + predicted[participant_index]
+        )
+        confusion_flat[participant_index, cells] = 1.0
+
+    strata_positions = tuple(
+        np.flatnonzero(participant_labels == class_index)
+        for class_index in range(n_classes)
+    )
+    if any(values.size == 0 for values in strata_positions):
+        raise ValueError(
+            "stratified bootstrap requires at least one participant in every class"
+        )
+    return (
+        unique_participants,
+        repeat_values,
+        participant_labels,
+        probabilities,
+        strata_positions,
+        confusion_flat,
+    )
+
+
+def _stratified_count_chunks(
+    *,
+    n_participants: int,
+    strata_positions: tuple[np.ndarray, ...],
+    n_resamples: int,
+    seed: int,
+) -> Iterable[np.ndarray]:
+    """Yield participant multiplicities while preserving the V1 RNG order.
+
+    There remains exactly one ``Generator.choice`` call for each
+    resample-by-class pair, ordered first by resample and then by
+    ``class_order``.  Only deterministic metric arithmetic is batched, so
+    chunk boundaries cannot change same-seed draws.
+    """
+
+    rng = np.random.default_rng(seed)
+    processed = 0
+    while processed < n_resamples:
+        current = min(_CLUSTER_BOOTSTRAP_CHUNK_SIZE, n_resamples - processed)
+        counts = np.zeros((current, n_participants), dtype=np.int32)
+        for draw_index in range(current):
+            for positions in strata_positions:
+                sampled = rng.choice(
+                    positions,
+                    size=int(positions.size),
+                    replace=True,
+                )
+                counts[draw_index] += np.bincount(
+                    sampled,
+                    minlength=n_participants,
+                ).astype(np.int32, copy=False)
+        yield counts
+        processed += current
+
+
+def _cluster_metric_from_counts(
+    counts: np.ndarray,
+    *,
+    participant_labels: np.ndarray,
+    probabilities: np.ndarray,
+    confusion_flat: np.ndarray,
+    metric: str,
+) -> np.ndarray:
+    """Evaluate equal-repeat metrics for weighted participant draws.
+
+    For ROC-AUC, participant multiplicities are observation weights.  The
+    weighted Mann--Whitney statistic counts a positive/negative score tie as
+    one half, exactly matching sklearn's binary ROC-AUC tie convention.
+    """
+
+    n_draws = int(counts.shape[0])
+    n_repeats = int(probabilities.shape[1])
+    n_classes = int(probabilities.shape[2])
+    if metric in {"balanced_accuracy", "macro_f1"}:
+        confusion = (counts @ confusion_flat).reshape(
+            n_draws,
+            n_repeats,
+            n_classes,
+            n_classes,
+        )
+        diagonal = np.diagonal(confusion, axis1=-2, axis2=-1)
+        support = confusion.sum(axis=-1)
+        if metric == "balanced_accuracy":
+            recall = np.divide(
+                diagonal,
+                support,
+                out=np.zeros_like(diagonal),
+                where=support > 0.0,
+            )
+            supported = support > 0.0
+            per_repeat = np.divide(
+                (recall * supported).sum(axis=-1),
+                supported.sum(axis=-1),
+                out=np.zeros(recall.shape[:-1], dtype=np.float64),
+                where=supported.sum(axis=-1) > 0,
+            )
+        else:
+            predicted_support = confusion.sum(axis=-2)
+            denominator = support + predicted_support
+            class_f1 = np.divide(
+                2.0 * diagonal,
+                denominator,
+                out=np.zeros_like(diagonal),
+                where=denominator > 0.0,
+            )
+            per_repeat = class_f1.mean(axis=-1)
+        return per_repeat.mean(axis=-1)
+
+    if metric != "macro_roc_auc_ovr":
+        raise ValueError(
+            "metric must be balanced_accuracy, macro_f1 or "
+            "macro_roc_auc_ovr"
+        )
+
+    per_repeat_class = np.empty(
+        (n_draws, n_repeats, n_classes),
+        dtype=np.float64,
+    )
+    float_counts = counts.astype(np.float64, copy=False)
+    for class_index in range(n_classes):
+        positive = np.flatnonzero(participant_labels == class_index)
+        negative = np.flatnonzero(participant_labels != class_index)
+        positive_weights = float_counts[:, positive]
+        negative_weights = float_counts[:, negative]
+        denominator = positive_weights.sum(axis=1) * negative_weights.sum(axis=1)
+        for repeat_index in range(n_repeats):
+            positive_scores = probabilities[positive, repeat_index, class_index]
+            negative_scores = probabilities[negative, repeat_index, class_index]
+            comparison = (
+                (positive_scores[:, None] > negative_scores[None, :]).astype(
+                    np.float64
+                )
+                + 0.5
+                * (positive_scores[:, None] == negative_scores[None, :])
+            )
+            numerator = np.einsum(
+                "bi,ij,bj->b",
+                positive_weights,
+                comparison,
+                negative_weights,
+                optimize=True,
+            )
+            per_repeat_class[:, repeat_index, class_index] = np.divide(
+                numerator,
+                denominator,
+                out=np.full(n_draws, np.nan, dtype=np.float64),
+                where=denominator > 0.0,
+            )
+    return per_repeat_class.mean(axis=(1, 2))
+
+
+def _cluster_bootstrap_draws(
+    participant: np.ndarray,
+    labels: np.ndarray,
+    repeats: np.ndarray,
+    probability_sets: tuple[np.ndarray, ...],
+    class_order: tuple[int, ...],
+    metric: str,
+    n_resamples: int,
+    seed: int,
+) -> tuple[np.ndarray, ...]:
+    """Evaluate one or more models on the same stratified bootstrap draws."""
+
+    prepared = [
+        _participant_repeat_metric_arrays(
+            participant,
+            labels,
+            repeats,
+            probability,
+            class_order,
+        )
+        for probability in probability_sets
+    ]
+    unique_participants = prepared[0][0]
+    participant_labels = prepared[0][2]
+    strata_positions = prepared[0][4]
+    if any(
+        not np.array_equal(item[0], unique_participants)
+        or not np.array_equal(item[2], participant_labels)
+        or any(
+            not np.array_equal(left, right)
+            for left, right in zip(item[4], strata_positions, strict=True)
+        )
+        for item in prepared[1:]
+    ):
+        raise ValueError("bootstrap model tensors disagree on participant roster")
+
+    outputs = [np.empty(n_resamples, dtype=np.float64) for _ in prepared]
+    offset = 0
+    for counts in _stratified_count_chunks(
+        n_participants=int(unique_participants.size),
+        strata_positions=strata_positions,
+        n_resamples=n_resamples,
+        seed=seed,
+    ):
+        stop = offset + int(counts.shape[0])
+        for output, item in zip(outputs, prepared, strict=True):
+            output[offset:stop] = _cluster_metric_from_counts(
+                counts,
+                participant_labels=item[2],
+                probabilities=item[3],
+                confusion_flat=item[5],
+                metric=metric,
+            )
+        offset = stop
+    return tuple(outputs)
 
 
 def participant_cluster_bootstrap(
@@ -347,43 +696,29 @@ def participant_cluster_bootstrap(
     n_resamples: int = DEFAULT_BOOTSTRAP_RESAMPLES,
     seed: int = 42,
 ) -> ClusterBootstrapResult:
-    """Resample participants within class and carry every repeat prediction."""
+    """Resample participants within class and carry every repeat prediction.
+
+    Participant multiplicities are evaluated in vectorised chunks.  This is
+    algebraically equivalent to materialising duplicate OOF rows, but avoids
+    calling sklearn once per resample.
+    """
 
     frozen = _freeze_predictions(rows, class_order)
-    if n_resamples <= 0:
-        raise ValueError("n_resamples must be positive")
+    n_resamples, seed = _validate_bootstrap_controls(n_resamples, seed)
     participant, labels, repeats, probability = _arrays(frozen)
-    unique_participants = sorted(set(participant.tolist()))
-    label_by_participant = {
-        value: int(labels[np.flatnonzero(participant == value)[0]])
-        for value in unique_participants
-    }
-    strata = {
-        label: [value for value in unique_participants if label_by_participant[value] == label]
-        for label in class_order
-    }
-    if any(not values for values in strata.values()):
-        raise ValueError("stratified bootstrap requires at least one participant in every class")
-    indices_by_participant = {
-        value: np.flatnonzero(participant == value) for value in unique_participants
-    }
     estimate = _mean_repeat_metric(labels, repeats, probability, class_order, metric)
-    rng = np.random.default_rng(seed)
-    draws = np.empty(n_resamples, dtype=np.float64)
-    for index in range(n_resamples):
-        sampled: list[str] = []
-        for label in class_order:
-            values = strata[label]
-            sampled.extend(rng.choice(values, size=len(values), replace=True).tolist())
-        row_indices = np.concatenate([indices_by_participant[value] for value in sampled])
-        draws[index] = _mean_repeat_metric(
-            labels[row_indices],
-            repeats[row_indices],
-            probability[row_indices],
-            class_order,
-            metric,
-        )
+    (draws,) = _cluster_bootstrap_draws(
+        participant,
+        labels,
+        repeats,
+        (probability,),
+        class_order,
+        metric,
+        n_resamples,
+        seed,
+    )
     lower, upper = np.quantile(draws, (0.025, 0.975))
+    unique_participants = sorted(set(participant.tolist()))
     return ClusterBootstrapResult(
         metric=metric,
         estimate=estimate,
@@ -394,6 +729,84 @@ def participant_cluster_bootstrap(
         seed=int(seed),
         n_participants=len(unique_participants),
         n_repeats=len(set(repeats.tolist())),
+        valid_resamples=int(n_resamples),
+    )
+
+
+def paired_participant_cluster_bootstrap(
+    reference: Iterable[ParticipantPrediction],
+    candidate: Iterable[ParticipantPrediction],
+    *,
+    class_order: tuple[int, ...] = (0, 1, 2),
+    metric: str = "balanced_accuracy",
+    n_resamples: int = DEFAULT_BOOTSTRAP_RESAMPLES,
+    seed: int = 42,
+) -> PairedClusterBootstrapResult:
+    """Bootstrap a candidate-minus-reference metric with shared clusters.
+
+    Reference and candidate must contain exactly the same participant-by-repeat
+    OOF keys and labels. Each stratified participant draw is applied to both
+    configurations, and every selected participant contributes all of their
+    repeat predictions. The interval therefore preserves both the repeated-CV
+    cluster and the within-participant model pairing.
+    """
+
+    ref = _freeze_predictions(reference, class_order)
+    cand = _freeze_predictions(candidate, class_order)
+    ref_by_key = {(row.participant_id, row.repeat): row for row in ref}
+    cand_by_key = {(row.participant_id, row.repeat): row for row in cand}
+    if set(ref_by_key) != set(cand_by_key):
+        raise ValueError(
+            "paired bootstrap requires identical participant/repeat keys"
+        )
+    keys = tuple(sorted(ref_by_key))
+    if any(ref_by_key[key].label != cand_by_key[key].label for key in keys):
+        raise ValueError("paired configurations disagree on participant labels")
+    n_resamples, seed = _validate_bootstrap_controls(n_resamples, seed)
+
+    ordered_ref = tuple(ref_by_key[key] for key in keys)
+    ordered_cand = tuple(cand_by_key[key] for key in keys)
+    participant, labels, repeats, ref_probability = _arrays(ordered_ref)
+    _, _, _, cand_probability = _arrays(ordered_cand)
+    reference_estimate = _mean_repeat_metric(
+        labels,
+        repeats,
+        ref_probability,
+        class_order,
+        metric,
+    )
+    candidate_estimate = _mean_repeat_metric(
+        labels,
+        repeats,
+        cand_probability,
+        class_order,
+        metric,
+    )
+    observed = candidate_estimate - reference_estimate
+
+    ref_draws, cand_draws = _cluster_bootstrap_draws(
+        participant,
+        labels,
+        repeats,
+        (ref_probability, cand_probability),
+        class_order,
+        metric,
+        n_resamples,
+        seed,
+    )
+    draws = cand_draws - ref_draws
+    lower, upper = np.quantile(draws, (0.025, 0.975))
+    unique_participants = sorted(set(participant.tolist()))
+    return PairedClusterBootstrapResult(
+        metric=metric,
+        observed_candidate_minus_reference=float(observed),
+        ci95_lower=float(lower),
+        ci95_upper=float(upper),
+        n_resamples=int(n_resamples),
+        seed=int(seed),
+        n_participants=len(unique_participants),
+        n_repeats=len(set(repeats.tolist())),
+        valid_resamples=int(n_resamples),
     )
 
 
@@ -406,7 +819,13 @@ def paired_participant_permutation(
     n_resamples: int = DEFAULT_PERMUTATION_RESAMPLES,
     seed: int = 42,
 ) -> PairedPermutationResult:
-    """Swap whole participant clusters between paired configurations."""
+    """Swap whole participant clusters between paired configurations.
+
+    The null distribution is evaluated from vectorised repeat-level confusion
+    matrices.  This is algebraically identical to rebuilding predictions after
+    every participant-cluster swap, but keeps the registered 100,000-resample
+    report contract practical for multi-candidate studies.
+    """
 
     ref = _freeze_predictions(reference, class_order)
     cand = _freeze_predictions(candidate, class_order)
@@ -427,35 +846,122 @@ def paired_participant_permutation(
     cand_metric = _mean_repeat_metric(labels, repeats, cand_probability, class_order, metric)
     observed = cand_metric - ref_metric
     unique_participants = np.asarray(sorted(set(participant.tolist())), dtype=object)
+    repeat_values = np.asarray(sorted(set(repeats.tolist())), dtype=np.int64)
+    participant_index = {
+        value: index for index, value in enumerate(unique_participants.tolist())
+    }
+    repeat_index = {
+        int(value): index for index, value in enumerate(repeat_values.tolist())
+    }
+    class_index = {int(value): index for index, value in enumerate(class_order)}
+    n_participants = int(unique_participants.size)
+    n_repeats = int(repeat_values.size)
+    n_classes = len(class_order)
+    ref_confusion = np.zeros(
+        (n_participants, n_repeats, n_classes, n_classes), dtype=np.float64
+    )
+    cand_confusion = np.zeros_like(ref_confusion)
+    ref_predictions = ref_probability.argmax(axis=1)
+    cand_predictions = cand_probability.argmax(axis=1)
+    for row_index in range(len(keys)):
+        participant_position = participant_index[str(participant[row_index])]
+        repeat_position = repeat_index[int(repeats[row_index])]
+        true_position = class_index[int(labels[row_index])]
+        ref_confusion[
+            participant_position,
+            repeat_position,
+            true_position,
+            int(ref_predictions[row_index]),
+        ] += 1.0
+        cand_confusion[
+            participant_position,
+            repeat_position,
+            true_position,
+            int(cand_predictions[row_index]),
+        ] += 1.0
+    base_ref = ref_confusion.sum(axis=0)
+    base_cand = cand_confusion.sum(axis=0)
+    delta_flat = (ref_confusion - cand_confusion).reshape(n_participants, -1)
+
+    def metric_from_confusion(confusion: np.ndarray) -> np.ndarray:
+        diagonal = np.diagonal(confusion, axis1=-2, axis2=-1)
+        support = confusion.sum(axis=-1)
+        predicted_count = confusion.sum(axis=-2)
+        if metric == "balanced_accuracy":
+            recall = np.divide(
+                diagonal,
+                support,
+                out=np.zeros_like(diagonal),
+                where=support > 0.0,
+            )
+            supported = support > 0.0
+            per_repeat = np.divide(
+                (recall * supported).sum(axis=-1),
+                supported.sum(axis=-1),
+                out=np.zeros(recall.shape[:-1], dtype=np.float64),
+                where=supported.sum(axis=-1) > 0,
+            )
+        else:
+            denominator = support + predicted_count
+            f1 = np.divide(
+                2.0 * diagonal,
+                denominator,
+                out=np.zeros_like(diagonal),
+                where=denominator > 0.0,
+            )
+            per_repeat = f1.mean(axis=-1)
+        return per_repeat.mean(axis=-1)
+
     rng = np.random.default_rng(seed)
-    null = np.empty(n_resamples, dtype=np.float64)
-    for index in range(n_resamples):
-        swapped = set(
-            unique_participants[
-                rng.integers(0, 2, size=unique_participants.size, dtype=np.int8).astype(bool)
-            ].tolist()
+    extreme = 0
+    null_sum = 0.0
+    null_sum_squares = 0.0
+    processed = 0
+    chunk_size = 10_000
+    while processed < n_resamples:
+        current = min(chunk_size, n_resamples - processed)
+        # Preserve the original V2 random-stream contract: one int8 mask call
+        # per resample.  Batching only the deterministic confusion arithmetic
+        # prevents a report rebuild from silently changing same-seed P values.
+        swap_masks = np.empty((current, n_participants), dtype=np.int8)
+        for row_index in range(current):
+            swap_masks[row_index] = rng.integers(
+                0,
+                2,
+                size=n_participants,
+                dtype=np.int8,
+            )
+        swaps = swap_masks.astype(np.float64)
+        delta = (swaps @ delta_flat).reshape(
+            current, n_repeats, n_classes, n_classes
         )
-        mask = np.asarray([value in swapped for value in participant], dtype=bool)
-        perm_ref = ref_probability.copy()
-        perm_cand = cand_probability.copy()
-        perm_ref[mask] = cand_probability[mask]
-        perm_cand[mask] = ref_probability[mask]
-        null[index] = (
-            _mean_repeat_metric(labels, repeats, perm_cand, class_order, metric)
-            - _mean_repeat_metric(labels, repeats, perm_ref, class_order, metric)
+        perm_cand_confusion = base_cand[None, ...] + delta
+        perm_ref_confusion = base_ref[None, ...] - delta
+        null = metric_from_confusion(
+            perm_cand_confusion
+        ) - metric_from_confusion(perm_ref_confusion)
+        extreme += int(
+            np.count_nonzero(np.abs(null) >= abs(observed) - 1e-15)
         )
-    extreme = int(np.count_nonzero(np.abs(null) >= abs(observed) - 1e-15))
+        null_sum += float(null.sum())
+        null_sum_squares += float(np.square(null).sum())
+        processed += current
     p_value = float((extreme + 1) / (n_resamples + 1))
+    null_mean = null_sum / float(n_resamples)
+    null_variance = max(
+        0.0,
+        null_sum_squares / float(n_resamples) - null_mean * null_mean,
+    )
     return PairedPermutationResult(
         metric=metric,
         observed_candidate_minus_reference=float(observed),
         two_sided_p_value=p_value,
         n_resamples=int(n_resamples),
         seed=int(seed),
-        n_participants=int(unique_participants.size),
-        n_repeats=len(set(repeats.tolist())),
-        null_mean=float(null.mean()),
-        null_standard_deviation=float(null.std(ddof=0)),
+        n_participants=n_participants,
+        n_repeats=n_repeats,
+        null_mean=float(null_mean),
+        null_standard_deviation=float(np.sqrt(null_variance)),
     )
 
 
@@ -1190,6 +1696,8 @@ def _write_formal_comparison_archive(
 
 
 __all__ = [
+    "CLUSTER_BOOTSTRAP_IMPLEMENTATION_VERSION",
+    "CLUSTER_BOOTSTRAP_RNG_CONTRACT",
     "ClusterBootstrapResult",
     "ComparisonArchive",
     "ConfigMetrics",
@@ -1197,11 +1705,13 @@ __all__ = [
     "DEFAULT_PERMUTATION_RESAMPLES",
     "HolmResult",
     "ManualFinalSelection",
+    "PairedClusterBootstrapResult",
     "PairedPermutationResult",
     "ParticipantPrediction",
     "build_config_metrics_from_predictions_and_fold_summaries",
     "holm_adjust",
     "holm_adjust_by_family_metric",
+    "paired_participant_cluster_bootstrap",
     "paired_participant_permutation",
     "participant_cluster_bootstrap",
     "rank_top10",

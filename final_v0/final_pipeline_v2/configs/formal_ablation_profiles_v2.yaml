@@ -49,18 +49,18 @@ families:
     entries:
     - {profile_id: profile_a_lowpass_0p3hz, method: profile_a_lowpass_0p3hz, catalog_role: reference, auto_run: false}
     - {profile_id: calibrated_roll_pitch_ekf_ablation, method: calibrated_roll_pitch_ekf, catalog_role: ablation, auto_run: false}
+    - {profile_id: sensor_filter_only_no_gravity_removal_ablation, method: sensor_filter_only_no_gravity_removal, catalog_role: ablation, auto_run: false}
   peak_detector:
-    reference_profile_id: aboy_project_v1
+    reference_profile_id: msptdfast_v2_3_python_port
     silent_fallback_forbidden: true
     entries:
-    - {profile_id: aboy_project_v1, detector_id: aboy_project_v1, catalog_role: reference, auto_run: false}
-    - {profile_id: aboy_project_v2, detector_id: aboy_project_v2, catalog_role: ablation, auto_run: false}
-    - {profile_id: dual_polarity_prominence_v1_ablation, detector_id: dual_polarity_prominence_v1_ablation, catalog_role: ablation, auto_run: false}
     - profile_id: msptdfast_v2_3_python_port
       detector_id: msptdfast_v2_3_python_port
       parameters: {target_downsample_hz: 20.0, minimum_heart_rate_bpm: 30.0, window_s: 6.0, overlap_fraction: 0.2}
-      catalog_role: ablation
+      catalog_role: reference
       auto_run: false
+    - {profile_id: aboy_project_v2, detector_id: aboy_project_v2, catalog_role: ablation, auto_run: false}
+    - {profile_id: dual_polarity_prominence_v1_ablation, detector_id: dual_polarity_prominence_v1_ablation, catalog_role: ablation, auto_run: false}
   fixed_kernel_samples:
     family_id: fixed_kernel_samples_resampling_ablation
     eligible_models: [CompactCNN1D, InceptionTimeFull]

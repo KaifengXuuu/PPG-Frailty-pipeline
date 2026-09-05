@@ -1,6 +1,6 @@
 """脉搏事件、间期和匹配门面 / Pulse event, interval, and matching facade."""
 
-from .aboy_project import DETECTOR_NAME
+from .msptdfast_v2 import DETECTOR_NAME
 from .intervals import PrvResult, compute_prv
 from .pairing import (
     BeatPairAudit,
@@ -13,6 +13,7 @@ from .pairing import (
 )
 from .resolver import (
     ABLATION_DETECTOR_ID,
+    ABOY_PROJECT_V1_DETECTOR_ID,
     ABOY_PROJECT_V2_DETECTOR_ID,
     CANONICAL_DETECTOR_ID,
     DEFAULT_MIN_OBSERVATION_SEC,
@@ -28,6 +29,7 @@ from .resolver import (
 
 __all__ = [
     "ABLATION_DETECTOR_ID",
+    "ABOY_PROJECT_V1_DETECTOR_ID",
     "ABOY_PROJECT_V2_DETECTOR_ID",
     "BeatPairAudit",
     "BeatPairingResult",

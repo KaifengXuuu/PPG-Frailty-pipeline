@@ -94,6 +94,37 @@ def _safe_case_id(value: str) -> str:
     return cleaned
 
 
+def _resolve_reference_case_id(
+    case_ids: Iterable[str],
+    requested: str | None,
+) -> str:
+    """Resolve an exact or uniquely normalised source-case suffix."""
+
+    values = tuple(str(value) for value in case_ids)
+    if not values:
+        raise ValueError("cannot resolve a reference from an empty case roster")
+    if requested is None:
+        preferred = "stage1__raw__raw__compact_cnn"
+        return preferred if preferred in values else values[0]
+    safe_requested = _safe_case_id(requested)
+    normalised_requested = re.sub(r"_+", "_", safe_requested)
+    matches = [
+        case_id
+        for case_id in values
+        if case_id == safe_requested
+        or case_id.endswith(f"__{safe_requested}")
+        or re.sub(r"_+", "_", case_id).endswith(
+            f"_{normalised_requested}"
+        )
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            "reference case must resolve to exactly one recovered case: "
+            f"requested={requested!r}, matches={matches}"
+        )
+    return matches[0]
+
+
 def _json_value(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
@@ -259,7 +290,32 @@ def recover(
     sources: Iterable[tuple[str, Path]],
     output: Path,
     write_report: bool,
+    study_id: str = "completed_cases_legacy_stage1_stage2_recovery_v2",
+    purpose: str = (
+        "Read-only recovery of completed historical, Stage 1, and Stage 2 "
+        "cases for complete reporting."
+    ),
+    reference_case_id: str | None = None,
+    detailed_configuration_top_k: int = 0,
 ) -> Path:
+    sources = tuple(
+        (str(name), Path(root).resolve()) for name, root in sources
+    )
+    source_names = tuple(name for name, _root in sources)
+    source_roots = tuple(root for _name, root in sources)
+    if len(source_names) != len(set(source_names)):
+        raise ValueError("recovery source names must be unique")
+    if len(source_roots) != len(set(source_roots)):
+        duplicates = sorted(
+            str(root)
+            for root in set(source_roots)
+            if source_roots.count(root) > 1
+        )
+        raise ValueError(
+            "recovery source study paths must be distinct; point the "
+            "architecture source at the newly completed two-model study: "
+            f"duplicates={duplicates}"
+        )
     final_output = output.resolve()
     if final_output.exists():
         raise FileExistsError(
@@ -273,12 +329,18 @@ def recover(
         raise FileExistsError(f"recovery staging directory already exists: {output}")
     all_cases: list[dict[str, Any]] = []
     for name, root in sources:
-        all_cases.extend(_completed_case_records(name, root.resolve()))
+        all_cases.extend(_completed_case_records(name, root))
     if not all_cases:
         raise ValueError("no completed source cases were found")
+    if detailed_configuration_top_k < 0:
+        raise ValueError("detailed_configuration_top_k must be non-negative")
     case_ids = [str(row["case_id"]) for row in all_cases]
     if len(case_ids) != len(set(case_ids)):
         raise ValueError("recovered case ids are not unique")
+    resolved_reference_case_id = _resolve_reference_case_id(
+        case_ids,
+        reference_case_id,
+    )
     expected_cells = {
         (int(cell["repeat_index"]), int(cell["fold_index"]))
         for cell in all_cases[0]["cells"]
@@ -364,7 +426,7 @@ def recover(
                 "case_directory": f"cases/{case_id}",
                 "resolved_config_path": f"cases/{case_id}/resolved_config.yaml",
                 "output_group": output_group,
-                "is_reference": case_id == "stage1__raw__raw__compact_cnn",
+                "is_reference": False,
                 "source_name": source_case["source_name"],
                 "source_case": source_case["source_case"],
                 "config_sha256": config_hash,
@@ -446,20 +508,16 @@ def recover(
         ),
     )
 
-    reference_case_id = next(
-        (
-            str(row["case_id"])
-            for row in manifest_cases
-            if bool(row.get("is_reference"))
-        ),
-        str(manifest_cases[0]["case_id"]),
-    )
+    for row in manifest_cases:
+        row["is_reference"] = (
+            str(row["case_id"]) == resolved_reference_case_id
+        )
     plan = {
         "schema_version": "ppg_frailty.recovered_study_plan.v2",
         "study": {
-            "study_id": "completed_cases_legacy_stage1_stage2_recovery_v2",
+            "study_id": str(study_id),
             "kind": "catalog_sweep",
-            "purpose": "Read-only recovery of completed historical, Stage 1, and Stage 2 cases for complete reporting.",
+            "purpose": str(purpose),
             "flow_position": "Derived reporting archive; no new training and no new selection evidence.",
             "decision_role": "descriptive_recovery",
             "thesis_sections": [
@@ -471,7 +529,7 @@ def recover(
         },
         "catalog": {
             "path": "tables/source_case_index.csv",
-            "scope": "completed_cases_from_three_existing_studies",
+            "scope": "completed_cases_from_declared_source_studies",
             "balance_line": "source_case_declared_line_with_report_only_parallel_views",
         },
         "search": {
@@ -499,6 +557,9 @@ def recover(
         },
         "report": {
             "top_k": len(all_cases),
+            "detailed_configuration_top_k": min(
+                int(detailed_configuration_top_k), len(all_cases)
+            ),
             "write_html": True,
             "write_static_figures": True,
             "calibration_bins": 10,
@@ -516,7 +577,7 @@ def recover(
         "study": plan["study"],
         "execution": plan["execution"],
         "effective_jobs": 0,
-        "reference_case_id": reference_case_id,
+        "reference_case_id": resolved_reference_case_id,
         "planned_case_count": len(all_cases),
         "passed_case_count": len(all_cases),
         "failed_case_count": 0,
@@ -590,6 +651,35 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument(
+        "--study-id",
+        default="completed_cases_legacy_stage1_stage2_recovery_v2",
+        help="Study identifier persisted in the derived merged report.",
+    )
+    parser.add_argument(
+        "--purpose",
+        default=(
+            "Read-only recovery of completed historical, Stage 1, and Stage 2 "
+            "cases for complete reporting."
+        ),
+        help="Purpose text persisted in the derived merged report.",
+    )
+    parser.add_argument(
+        "--reference-case-id",
+        help=(
+            "Exact recovered case id or unique source-case suffix used as the "
+            "merged reporter reference."
+        ),
+    )
+    parser.add_argument(
+        "--detailed-configuration-top-k",
+        type=int,
+        default=0,
+        help=(
+            "Include complete long-form resolved configurations for this many "
+            "top predictive-ranked models in the merged report (0 disables)."
+        ),
+    )
+    parser.add_argument(
         "--no-report", action="store_true", help="Build recovery inputs but skip report generation."
     )
     return parser
@@ -602,6 +692,10 @@ def main(argv: list[str] | None = None) -> int:
         sources=sources,
         output=args.output,
         write_report=not args.no_report,
+        study_id=args.study_id,
+        purpose=args.purpose,
+        reference_case_id=args.reference_case_id,
+        detailed_configuration_top_k=args.detailed_configuration_top_k,
     )
     print(output)
     return 0

@@ -332,20 +332,20 @@ class LegacyBridgeDualReportTests(unittest.TestCase):
             if row["case_id"] == case_id
             and row["aggregation_level"] == "role"
         }
-        self.assertEqual(set(role_coverage), {"B", "R"})
+        self.assertEqual(set(role_coverage), {"B", "R", "ALL"})
         self.assertTrue(
             all(row["participant_count"] == 29 for row in role_coverage.values())
         )
-        self.assertTrue(
-            all(row["retained_oof_unit_count"] == 29 for row in role_coverage.values())
-        )
+        self.assertEqual(role_coverage["B"]["retained_oof_unit_count"], 29)
+        self.assertEqual(role_coverage["R"]["retained_oof_unit_count"], 29)
+        self.assertEqual(role_coverage["ALL"]["retained_oof_unit_count"], 58)
         window_coverage = {
             row["group_label"]: row
             for row in coverage
             if row["case_id"] == case_id
             and row["aggregation_level"] == "window"
         }
-        self.assertEqual(set(window_coverage), set(roles))
+        self.assertEqual(set(window_coverage), {*roles, "ALL"})
         self.assertTrue(
             all(row["participant_count"] == 29 for row in window_coverage.values())
         )

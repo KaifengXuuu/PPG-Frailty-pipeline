@@ -24,6 +24,7 @@ from .motion_imu import (
     RollPitchEkfConfig,
     preprocess_motion_imu_calibrated_ekf,
     preprocess_motion_imu_profile_a_lpf,
+    preprocess_motion_imu_without_gravity_removal,
 )
 from .resample import validate_dl_resampling_config
 from .views import CANONICAL_FS_HZ, CanonicalSignalViews
@@ -459,18 +460,21 @@ def _materialize_imu_profile(
         "calibrated_roll_pitch_ekf",
         "profile_a_lowpass_0p3hz",
     }
+    no_gravity_methods = {"sensor_filter_only_no_gravity_removal"}
+    calibration_methods = calibrated_methods | no_gravity_methods
     legacy_methods = {"quaternion_error_state_ekf", "low_pass_0p3hz"}
-    if method not in calibrated_methods | legacy_methods:
+    if method not in calibration_methods | legacy_methods:
         raise ValueError("signal.imu.gravity_method is not a registered V2 profile")
 
     derived_initialization = (
         "same_participant_static_calibration"
-        if method in calibrated_methods
+        if method in calibration_methods
         else "online_no_precalibration"
     )
     derived_comparison = {
         "calibrated_roll_pitch_ekf": "profile_a_lowpass_0p3hz",
         "profile_a_lowpass_0p3hz": "calibrated_roll_pitch_ekf",
+        "sensor_filter_only_no_gravity_removal": "profile_a_lowpass_0p3hz",
         "quaternion_error_state_ekf": "lowpass_0p3hz",
         "low_pass_0p3hz": "lowpass_0p3hz",
     }[method]
@@ -544,6 +548,14 @@ def _materialize_imu_profile(
             "calibration_stop_s",
             "gravity_mps2",
         },
+        "sensor_filter_only_no_gravity_removal": {
+            "sensor_lowpass_acc_hz",
+            "sensor_lowpass_gyro_hz",
+            "sensor_filter_order",
+            "calibration_start_s",
+            "calibration_stop_s",
+            "gravity_mps2",
+        },
         "quaternion_error_state_ekf": {
             "sensor_lowpass_acc_hz",
             "sensor_lowpass_gyro_hz",
@@ -603,7 +615,7 @@ def _materialize_imu_profile(
         "required_axes": 6,
         "failure_action": "fail_closed",
     }
-    if method in calibrated_methods:
+    if method in calibration_methods:
         roll_pitch_ekf_config_from_resolved(effective).validate(fs_hz)
     else:
         from .imu import ImuProfile
@@ -943,8 +955,10 @@ def build_signal_views(
         "calibrated_roll_pitch_ekf",
         "profile_a_lowpass_0p3hz",
     }
+    no_gravity_profiles = {"sensor_filter_only_no_gravity_removal"}
+    calibration_profiles = calibrated_profiles | no_gravity_profiles
     legacy_profiles = {"quaternion_error_state_ekf", "low_pass_0p3hz"}
-    if gravity_profile not in calibrated_profiles | legacy_profiles:
+    if gravity_profile not in calibration_profiles | legacy_profiles:
         raise ValueError("formal IMU gravity method is not a registered V2 profile")
     common_imu_keys = {
         "gravity_method", "initialization", "comparison_method",
@@ -974,10 +988,11 @@ def build_signal_views(
         != {"acceleration": "m/s^2", "gyroscope": "rad/s", "jerk": "m/s^3"}
     ):
         raise ValueError("resolved signal.imu structural contract is invalid")
-    if gravity_profile in calibrated_profiles:
+    if gravity_profile in calibration_profiles:
         expected_comparison = {
             "calibrated_roll_pitch_ekf": "profile_a_lowpass_0p3hz",
             "profile_a_lowpass_0p3hz": "calibrated_roll_pitch_ekf",
+            "sensor_filter_only_no_gravity_removal": "profile_a_lowpass_0p3hz",
         }[gravity_profile]
         if (
             imu_config.get("initialization")
@@ -1021,7 +1036,7 @@ def build_signal_views(
             canonical_observed = None
         if canonical_observed is not None and canonical_observed != expected:
             raise ValueError(f"record {name} conflicts with resolved signal profile")
-    if gravity_profile in calibrated_profiles:
+    if gravity_profile in calibration_profiles:
         calibration = optional_field("imu_calibration")
         participant_id = str(required_field("participant_id"))
         if not isinstance(calibration, MotionImuCalibration):
@@ -1030,11 +1045,13 @@ def build_signal_views(
                 "MotionImuCalibration; no fallback is permitted"
             )
         ekf_config = roll_pitch_ekf_config_from_resolved(imu_config)
-        processor = (
-            preprocess_motion_imu_calibrated_ekf
-            if gravity_profile == "calibrated_roll_pitch_ekf"
-            else preprocess_motion_imu_profile_a_lpf
-        )
+        processor = {
+            "calibrated_roll_pitch_ekf": preprocess_motion_imu_calibrated_ekf,
+            "profile_a_lowpass_0p3hz": preprocess_motion_imu_profile_a_lpf,
+            "sensor_filter_only_no_gravity_removal": (
+                preprocess_motion_imu_without_gravity_removal
+            ),
+        }[gravity_profile]
         motion_imu = processor(
             acc,
             gyro,

@@ -181,6 +181,7 @@ class V2ConfigurationTests(unittest.TestCase):
             "gap_repair": {"linear_inside_only"},
             "imu_gravity": {
                 "calibrated_roll_pitch_ekf",
+                "sensor_filter_only_no_gravity_removal",
                 "profile_a_lowpass_0p3hz",
                 "quaternion_error_state_ekf",
                 "low_pass_0p3hz",
@@ -984,6 +985,17 @@ class V2ConfigurationTests(unittest.TestCase):
             self.assertEqual(
                 gravity.payload["signal"]["imu"]["gravity_method"],
                 "calibrated_roll_pitch_ekf",
+            )
+            no_gravity = materialize_formal_ablation_config(
+                raw,
+                family="imu_gravity",
+                profile_id="sensor_filter_only_no_gravity_removal_ablation",
+                output_path=output / "no_gravity.yaml",
+                profiles_path=profiles,
+            )
+            self.assertEqual(
+                no_gravity.payload["signal"]["imu"]["gravity_method"],
+                "sensor_filter_only_no_gravity_removal",
             )
             sampler = materialize_formal_ablation_config(
                 raw,

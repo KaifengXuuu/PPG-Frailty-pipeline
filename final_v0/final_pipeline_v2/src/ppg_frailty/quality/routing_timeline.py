@@ -12,7 +12,6 @@ from typing import Iterable
 import numpy as np
 
 from ..contracts import RoutingCell, RoutingTimeline, RoutingWindow
-from ..data.manifest import canonicalize_role_family
 from .routing import QualityTier, route_quality_tier
 
 
@@ -95,8 +94,17 @@ def resolve_routing_evidence(
     evidence: RoutingEvidence,
     *,
     role: str,
+    allow_rate_feature_recovery_without_direct_sqi: bool = False,
 ) -> RoutingEvidence:
-    """Apply the authoritative truth table and the post-reducer promotion rule."""
+    """Apply the authoritative truth table and the post-reducer promotion rule.
+
+    ``allow_rate_feature_recovery_without_direct_sqi`` is an explicit
+    representation capability, not a hidden SQI switch.  It permits a
+    motion-high/SQI-off window to become Acceptable only after a successful
+    reducer and a passing post-reduction Q_rate assessment.  Raw, matrix and
+    fusion callers leave it false; the feature-vector rate-feature route opts
+    in explicitly.
+    """
 
     mode = str(evidence.sqi_mode)
     if mode not in {"off", "diagnostics_only", "route"}:
@@ -137,28 +145,32 @@ def resolve_routing_evidence(
         pre_tier = decision.tier
         reasons.extend(decision.reasons)
     else:
-        family = canonicalize_role_family(str(role))
-        static_role = family in {"B", "R"}
-        if evidence.motion_detector_enabled and motion_high is None:
-            pre_tier = QualityTier.UNFIT
-            reasons.append("motion_evidence_unavailable")
-        elif evidence.motion_detector_enabled and motion_high:
-            pre_tier = QualityTier.UNFIT
-            reasons.append("high_motion_compatibility_unfit")
-        elif evidence.motion_detector_enabled:
-            pre_tier = QualityTier.EXCELLENT
-            reasons.append("low_motion_direct_compatibility")
-        elif static_role:
-            pre_tier = QualityTier.EXCELLENT
-            reasons.append("configured_static_role_direct_compatibility")
-        else:
-            pre_tier = QualityTier.UNFIT
-            reasons.append("nonstatic_role_without_motion_evidence_unfit")
+        # ``off`` and ``diagnostics_only`` must not introduce an implicit
+        # protocol-role gate.  Every role already selected by the input config
+        # is Excellent when motion is off; with motion enabled, low/high maps
+        # to Excellent/Unfit.  Keep this path on the same authoritative truth
+        # table as the public routing helper.
+        decision = route_quality_tier(
+            sqi_enabled=False,
+            q_rate_state=None,
+            q_morph_state=None,
+            motion_enabled=evidence.motion_detector_enabled,
+            motion_high=motion_high,
+        )
+        pre_tier = decision.tier
+        reasons.extend(decision.reasons)
 
     denoiser_requested = bool(
         evidence.denoiser_enabled
         and pre_tier is QualityTier.UNFIT
         and (mode == "route" or evidence.motion_detector_enabled)
+    )
+    post_reduction_promotion_authorized = bool(
+        mode == "route"
+        or (
+            mode == "off"
+            and allow_rate_feature_recovery_without_direct_sqi
+        )
     )
     if pre_tier is QualityTier.EXCELLENT:
         final_tier, source_route, source_view = pre_tier, "direct", "x_filter_400"
@@ -166,7 +178,7 @@ def resolve_routing_evidence(
         final_tier, source_route, source_view = pre_tier, "direct", "x_filter_400"
     elif (
         denoiser_requested
-        and mode == "route"
+        and post_reduction_promotion_authorized
         and evidence.denoiser_status == "success"
         and evidence.post_q_rate_state == "pass"
     ):
@@ -176,7 +188,10 @@ def resolve_routing_evidence(
     else:
         final_tier = QualityTier.EXCLUDED
         source_route, source_view = "none", "none"
-        if denoiser_requested and mode != "route":
+        if (
+            denoiser_requested
+            and not post_reduction_promotion_authorized
+        ):
             reasons.append("denoiser_diagnostic_only_without_sqi_route")
         elif denoiser_requested:
             reasons.append("post_reducer_not_promoted")

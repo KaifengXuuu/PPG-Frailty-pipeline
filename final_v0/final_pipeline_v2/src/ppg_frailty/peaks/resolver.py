@@ -11,13 +11,14 @@ import numpy as np
 from ..contracts import PulseResult, SignalRoute
 from ..signal.views import CANONICAL_FS_HZ, CanonicalSignalViews
 from .aboy_project import (
-    DETECTOR_ID as CANONICAL_DETECTOR_ID,
+    DETECTOR_ID as ABOY_PROJECT_V1_DETECTOR_ID,
     MIN_BASIC_RATE_PEAKS,
     detect_pulses_per_wavelength_aboy_project,
 )
 from .aboy_project_v2 import DETECTOR_ID as ABOY_PROJECT_V2_DETECTOR_ID
 from .msptdfast_v2 import DETECTOR_ID as MSPTDFAST_V2_DETECTOR_ID
 
+CANONICAL_DETECTOR_ID = MSPTDFAST_V2_DETECTOR_ID
 ABLATION_DETECTOR_ID = "dual_polarity_prominence_v1_ablation"
 DEFAULT_MIN_OBSERVATION_SEC = 8.0
 DEFAULT_MIN_PEAKS = MIN_BASIC_RATE_PEAKS
@@ -25,8 +26,8 @@ DEFAULT_MIN_PEAKS = MIN_BASIC_RATE_PEAKS
 REGISTERED_DETECTOR_IDS = (
     CANONICAL_DETECTOR_ID,
     ABOY_PROJECT_V2_DETECTOR_ID,
+    ABOY_PROJECT_V1_DETECTOR_ID,
     ABLATION_DETECTOR_ID,
-    MSPTDFAST_V2_DETECTOR_ID,
 )
 
 
@@ -114,7 +115,7 @@ def detect_pulses_per_wavelength(
         min_peaks,
     )
     parameters = resolve_detector_parameters(resolved, detector_parameters)
-    if resolved == CANONICAL_DETECTOR_ID:
+    if resolved == ABOY_PROJECT_V1_DETECTOR_ID:
         return detect_pulses_per_wavelength_aboy_project(
             values,
             fs_hz=fs_hz,
@@ -224,6 +225,7 @@ def detect_pulses(
 
 __all__ = [
     "ABLATION_DETECTOR_ID",
+    "ABOY_PROJECT_V1_DETECTOR_ID",
     "ABOY_PROJECT_V2_DETECTOR_ID",
     "CANONICAL_DETECTOR_ID",
     "DEFAULT_MIN_OBSERVATION_SEC",

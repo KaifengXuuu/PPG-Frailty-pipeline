@@ -4,19 +4,29 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 import tempfile
 import unittest
 from unittest.mock import patch
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
+import yaml
+
 from ppg_frailty.experiment import _bind_raw_dataset_for_model, _model_input_spec
 from ppg_frailty.models import create_model
 from ppg_frailty.study import StudyRunner, validate_canonical_expansion
 from ppg_frailty.study.hyperparameter import (
+    _candidate_component_rows,
     _completion_candidates,
+    _copy_root_profile_tables,
+    _design_scope_conclusion,
     _merge_equal_resource_rankings,
+    _narrow_table_views,
+    _nested_phase_frozen_membership,
     _phase_plan,
+    _persisted_reporting_selection_seed,
+    _root_ranking_selection_role,
     _write_root_report,
     complete_successive_halving_study,
     load_hyperparameter_plan,
@@ -31,6 +41,202 @@ PLAN_DIR = ROOT / "configs" / "studies" / "static_line_b_staged_v2"
 
 
 class HyperparameterStudyTests(unittest.TestCase):
+    def test_hyperparameter_narrow_views_are_lossless_and_bounded(self) -> None:
+        rows = [
+            {
+                "case_id": "candidate",
+                "repeat": 0,
+                **{f"metric_{index}": index for index in range(11)},
+            }
+        ]
+        views = _narrow_table_views(
+            rows,
+            identity_fields=("case_id", "repeat"),
+            semantic_groups=(
+                (
+                    "Primary metrics",
+                    tuple(f"metric_{index}" for index in range(5)),
+                ),
+            ),
+        )
+        self.assertTrue(all(len(view[0]) <= 8 for _title, view in views))
+        displayed_fields = {
+            field for _title, view in views for row in view for field in row
+        }
+        self.assertEqual(displayed_fields, set(rows[0]))
+
+    def _persist_expansion_contract(self, phase: Path, expansion) -> dict[str, object]:
+        """Persist the same resolved-config/TEST_COMPONENTS contract as a phase."""
+
+        cases = []
+        configs: dict[str, object] = {}
+        for case in expansion.cases:
+            relative = Path("raw") / case.case_id / "resolved_config.yaml"
+            target = phase / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            config = dict(case.config)
+            target.write_text(
+                yaml.safe_dump(config, sort_keys=False), encoding="utf-8"
+            )
+            configs[case.case_id] = config
+            cases.append(
+                {
+                    "case_id": case.case_id,
+                    "resolved_config_path": relative.as_posix(),
+                }
+            )
+        manifest = {"status": "running", "cases": cases}
+        (phase / "study_manifest.json").write_text(
+            json.dumps(manifest), encoding="utf-8"
+        )
+        tables = phase / "tables"
+        tables.mkdir(parents=True, exist_ok=True)
+        component_rows = []
+        for case_id, raw_config in configs.items():
+            config = dict(raw_config)
+            model = dict(config["model"])
+            training = dict(config["training"])
+            signal = dict(config["signal"])
+            windows = dict(config["windows"])
+            input_data = {
+                "channels": list(model["input_channel_order"]),
+                "pipeline_fs_hz": float(signal["internal_fs_hz"]),
+                "representation_mode": config["representation_mode"],
+                "roles": list(config["roles"]),
+                "signal_view": "x_dl_all8_window_norm",
+                "window": dict(windows["raw_dl"]),
+            }
+            shared = {
+                "participating_cases": case_id,
+                "execution_state": "enabled",
+                "algorithm_kernel_description": "persisted test fixture",
+                "reporter_profile_id": "multiclass_participant_oof_v1",
+                "model_reporter_extension_id": "inceptiontime_single_network_model_v1",
+                "algorithm_references": "persisted fixture reference",
+            }
+            component_rows.extend(
+                (
+                    {
+                        **shared,
+                        "component_role": "classifier",
+                        "module_id": model["model_id"],
+                        "input_data": json.dumps(input_data, sort_keys=True),
+                        "fixed_parameters": json.dumps(model, sort_keys=True),
+                    },
+                    {
+                        **shared,
+                        "component_role": "trainer",
+                        "module_id": training["optimizer"],
+                        "input_data": json.dumps(
+                            {"model_input": input_data}, sort_keys=True
+                        ),
+                        "fixed_parameters": json.dumps(training, sort_keys=True),
+                    },
+                )
+            )
+        (tables / "test_components.json").write_text(
+            json.dumps(component_rows),
+            encoding="utf-8",
+        )
+        return configs
+
+    def test_root_ranking_role_is_derived_from_declared_study_design(self) -> None:
+        regularization = load_hyperparameter_plan(
+            PLAN_DIR / "stage6_regula_search.yaml"
+        )
+        halving = load_hyperparameter_plan(
+            PLAN_DIR / "stage6_batch_LR_search.yaml"
+        )
+        self.assertEqual(
+            _root_ranking_selection_role(regularization, "full_cv_ranking"),
+            "declared_full_cv_equal_weight_fold_cell_ranking",
+        )
+        self.assertEqual(
+            _root_ranking_selection_role(halving, "screen_ranking"),
+            "reduced_resource_screening_evidence_not_full_cv_selection",
+        )
+        self.assertEqual(
+            _root_ranking_selection_role(
+                halving, "all_candidates_full_cv_ranking"
+            ),
+            "exhaustive_full_grid_selection_evidence_after_completion",
+        )
+
+    def test_joint_grid_design_scope_forbids_single_factor_claims(self) -> None:
+        regularization = load_hyperparameter_plan(
+            PLAN_DIR / "stage6_regula_search.yaml"
+        )
+        batch_lr = load_hyperparameter_plan(
+            PLAN_DIR / "stage6_batch_LR_search.yaml"
+        )
+        regularization_scope = _design_scope_conclusion(
+            regularization, selected_case_id="r2_wd001_do05_ls02"
+        )
+        batch_lr_scope = _design_scope_conclusion(
+            batch_lr, selected_case_id="b16_lr3e-4"
+        )
+        self.assertEqual(
+            regularization_scope["confidence"],
+            "design_scope_joint_profile_nonfactorial",
+        )
+        self.assertIn("training.weight_decay", regularization_scope["finding"])
+        self.assertIn("model.dropout", regularization_scope["finding"])
+        self.assertIn("training.label_smoothing", regularization_scope["finding"])
+        self.assertIn("training.batch_size", batch_lr_scope["finding"])
+        self.assertIn("training.learning_rate", batch_lr_scope["finding"])
+        self.assertEqual(
+            batch_lr_scope["selection_effect"],
+            "profile_level_selection_only_no_single_factor_claim",
+        )
+
+    def test_reporting_seed_comes_from_persisted_phase_plan(self) -> None:
+        plan = load_hyperparameter_plan(
+            PLAN_DIR / "stage6_regula_search.yaml"
+        )
+        self.assertEqual(plan["search"]["selection_seed"], 42)
+        plan["search"]["selection_seed"] = 777
+        phase_plan = _phase_plan(
+            plan,
+            phase_id="seed_contract",
+            candidates=plan["candidates"][:2],
+            repeats=[0],
+            folds=[0],
+            epochs=1,
+            inherited={},
+            device="cuda",
+            jobs=1,
+        )
+        self.assertEqual(phase_plan.search.selection_seed, 777)
+        with tempfile.TemporaryDirectory() as temporary:
+            phase = Path(temporary)
+            (phase / "study_plan.yaml").write_text(
+                yaml.safe_dump({"search": {"selection_seed": 777}}),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                _persisted_reporting_selection_seed(
+                    (("full_cv", phase),), default=42
+                ),
+                777,
+            )
+
+    def test_profile_required_table_serializations_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "root"
+            phase = Path(temporary) / "phase"
+            (phase / "tables").mkdir(parents=True)
+            (phase / "tables" / "case_summary.csv").write_text(
+                "case_id\nexample\n", encoding="utf-8"
+            )
+            rows = _copy_root_profile_tables(
+                output,
+                (("full_cv", phase),),
+                required_by_name={"case_summary": ("profile",)},
+            )
+        self.assertEqual(rows[0]["status"], "N/A_fail_closed")
+        self.assertEqual(rows[0]["missing_suffixes"], [".json"])
+        self.assertIn(".json", rows[0]["reason"])
+
     def _expand(self, name: str, inherited: dict[str, object]):
         plan = load_hyperparameter_plan(PLAN_DIR / name)
         resource = plan["resource"]
@@ -171,6 +377,8 @@ class HyperparameterStudyTests(unittest.TestCase):
         )
 
     def test_completion_reuses_promoted_and_updates_selection_after_success(self) -> None:
+        _plan, expansion = self._expand("stage6_batch_LR_search.yaml", {})
+
         def row(case_id: str, balanced_accuracy: float, macro_f1: float):
             return {
                 "case_id": case_id,
@@ -233,8 +441,12 @@ class HyperparameterStudyTests(unittest.TestCase):
             (tables / "promotion_ranking.json").write_text(
                 json.dumps(promoted), encoding="utf-8"
             )
+            self._persist_expansion_contract(screen_dir, expansion)
+            self._persist_expansion_contract(promotion_dir, expansion)
+            self._persist_expansion_contract(completion_dir, expansion)
+
             def write_case_summary(directory: Path, rows):
-                (directory / "tables").mkdir()
+                (directory / "tables").mkdir(exist_ok=True)
                 (directory / "tables" / "case_summary.json").write_text(
                     json.dumps([
                         {
@@ -317,15 +529,16 @@ class HyperparameterStudyTests(unittest.TestCase):
             )
 
     def test_channel_ablation_is_explicit_dl_tensor_slicing(self) -> None:
-        _, expansion = self._expand(
+        inherited = {
+            "training.batch_size": 32,
+            "training.learning_rate": 0.0003,
+            "training.weight_decay": 0.001,
+            "training.label_smoothing": 0.1,
+            "model.dropout": 0.3,
+        }
+        plan, expansion = self._expand(
             "stage_ablation_channels.yaml",
-            {
-                "training.batch_size": 32,
-                "training.learning_rate": 0.0003,
-                "training.weight_decay": 0.001,
-                "training.label_smoothing": 0.1,
-                "model.dropout": 0.3,
-            },
+            inherited,
         )
         orders = {
             case.case_id: tuple(case.config["model"]["input_channel_order"])
@@ -368,9 +581,67 @@ class HyperparameterStudyTests(unittest.TestCase):
             spec,
         )
         self.assertEqual(model.n_channels, 2)
+        with tempfile.TemporaryDirectory() as temporary:
+            phase = Path(temporary) / "full_cv"
+            phase.mkdir(parents=True)
+            self._persist_expansion_contract(phase, expansion)
+            component_rows = _candidate_component_rows(
+                plan,
+                {"full_cv": phase},
+                inherited=inherited,
+            )
+            component_path = phase / "tables" / "test_components.json"
+            tampered = json.loads(component_path.read_text(encoding="utf-8"))
+            classifier = next(
+                row
+                for row in tampered
+                if row["component_role"] == "classifier"
+                and row["participating_cases"] == "channels_ppg_red_ir"
+            )
+            classifier_input = json.loads(classifier["input_data"])
+            classifier_input["channels"] = ["RED", "IR", "GX"]
+            classifier["input_data"] = json.dumps(classifier_input, sort_keys=True)
+            component_path.write_text(json.dumps(tampered), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "channel provenance differs"):
+                _candidate_component_rows(
+                    plan,
+                    {"full_cv": phase},
+                    inherited=inherited,
+                )
+        by_case = {row["participating_cases"]: row for row in component_rows}
+        expected = {
+            "channels_full8_reference": (
+                "RED", "IR", "A_dyn_x", "A_dyn_y", "A_dyn_z", "GX", "GY", "GZ",
+            ),
+            "channels_ppg_red_ir": ("RED", "IR"),
+            "channels_imu_acc_gyro": (
+                "A_dyn_x", "A_dyn_y", "A_dyn_z", "GX", "GY", "GZ",
+            ),
+        }
+        self.assertEqual(set(by_case), set(expected))
+        resolved_paths = set()
+        for case_id, channel_order in expected.items():
+            input_data = json.loads(by_case[case_id]["input_data"])
+            fixed = json.loads(by_case[case_id]["fixed_parameters"])
+            self.assertEqual(tuple(input_data["channels"]), channel_order)
+            self.assertEqual(input_data["signal_view"], "x_dl_all8_window_norm")
+            self.assertEqual(input_data["sampling_rate_hz"], 64.0)
+            self.assertEqual(input_data["pipeline_fs_hz"], 400.0)
+            self.assertEqual(input_data["window"]["length_s"], 5.0)
+            self.assertEqual(input_data["window"]["hop_s"], 2.5)
+            self.assertEqual(fixed["model"]["input_channels"], len(channel_order))
+            self.assertEqual(
+                tuple(fixed["model"]["input_channel_order"]), channel_order
+            )
+            self.assertEqual(fixed["training"]["batch_size"], 32)
+            self.assertEqual(fixed["persisted_provenance"]["phase"], "full_cv")
+            resolved_paths.add(
+                fixed["persisted_provenance"]["resolved_config_path"]
+            )
+        self.assertEqual(len(resolved_paths), 3)
 
     def test_root_report_uses_latest_portable_outputs(self) -> None:
-        plan = load_hyperparameter_plan(PLAN_DIR / "stage6_batch_LR_search.yaml")
+        plan, expansion = self._expand("stage6_batch_LR_search.yaml", {})
         ranking = [
             {
                 "case_id": "b16_lr1e-4",
@@ -389,7 +660,7 @@ class HyperparameterStudyTests(unittest.TestCase):
             phase = output / "phases/screen/run"
             phase.mkdir(parents=True)
             (phase / "STUDY_SUMMARY.md").write_text("# nested\n", encoding="utf-8")
-            (phase / "tables").mkdir()
+            configs = self._persist_expansion_contract(phase, expansion)
             (phase / "tables/case_summary.json").write_text(
                 json.dumps(
                     [
@@ -418,49 +689,272 @@ class HyperparameterStudyTests(unittest.TestCase):
                 ranking_tables={"screen_ranking": ranking},
                 selected={
                     "case_id": "b16_lr1e-4",
-                    "resolved_config": {
-                        "signal": {
-                            "imu": {
-                                "gravity_method": "profile_a_lowpass_0p3hz"
-                            }
-                        },
-                        "model": {
-                            "input_channel_order": [
-                                "RED", "IR", "A_dyn_x", "A_dyn_y", "A_dyn_z",
-                                "GX", "GY", "GZ",
-                            ]
-                        },
-                    },
+                    "resolved_config": configs["b16_lr1e-4"],
                 },
                 inherited={},
             )
             required = (
                 "STUDY_SUMMARY.md", "STUDY_SUMMARY.html", "TEST_COMPONENTS.md",
+                "REPORT_METHODS.md", "RESULT_INTERPRETATION.md",
                 "outputs_index.json", "tables/screen_ranking.csv",
                 "tables/screen_ranking.json", "tables/reproducibility.csv",
                 "tables/test_components.csv", "tables/table_figure_pairs.csv",
                 "tables/report_tables.xlsx",
                 "tables/screen_participant_oof_ranking.csv",
+                "tables/reporter_profiles.csv",
+                "tables/comprehensive_model_comparison.csv",
+                "tables/model_comparison_performance.csv",
+                "tables/model_comparison_uncertainty.csv",
+                "tables/model_comparison_inference.csv",
+                "tables/model_comparison_robustness.csv",
+                "tables/selection_conclusions.csv",
+                "tables/root_reporter_artifact_status.csv",
             )
             self.assertTrue(all((output / name).is_file() for name in required))
             summary = (output / "STUDY_SUMMARY.md").read_text(encoding="utf-8")
+            interpretation = (output / "RESULT_INTERPRETATION.md").read_text(
+                encoding="utf-8"
+            )
             components = (output / "TEST_COMPONENTS.md").read_text(encoding="utf-8")
             self.assertIn("72.6 ± 6.0", summary)
             self.assertIn("outer_cv_repeat_seed_equals_split_seed", summary)
             self.assertIn("40042", summary)
             self.assertIn("equal-weight mean of declared fold-cell", summary)
+            self.assertIn("Model/module-owned reporter methods and literature", summary)
+            self.assertIn("P values are null-hypothesis tail probabilities", summary)
+            self.assertIn("### Ranking and performance", summary)
+            self.assertIn(
+                "### Uncertainty and 95% confidence intervals", summary
+            )
+            self.assertIn("### Ranking and performance", interpretation)
+            self.assertIn("### Paired inference", interpretation)
+            self.assertNotIn(
+                "| rank | case_id | status | complete_for_requested_execution |",
+                summary,
+            )
             self.assertIn("profile_a_lowpass_0p3hz", components)
             self.assertIn(components.split("\n\n", 1)[1].strip(), summary)
+            self.assertIn(
+                "### Profile identity and participating components", summary
+            )
+            self.assertIn("### Required outputs", summary)
+            self.assertIn("### Methods, limitations, and provenance", summary)
+            markdown_lines = summary.splitlines()
+            markdown_table_widths = [
+                markdown_lines[index + 1].count("|") - 1
+                for index, line in enumerate(markdown_lines[:-1])
+                if line.startswith("| ")
+                and markdown_lines[index + 1].startswith("|---")
+            ]
+            self.assertTrue(markdown_table_widths)
+            self.assertTrue(
+                all(width <= 8 for width in markdown_table_widths),
+                markdown_table_widths,
+            )
+            html_summary = (output / "STUDY_SUMMARY.html").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn(
+                "<h3>Profile identity and participating components</h3>",
+                html_summary,
+            )
+            self.assertIn("<h3>Input data and fixed parameters</h3>", html_summary)
+            html_table_widths = [
+                len(re.findall(r"<th(?:\s|>)", table))
+                for table in re.findall(
+                    r"<table(?:\s[^>]*)?>.*?</table>",
+                    html_summary,
+                    flags=re.DOTALL,
+                )
+            ]
+            self.assertTrue(html_table_widths)
+            self.assertTrue(
+                all(width <= 8 for width in html_table_widths),
+                html_table_widths,
+            )
+            candidate_rows = json.loads(
+                (output / "tables/test_components.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            persisted_batch_lr = {
+                (
+                    json.loads(row["fixed_parameters"])["training"]["batch_size"],
+                    json.loads(row["fixed_parameters"])["training"][
+                        "learning_rate"
+                    ],
+                )
+                for row in candidate_rows
+            }
+            self.assertEqual(
+                persisted_batch_lr,
+                {
+                    (16, 0.0001), (16, 0.0003), (16, 0.001),
+                    (32, 0.0001), (32, 0.0003), (32, 0.001),
+                },
+            )
+            reporter_profile_rows = json.loads(
+                (output / "tables/reporter_profiles.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            per_class_rows = json.loads(
+                (output / "tables/classifier_per_class_results.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertGreater(len(candidate_rows[0]), 8)
+            self.assertGreater(len(reporter_profile_rows[0]), 8)
+            self.assertGreater(len(per_class_rows[0]), 8)
+            artifact_status = json.loads(
+                (output / "tables/root_reporter_artifact_status.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertTrue(artifact_status)
+            self.assertTrue(
+                all(
+                    row["status"] in {
+                        "copied_from_nested_phase",
+                        "generated_from_nested_phase",
+                        "generated_but_unpaired_fail_closed",
+                        "N/A_fail_closed",
+                    }
+                    for row in artifact_status
+                )
+            )
+            for table_name in (
+                "model_comparison_performance",
+                "model_comparison_uncertainty",
+                "model_comparison_inference",
+                "model_comparison_robustness",
+            ):
+                header = (
+                    output / "tables" / f"{table_name}.csv"
+                ).read_text(encoding="utf-8").splitlines()[0]
+                self.assertLessEqual(len(header.split(",")), 8)
+            raw_comparison = json.loads(
+                (
+                    output / "tables/comprehensive_model_comparison.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertIsInstance(raw_comparison, list)
+            if raw_comparison:
+                self.assertIn("balanced_accuracy_mean", raw_comparison[0])
+            inference_rows = json.loads(
+                (
+                    output
+                    / "tables/exploratory_selected_paired_inference.json"
+                ).read_text(encoding="utf-8")
+            )
+            repeat_delta_rows = json.loads(
+                (output / "tables/pairwise_repeat_metric_deltas.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(len(inference_rows), 15)
+            self.assertEqual(len(repeat_delta_rows), 25)
+            self.assertTrue(
+                all(
+                    row["comparison_contract_status"]
+                    == "N/A_frozen_split_registry_no_full_resource_phase"
+                    and row["candidate_minus_reference"] is None
+                    for row in inference_rows
+                )
+            )
+            self.assertTrue(
+                all(
+                    row["comparison_contract_status"]
+                    == "N/A_frozen_split_registry_no_full_resource_phase"
+                    and row["comparison_role"]
+                    == "exploratory_post_selection_model_comparison"
+                    and row["balanced_accuracy_delta"] is None
+                    and row["macro_f1_delta"] is None
+                    and row["macro_roc_auc_ovr_delta"] is None
+                    for row in repeat_delta_rows
+                )
+            )
             with ZipFile(output / "tables/report_tables.xlsx") as archive:
                 self.assertIsNone(archive.testzip())
                 workbook = ElementTree.fromstring(archive.read("xl/workbook.xml"))
             namespace = {
                 "m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
             }
-            self.assertEqual(len(workbook.findall(".//m:sheet", namespace)), 5)
+            sheet_count = len(workbook.findall(".//m:sheet", namespace))
+            csv_count = len(tuple((output / "tables").glob("*.csv")))
+            self.assertEqual(sheet_count, csv_count)
             index = json.loads((output / "outputs_index.json").read_text())
             self.assertTrue(index)
             self.assertTrue(all(len(row["sha256"]) == 64 for row in index))
+
+    def test_nested_full_resource_registry_must_pass_and_match_across_phases(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+
+            def persist(phase: str, *, fold_for_p2: int = 1, status: str = "PASS") -> Path:
+                directory = root / phase
+                tables = directory / "tables"
+                tables.mkdir(parents=True)
+                (tables / "reproducibility_summary.json").write_text(
+                    json.dumps([{"audit_status": status}]), encoding="utf-8"
+                )
+                (tables / "reproducibility_splits.json").write_text(
+                    json.dumps(
+                        [
+                            {
+                                "audit_status": status,
+                                "repeat": 0,
+                                "fold": 0,
+                                "split_seed": 42,
+                                "oof_participant_count": 1,
+                                "oof_participant_ids": ["P1"],
+                                "train_oof_overlap_count": 0,
+                            },
+                            {
+                                "audit_status": status,
+                                "repeat": 0,
+                                "fold": fold_for_p2,
+                                "split_seed": 42,
+                                "oof_participant_count": 1,
+                                "oof_participant_ids": ["P2"],
+                                "train_oof_overlap_count": 0,
+                            },
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                return directory
+
+            promotion = persist("promotion")
+            completion = persist("completion")
+            membership, reason = _nested_phase_frozen_membership(
+                (("promotion", promotion), ("completion", completion))
+            )
+            self.assertIsNone(reason)
+            self.assertEqual(
+                membership,
+                {("P1", 0): (0, 42), ("P2", 0): (1, 42)},
+            )
+
+            mismatched = persist("mismatched", fold_for_p2=2)
+            membership, reason = _nested_phase_frozen_membership(
+                (("promotion", promotion), ("completion", mismatched))
+            )
+            self.assertIsNone(membership)
+            self.assertEqual(
+                reason,
+                "frozen_split_registry_cross_phase_roster_mismatch",
+            )
+
+            failed = persist("failed", status="FAIL")
+            membership, reason = _nested_phase_frozen_membership(
+                (("full_cv", failed),)
+            )
+            self.assertIsNone(membership)
+            self.assertEqual(
+                reason,
+                "frozen_split_registry_not_verifiable__full_cv",
+            )
 
 
 if __name__ == "__main__":

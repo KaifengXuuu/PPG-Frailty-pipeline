@@ -21,6 +21,10 @@ from ppg_frailty.study.hyperparameter import (
     regenerate_hyperparameter_report,
     run_hyperparameter_study,
 )
+from ppg_frailty.reporting.incomplete import (
+    generate_incomplete_study_report,
+    is_incomplete_study_directory,
+)
 from ppg_frailty.study import TerminalProgressSink
 
 
@@ -67,7 +71,12 @@ def main(argv: list[str] | None = None) -> int:
         }, sort_keys=True))
         return 0
     if args.command == "report":
-        result = regenerate_hyperparameter_report(args.study_dir)
+        study_path = Path(args.study_dir).resolve()
+        result = (
+            generate_incomplete_study_report(study_path).to_dict()
+            if is_incomplete_study_directory(study_path)
+            else regenerate_hyperparameter_report(study_path)
+        )
         print(json.dumps(result, sort_keys=True))
         return 0
     if args.command == "complete" and args.dry_run:

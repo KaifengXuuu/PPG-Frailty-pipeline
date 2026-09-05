@@ -23,6 +23,22 @@ Stage 3 bridge plans remain immutable evidence and are not rewritten.
 
 ## Order and status
 
+0. stage0_decision_bias_oracle.yaml
+   Read-only, intentionally label-leaking decision-layer ceiling analysis for
+   one completed final classifier case. It averages the five participant OOF
+   probabilities to exactly 29 rows, enumerates the 5,151 three-class simplex
+   biases at step .01, and maximises BA on those same labels. The output is an
+   upper bound only: it is ineligible for performance reporting, selection,
+   calibration, deployment, CI, or P values. Incomplete fold/staging artifacts
+   are rejected.
+
+   stage0_inception_small_no_gravity_supplement_v1.yaml
+   is a separate 25-cell training supplement, not part of the label-leaking
+   oracle computation. It runs only the tuned all-role InceptionTimeSmall with
+   the registered no-gravity-removal IMU profile. After completion it is merged
+   read-only with the earlier four finalists and completed Full/Small study;
+   no completed case is retrained.
+
 1. 01_representation_baselines_v2.yaml
    Runs three low-cost representatives. Raw CompactCNN and compact fusion use
    the selected V2-core plus B0/B2/B7 state. It screens a
@@ -66,11 +82,11 @@ Stage 3 bridge plans remain immutable evidence and are not rewritten.
 
 5. 05_sqi_motion_finalists_v2.yaml
    Eight declared 64 Hz CompactCNN1D cases compare all-role off/off, a
-   static-only B/R input-scope control, fixed-threshold SQI, SQI plus the
-   frozen Frailty29 all-29 motion bundle, SQI-on PCA/FastICA, and SQI-off
-   PCA/FastICA one-attempt HR-recovery diagnostics. Seven cases use all
-   B/R/S/W roles; only `static_only` is restricted to B/R. The classifier and
-   frozen motion inference use CUDA. Raw-DL windows are 5 s with 2.5 s hop; the CNN tensor
+   fixed-threshold SQI route, SQI plus the frozen Frailty29 all-29 motion
+   bundle, motion-only routing, and SQI-on/SQI-off PCA/FastICA one-attempt
+   HR-recovery diagnostics. Every case uses the same B/R/S/W scope. The
+   classifier and frozen motion inference use CUDA. Raw-DL windows are 5 s
+   with 2.5 s hop; the CNN tensor
    uses all-eight per-window robust scaling without fold-level IMU
    post-scaling. All eight cases explicitly use the same calibrated roll-pitch
    EKF profile, making EKF a stage-wide ablation relative to the ordinary V2
@@ -82,6 +98,17 @@ Stage 3 bridge plans remain immutable evidence and are not rewritten.
    EKF-bound, but that requirement no longer creates an IMU-profile difference
    between the eight within-stage comparisons. SQI-off denoiser cases still
    persist direct and post-denoiser HR diagnostics without running direct SQI.
+
+5b. 05_sqi_motion_logistic_regression_l2_v2.yaml
+   The complete 5x5 LogisticRegressionL2 re-test of the same eight module
+   compositions. All cases use the feature-vector route, identical B/R/S/W
+   scope, calibrated EKF, Line B aggregation and frozen split registry.
+   PCA/FastICA outputs remain rate-only, but eligible post-denoiser pulse,
+   PPI and PRV evidence enters the classifier through
+   `denoise_then_extract_rate_features`. SQI-off/high-motion recovery is
+   explicitly authorized only for this rate-feature policy and still requires
+   a passing post-denoiser Q_rate. LogisticRegressionL2 runs on CPU; CUDA is
+   used by the frozen motion detector.
 
 6. stage6_batch_LR_search.yaml
    InceptionTimeFull batch/LR successive halving. Six candidates first run five
@@ -103,6 +130,14 @@ Stage 3 bridge plans remain immutable evidence and are not rewritten.
    three-case CompactCNN learning-rate ablation, now also locked to the selected
    state. It is not the InceptionTime tuning route.
 
+6b. stage_ablation_s1_163_gravity_removal_v1.yaml
+   Matched two-case, 5x5 S1_163 all-role InceptionTimeFull ablation. The
+   reference uses Profile-A 0.3 Hz gravity removal; the candidate keeps the
+   same SI conversion, participant-B sensor-bias calibration and 20/40 Hz
+   sensor filtering but performs no gravity estimation or subtraction. Every
+   data, model, optimizer, window, module-off, split and seed setting is shared.
+   The reference is rerun in the same code snapshot for paired inference.
+
 Last. stage_last_shapeformer_stability_v2.yaml
    ShapeFormer is intentionally deferred until every numbered stage has been
    reviewed because its fold-local discovery and model fitting are unusually
@@ -118,6 +153,28 @@ Run or dry-run any stage from the final_pipeline_v2 directory:
 
     python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/01_representation_baselines_v2.yaml --dry-run
 
+Run the zero-training-cost Stage 0 oracle after its configured source case has
+completed all five repeats:
+
+    python decision_bias_oracle_v2.py run --plan configs/studies/static_line_b_staged_v2/stage0_decision_bias_oracle.yaml --output-root artifacts/studies/static_line_b_staged_v2
+
+Run the separate Stage 0 Small-Inception/no-gravity supplement on CUDA:
+
+    CUBLAS_WORKSPACE_CONFIG=:4096:8 CUDA_VISIBLE_DEVICES=0 MPLCONFIGDIR=/tmp/ppg-stage0-small-no-gravity-mpl python frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/stage0_inception_small_no_gravity_supplement_v1.yaml --device cuda --repeats all --folds all --jobs 1 --preprocessing-cache-mode read_write --preprocessing-cache-root artifacts/studies/cache --preprocessing-cache-namespaces imu_calibration,canonical_signal_views,raw_windows --no-measure-operational-costs --output-root artifacts/studies/static_line_b_staged_v2
+
+After that command prints its `Study output`, paste the exact directory into
+`SMALL_NOGRAV_STUDY`, then create the seven-case read-only merged report:
+
+    SMALL_NOGRAV_STUDY=/absolute/path/from/Study-output
+
+    python tools/recover_completed_cases_v2.py --source previous=artifacts/studies/static_line_b_staged_v2/20260824_111943_catalog_sweep_final-case-comparison-inception-full-v1 --source architecture=artifacts/studies/static_line_b_staged_v2/20260824_160517_catalog_sweep_final-case-all-roles-inception-architecture-comparison-v1 --source small_no_gravity="$SMALL_NOGRAV_STUDY" --output artifacts/studies/static_line_b_staged_v2/20260824_final_case_inception_small_no_gravity_merged_v2 --study-id final_case_inception_small_no_gravity_merged_v2 --purpose "Merged final-case comparison: four prior candidates, matched Full/Small architectures, and Small InceptionTime without gravity removal." --reference-case-id tuned_all_roles__inception_full --detailed-configuration-top-k 5
+
+The merged Markdown and HTML summaries contain a collapsible complete resolved
+configuration table for the predictive Top 5. The identical lossless long table
+is written to `tables/top_model_complete_configurations.csv` and to its own
+worksheet in `tables/report_tables.xlsx`; provenance hashes remain in source
+manifests rather than replacing named input-data values.
+
 Run the four-case Stage 2 supplement:
 
     python3 frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/02_competitive_routes_models_v2.yaml
@@ -125,6 +182,10 @@ Run the four-case Stage 2 supplement:
 Run Stage 6 batch/LR successive halving on CUDA:
 
     CUBLAS_WORKSPACE_CONFIG=:4096:8 CUDA_VISIBLE_DEVICES=0 MPLCONFIGDIR=/tmp/ppg-stage6-mpl python hyperparameter_studies_v2.py run --plan configs/studies/static_line_b_staged_v2/stage6_batch_LR_search.yaml --device cuda --jobs 1 --output-root artifacts/studies/static_line_b_staged_v2
+
+Run the S1_163 all-role gravity-removal ablation on CUDA:
+
+    CUBLAS_WORKSPACE_CONFIG=:4096:8 CUDA_VISIBLE_DEVICES=0 MPLCONFIGDIR=/tmp/ppg-s1-163-gravity-mpl python frailty_3class_sweep_v2.py run --plan configs/studies/static_line_b_staged_v2/stage_ablation_s1_163_gravity_removal_v1.yaml --device cuda --repeats all --folds all --jobs 1 --preprocessing-cache-mode read_write --preprocessing-cache-root artifacts/studies/cache --preprocessing-cache-namespaces imu_calibration,canonical_signal_views,raw_windows --no-measure-operational-costs --output-root artifacts/studies/static_line_b_staged_v2
 
 Then pass its exact output directory to regularization, followed by channels:
 
@@ -200,6 +261,8 @@ for that run; the standalone report command can add it later without training.
 
 ## Default budgets
 
+- Stage 0: 0 fits; 29 repeat-mean participant probabilities and 5,151 bias
+  vectors. CPU-only post-hoc analysis.
 - Stage 1: 3 cases, 15 outer cells by default; 75 only if manually escalated.
 - Stage 2: 4 supplemental cases, repeat 0 with all five folds, 20 outer cells.
 - Current Stage 3 centered star: exactly 16 cases, 400 fits and 4000
@@ -210,7 +273,10 @@ for that run; the standalone report command can add it later without training.
   450 model-epochs. Its optional advisory Phase 0 audit adds no fits or
   model-epochs and does not affect that historical budget.
 - Stage 4: 2 scientific cases, 50 outer cells and 150 fitted networks.
-- Stage 5: 5 matched cases, repeat 0 and all five folds, 25 outer cells.
+- Stage 5 CompactCNN diagnostic screen: 8 cases, repeat 0 and all five folds,
+  40 outer cells.
+- Stage 5 LogisticRegressionL2 rate-feature re-test: 8 cases, all five repeats
+  and all five folds, 200 outer cells.
 - Stage 6 batch/LR: 30 five-epoch screening cells plus 75 fixed10 promoted
   cells = 900 model-epochs (versus 1500 for direct 6-case 5x5 fixed10).
 - Stage 6 regularization: 9 cases, 225 fixed10 cells.

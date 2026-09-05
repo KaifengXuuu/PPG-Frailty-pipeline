@@ -14,6 +14,7 @@ from ppg_frailty.reporting.collect import _history_rows
 from ppg_frailty.reporting.classification_diagnostics import (
     normalize_classification_rows,
 )
+from ppg_frailty.reporting.components import TEST_COMPONENT_VIEW_SCHEMAS
 from ppg_frailty.reporting.plots import (
     _aggregation_view_metrics,
     _balanced_accuracy_learning_curves,
@@ -24,7 +25,28 @@ from ppg_frailty.reporting.plots import (
     _loss_history_metric_names,
     _save,
 )
-from ppg_frailty.reporting.report import _report_html
+from ppg_frailty.reporting.report import (
+    _COMPARISON_REPORT_TABLES,
+    _LEGACY_BRIDGE_EXECUTION_COLUMNS,
+    _LEGACY_BRIDGE_EXECUTION_REPORT_TABLES,
+    _LEGACY_BRIDGE_NUMERIC_COLUMNS,
+    _LEGACY_BRIDGE_NUMERIC_REPORT_TABLES,
+    _PAIRED_INFERENCE_REPORT_TABLES,
+    _PAIRWISE_REPEAT_DELTA_REPORT_TABLES,
+    _PER_CLASS_REPORT_TABLES,
+    _PREDICTIVE_REPORT_TABLES,
+    _STAGE3_STAR_ABSOLUTE_COLUMNS,
+    _STAGE3_STAR_CONTRAST_COLUMNS,
+    _STAGE3_STAR_CROSS_MODEL_COLUMNS,
+    _STAGE3_STAR_EXECUTION_COLUMNS,
+    _STAGE3_STAR_FOLD_COLUMNS,
+    _STAGE3_STAR_TABLES,
+    _STAGE3_STAR_WITHIN_MODEL_COLUMNS,
+    _html_table,
+    _markdown_table,
+    _report_html,
+)
+from ppg_frailty.reporting.profiles import REPORTER_PROFILE_VIEW_SCHEMAS
 
 
 class ReportingPlotContractTests(unittest.TestCase):
@@ -41,6 +63,118 @@ class ReportingPlotContractTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.pyplot.close("all")
+
+    def test_classifier_main_report_tables_are_semantic_and_at_most_eight_columns(
+        self,
+    ) -> None:
+        self.assertEqual(
+            [title for title, _columns in _COMPARISON_REPORT_TABLES],
+            ["Performance", "Confidence intervals", "Paired inference"],
+        )
+        self.assertEqual(
+            [title for title, _columns in _PREDICTIVE_REPORT_TABLES],
+            [
+                "Predictive performance",
+                "Coverage and abstention",
+                "Robustness and worst-case performance",
+            ],
+        )
+        self.assertEqual(
+            [title for title, _columns in _PER_CLASS_REPORT_TABLES],
+            [
+                "Per-class discrimination",
+                "Per-class sensitivity, precision, and specificity",
+                "Per-class confusion counts",
+                "Per-class support and retention",
+                "Per-class applicability and provenance",
+            ],
+        )
+        for _title, columns in (
+            *_COMPARISON_REPORT_TABLES,
+            *_PREDICTIVE_REPORT_TABLES,
+        ):
+            self.assertLessEqual(len(columns), 8)
+            self.assertEqual(columns[0][0], "case_id")
+        for _title, columns in _PER_CLASS_REPORT_TABLES:
+            self.assertLessEqual(len(columns), 8)
+            self.assertEqual(columns[0][0], "classifier_id")
+        for table_group in (
+            _PAIRED_INFERENCE_REPORT_TABLES,
+            _PAIRWISE_REPEAT_DELTA_REPORT_TABLES,
+        ):
+            for _title, columns in table_group:
+                self.assertLessEqual(len(columns), 8)
+                self.assertEqual(columns[0][0], "candidate_case_id")
+        for table_group in (
+            TEST_COMPONENT_VIEW_SCHEMAS,
+            REPORTER_PROFILE_VIEW_SCHEMAS,
+        ):
+            for _title, columns in table_group:
+                self.assertLessEqual(len(columns), 8)
+
+    def test_stage3_and_legacy_views_are_narrow_and_cover_full_schemas(
+        self,
+    ) -> None:
+        legacy_pairs = (
+            (
+                _LEGACY_BRIDGE_NUMERIC_COLUMNS,
+                _LEGACY_BRIDGE_NUMERIC_REPORT_TABLES,
+            ),
+            (
+                _LEGACY_BRIDGE_EXECUTION_COLUMNS,
+                _LEGACY_BRIDGE_EXECUTION_REPORT_TABLES,
+            ),
+        )
+        for lossless_columns, report_tables in legacy_pairs:
+            projected_fields = {
+                field
+                for _title, columns in report_tables
+                for field, _label in columns
+            }
+            self.assertEqual(
+                projected_fields,
+                {field for field, _label in lossless_columns},
+            )
+            for _title, columns in report_tables:
+                self.assertLessEqual(len(columns), 8)
+                self.assertEqual(columns[0][0], "model")
+
+        stage3_lossless_by_name = {
+            "stage3_star_inception_comparison": _STAGE3_STAR_WITHIN_MODEL_COLUMNS,
+            "stage3_star_cnn_comparison": _STAGE3_STAR_WITHIN_MODEL_COLUMNS,
+            "stage3_star_model_comparison": _STAGE3_STAR_CROSS_MODEL_COLUMNS,
+            "stage3_star_absolute": _STAGE3_STAR_ABSOLUTE_COLUMNS,
+            "stage3_star_contrasts": _STAGE3_STAR_CONTRAST_COLUMNS,
+            "stage3_star_fold_contrasts": _STAGE3_STAR_FOLD_COLUMNS,
+            "stage3_star_execution": _STAGE3_STAR_EXECUTION_COLUMNS,
+        }
+        for name, _title, _notice, report_tables, _description in (
+            _STAGE3_STAR_TABLES
+        ):
+            projected_fields = {
+                field
+                for _view_title, columns in report_tables
+                for field, _label in columns
+            }
+            self.assertEqual(
+                projected_fields,
+                {
+                    field
+                    for field, _label in stage3_lossless_by_name[name]
+                },
+            )
+            for _view_title, columns in report_tables:
+                self.assertLessEqual(len(columns), 8)
+                self.assertIn(columns[0][0], {"model", "profile"})
+
+    def test_human_facing_table_renderers_reject_more_than_eight_columns(
+        self,
+    ) -> None:
+        columns = tuple((f"field_{index}", f"Field {index}") for index in range(9))
+        with self.assertRaisesRegex(ValueError, "maximum is 8"):
+            _markdown_table((), columns)
+        with self.assertRaisesRegex(ValueError, "maximum is 8"):
+            _html_table((), columns)
 
     def test_aggregation_case_ticks_are_shared_and_centered(self) -> None:
         views = (
@@ -106,6 +240,10 @@ class ReportingPlotContractTests(unittest.TestCase):
                     "participant_sd_direct_hr_bpm": 2.0,
                     "participant_macro_post_denoise_hr_bpm": post,
                     "participant_sd_post_denoise_hr_bpm": 3.0,
+                    "participant_macro_direct_median_ppi_ms": 800.0,
+                    "participant_sd_direct_median_ppi_ms": 20.0,
+                    "participant_macro_post_denoise_median_ppi_ms": 760.0,
+                    "participant_sd_post_denoise_median_ppi_ms": 25.0,
                 }
                 for denoiser, direct, post in (
                     ("pca_bss", 70.0, 72.0),
@@ -121,6 +259,9 @@ class ReportingPlotContractTests(unittest.TestCase):
             {"Direct PPG HR", "Post-denoiser PPG HR", "_nolegend_"},
         )
         self.assertIn("Participant-macro HR", axis.get_ylabel())
+        self.assertEqual(len(figure.axes), 2)
+        self.assertEqual(len(figure.axes[1].patches), 4)
+        self.assertIn("median PPI", figure.axes[1].get_ylabel())
 
     def test_classifier_diagnostics_are_score_tsne_and_true_roc_curves(self) -> None:
         score_rows = tuple(
@@ -384,7 +525,22 @@ class ReportingPlotContractTests(unittest.TestCase):
                 ),
                 aggregation_line_comparison=(),
                 aggregation_view_comparison=(),
-                aggregation_hierarchy_coverage=(),
+                aggregation_hierarchy_coverage=(
+                    {
+                        "case_id": "motion_case",
+                        "repeat": 0,
+                        "aggregation_level": "participant",
+                        "aggregation_view": "participant_balanced_endpoint",
+                        "group_label": "ALL",
+                        "oof_unit_count": 3,
+                        "retained_oof_unit_count": 2,
+                        "dropped_oof_unit_count": 1,
+                        "retained_coverage": 2.0 / 3.0,
+                        "total_participant_count": 3,
+                        "retained_participant_count": 2,
+                        "dropped_participant_count": 1,
+                    },
+                ),
                 worst_class_f1_stability=(),
                 incomplete_cases=(),
                 deployment_table=(),
@@ -429,6 +585,23 @@ class ReportingPlotContractTests(unittest.TestCase):
         self.assertIn("in_sample_for_frailty29", html)
         self.assertIn("Conditional BA", html)
         self.assertIn("Abstention-aware Macro-F1", html)
+        self.assertIn("Abstentions by class", html)
+        self.assertIn("Retained participants", html)
+        self.assertIn("Reducer failure rate", html)
+        self.assertIn("Q_rate recovery rate", html)
+        self.assertIn("Denoiser paired HR/PPI endpoint audit", html)
+        self.assertIn("Worst-class F1 stability review", html)
+        for title, _columns in (
+            *TEST_COMPONENT_VIEW_SCHEMAS,
+            *REPORTER_PROFILE_VIEW_SCHEMAS,
+            *_COMPARISON_REPORT_TABLES,
+            *_PREDICTIVE_REPORT_TABLES,
+            *_PER_CLASS_REPORT_TABLES,
+            *_PAIRED_INFERENCE_REPORT_TABLES,
+        ):
+            self.assertIn(f"<h3>{title}</h3>", html)
+        for title, _columns in _PAIRWISE_REPEAT_DELTA_REPORT_TABLES:
+            self.assertIn(f"<h4>{title}</h4>", html)
 
 
 if __name__ == "__main__":

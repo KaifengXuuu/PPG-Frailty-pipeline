@@ -32,6 +32,21 @@ class ModuleDescriptor:
     runtime_dependencies: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class ModuleReporterBinding:
+    """Presentation-only reporter metadata owned by the module registry.
+
+    Reporter metadata is deliberately kept outside :class:`ModuleDescriptor` so
+    changing prose or a figure extension does not change ``registry_sha256`` and
+    therefore cannot masquerade as a training/runtime contract change.
+    """
+
+    reporter_extension_id: str
+    binding_kind: str
+    algorithm_summary: str
+    references: tuple[str, ...]
+
+
 REPRESENTATION_MODULES = (
     ModuleDescriptor("raw", "representation", "ppg_frailty.representations.raw", ("raw",), "reference", "integration", "Line A window->file->participant; Line B window->file->role_family->participant"),
     ModuleDescriptor("feature_vector", "representation", "ppg_frailty.representations.feature_vector", ("feature_vector",), "reference", "integration", "one vector per recording"),
@@ -83,6 +98,9 @@ IMU_GRAVITY_MODULES = tuple(
         {
             "profile_a_lowpass_0p3hz": "runtime_selectable_reference",
             "calibrated_roll_pitch_ekf": "runtime_selectable_ablation",
+            "sensor_filter_only_no_gravity_removal": (
+                "runtime_selectable_ablation"
+            ),
             "quaternion_error_state_ekf": "runtime_selectable_legacy_ablation",
             "low_pass_0p3hz": "runtime_selectable_legacy_parallel",
         }[module_id],
@@ -91,6 +109,7 @@ IMU_GRAVITY_MODULES = tuple(
     )
     for module_id in (
         "calibrated_roll_pitch_ekf",
+        "sensor_filter_only_no_gravity_removal",
         "profile_a_lowpass_0p3hz",
         "quaternion_error_state_ekf",
         "low_pass_0p3hz",
@@ -450,16 +469,16 @@ PEAK_DETECTOR_MODULES = (
         "peak_detector",
         "ppg_frailty.peaks.aboy_project.detect_pulses_per_wavelength_aboy_project",
         ("raw", "feature_vector", "feature_matrix", "fusion"),
-        "canonical_project_aboy_inspired",
+        "implicit_fallback_explicit_selection_only",
         "signal",
-        "400 Hz, complete non-overlapping 10 s blocks, HRI-adaptive second-order band-pass, dual polarity; configurable min_observation_sec=8.0 and min_peaks=5 defaults; not an exact upstream Aboy++ reproduction",
+        "historical project detector retained for explicit recovery/audit selection only; never invoked automatically and excluded from Stage-ablation-01",
     ),
     ModuleDescriptor(
         "aboy_project_v2",
         "peak_detector",
         "ppg_frailty.peaks.aboy_project_v2.detect_pulses_per_wavelength_aboy_project_v2",
         ("raw", "feature_vector", "feature_matrix", "fusion"),
-        "seven_step_authoritative_ablation",
+        "explicit_seven_step_ablation",
         "signal",
         "authoritative project seven-step contract: owned 0.2-Hz high-pass, complete non-overlapping 10-s blocks, per-block dual-polarity selection, retained-Pd HRI, ratio peak removal before physiological/MAD cleaning",
     ),
@@ -477,9 +496,9 @@ PEAK_DETECTOR_MODULES = (
         "peak_detector",
         "ppg_frailty.peaks.msptdfast_v2.detect_msptdfast_v2",
         ("raw", "feature_vector", "feature_matrix", "fusion"),
-        "stage_ablation_01_equation_level_port",
+        "canonical_default_and_stage_ablation_reference",
         "signal",
-        "single registered implementation shared by Stage-ablation-01 and the ordinary pipeline; bound to ppg-beats v2.3 source SHA-256; not bitwise MATLAB parity",
+        "default registered implementation shared by Stage-ablation-01 and the ordinary pipeline; bound to ppg-beats v2.3 source SHA-256; not bitwise MATLAB parity",
     ),
 )
 
@@ -631,6 +650,398 @@ ALL_MODULES = (
     + COMPARISON_PROFILE_MODULES
     + MODEL_MODULES
 )
+
+
+def _reporter_binding(
+    extension_id: str,
+    summary: str,
+    *references: str,
+    binding_kind: str = "extension",
+) -> ModuleReporterBinding:
+    return ModuleReporterBinding(
+        reporter_extension_id=extension_id,
+        binding_kind=binding_kind,
+        algorithm_summary=summary,
+        references=tuple(references),
+    )
+
+
+# Meaningful model/module extensions and their algorithm literature live here,
+# next to the executable registry.  ``reporting.profiles`` consumes this API and
+# must not maintain a second module-name switch.
+_EXPLICIT_MODULE_REPORTER_BINDINGS: Mapping[
+    tuple[str, str], ModuleReporterBinding
+] = {
+    ("model", "CompactCNN1D"): _reporter_binding(
+        "compactcnn_model_v1",
+        "Project CompactCNN1D: three temporal convolution stages with a pooled classification head.",
+        "Project implementation: src/ppg_frailty/models/compact_cnn.py",
+    ),
+    ("model", "InceptionTimeFull"): _reporter_binding(
+        "inceptiontime_single_network_model_v1",
+        "Six-block, single-network InceptionTime adaptation with bottleneck and parallel fixed-sample kernels; not the paper's five-member ensemble.",
+        "Fawaz et al. (2020), InceptionTime, DOI:10.1007/s10618-020-00710-y",
+    ),
+    ("model", "InceptionTimeSmall"): _reporter_binding(
+        "inceptiontime_single_network_model_v1",
+        "Three-block project-small single-network InceptionTime adaptation.",
+        "Architecture family: Fawaz et al. (2020), DOI:10.1007/s10618-020-00710-y",
+    ),
+    ("model", "InceptionTimeMatrix"): _reporter_binding(
+        "inceptiontime_matrix_model_v1",
+        "Project InceptionTime adaptation over the ordered feature-matrix time axis.",
+        "Architecture family: Fawaz et al. (2020), DOI:10.1007/s10618-020-00710-y",
+    ),
+    ("model", "InceptionTimeFullFiveMemberEnsemble"): _reporter_binding(
+        "inceptiontime_probability_ensemble_model_v1",
+        "Independently seeded raw InceptionTime members combined by an exact arithmetic mean of class probabilities.",
+        "Fawaz et al. (2020), InceptionTime, DOI:10.1007/s10618-020-00710-y",
+    ),
+    ("model", "InceptionTimeMatrixFiveMemberEnsemble"): _reporter_binding(
+        "inceptiontime_probability_ensemble_model_v1",
+        "Independently seeded matrix InceptionTime members combined by an exact arithmetic mean of class probabilities.",
+        "Architecture family: Fawaz et al. (2020), DOI:10.1007/s10618-020-00710-y",
+    ),
+    ("model", "LogisticRegressionL2"): _reporter_binding(
+        "logistic_l2_model_v1",
+        "L2-regularized multinomial logistic-regression feature-vector baseline.",
+        "Hastie, Tibshirani & Friedman (2009), DOI:10.1007/978-0-387-84858-7",
+    ),
+    ("model", "RBFSVM"): _reporter_binding(
+        "rbf_svm_model_v1",
+        "RBF-kernel support-vector classifier with fold-local feature preprocessing and probability output.",
+        "Cortes & Vapnik (1995), Support-vector networks, DOI:10.1007/BF00994018",
+    ),
+    ("model", "ExtraTrees"): _reporter_binding(
+        "extra_trees_model_v1",
+        "Extremely randomized tree ensemble with fold-local feature imputation.",
+        "Geurts, Ernst & Wehenkel (2006), Extremely randomized trees, DOI:10.1007/s10994-006-6226-1",
+    ),
+    ("model", "ShapeFormerChannelSpecificOSD"): _reporter_binding(
+        "shapeformer_model_v1",
+        "Channel-specific OSD/PISD discovery plus the project ShapeBlock/information-gain route.",
+        "Project implementation/parity contract: src/ppg_frailty/models/shapeformer_literature.py and pisd_port.py",
+    ),
+    ("model", "ShapeFormerChannelSpecificScalarDistanceAblation"): _reporter_binding(
+        "shapeformer_model_v1",
+        "Project scalar-distance downstream ablation using a fold-local channel-specific OSD bank.",
+        "Project implementation: src/ppg_frailty/models/shapeformer.py; no literature-parity claim",
+    ),
+    ("model", "ShapeFormerEffectSizeFixedV1"): _reporter_binding(
+        "shapeformer_model_v1",
+        "Project effect-size shapelet-discovery ablation with configurable length and stride.",
+        "Project implementation: src/ppg_frailty/models/shapeformer_port.py; no PISD-equivalence claim",
+    ),
+    ("model", "ShapeFormerLegacyEffectSizePort"): _reporter_binding(
+        "shapeformer_model_v1",
+        "Isolated legacy channel-wise effect-size discovery and local/shape-token downstream ablation.",
+        "Project legacy implementation: src/ppg_frailty/models/shapeformer_legacy.py; no OSD-parity claim",
+    ),
+    ("model", "FileBagFusionCompact"): _reporter_binding(
+        "file_bag_fusion_model_v1",
+        "File-level compact raw-window encoding concatenated once with engineered file features.",
+        "Project implementation: src/ppg_frailty/models/file_fusion.py",
+    ),
+    ("model", "FileBagFusionInception"): _reporter_binding(
+        "file_bag_fusion_model_v1",
+        "File-level Inception raw-window encoding concatenated once with engineered file features.",
+        "Project implementation: src/ppg_frailty/models/file_fusion.py",
+    ),
+    ("model", "FileBagFusion"): _reporter_binding(
+        "file_bag_fusion_model_v1",
+        "Composable registered raw encoder with one file-level engineered-feature fusion head.",
+        "Project implementation: src/ppg_frailty/models/file_fusion.py",
+    ),
+    ("peak_detector", "msptdfast_v2_3_python_port"): _reporter_binding(
+        "audit_provenance_v1",
+        "Equation-level Python port of MSPTDfast (v.2); no bitwise MATLAB-parity claim.",
+        "Charlton et al. (2025), MSPTDfast (v.2), DOI:10.1088/1361-6579/adb89e",
+        binding_kind="audit_only",
+    ),
+    ("peak_detector", "aboy_project_v2"): _reporter_binding(
+        "audit_provenance_v1",
+        "Project-owned seven-step adaptive dual-polarity beat detector.",
+        "Project seven-step adaptation; historical family: Aboy et al. (2005), DOI:10.1109/TBME.2005.855725",
+        binding_kind="audit_only",
+    ),
+    ("peak_detector", "aboy_project_v1"): _reporter_binding(
+        "audit_provenance_v1",
+        "Historical shared-preprocessing Aboy-family project detector.",
+        "Historical project adaptation; algorithm family: Aboy et al. (2005), DOI:10.1109/TBME.2005.855725",
+        binding_kind="audit_only",
+    ),
+    ("artifact", "pca_bss"): _reporter_binding(
+        "audit_provenance_v1",
+        "Project PCA-BSS motion-artifact reducer using principal-subspace separation.",
+        "PCA basis: Jolliffe (2002), DOI:10.1007/b98835; project BSS reducer implementation is source-local",
+        binding_kind="audit_only",
+    ),
+    ("artifact", "fastica_bss"): _reporter_binding(
+        "audit_provenance_v1",
+        "Project FastICA-BSS motion-artifact reducer using fixed-point independent components.",
+        "FastICA basis: Hyvärinen (1999), DOI:10.1109/72.761722; project BSS reducer implementation is source-local",
+        binding_kind="audit_only",
+    ),
+    ("imu_gravity", "calibrated_roll_pitch_ekf"): _reporter_binding(
+        "audit_provenance_v1",
+        "Calibrated roll-pitch EKF gravity compensation retaining physical-unit dynamic acceleration and gyroscope views.",
+        "Roll/pitch EKF context: Sabatini (2011), DOI:10.3390/s110201482; project equations/noise are persisted in resolved config",
+        binding_kind="audit_only",
+    ),
+    ("imu_gravity", "sensor_filter_only_no_gravity_removal"): _reporter_binding(
+        "audit_provenance_v1",
+        "Calibrated sensor-filter-only IMU ablation that retains gravity in the three acceleration input channels.",
+        "Project ablation implementation: src/ppg_frailty/signal/motion_imu.py; no gravity vector is estimated or subtracted",
+        binding_kind="audit_only",
+    ),
+    ("optimizer", "adamw"): _reporter_binding(
+        "audit_provenance_v1",
+        "AdamW optimizer with decoupled weight decay and persisted hyperparameters.",
+        "Loshchilov & Hutter (2019), DOI:10.48550/arXiv.1711.05101",
+        binding_kind="audit_only",
+    ),
+    ("optimizer", "adam"): _reporter_binding(
+        "audit_provenance_v1",
+        "Adam optimizer with persisted learning-rate, beta and epsilon parameters.",
+        "Kingma & Ba (2015), Adam, DOI:10.48550/arXiv.1412.6980",
+        binding_kind="audit_only",
+    ),
+}
+
+
+_REGISTERED_MODULES_BY_KEY: Mapping[tuple[str, str], ModuleDescriptor] = {
+    (item.family, item.module_id): item for item in ALL_MODULES
+}
+if len(_REGISTERED_MODULES_BY_KEY) != len(ALL_MODULES):
+    raise RuntimeError("module registry contains duplicate family/module identities")
+if not set(_EXPLICIT_MODULE_REPORTER_BINDINGS) <= set(_REGISTERED_MODULES_BY_KEY):
+    raise RuntimeError("reporter binding names an unregistered module")
+
+
+# Every registered module has a concrete binding.  The generated branch is an
+# explicit registry audit-only contract, not a reporting-layer fallback.
+MODULE_REPORTER_BINDINGS: Mapping[
+    tuple[str, str], ModuleReporterBinding
+] = {
+    key: _EXPLICIT_MODULE_REPORTER_BINDINGS.get(
+        key,
+        ModuleReporterBinding(
+            reporter_extension_id="audit_provenance_v1",
+            binding_kind="audit_only",
+            algorithm_summary=descriptor.notes,
+            references=(
+                f"Project registry implementation: {descriptor.implementation}; no separate external literature source claimed",
+            ),
+        ),
+    )
+    for key, descriptor in _REGISTERED_MODULES_BY_KEY.items()
+}
+
+
+_REPORTER_MODULE_ALIASES: Mapping[tuple[str, str], str] = {
+    ("peak_detector", "aboy_project"): "aboy_project_v2",
+    ("quality_mode", "quality_off"): "off",
+    ("quality_mode", "quality_diagnostics_only"): "diagnostics_only",
+    ("quality_mode", "quality_route"): "route",
+    ("trainer_model", "sklearn.linear_model.LogisticRegression"): "LogisticRegressionL2",
+    ("trainer_model", "sklearn.svm.SVC"): "RBFSVM",
+    ("trainer_model", "sklearn.ensemble.ExtraTreesClassifier"): "ExtraTrees",
+}
+
+_COMPONENT_ROLE_MODULE_FAMILIES: Mapping[str, tuple[str, ...]] = {
+    "classifier": ("model",),
+    "classifier_tuning_candidate": ("model",),
+    "ppg_preprocessing": ("ppg_filter",),
+    "imu_preprocessing": ("imu_gravity",),
+    "peak_detector": ("peak_detector",),
+    "motion_detector": ("motion_evidence",),
+    "motion_detector_reverse_ablation": ("motion_evidence",),
+    "denoiser": ("artifact",),
+    "representation": ("representation",),
+    "aggregation": ("aggregation",),
+    "sqi": ("quality_mode",),
+    "trainer": ("optimizer", "trainer_model"),
+}
+
+# These rows describe persisted data/validation contracts rather than a runtime
+# module.  Their audit-only acceptance is named here so an unknown role cannot
+# silently inherit a generic reporter.
+_AUDIT_ONLY_COMPONENT_ROLES = frozenset(
+    {
+        "dataset_adapter",
+        "split_registry",
+        "legacy_bridge_effective_profile",
+        "signal_views_and_scaling",
+        "window_planner",
+        "motion_threshold",
+        "feature_extractor",
+        "evaluation",
+        "peak_validation",
+    }
+)
+
+# Stage5's formal detector identity is intentionally separate from the motion
+# evidence-option registry. It nevertheless has one explicit, fail-closed
+# reporter binding for both directions of the cross-dataset experiment.
+_EXPLICIT_COMPONENT_REPORTER_BINDINGS: Mapping[
+    tuple[str, str], ModuleReporterBinding
+] = {
+    (role, "formal_local_supervised_motion_detector_v2"): _reporter_binding(
+        "audit_provenance_v1",
+        "Project LightCNN binary motion detector over RED/IR plus six processed physical IMU channels.",
+        "Project implementation: src/ppg_frailty/models/motion.py; no external architecture-equivalence claim",
+        binding_kind="audit_only",
+    )
+    for role in ("motion_detector", "motion_detector_reverse_ablation")
+}
+
+# The legacy bridge reports executable historical identities that intentionally
+# are not aliases of the V2 runtime modules.  They remain explicit audit-only
+# bindings rather than being silently coerced to a modern implementation.
+_AUDIT_ONLY_COMPONENT_IDENTITIES = frozenset(
+    {
+        ("ppg_preprocessing", "legacy_detrend_bandpass_0p2_8"),
+        ("imu_preprocessing", "legacy_filtered_axes"),
+        ("imu_preprocessing", "calibrated_ekf_adyn"),
+        ("aggregation", "window_balanced_to_participant"),
+    }
+)
+
+
+def module_reporter_binding(
+    module_id: str,
+    *,
+    family: str | None = None,
+) -> dict[str, Any]:
+    """Resolve registry-owned reporter metadata or fail closed.
+
+    Model machine IDs are canonicalised through the executable model factory;
+    no model alias table is duplicated here or in the reporting package.
+    """
+
+    text = str(module_id).strip()
+    if not text:
+        raise ValueError("active component requires a non-empty module_id")
+
+    requested_family = None if family is None else str(family).strip()
+    if requested_family == "trainer_model":
+        requested_family = "model"
+        text = _REPORTER_MODULE_ALIASES.get(("trainer_model", text), text)
+    if requested_family == "model" or requested_family is None:
+        try:
+            from .models.factory import normalize_model_id
+
+            canonical, _ = normalize_model_id(text)
+        except ValueError:
+            if requested_family == "model":
+                raise ValueError(f"unknown active model reporter binding: {text}") from None
+        else:
+            text = canonical
+            if requested_family is None:
+                requested_family = "model"
+    if requested_family is not None:
+        text = _REPORTER_MODULE_ALIASES.get((requested_family, text), text)
+        key = (requested_family, text)
+        descriptor = _REGISTERED_MODULES_BY_KEY.get(key)
+        if descriptor is None:
+            raise ValueError(
+                f"unknown active module reporter binding: family={requested_family}, module_id={text}"
+            )
+    else:
+        matches = [
+            (key, descriptor)
+            for key, descriptor in _REGISTERED_MODULES_BY_KEY.items()
+            if key[1] == text
+        ]
+        if len(matches) != 1:
+            qualifier = "ambiguous" if matches else "unknown"
+            raise ValueError(f"{qualifier} active module reporter binding: {text}")
+        key, descriptor = matches[0]
+
+    binding = MODULE_REPORTER_BINDINGS[key]
+    return {
+        "registered_module_id": descriptor.module_id,
+        "registered_module_family": descriptor.family,
+        "reporter_extension_id": binding.reporter_extension_id,
+        "reporter_binding_kind": binding.binding_kind,
+        "algorithm_summary": binding.algorithm_summary,
+        "references": binding.references,
+        "reporter_binding_source": "module_registry",
+    }
+
+
+def component_reporter_binding(
+    component_role: str,
+    module_id: str,
+    *,
+    active: bool = True,
+) -> dict[str, Any]:
+    """Bind one report component to a registered module or named audit role."""
+
+    role = str(component_role).strip().lower()
+    text = str(module_id).strip()
+    if not active:
+        return {
+            "registered_module_id": "not_applicable",
+            "registered_module_family": "not_applicable",
+            "reporter_extension_id": "not_applicable",
+            "reporter_binding_kind": "inactive_not_applicable",
+            "algorithm_summary": "",
+            "references": (),
+            "reporter_binding_source": "inactive_component",
+        }
+    explicit_component_binding = _EXPLICIT_COMPONENT_REPORTER_BINDINGS.get(
+        (role, text)
+    )
+    if explicit_component_binding is not None:
+        return {
+            "registered_module_id": text,
+            "registered_module_family": "component_contract",
+            "reporter_extension_id": explicit_component_binding.reporter_extension_id,
+            "reporter_binding_kind": explicit_component_binding.binding_kind,
+            "algorithm_summary": explicit_component_binding.algorithm_summary,
+            "references": explicit_component_binding.references,
+            "reporter_binding_source": "module_registry:component_identity",
+        }
+    if (role, text) in _AUDIT_ONLY_COMPONENT_IDENTITIES:
+        return {
+            "registered_module_id": text,
+            "registered_module_family": "legacy_bridge_audit_identity",
+            "reporter_extension_id": "audit_provenance_v1",
+            "reporter_binding_kind": "audit_only",
+            "algorithm_summary": f"Explicit historical bridge identity for {role}; no V2 module-equivalence claim.",
+            "references": (
+                "Project legacy bridge execution contract: src/ppg_frailty/legacy_bridge.py",
+            ),
+            "reporter_binding_source": "module_registry:legacy_bridge_identity",
+        }
+    families = _COMPONENT_ROLE_MODULE_FAMILIES.get(role)
+    if families is not None:
+        errors: list[str] = []
+        for family in families:
+            try:
+                return module_reporter_binding(text, family=family)
+            except ValueError as exc:
+                errors.append(str(exc))
+        raise ValueError(
+            f"unknown active component reporter binding: role={role}, module_id={text}; "
+            + " | ".join(errors)
+        )
+    if role in _AUDIT_ONLY_COMPONENT_ROLES:
+        if not text:
+            raise ValueError(f"active {role} component requires a non-empty identity")
+        return {
+            "registered_module_id": text,
+            "registered_module_family": "component_contract",
+            "reporter_extension_id": "audit_provenance_v1",
+            "reporter_binding_kind": "audit_only",
+            "algorithm_summary": f"Persisted {role} contract; detailed values remain in the component input and fixed-parameter fields.",
+            "references": (
+                f"Project component-role audit binding: {role}; no separate external literature source claimed",
+            ),
+            "reporter_binding_source": "module_registry:component_role",
+        }
+    raise ValueError(f"unknown active component_role reporter binding: {role or '<empty>'}")
 
 
 def list_modules(family: str = "all") -> list[dict[str, Any]]:
@@ -2276,9 +2687,10 @@ __all__ = [
     "QUALITY_WEIGHT_SOURCE_MODULES", "REPRESENTATION_MODULES",
     "SAMPLER_MODULES", "SHAPEFORMER_DISCOVERY_BALANCE_MODULES",
     "TRAINING_BALANCE_MODULES", "WINDOW_QUALITY_SELECTION_MODULES",
-    "ModuleDescriptor", "derived_mask_aware_pooling", "derived_model_ensemble_size",
+    "MODULE_REPORTER_BINDINGS", "ModuleDescriptor", "ModuleReporterBinding",
+    "component_reporter_binding", "derived_mask_aware_pooling", "derived_model_ensemble_size",
     "derived_model_variant", "list_modules",
-    "materialize_model_architecture", "model_factory_contract", "model_runtime_dependencies",
+    "materialize_model_architecture", "model_factory_contract", "module_reporter_binding", "model_runtime_dependencies",
     "registry_sha256", "resolve_artifact_config",
     "normalize_window_config", "resolve_artifact_module_id", "resolve_window_config",
     "validate_window_profiles_for_representation",

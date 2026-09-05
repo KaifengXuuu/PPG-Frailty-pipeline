@@ -181,7 +181,7 @@ def _diagnostic_panel_grid(
 ) -> tuple[Any, np.ndarray]:
     if panel_count <= 0:
         raise ValueError("classification diagnostic requires OOF prediction rows")
-    columns = min(4, panel_count)
+    columns = min(4, int(math.ceil(math.sqrt(panel_count))))
     rows = int(math.ceil(panel_count / columns))
     figure, axes = pyplot.subplots(
         rows,
@@ -345,7 +345,9 @@ def _classification_roc_auc_curves(analysis: StudyAnalysis, pyplot: Any) -> Any:
         axis.set_title(f"{classifier_id}\n{evaluation_id} · {level}", fontsize=9)
         axis.grid(alpha=0.2)
         axis.legend(fontsize=7, loc="lower right")
-    figure.suptitle("Empirical OOF ROC curves with area under the curve (AUC)")
+    figure.suptitle(
+        "Empirical OOF ROC curves (pooled participant-repeat display; AUC shown)"
+    )
     figure.tight_layout()
     return figure
 
@@ -941,9 +943,24 @@ def _denoiser_hr_comparison(analysis: StudyAnalysis, pyplot: Any) -> Any:
         dtype=np.float64,
     )
     positions = np.arange(len(rows), dtype=np.float64)
-    figure, axis = pyplot.subplots(
-        figsize=(max(7.5, len(rows) * 2.0), 5.2)
+    ppi_rows = [
+        row
+        for row in rows
+        if _number(row.get("participant_macro_direct_median_ppi_ms"))
+        is not None
+        and _number(
+            row.get("participant_macro_post_denoise_median_ppi_ms")
+        )
+        is not None
+    ]
+    panel_count = 2 if ppi_rows else 1
+    figure, axes = pyplot.subplots(
+        1,
+        panel_count,
+        figsize=(max(7.5, len(rows) * 2.0) * panel_count, 5.2),
+        squeeze=False,
     )
+    axis = axes[0, 0]
     axis.bar(
         positions - 0.19,
         direct,
@@ -965,6 +982,43 @@ def _denoiser_hr_comparison(analysis: StudyAnalysis, pyplot: Any) -> Any:
     axis.set_title("Paired direct versus post-denoiser heart rate")
     axis.legend()
     axis.grid(axis="y", alpha=0.25)
+    if ppi_rows:
+        ppi_axis = axes[0, 1]
+        ppi_positions = np.arange(len(ppi_rows), dtype=np.float64)
+        ppi_labels = [
+            f"{row['denoiser_id']}\n{row['case_id']}" for row in ppi_rows
+        ]
+        for offset, field, sd_field, label in (
+            (
+                -0.19,
+                "participant_macro_direct_median_ppi_ms",
+                "participant_sd_direct_median_ppi_ms",
+                "Direct PPG median PPI",
+            ),
+            (
+                0.19,
+                "participant_macro_post_denoise_median_ppi_ms",
+                "participant_sd_post_denoise_median_ppi_ms",
+                "Post-denoiser median PPI",
+            ),
+        ):
+            ppi_axis.bar(
+                ppi_positions + offset,
+                [float(row[field]) for row in ppi_rows],
+                width=0.38,
+                yerr=[_number(row.get(sd_field)) or 0.0 for row in ppi_rows],
+                capsize=3,
+                label=label,
+            )
+        _set_centered_category_ticks(
+            ppi_axis, ppi_positions, ppi_labels
+        )
+        ppi_axis.set_ylabel(
+            "Participant-macro median PPI (ms; mean ± participant SD)"
+        )
+        ppi_axis.set_title("Paired direct versus post-denoiser PPI")
+        ppi_axis.legend()
+        ppi_axis.grid(axis="y", alpha=0.25)
     figure.tight_layout()
     return figure
 

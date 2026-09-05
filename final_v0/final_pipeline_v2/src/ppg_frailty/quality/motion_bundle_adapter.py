@@ -22,7 +22,9 @@ from ..provenance import sha256_file, stable_payload_sha256
 from ..representations.motion import (
     MOTION_HOP_SAMPLES,
     MOTION_NETWORK_SCHEMA_SHA256,
+    MOTION_REFERENCE_PROFILE_ID,
     MOTION_WINDOW_SAMPLES,
+    MotionWindowTensors,
     build_motion_window_tensors,
 )
 from ..signal.motion_imu import (
@@ -124,6 +126,7 @@ class ReusedMotionDetectorConfig:
             raise ValueError("reused motion detector requires bundle_frozen threshold")
         if self.reuse_scope not in {
             "all29_smoke_or_final_only",
+            "all29_frozen_in_sample_auxiliary",
             "matching_outer_fold_or_all29_final",
         }:
             raise ValueError("unknown reused motion detector reuse_scope")
@@ -402,9 +405,15 @@ def load_reused_motion_detector(
     if set(train_roster) & set(oof_roster):
         raise ValueError("motion reuse train/OOF participant overlap")
     formal_outer_oof = bool(oof_roster)
-    if formal_outer_oof:
-        if config.reuse_scope != "matching_outer_fold_or_all29_final":
-            raise ValueError("formal OOF motion routing requires matching fold reuse")
+    use_matching_fold = (
+        formal_outer_oof
+        and config.reuse_scope == "matching_outer_fold_or_all29_final"
+    )
+    if formal_outer_oof and config.reuse_scope == "all29_smoke_or_final_only":
+        raise ValueError(
+            "all29_smoke_or_final_only cannot be used inside outer OOF routing"
+        )
+    if use_matching_fold:
         candidates = []
         for raw_cell in evidence.get("cell_evidence", ()):
             if not isinstance(raw_cell, Mapping):
@@ -457,19 +466,40 @@ def load_reused_motion_detector(
         model = evidence.get("final_model")
         if not isinstance(model, Mapping):
             raise ValueError("motion bundle final_model is missing")
-        train_roster = tuple(
-            sorted(str(value) for value in model.get("training_participant_ids", ()))
+        final_training_roster = tuple(
+            sorted(
+                str(value)
+                for value in model.get("training_participant_ids", ())
+            )
         )
-        if len(train_roster) != MOTION_PARTICIPANT_COUNT or len(set(train_roster)) != len(train_roster):
+        if (
+            len(final_training_roster) != MOTION_PARTICIPANT_COUNT
+            or len(set(final_training_roster)) != len(final_training_roster)
+        ):
             raise ValueError("reused final motion model must contain the exact 29-person roster")
+        if formal_outer_oof and (
+            set(train_roster) | set(oof_roster)
+        ) != set(final_training_roster):
+            raise ValueError(
+                "frailty outer cell roster differs from the all-29 motion roster"
+            )
+        train_roster = final_training_roster
         frozen_threshold, threshold_sha256 = _validated_frozen_threshold(
             evidence, train_roster
         )
         training_scope = "frailty29_all_participants"
-        reuse_scope = "all29_reused_final_or_smoke"
+        reuse_scope = (
+            "all29_reused_in_sample_auxiliary"
+            if formal_outer_oof
+            else "all29_reused_final_or_smoke"
+        )
         evaluation_relation = "in_sample_for_frailty29"
         valid_outer_oof_claim = False
-        fold_identity = {"repeat_index": None, "fold_index": None}
+        fold_identity = {
+            "repeat_index": None,
+            "fold_index": None,
+            "outer_oof_participant_ids": list(oof_roster),
+        }
 
     if model.get("model_input_schema_sha256") != MOTION_NETWORK_SCHEMA_SHA256:
         raise ValueError("reused motion model input schema drift")
@@ -673,6 +703,8 @@ def infer_reused_motion_recording(
 def infer_reused_motion_windows(
     detector: LoadedReusedMotionDetector,
     recording: MotionRecordingInput | None,
+    *,
+    precomputed_windows: MotionWindowTensors | None = None,
 ) -> MotionWindowSeries:
     """Infer one immutable probability/state per native 8 s / 2 s window."""
 
@@ -715,15 +747,30 @@ def infer_reused_motion_windows(
         return result
 
     recording.validate()
-    windows = build_motion_window_tensors(
-        recording.ppg_red_ir,
-        recording.motion_imu,
-        record_id=recording.record_id,
-        participant_id=recording.participant_id,
-        role_or_activity=recording.role_or_activity,
-        dataset_id=recording.dataset_id,
-        fs_hz=recording.fs_hz,
-    )
+    if precomputed_windows is None:
+        windows = build_motion_window_tensors(
+            recording.ppg_red_ir,
+            recording.motion_imu,
+            record_id=recording.record_id,
+            participant_id=recording.participant_id,
+            role_or_activity=recording.role_or_activity,
+            dataset_id=recording.dataset_id,
+            fs_hz=recording.fs_hz,
+            profile_id=MOTION_REFERENCE_PROFILE_ID,
+        )
+    else:
+        precomputed_windows.validate()
+        if (
+            precomputed_windows.record_id != recording.record_id
+            or precomputed_windows.participant_id != recording.participant_id
+            or precomputed_windows.role_or_activity != recording.role_or_activity
+            or precomputed_windows.dataset_id != recording.dataset_id
+            or precomputed_windows.profile_id != MOTION_REFERENCE_PROFILE_ID
+        ):
+            raise ValueError(
+                "precomputed motion windows differ from the recording/bundle identity"
+            )
+        windows = precomputed_windows
     rows = tuple(MotionPredictionInput(value) for value in windows.values)
     probabilities = predict_formal_motion_probability(detector.runtime, rows)
     if (

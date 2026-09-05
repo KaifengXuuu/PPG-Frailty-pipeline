@@ -90,6 +90,8 @@ from .operational import (
     model_parameter_count,
 )
 from .statistics import (
+    CLUSTER_BOOTSTRAP_IMPLEMENTATION_VERSION,
+    CLUSTER_BOOTSTRAP_RNG_CONTRACT,
     DEFAULT_BOOTSTRAP_RESAMPLES,
     DEFAULT_PERMUTATION_RESAMPLES,
     ClusterBootstrapResult,
@@ -97,11 +99,13 @@ from .statistics import (
     ConfigMetrics,
     HolmResult,
     ManualFinalSelection,
+    PairedClusterBootstrapResult,
     PairedPermutationResult,
     ParticipantPrediction,
     build_config_metrics_from_predictions_and_fold_summaries,
     holm_adjust,
     holm_adjust_by_family_metric,
+    paired_participant_cluster_bootstrap,
     paired_participant_permutation,
     participant_cluster_bootstrap,
     rank_top10,
@@ -145,6 +149,8 @@ from .trainer import (
 )
 
 __all__ = [
+    "CLUSTER_BOOTSTRAP_IMPLEMENTATION_VERSION",
+    "CLUSTER_BOOTSTRAP_RNG_CONTRACT",
     "BALANCE_LINES",
     "QUALITY_WEIGHT_SOURCE_LEGACY_WINDOW",
     "QUALITY_WEIGHT_SOURCE_NONE",
@@ -194,6 +200,7 @@ __all__ = [
     "OofWriter",
     "OperationalMetrics",
     "PairedDeltaSummary",
+    "PairedClusterBootstrapResult",
     "PairedPermutationResult",
     "ParticipantPrediction",
     "PerClassMetrics",
@@ -230,6 +237,7 @@ __all__ = [
     "input_spec_sha256",
     "materialize_all_deep_epoch_configs",
     "materialize_deep_epoch_config",
+    "paired_participant_cluster_bootstrap",
     "paired_participant_permutation",
     "paired_subject_deltas",
     "paired_fold_seed_deltas",

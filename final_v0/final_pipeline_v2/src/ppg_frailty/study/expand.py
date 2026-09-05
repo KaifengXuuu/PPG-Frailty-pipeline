@@ -423,6 +423,9 @@ def parse_study_plan(
         output=OutputSpec(root=str(output_raw.get("root", "artifacts/studies"))),
         report=ReportSpec(
             top_k=int(report_raw.get("top_k", 10)),
+            detailed_configuration_top_k=int(
+                report_raw.get("detailed_configuration_top_k", 0)
+            ),
             write_html=bool(report_raw.get("write_html", True)),
             write_static_figures=bool(
                 report_raw.get("write_static_figures", True)

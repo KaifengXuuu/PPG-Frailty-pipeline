@@ -1,0 +1,109 @@
+# Matched S1_163 all-role ablation. The reference is rerun in the same study so
+# code snapshot, split/repeat seeds and paired participant inference remain
+# identical; only the registered IMU gravity-removal module changes.
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: stage_ablation_s1_163_all_roles_gravity_removal_v1
+  kind: catalog_sweep
+  purpose: "Measure the isolated effect of Profile-A gravity removal for the S1_163 all-role InceptionTimeFull configuration."
+  flow_position: "Supplementary matched IMU preprocessing ablation after the S1_163 all-role finalist comparison."
+  decision_role: ablation
+  reference_case_id: s1_163_all_roles__profile_a_gravity_removal
+  thesis_sections:
+    - "S1_163 all-role IMU gravity-removal ablation"
+    - "Participant-cluster confidence intervals and paired repeat inference"
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: "Two-case single-factor ablation; the candidate disables gravity estimation/subtraction while preserving calibration, SI conversion, sensor filtering, data, model, optimizer and evaluation."
+  controlled_factors:
+    - "InceptionTimeFull; raw RED/IR plus six IMU channels; all-eight per-window robust DL scaling"
+    - "B/R/S/W roles; 64 Hz; 5 s windows with 2.5 s hop; 90% per-record window retention"
+    - "AdamW; fixed 15 epochs; batch 32; LR 1e-3; WD 5e-4; dropout .50; label smoothing .10"
+    - "Exhaustive shuffle; participant-count inverse-frequency class weights; Line B aggregation"
+    - "SQI off; frozen motion detector off; denoiser off; identical frozen 5x5 participant splits and seeds"
+  notes:
+    - "The no-gravity candidate still converts ACC/gyro to SI, applies same-participant B-record sensor-bias calibration, and applies the same zero-phase 20/40 Hz sensor filters."
+    - "For the candidate, the three DL acceleration channels contain calibrated sensor-filtered acceleration including gravity; no gravity vector is estimated or subtracted."
+    - "The reference is intentionally rerun rather than borrowed from an older result directory, preventing code-snapshot drift from contaminating the paired ablation."
+cases:
+  - case_id: s1_163_all_roles__profile_a_gravity_removal
+    catalog_entry: inception_full
+    screen_profile_id: historical_s1_163_all_roles_profile_a_gravity_removal
+    output_group: raw
+    overrides: &s1_163_all_roles_common
+      signal.imu.gravity_method: profile_a_lowpass_0p3hz
+      signal.imu.comparison_method: calibrated_roll_pitch_ekf
+      signal.dl_resampling.enabled: true
+      signal.dl_resampling.target_fs_hz: 64.0
+      signal.normalization.raw_ppg: per_window_robust
+      signal.normalization.raw_imu: none
+      windows.raw_dl.length_s: 5.0
+      windows.raw_dl.hop_s: 2.5
+      windows.raw_dl.cap_per_file: null
+      windows.raw_dl.cap_fraction_per_file: 0.90
+      model.dropout: 0.50
+      training.fixed_epochs: 15
+      training.batch_size: 32
+      training.optimizer: adamw
+      training.learning_rate: 0.001
+      training.weight_decay: 0.0005
+      training.label_smoothing: 0.10
+      training.sampler: exhaustive_shuffle_without_replacement
+      training.class_weighting: inverse_frequency
+      training.class_count_basis: participant
+      training.classifier_role_families: [B, R, S, W]
+      aggregation.balance_line: line_b_equal_role_families
+      roles: [B, R1, R2, R3, R4, S1, S2, W1, W2]
+      quality.mode: "off"
+      artifact.motion_detector_enabled: false
+      artifact.denoiser_enabled: false
+      artifact.reducer: identity
+      artifact.reducer_version: identity_v1
+      artifact.degraded_policy: drop
+      artifact.parameters: {}
+    rationale: "Matched S1_163 all-role reference with Profile-A 0.3 Hz gravity estimation and subtraction."
+    formal_profile: null
+
+  - case_id: s1_163_all_roles__no_gravity_removal
+    catalog_entry: inception_full
+    screen_profile_id: historical_s1_163_all_roles_no_gravity_removal
+    output_group: raw
+    overrides:
+      <<: *s1_163_all_roles_common
+      signal.imu.gravity_method: sensor_filter_only_no_gravity_removal
+      signal.imu.comparison_method: profile_a_lowpass_0p3hz
+    rationale: "Single-factor candidate: retain calibrated sensor-filtered acceleration including gravity instead of estimating/subtracting gravity."
+    formal_profile: null
+execution:
+  repeats: [0, 1, 2, 3, 4]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 1
+  device: cuda
+  parallel_level: cases
+  continue_on_error: false
+  allow_parallel_deep: false
+  measure_operational_costs: false
+  preprocessing_cache:
+    mode: read_write
+    root: artifacts/studies/cache
+    namespaces:
+      - imu_calibration
+      - canonical_signal_views
+      - raw_windows
+    verify_source_sha256: true
+output:
+  root: artifacts/studies/static_line_b_staged_v2
+report:
+  top_k: 2
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10
+  figure_modules: [all]
+  compact_mean_sd: true
+  write_excel_workbook: true

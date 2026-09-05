@@ -21,6 +21,7 @@ from ppg_frailty.contracts import SignalRoute
 from ppg_frailty.module_registry import list_modules
 from ppg_frailty.peaks import (
     ABLATION_DETECTOR_ID,
+    ABOY_PROJECT_V1_DETECTOR_ID,
     CANONICAL_DETECTOR_ID,
     detect_pulses,
     detect_pulses_per_wavelength,
@@ -172,7 +173,7 @@ class AboyProjectDetectorTest(unittest.TestCase):
         ) as implementation:
             observed = detect_pulses_per_wavelength(
                 matrix,
-                detector_id=CANONICAL_DETECTOR_ID,
+                detector_id=ABOY_PROJECT_V1_DETECTOR_ID,
                 min_observation_sec=6.5,
                 min_peaks=3,
             )
@@ -191,7 +192,7 @@ class AboyProjectDetectorTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, message):
                     detect_pulses_per_wavelength(
                         matrix,
-                        detector_id=CANONICAL_DETECTOR_ID,
+                        detector_id=ABOY_PROJECT_V1_DETECTOR_ID,
                         **kwargs,
                     )
 
@@ -226,11 +227,11 @@ class AboyProjectDetectorTest(unittest.TestCase):
         waveform = pulse_train(np.arange(0.8, 19.5, 1.0))
         positive = detect_pulses(
             np.column_stack((waveform, 0.9 * waveform)),
-            detector_id=CANONICAL_DETECTOR_ID,
+            detector_id=ABOY_PROJECT_V1_DETECTOR_ID,
         )
         inverted = detect_pulses(
             np.column_stack((-waveform, -0.9 * waveform)),
-            detector_id=CANONICAL_DETECTOR_ID,
+            detector_id=ABOY_PROJECT_V1_DETECTOR_ID,
         )
         np.testing.assert_allclose(
             positive.peak_timestamps_s,
@@ -619,7 +620,8 @@ class AboyProjectDetectorTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not registered"):
             detect_pulses(matrix, detector_id="unknown_detector")
         with patch(
-            "ppg_frailty.peaks.resolver.detect_pulses_per_wavelength_aboy_project",
+            "ppg_frailty.peaks.msptdfast_v2."
+            "detect_pulses_per_wavelength_msptdfast_v2",
             side_effect=RuntimeError("injected canonical failure"),
         ):
             with self.assertRaisesRegex(
@@ -700,6 +702,12 @@ class AboyProjectDetectorTest(unittest.TestCase):
                 "failure_action": "fail_closed_no_fallback",
                 "min_observation_sec": 6.5,
                 "min_peaks": 3,
+                "parameters": {
+                    "target_downsample_hz": 20.0,
+                    "minimum_heart_rate_bpm": 30.0,
+                    "window_s": 6.0,
+                    "overlap_fraction": 0.2,
+                },
             },
         )
         for field, value, message in (
@@ -716,7 +724,7 @@ class AboyProjectDetectorTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, message):
                     validate_config_payload(invalid)
 
-    def test_msptdfast_ablation_materializes_as_registered_pipeline_module(self) -> None:
+    def test_msptdfast_reference_materializes_as_registered_pipeline_module(self) -> None:
         import tempfile
 
         from ppg_frailty.peaks.msptdfast_v2 import (

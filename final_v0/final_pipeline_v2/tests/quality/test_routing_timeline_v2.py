@@ -105,6 +105,44 @@ class RoutingTimelineV2Tests(unittest.TestCase):
         self.assertEqual(diagnostic_only.final_tier, "excluded")
         self.assertEqual(diagnostic_only.source_view, "none")
 
+    def test_feature_vector_can_explicitly_recover_rate_features_with_sqi_off(
+        self,
+    ) -> None:
+        recovered = resolve_routing_evidence(
+            self._row(
+                sqi_mode="off",
+                sqi_assessed=False,
+                direct_q_rate_state=None,
+                direct_q_morph_state=None,
+                motion_detector_enabled=True,
+                motion_state="high",
+                denoiser_enabled=True,
+                denoiser_status="success",
+                post_q_rate_state="pass",
+                post_q_rate_score=0.8,
+            ),
+            role="S1",
+            allow_rate_feature_recovery_without_direct_sqi=True,
+        )
+        self.assertFalse(recovered.sqi_assessed)
+        self.assertTrue(recovered.denoiser_requested)
+        self.assertEqual(recovered.pre_route_tier, "unfit")
+        self.assertEqual(recovered.final_tier, "acceptable")
+        self.assertEqual(recovered.source_route, "processed")
+        self.assertEqual(recovered.source_view, "x_ar_400")
+        self.assertIn(
+            "post_q_rate_pass_promoted_acceptable_processed",
+            recovered.reason_codes,
+        )
+
+        diagnostics_only = resolve_routing_evidence(
+            replace(recovered, sqi_mode="diagnostics_only"),
+            role="S1",
+            allow_rate_feature_recovery_without_direct_sqi=True,
+        )
+        self.assertEqual(diagnostics_only.final_tier, "excluded")
+        self.assertEqual(diagnostics_only.source_view, "none")
+
     def test_independent_boolean_switches_and_no_unauthorised_promotion(self) -> None:
         for sqi_active, motion_enabled, denoiser_enabled in itertools.product(
             (False, True), repeat=3
@@ -128,7 +166,10 @@ class RoutingTimelineV2Tests(unittest.TestCase):
                 expected_request = denoiser_enabled and (sqi_active or motion_enabled)
                 self.assertEqual(result.denoiser_requested, expected_request)
                 if not sqi_active:
-                    self.assertEqual(result.final_tier, "excluded")
+                    self.assertEqual(
+                        result.final_tier,
+                        "excluded" if motion_enabled else "excellent",
+                    )
 
     def test_diagnostics_only_cannot_route_from_q_states(self) -> None:
         result = resolve_routing_evidence(
@@ -141,6 +182,24 @@ class RoutingTimelineV2Tests(unittest.TestCase):
         )
         self.assertEqual(result.final_tier, "excellent")
         self.assertTrue(result.sqi_assessed)
+
+    def test_sqi_and_motion_off_admits_every_configured_role(self) -> None:
+        for role in ("B", "R1", "S1", "W2"):
+            with self.subTest(role=role):
+                result = resolve_routing_evidence(
+                    self._row(
+                        sqi_mode="off",
+                        sqi_assessed=False,
+                        direct_q_rate_state=None,
+                        direct_q_morph_state=None,
+                    ),
+                    role=role,
+                )
+                self.assertEqual(result.final_tier, "excellent")
+                self.assertIn(
+                    "sqi_and_motion_off_selected_role_excellent",
+                    result.reason_codes,
+                )
 
     def test_midpoint_cells_are_unique_and_cover_every_sample(self) -> None:
         rows = tuple(

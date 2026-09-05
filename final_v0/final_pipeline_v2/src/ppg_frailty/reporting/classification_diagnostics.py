@@ -15,7 +15,7 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 from sklearn.manifold import TSNE
-from sklearn.metrics import auc, roc_curve
+from sklearn.metrics import average_precision_score, auc, roc_auc_score, roc_curve
 
 
 @dataclass(frozen=True)
@@ -144,6 +144,9 @@ def normalize_classification_rows(
             "file_id": row.get("file_id"),
             "repeat": row.get("repeat"),
             "fold": row.get("fold"),
+            "split_seed": row.get("split_seed"),
+            "training_seed": row.get("training_seed"),
+            "retained": bool(row.get("retained", True)),
             "true_label": label,
             "predicted_label": int(predicted_label),
             "prediction_correct": bool(predicted_label == label),
@@ -180,6 +183,218 @@ def _groups(
         )
         grouped.setdefault(key, []).append(row)
     return grouped
+
+
+def classification_per_class_metric_rows(
+    normalized_rows: Sequence[Mapping[str, Any]],
+    *,
+    class_names: Mapping[int, str] | None = None,
+) -> tuple[dict[str, Any], ...]:
+    """Recompute auditable one-vs-rest metrics for every classifier class.
+
+    ``normalized_rows`` must follow :func:`normalize_classification_rows`.
+    In particular, hard-label metrics consume the persisted normalized
+    ``predicted_label`` rather than taking a second argmax.  This preserves a
+    binary classifier's frozen decision threshold while the probability vector
+    remains the source for one-vs-rest ROC-AUC and average precision.
+    """
+
+    output: list[dict[str, Any]] = []
+    resolved_names = {
+        int(label): str(name) for label, name in (class_names or {}).items()
+    }
+    for key, source_group in sorted(_groups(normalized_rows).items()):
+        classifier_id, evaluation_id, aggregation_level = key
+        try:
+            class_order = tuple(
+                int(value) for value in source_group[0]["class_order"]
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(
+                f"{key}: normalized classification class_order is invalid"
+            ) from error
+        if len(class_order) < 2 or len(set(class_order)) != len(class_order):
+            raise ValueError(
+                f"{key}: normalized classification class_order must contain "
+                "at least two unique labels"
+            )
+
+        group = [
+            row for row in source_group if row.get("retained", True) is not False
+        ]
+        excluded_observation_count = len(source_group) - len(group)
+        if not group:
+            for class_label in class_order:
+                output.append(
+                    {
+                        "classifier_id": classifier_id,
+                        "evaluation_id": evaluation_id,
+                        "aggregation_level": aggregation_level,
+                        "class_label": class_label,
+                        "class_name": resolved_names.get(
+                            class_label, str(class_label)
+                        ),
+                        "true_positive": None,
+                        "false_positive": None,
+                        "true_negative": None,
+                        "false_negative": None,
+                        "support": None,
+                        "predicted_support": None,
+                        "observation_count": 0,
+                        "input_observation_count": len(source_group),
+                        "retained_observation_count": 0,
+                        "excluded_observation_count": excluded_observation_count,
+                        "precision": None,
+                        "sensitivity": None,
+                        "recall": None,
+                        "specificity": None,
+                        "balanced_accuracy_ovr": None,
+                        "f1": None,
+                        "roc_auc_ovr": None,
+                        "pr_auc_ovr": None,
+                        "probability_metric_applicability": (
+                            "N/A_no_retained_classification_observations"
+                        ),
+                        "result_applicability": (
+                            "N/A_no_retained_classification_observations"
+                        ),
+                        "metric_scope": (
+                            "one_vs_rest_equal_weight_conditional_on_retention"
+                        ),
+                        "metric_source": (
+                            "normalized_persisted_probabilities_and_predicted_labels"
+                        ),
+                        "prediction_rule_source": (
+                            "normalized_predicted_label_preserves_frozen_threshold"
+                        ),
+                    }
+                )
+            continue
+
+        labels: list[int] = []
+        predictions: list[int] = []
+        probabilities: list[tuple[float, ...]] = []
+        for row in group:
+            try:
+                row_order = tuple(int(value) for value in row["class_order"])
+                label = int(row["true_label"])
+                predicted = int(row["predicted_label"])
+                probability = tuple(float(value) for value in row["probabilities"])
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError(
+                    f"{key}: normalized classification row is incomplete"
+                ) from error
+            if row_order != class_order:
+                raise ValueError(
+                    f"{key}: normalized classification class_order differs within group"
+                )
+            if label not in class_order or predicted not in class_order:
+                raise ValueError(
+                    f"{key}: true_label or predicted_label is outside class_order"
+                )
+            if (
+                len(probability) != len(class_order)
+                or not all(
+                    math.isfinite(value) and value >= 0.0
+                    for value in probability
+                )
+                or not math.isclose(
+                    sum(probability), 1.0, rel_tol=0.0, abs_tol=1e-6
+                )
+            ):
+                raise ValueError(
+                    f"{key}: normalized classification probability vector is invalid"
+                )
+            labels.append(label)
+            predictions.append(predicted)
+            probabilities.append(probability)
+
+        label_array = np.asarray(labels, dtype=np.int64)
+        prediction_array = np.asarray(predictions, dtype=np.int64)
+        probability_matrix = np.asarray(probabilities, dtype=np.float64)
+        observation_count = int(label_array.size)
+        for column, class_label in enumerate(class_order):
+            positive = label_array == class_label
+            predicted_positive = prediction_array == class_label
+            true_positive = int(np.count_nonzero(positive & predicted_positive))
+            false_positive = int(np.count_nonzero(~positive & predicted_positive))
+            false_negative = int(np.count_nonzero(positive & ~predicted_positive))
+            true_negative = int(np.count_nonzero(~positive & ~predicted_positive))
+            support = true_positive + false_negative
+            predicted_support = true_positive + false_positive
+            precision = (
+                float(true_positive / predicted_support)
+                if predicted_support
+                else 0.0
+            )
+            sensitivity = (
+                float(true_positive / support) if support else 0.0
+            )
+            negative_support = true_negative + false_positive
+            specificity = (
+                float(true_negative / negative_support)
+                if negative_support
+                else 0.0
+            )
+            f1 = (
+                float(2.0 * precision * sensitivity / (precision + sensitivity))
+                if precision + sensitivity
+                else 0.0
+            )
+            if np.unique(positive).size < 2:
+                roc_auc_ovr = None
+                pr_auc_ovr = None
+                probability_metric_applicability = (
+                    "N/A_group_lacks_positive_or_negative_class"
+                )
+            else:
+                scores = probability_matrix[:, column]
+                roc_auc_ovr = float(roc_auc_score(positive, scores))
+                pr_auc_ovr = float(average_precision_score(positive, scores))
+                probability_metric_applicability = "available"
+            output.append(
+                {
+                    "classifier_id": classifier_id,
+                    "evaluation_id": evaluation_id,
+                    "aggregation_level": aggregation_level,
+                    "class_label": class_label,
+                    "class_name": resolved_names.get(class_label, str(class_label)),
+                    "true_positive": true_positive,
+                    "false_positive": false_positive,
+                    "true_negative": true_negative,
+                    "false_negative": false_negative,
+                    "support": support,
+                    "predicted_support": predicted_support,
+                    "observation_count": observation_count,
+                    "input_observation_count": len(source_group),
+                    "retained_observation_count": observation_count,
+                    "excluded_observation_count": excluded_observation_count,
+                    "precision": precision,
+                    "sensitivity": sensitivity,
+                    "recall": sensitivity,
+                    "specificity": specificity,
+                    "balanced_accuracy_ovr": float(
+                        0.5 * (sensitivity + specificity)
+                    ),
+                    "f1": f1,
+                    "roc_auc_ovr": roc_auc_ovr,
+                    "pr_auc_ovr": pr_auc_ovr,
+                    "probability_metric_applicability": (
+                        probability_metric_applicability
+                    ),
+                    "result_applicability": "available",
+                    "metric_scope": (
+                        "one_vs_rest_equal_weight_conditional_on_retention"
+                    ),
+                    "metric_source": (
+                        "normalized_persisted_probabilities_and_predicted_labels"
+                    ),
+                    "prediction_rule_source": (
+                        "normalized_predicted_label_preserves_frozen_threshold"
+                    ),
+                }
+            )
+    return tuple(output)
 
 
 def classification_roc_curve_rows(
@@ -348,6 +563,7 @@ def classification_diagnostic_status_rows(
 __all__ = [
     "ClassificationDiagnosticConfig",
     "classification_diagnostic_status_rows",
+    "classification_per_class_metric_rows",
     "classification_roc_curve_rows",
     "classification_tsne_rows",
     "normalize_classification_rows",

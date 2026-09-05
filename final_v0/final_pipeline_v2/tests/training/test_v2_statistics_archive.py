@@ -6,14 +6,17 @@ import json
 
 import numpy as np
 import pytest
+from sklearn.metrics import balanced_accuracy_score, f1_score, roc_auc_score
 
 from ppg_frailty.training.statistics import (
     ComparisonArchive,
     ConfigMetrics,
     ManualFinalSelection,
+    PairedClusterBootstrapResult,
     ParticipantPrediction,
     build_config_metrics_from_predictions_and_fold_summaries,
     holm_adjust,
+    paired_participant_cluster_bootstrap,
     paired_participant_permutation,
     participant_cluster_bootstrap,
     rank_top10,
@@ -41,6 +44,165 @@ def _predictions(*, degrade: bool = False) -> tuple[ParticipantPrediction, ...]:
                     )
                 )
     return tuple(rows)
+
+
+def _tied_predictions(*, degrade: bool = False) -> tuple[ParticipantPrediction, ...]:
+    """Small non-perfect roster with repeated score ties for equivalence tests."""
+
+    rows: list[ParticipantPrediction] = []
+    templates = (
+        (0.50, 0.30, 0.20),
+        (0.40, 0.40, 0.20),
+        (0.34, 0.33, 0.33),
+    )
+    for repeat in (1, 0):
+        for label in (2, 1, 0):
+            for index in (2, 1, 0):
+                values = np.roll(
+                    np.asarray(templates[(index + repeat) % len(templates)]),
+                    label,
+                )
+                if degrade and index == 0:
+                    values = np.roll(values, 1)
+                rows.append(
+                    ParticipantPrediction(
+                        participant_id=f"t{label}{index}",
+                        label=label,
+                        repeat=repeat,
+                        probabilities=tuple(float(value) for value in values),
+                    )
+                )
+    return tuple(rows)
+
+
+def _explicit_mean_repeat_metric(
+    rows: tuple[ParticipantPrediction, ...] | list[ParticipantPrediction],
+    metric: str,
+    class_order: tuple[int, ...] = (0, 1, 2),
+) -> float:
+    values: list[float] = []
+    for repeat in sorted({row.repeat for row in rows}):
+        selected = [row for row in rows if row.repeat == repeat]
+        labels = np.asarray([row.label for row in selected], dtype=np.int64)
+        probabilities = np.asarray(
+            [row.probabilities for row in selected],
+            dtype=np.float64,
+        )
+        predicted = np.asarray(class_order, dtype=np.int64)[
+            probabilities.argmax(axis=1)
+        ]
+        if metric == "balanced_accuracy":
+            score = balanced_accuracy_score(labels, predicted)
+        elif metric == "macro_f1":
+            score = f1_score(
+                labels,
+                predicted,
+                labels=np.asarray(class_order),
+                average="macro",
+                zero_division=0,
+            )
+        else:
+            score = np.mean(
+                [
+                    roc_auc_score(
+                        labels == class_label,
+                        probabilities[:, class_index],
+                    )
+                    for class_index, class_label in enumerate(class_order)
+                ]
+            )
+        values.append(float(score))
+    return float(np.mean(values))
+
+
+def _explicit_bootstrap_reference(
+    reference: tuple[ParticipantPrediction, ...],
+    *,
+    candidate: tuple[ParticipantPrediction, ...] | None = None,
+    metric: str,
+    n_resamples: int,
+    seed: int,
+    class_order: tuple[int, ...] = (0, 1, 2),
+) -> tuple[float, float, float]:
+    """Literal pre-vectorisation algorithm used as an independent oracle."""
+
+    unique_participants = sorted({row.participant_id for row in reference})
+    label_by_participant = {
+        participant: next(
+            row.label for row in reference if row.participant_id == participant
+        )
+        for participant in unique_participants
+    }
+    strata = {
+        label: [
+            participant
+            for participant in unique_participants
+            if label_by_participant[participant] == label
+        ]
+        for label in class_order
+    }
+    reference_by_participant = {
+        participant: [
+            row for row in reference if row.participant_id == participant
+        ]
+        for participant in unique_participants
+    }
+    candidate_by_participant = (
+        {
+            participant: [
+                row for row in candidate if row.participant_id == participant
+            ]
+            for participant in unique_participants
+        }
+        if candidate is not None
+        else None
+    )
+
+    estimate = _explicit_mean_repeat_metric(
+        candidate if candidate is not None else reference,
+        metric,
+        class_order,
+    )
+    if candidate is not None:
+        estimate -= _explicit_mean_repeat_metric(reference, metric, class_order)
+    rng = np.random.default_rng(seed)
+    draws: list[float] = []
+    for _ in range(n_resamples):
+        sampled: list[str] = []
+        for label in class_order:
+            values = strata[label]
+            sampled.extend(
+                rng.choice(values, size=len(values), replace=True).tolist()
+            )
+        sampled_reference = [
+            row
+            for participant in sampled
+            for row in reference_by_participant[participant]
+        ]
+        if candidate_by_participant is None:
+            draw = _explicit_mean_repeat_metric(
+                sampled_reference,
+                metric,
+                class_order,
+            )
+        else:
+            sampled_candidate = [
+                row
+                for participant in sampled
+                for row in candidate_by_participant[participant]
+            ]
+            draw = _explicit_mean_repeat_metric(
+                sampled_candidate,
+                metric,
+                class_order,
+            ) - _explicit_mean_repeat_metric(
+                sampled_reference,
+                metric,
+                class_order,
+            )
+        draws.append(float(draw))
+    lower, upper = np.quantile(np.asarray(draws), (0.025, 0.975))
+    return estimate, float(lower), float(upper)
 
 
 def _fold_payload(
@@ -120,6 +282,178 @@ def test_small_resample_smoke_uses_participant_clusters() -> None:
     )
     assert len(holm) == 2
     assert all(item.family_size == 2 for item in holm)
+
+
+def test_macro_roc_auc_cluster_bootstrap_is_reproducible() -> None:
+    predictions = _predictions()
+    first = participant_cluster_bootstrap(
+        predictions,
+        metric="macro_roc_auc_ovr",
+        n_resamples=50,
+        seed=17,
+    )
+    second = participant_cluster_bootstrap(
+        predictions,
+        metric="macro_roc_auc_ovr",
+        n_resamples=50,
+        seed=17,
+    )
+
+    assert first == second
+    assert first.metric == "macro_roc_auc_ovr"
+    assert first.estimate == 1.0
+    assert first.ci95_lower == 1.0
+    assert first.ci95_upper == 1.0
+    assert first.valid_resamples == first.n_resamples == 50
+    assert first.n_participants == 6
+    assert first.n_repeats == 5
+    assert first.cluster_unit == "participant_with_all_repeats"
+
+
+def test_paired_cluster_bootstrap_shares_stratified_participant_draws() -> None:
+    reference = _predictions()
+    candidate = _predictions(degrade=True)
+    result = paired_participant_cluster_bootstrap(
+        reference,
+        candidate,
+        metric="macro_roc_auc_ovr",
+        n_resamples=80,
+        seed=23,
+    )
+    repeated = paired_participant_cluster_bootstrap(
+        reference,
+        candidate,
+        metric="macro_roc_auc_ovr",
+        n_resamples=80,
+        seed=23,
+    )
+
+    assert isinstance(result, PairedClusterBootstrapResult)
+    assert result == repeated
+    assert result.observed_candidate_minus_reference < 0.0
+    assert result.ci95_lower <= result.observed_candidate_minus_reference
+    assert result.ci95_upper <= 0.0
+    assert result.valid_resamples == result.n_resamples == 80
+    assert result.n_participants == 6
+    assert result.n_repeats == 5
+    assert result.comparison_direction == "candidate_minus_reference"
+
+
+def test_identical_paired_cluster_bootstrap_has_zero_delta_interval() -> None:
+    predictions = _predictions()
+    for metric in ("balanced_accuracy", "macro_f1", "macro_roc_auc_ovr"):
+        result = paired_participant_cluster_bootstrap(
+            predictions,
+            predictions,
+            metric=metric,
+            n_resamples=20,
+            seed=42,
+        )
+        assert result.observed_candidate_minus_reference == 0.0
+        assert result.ci95_lower == 0.0
+        assert result.ci95_upper == 0.0
+
+
+@pytest.mark.parametrize(
+    "metric",
+    ("balanced_accuracy", "macro_f1", "macro_roc_auc_ovr"),
+)
+def test_vectorized_cluster_bootstrap_matches_literal_reference_with_ties(
+    metric: str,
+) -> None:
+    predictions = _tied_predictions()
+    expected = _explicit_bootstrap_reference(
+        predictions,
+        metric=metric,
+        n_resamples=67,
+        seed=314,
+    )
+    actual = participant_cluster_bootstrap(
+        predictions,
+        metric=metric,
+        n_resamples=67,
+        seed=314,
+    )
+
+    np.testing.assert_allclose(
+        (actual.estimate, actual.ci95_lower, actual.ci95_upper),
+        expected,
+        rtol=0.0,
+        atol=1e-14,
+    )
+    assert (
+        actual.implementation_version
+        == "stratified_participant_count_weighted_vectorized_metrics_v2"
+    )
+    assert (
+        actual.rng_contract
+        == "numpy_default_rng_pcg64_one_choice_per_resample_per_class_in_class_order"
+    )
+
+
+@pytest.mark.parametrize(
+    "metric",
+    ("balanced_accuracy", "macro_f1", "macro_roc_auc_ovr"),
+)
+def test_vectorized_paired_cluster_bootstrap_matches_shared_draw_reference(
+    metric: str,
+) -> None:
+    reference = _tied_predictions()
+    candidate = tuple(reversed(_tied_predictions(degrade=True)))
+    expected = _explicit_bootstrap_reference(
+        reference,
+        candidate=candidate,
+        metric=metric,
+        n_resamples=71,
+        seed=2718,
+    )
+    actual = paired_participant_cluster_bootstrap(
+        reference,
+        candidate,
+        metric=metric,
+        n_resamples=71,
+        seed=2718,
+    )
+
+    np.testing.assert_allclose(
+        (
+            actual.observed_candidate_minus_reference,
+            actual.ci95_lower,
+            actual.ci95_upper,
+        ),
+        expected,
+        rtol=0.0,
+        atol=1e-14,
+    )
+
+
+def test_paired_cluster_bootstrap_rejects_unmatched_keys_and_labels() -> None:
+    reference = _predictions()
+    missing_participant = tuple(
+        row for row in reference if row.participant_id != "p00"
+    )
+    with pytest.raises(ValueError, match="identical participant/repeat keys"):
+        paired_participant_cluster_bootstrap(
+            reference,
+            missing_participant,
+            n_resamples=10,
+        )
+
+    mismatched_labels = tuple(
+        ParticipantPrediction(
+            participant_id=row.participant_id,
+            label=(1 if row.participant_id == "p00" else row.label),
+            repeat=row.repeat,
+            probabilities=row.probabilities,
+        )
+        for row in reference
+    )
+    with pytest.raises(ValueError, match="disagree on participant labels"):
+        paired_participant_cluster_bootstrap(
+            reference,
+            mismatched_labels,
+            n_resamples=10,
+        )
 
 
 def test_top10_is_ba_sorted_review_list_without_auto_selection() -> None:

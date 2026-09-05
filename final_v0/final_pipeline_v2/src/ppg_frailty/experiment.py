@@ -8,8 +8,12 @@ shortening the roster, relaxing SQI, or emitting fabricated metrics.
 
 from __future__ import annotations
 
+import gc
+import gzip
 import hashlib
+import io
 import json
+import os
 import time
 from dataclasses import asdict, dataclass, field, is_dataclass
 from functools import lru_cache
@@ -62,6 +66,7 @@ class _RuntimeRecord:
     reason: str | None = None
     route_status: str = 'pending'
     route_artifact: dict[str, Any] = field(default_factory=dict)
+    route_window_sqi_evidence: dict[str, Any] = field(default_factory=dict)
     artifact_name: str = 'not_executed'
     artifact_version: str = 'not_executed'
     direct_pulses_per_wavelength: Any = None
@@ -77,6 +82,7 @@ class _RuntimeRecord:
     diagnostic_reason: str | None = None
     physical_qc_evidence: dict[str, Any] = field(default_factory=dict)
     physical_qc_profile: dict[str, Any] = field(default_factory=dict)
+    preprocessing_cache_refs: dict[str, str] = field(default_factory=dict)
 
 
 def _drop_after_routing(
@@ -135,6 +141,60 @@ def _persisted_route_artifact_row(
         'artifact_reducer_version': state.artifact_version,
         'route_artifact': state.route_artifact,
     }
+
+
+_COMPACT_SQI_COMPONENT_FIELDS = (
+    'state',
+    'score',
+    'coverage',
+    'threshold',
+    'reasons',
+)
+
+
+def _compact_sqi_result(value: Any) -> dict[str, Any] | None:
+    """Retain bounded routing scalars while archiving component detail elsewhere."""
+
+    if value is None:
+        return None
+    # Native evidence is already materialized as strict-JSON mappings.  Do not
+    # recursively copy its potentially large ``components`` subtree merely to
+    # discard it below.  The non-mapping branch remains for focused fixtures
+    # and future typed SQI result objects.
+    payload = value if isinstance(value, Mapping) else to_strict_json_value(value)
+    if not isinstance(payload, Mapping):
+        return None
+    compact: dict[str, Any] = {
+        field: to_strict_json_value(payload[field])
+        for field in ('state', 'reasons')
+        if field in payload
+    }
+    for component_name in ('q_rate', 'q_morph'):
+        component = payload.get(component_name)
+        if not isinstance(component, Mapping):
+            continue
+        compact[component_name] = {
+            field: to_strict_json_value(component[field])
+            for field in _COMPACT_SQI_COMPONENT_FIELDS
+            if field in component
+        }
+    return compact
+
+
+def _compact_window_sqi_evidence(
+    evidence: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project full per-window SQI components to report-required route scalars."""
+
+    output: dict[str, Any] = {}
+    for window_id, raw_stages in evidence.items():
+        if not isinstance(raw_stages, Mapping):
+            continue
+        output[str(window_id)] = {
+            stage: _compact_sqi_result(raw_stages.get(stage))
+            for stage in ('direct', 'post_reduction')
+        }
+    return output
 
 
 class _ExperimentProtocolError(RuntimeError):
@@ -534,6 +594,7 @@ def _fit_imu_calibrations(
     loader: Any,
     *,
     calibration_rows: Iterable[Any] | None = None,
+    cache_session: Any = None,
 ) -> tuple[dict[str, Any], dict[str, str], str]:
     '''Fit reusable participant-B calibration objects for canonical IMU profiles.'''
 
@@ -544,6 +605,7 @@ def _fit_imu_calibrations(
     calibrated_methods = {
         'calibrated_roll_pitch_ekf',
         'profile_a_lowpass_0p3hz',
+        'sensor_filter_only_no_gravity_removal',
     }
     calibrations: dict[str, Any] = {}
     calibration_errors: dict[str, str] = {}
@@ -577,23 +639,40 @@ def _fit_imu_calibrations(
                 continue
             calibration_row = candidates[0]
             try:
-                # Calibration always uses the complete static B recording. A
-                # reduced smoke cap applies only to the downstream record.
-                loaded = loader(calibration_row, None)
-                calibrations[participant_id] = api[
-                    'fit_motion_imu_calibration'
-                ](
-                    api['np'].asarray(loaded['acc'], dtype=api['np'].float64),
-                    api['np'].asarray(loaded['gyro'], dtype=api['np'].float64),
-                    participant_id=participant_id,
-                    file_id=str(calibration_row.record_id),
-                    source_role='B',
-                    fs_hz=float(calibration_row.fs),
-                    acceleration_unit=str(loaded['acc_unit']),
-                    gyroscope_unit=str(loaded['gyro_unit']),
-                    config=ekf_config,
+                def build_calibration() -> Any:
+                    # Calibration always uses the complete static B recording.
+                    # A reduced smoke cap applies only to the downstream record.
+                    loaded = loader(calibration_row, None)
+                    return api['fit_motion_imu_calibration'](
+                        api['np'].asarray(
+                            loaded['acc'], dtype=api['np'].float64
+                        ),
+                        api['np'].asarray(
+                            loaded['gyro'], dtype=api['np'].float64
+                        ),
+                        participant_id=participant_id,
+                        file_id=str(calibration_row.record_id),
+                        source_role='B',
+                        fs_hz=float(calibration_row.fs),
+                        acceleration_unit=str(loaded['acc_unit']),
+                        gyroscope_unit=str(loaded['gyro_unit']),
+                        config=ekf_config,
+                    )
+
+                calibrations[participant_id] = (
+                    cache_session.calibration(
+                        calibration_row,
+                        imu,
+                        build_calibration,
+                    )
+                    if cache_session is not None and cache_session.enabled
+                    else build_calibration()
                 )
             except Exception as exc:
+                from .data.recording_cache import RecordingCacheError
+
+                if isinstance(exc, RecordingCacheError):
+                    raise
                 calibration_errors[participant_id] = (
                     f'{type(exc).__name__}:{exc}'
                 )
@@ -607,6 +686,7 @@ def _preprocess_records(
     loader: Any,
     *,
     calibration_rows: Iterable[Any] | None = None,
+    cache_session: Any = None,
 ) -> None:
     '''Build direct views with one explicit role-B IMU calibration per participant.'''
 
@@ -617,10 +697,12 @@ def _preprocess_records(
         config,
         loader,
         calibration_rows=calibration_rows,
+        cache_session=cache_session,
     )
     calibrated_methods = {
         'calibrated_roll_pitch_ekf',
         'profile_a_lowpass_0p3hz',
+        'sensor_filter_only_no_gravity_removal',
     }
     for state in states:
         participant_id = str(state.row.participant_id)
@@ -635,15 +717,13 @@ def _preprocess_records(
             int(state.row.n_samples), int(round(maximum_seconds * float(state.row.fs)))
         )
         try:
-            loaded = dict(loader(state.row, maximum))
-            loaded['participant_id'] = participant_id
+            calibration = None
             if gravity_method in calibrated_methods:
                 calibration = calibrations.get(participant_id)
                 if calibration is None:
                     raise RuntimeError(
                         'same_participant_imu_calibration_unavailable'
                     )
-                loaded['imu_calibration'] = calibration
                 state.diagnostic_components['imu_calibration'] = {
                     'schema_version': calibration.schema_version,
                     'participant_id': calibration.participant_id,
@@ -653,24 +733,60 @@ def _preprocess_records(
                     'gravity_method': gravity_method,
                     'fallback_used': False,
                 }
-            state.physical_qc_evidence = to_strict_json_value(
-                loaded.get(
-                    'recording_qc',
-                    {
-                        'status': 'not_supplied_by_injected_test_loader',
-                        'record_id': state.row.record_id,
+
+            def build_views() -> tuple[Any, Mapping[str, Any], Mapping[str, Any]]:
+                loaded = dict(loader(state.row, maximum))
+                loaded['participant_id'] = participant_id
+                if calibration is not None:
+                    loaded['imu_calibration'] = calibration
+                qc = to_strict_json_value(
+                    loaded.get(
+                        'recording_qc',
+                        {
+                            'status': 'not_supplied_by_injected_test_loader',
+                            'record_id': state.row.record_id,
+                        },
+                    )
+                )
+                profile = to_strict_json_value(
+                    loaded.get(
+                        'recording_qc_profile',
+                        {'profile_id': 'not_supplied_by_injected_test_loader'},
+                    )
+                )
+                return build_signal_views(loaded, config.to_dict()), qc, profile
+
+            if cache_session is not None and cache_session.enabled:
+                quality = config.section('quality')
+                (
+                    state.views,
+                    state.physical_qc_evidence,
+                    state.physical_qc_profile,
+                    view_key,
+                ) = cache_session.canonical_views(
+                    state.row,
+                    maximum_samples=maximum,
+                    signal_config=config.section('signal'),
+                    quality_preprocess_config={
+                        'long_gap_max_samples': quality['long_gap_max_samples'],
+                        'flatline_duration_s': quality['flatline_duration_s'],
                     },
+                    calibration=calibration,
+                    builder=build_views,
                 )
-            )
-            state.physical_qc_profile = to_strict_json_value(
-                loaded.get(
-                    'recording_qc_profile',
-                    {'profile_id': 'not_supplied_by_injected_test_loader'},
-                )
-            )
-            state.views = build_signal_views(loaded, config.to_dict())
+                state.preprocessing_cache_refs['canonical_signal_views'] = view_key
+            else:
+                (
+                    state.views,
+                    state.physical_qc_evidence,
+                    state.physical_qc_profile,
+                ) = build_views()
             state.route_status = 'direct_preprocessed'
         except Exception as exc:
+            from .data.recording_cache import RecordingCacheError
+
+            if isinstance(exc, RecordingCacheError):
+                raise
             state.reason = f'preprocess_failed:{type(exc).__name__}:{exc}'
             state.route_status = 'dropped_preprocess'
 
@@ -1132,10 +1248,47 @@ def _apply_quality_motion_routing(
     *,
     train_ids: tuple[str, ...],
     oof_ids: tuple[str, ...],
+    cache_session: Any = None,
 ) -> dict[str, Any]:
     """Execute one shared route orchestration for outer CV and final refit."""
 
     mode = _quality_mode(config)
+    switches = _runtime_imports()['route_module_switches_from_config'](
+        config.to_dict()
+    )
+    if (
+        mode == 'off'
+        and not switches.motion_detector_enabled
+        and not switches.denoiser_enabled
+    ):
+        # With all three optional modules off, routing has no 8-second evidence
+        # requirement.  Every record admitted by the configurable role selector
+        # remains direct, including 5-to-8-second records that still contain a
+        # valid 5-second classifier window.
+        provenance = _retain_without_quality_routing(
+            states,
+            config,
+            diagnostics_only=False,
+        )
+        provenance.update(
+            {
+                'state_machine': 'all_optional_route_modules_off_v1',
+                'motion_detector': None,
+                'denoiser': {
+                    'enabled': False,
+                    'configured_reducer': str(
+                        config.section('artifact')['reducer']
+                    ),
+                    'attempt_policy': 'not_applicable',
+                    'successful_output_tier': 'not_applicable',
+                },
+                'acceptable_representation_contract': (
+                    'pulse_derived_feature_vector_only'
+                ),
+                'diagnostics_only_provenance': None,
+            }
+        )
+        return to_strict_json_value(provenance)
     diagnostic_provenance = (
         {
             'method': 'native_routing_windows_fixed_formula_diagnostics',
@@ -1168,6 +1321,7 @@ def _apply_quality_motion_routing(
         sqi_config,
         calibrator,
         motion_detector=motion_detector,
+        cache_session=cache_session,
     )
     if sqi_config is not None:
         provenance = _quality_route_provenance(
@@ -1309,7 +1463,7 @@ def _load_reused_motion_detector_for_config(
     train_ids: tuple[str, ...] = (),
     oof_ids: tuple[str, ...] = (),
 ) -> Any | None:
-    """Load the immutable matching fold detector, or all-29 for final/smoke."""
+    """Load the configured immutable fold or all-29 motion detector."""
 
     api = _runtime_imports()
     artifact = config.section('artifact')
@@ -1485,6 +1639,7 @@ def _route_records_window_level(
     calibrator: Any | None,
     *,
     motion_detector: Any | None = None,
+    cache_session: Any = None,
 ) -> None:
     """Run shared native-window evidence and build one RoutingTimeline per file."""
 
@@ -1495,6 +1650,11 @@ def _route_records_window_level(
     detector_config = api['resolve_peak_detector_config'](config.section('signal'))
     routing = config.section('routing')
     representation_mode = str(config.representation_mode)
+    allow_rate_feature_recovery_without_direct_sqi = bool(
+        representation_mode == 'feature_vector'
+        and str(artifact['degraded_policy'])
+        == 'denoise_then_extract_rate_features'
+    )
     if switches.motion_detector_enabled != (motion_detector is not None):
         raise _ExperimentProtocolError(
             'motion_detector_switch_and_loaded_runtime_disagree'
@@ -1537,7 +1697,13 @@ def _route_records_window_level(
             hop_s=float(routing['hop_s']),
         )
         direct_pulse = None
-        if mode != 'off' or switches.denoiser_enabled:
+        # A record shorter than the shared 8-second routing window has no
+        # admissible SQI/motion evidence.  Exclude that record through the
+        # normal empty-timeline contract instead of invoking a peak detector
+        # which must (correctly) reject observations shorter than 8 seconds.
+        # This is record-local fail-closed behaviour; it must not abort the
+        # participant-grouped outer cell.
+        if native_windows and (mode != 'off' or switches.denoiser_enabled):
             pulses = _direct_pulses_for_state(state, api, detector_config)
             direct_pulse = pulses[api['select_reference_wavelength'](pulses)]
         direct_hr = _pulse_hr_audit(direct_pulse)
@@ -1545,7 +1711,7 @@ def _route_records_window_level(
 
         motion_series = None
         motion_by_id: dict[str, Any] = {}
-        if motion_detector is not None:
+        if motion_detector is not None and native_windows:
             try:
                 recording = api['motion_recording_from_signal_views'](
                     state.views,
@@ -1558,8 +1724,49 @@ def _route_records_window_level(
                 if 'gap-repaired native PPG' not in str(exc):
                     raise
                 recording = None
+            precomputed_motion_windows = None
+            if (
+                recording is not None
+                and cache_session is not None
+                and cache_session.enabled
+            ):
+                from .representations.motion import (
+                    MOTION_REFERENCE_PROFILE_ID,
+                    build_motion_window_tensors,
+                )
+
+                upstream_key = state.preprocessing_cache_refs.get(
+                    'canonical_signal_views'
+                )
+                if upstream_key is None:
+                    raise RuntimeError(
+                        'motion_window_cache_requires_upstream_view_key'
+                    )
+                precomputed_motion_windows, motion_window_key = (
+                    cache_session.motion_windows(
+                        state.row,
+                        upstream_views_key=upstream_key,
+                        recording=recording,
+                        profile_id=MOTION_REFERENCE_PROFILE_ID,
+                        builder=lambda: build_motion_window_tensors(
+                            recording.ppg_red_ir,
+                            recording.motion_imu,
+                            record_id=recording.record_id,
+                            participant_id=recording.participant_id,
+                            role_or_activity=recording.role_or_activity,
+                            dataset_id=recording.dataset_id,
+                            fs_hz=recording.fs_hz,
+                            profile_id=MOTION_REFERENCE_PROFILE_ID,
+                        ),
+                    )
+                )
+                state.preprocessing_cache_refs['motion_windows'] = (
+                    motion_window_key
+                )
             motion_series = api['infer_reused_motion_windows'](
-                motion_detector, recording
+                motion_detector,
+                recording,
+                precomputed_windows=precomputed_motion_windows,
             )
             motion_by_id = {
                 row.routing_window_id: row for row in motion_series.decisions
@@ -1649,7 +1856,13 @@ def _route_records_window_level(
                 denoiser_enabled=switches.denoiser_enabled,
             )
             evidence_rows.append(
-                api['resolve_routing_evidence'](unresolved, role=role)
+                api['resolve_routing_evidence'](
+                    unresolved,
+                    role=role,
+                    allow_rate_feature_recovery_without_direct_sqi=(
+                        allow_rate_feature_recovery_without_direct_sqi
+                    ),
+                )
             )
 
         requested = [row for row in evidence_rows if row.denoiser_requested]
@@ -1719,6 +1932,9 @@ def _route_records_window_level(
                                 post_q_rate_state=post.q_rate.state.value,
                             ),
                             role=role,
+                            allow_rate_feature_recovery_without_direct_sqi=(
+                                allow_rate_feature_recovery_without_direct_sqi
+                            ),
                         )
                     )
                 evidence_rows = updated_rows
@@ -1730,6 +1946,9 @@ def _route_records_window_level(
                             denoiser_status=outcome.result.status,
                         ),
                         role=role,
+                        allow_rate_feature_recovery_without_direct_sqi=(
+                            allow_rate_feature_recovery_without_direct_sqi
+                        ),
                     )
                     if row.denoiser_requested
                     else row
@@ -1813,16 +2032,31 @@ def _route_records_window_level(
         state.route_status = (
             'retained_window_routing_timeline'
             if state.retained
+            else 'dropped_no_complete_8_second_routing_window'
+            if not native_windows
             else 'dropped_no_representation_eligible_routing_cell'
         )
         state.reason = None if state.retained else state.route_status
+        # Keep the complete component-level SQI evidence out of the record-level
+        # route JSON.  It is written once as a streaming gzip JSONL attachment;
+        # the bounded projection below is sufficient for every registered report
+        # metric and keeps one 5x5 case from expanding to tens of gigabytes.
+        state.route_window_sqi_evidence = window_sqi_evidence
         state.route_artifact = to_strict_json_value(
             {
                 'schema_version': state.routing_timeline.schema_version,
                 'state': state.route_status,
                 'routing_grid': dict(routing),
+                'native_routing_window_count': len(native_windows),
+                'short_record_action': (
+                    'exclude_record_no_padding'
+                    if not native_windows
+                    else 'not_applicable'
+                ),
                 'cells': cells,
-                'native_window_sqi_evidence': window_sqi_evidence,
+                'native_window_sqi_evidence': (
+                    _compact_window_sqi_evidence(window_sqi_evidence)
+                ),
                 'motion_file_median_probability_diagnostic_only': (
                     None
                     if motion_series is None
@@ -2544,6 +2778,7 @@ def _extract_raw(
     state: _RuntimeRecord,
     report: Any,
     signal_config: Mapping[str, Any] | None = None,
+    cache_session: Any = None,
 ) -> None:
     '''Build configured mask-aware raw windows / 构建配置化 raw 窗口。'''
 
@@ -2561,11 +2796,30 @@ def _extract_raw(
             if not isinstance(raw_normalization, Mapping):
                 raise TypeError('signal.normalization must be a mapping')
             normalization = dict(raw_normalization)
-        materialized = api['build_raw_windows'](
-            state.views,
-            plan,
-            normalization=normalization,
-        )
+        if cache_session is not None and cache_session.enabled:
+            upstream_key = state.preprocessing_cache_refs.get(
+                'canonical_signal_views'
+            )
+            if upstream_key is None:
+                raise RuntimeError('raw_window_cache_requires_upstream_view_key')
+            materialized, raw_key = cache_session.raw_windows(
+                state.row,
+                upstream_views_key=upstream_key,
+                plan=plan,
+                normalization=normalization,
+                builder=lambda: api['build_raw_windows'](
+                    state.views,
+                    plan,
+                    normalization=normalization,
+                ),
+            )
+            state.preprocessing_cache_refs['raw_windows'] = raw_key
+        else:
+            materialized = api['build_raw_windows'](
+                state.views,
+                plan,
+                normalization=normalization,
+            )
         if state.routing_timeline is not None:
             from dataclasses import replace
 
@@ -2611,6 +2865,10 @@ def _extract_raw(
             raise ValueError('no_complete_excellent_direct_raw_window')
         state.raw_windows = materialized
     except Exception as exc:
+        from .data.recording_cache import RecordingCacheError
+
+        if isinstance(exc, RecordingCacheError):
+            raise
         _drop_after_routing(
             state,
             reason=f'raw_windows_failed:{type(exc).__name__}:{exc}',
@@ -2854,19 +3112,6 @@ def _fit_representation_artifacts(
     if mode in {'raw', 'fusion'}:
         _assert_train_payload_roster(states, train_ids, required=('raw_windows',))
         raw_states = [state for state in selected if state.raw_windows is not None]
-        raw_values = api['np'].concatenate(
-            [state.raw_windows.values for state in raw_states],
-            axis=0,
-        )
-        raw_masks = api['np'].concatenate(
-            [state.raw_windows.valid_mask for state in raw_states],
-            axis=0,
-        )
-        raw_participants = tuple(
-            str(state.row.participant_id)
-            for state in raw_states
-            for _ in range(state.raw_windows.values.shape[0])
-        )
         normalization_payloads = [
             state.raw_windows.provenance.get('normalization_config')
             for state in raw_states
@@ -2901,6 +3146,23 @@ def _fit_representation_artifacts(
                 'parameters': None,
             }
         else:
+            # Concatenation materializes roughly a gigabyte for the all-role
+            # Stage5 tensor.  It is only required when a fold-fitted IMU
+            # transform is enabled; the canonical all-eight-window-normalized
+            # route deliberately uses IMU_NONE and must not pay that peak.
+            raw_values = api['np'].concatenate(
+                [state.raw_windows.values for state in raw_states],
+                axis=0,
+            )
+            raw_masks = api['np'].concatenate(
+                [state.raw_windows.valid_mask for state in raw_states],
+                axis=0,
+            )
+            raw_participants = tuple(
+                str(state.row.participant_id)
+                for state in raw_states
+                for _ in range(state.raw_windows.values.shape[0])
+            )
             imu_transform = api['fit_fold_imu_channel_transform'](
                 raw_values,
                 raw_participants,
@@ -4382,6 +4644,7 @@ def _execute_cell_unchecked(
     measure_operational_costs: bool = False,
     loader: Any = None,
     legacy_bridge: _LegacyBridgeExecution | None = None,
+    preprocessing_cache: Mapping[str, Any] | None = None,
 ) -> _CellResult:
     '''Execute one representation-aware frozen outer cell.'''
 
@@ -4391,6 +4654,16 @@ def _execute_cell_unchecked(
         dedicated_entrypoint=False,
     )
     api = _runtime_imports()
+    from .data.preprocessing_cache import PreprocessingCacheSession
+
+    cache_session = PreprocessingCacheSession.from_mapping(
+        preprocessing_cache,
+        paths,
+    )
+    if legacy_bridge is not None and cache_session.enabled:
+        raise _ExperimentProtocolError(
+            'legacy_bridge_preprocessing_cache_must_be_disabled'
+        )
     started = time.perf_counter()
     mode = str(config.representation_mode)
     if mode not in {'raw', 'feature_vector', 'feature_matrix', 'fusion'}:
@@ -4432,6 +4705,7 @@ def _execute_cell_unchecked(
                 maximum_seconds,
                 actual_loader,
                 calibration_rows=row_values,
+                cache_session=cache_session,
             )
     else:
         _preprocess_records(
@@ -4440,6 +4714,7 @@ def _execute_cell_unchecked(
             maximum_seconds,
             actual_loader,
             calibration_rows=row_values,
+            cache_session=cache_session,
         )
         quality_mode = _quality_mode(config)
     if bridge_profile is not None and bridge_profile.builds_windows_from_raw_record:
@@ -4452,6 +4727,7 @@ def _execute_cell_unchecked(
             paths,
             train_ids=train_ids,
             oof_ids=oof_ids,
+            cache_session=cache_session,
         )
 
     for state in states:
@@ -4471,7 +4747,12 @@ def _execute_cell_unchecked(
             ):
                 _extract_canonical_all_channel_bridge_raw(state, bridge_profile)
             else:
-                _extract_raw(state, report, config.section('signal'))
+                _extract_raw(
+                    state,
+                    report,
+                    config.section('signal'),
+                    cache_session=cache_session,
+                )
 
     window_selection_provenance = (
         _apply_window_quality_selection(
@@ -5351,14 +5632,9 @@ def _execute_cell_unchecked(
             None if is_ensemble else effective_training_seed
         ),
         'training_orchestration_seed': int(effective_training_seed),
-        **(
-            {
-                'config_hash': common['config_hash'],
-                'canonical_config_hash': config.sha256,
-            }
-            if bridge_profile is not None
-            else {}
-        ),
+        'config_id': str(config.config_id),
+        'config_hash': common['config_hash'],
+        'canonical_config_hash': config.sha256,
         'member_training_seeds': (
             list(ensemble_member_seeds)
             if is_ensemble
@@ -5519,7 +5795,6 @@ def _execute_cell_unchecked(
                 'components': state.diagnostic_components,
                 'diagnostic_reason': state.diagnostic_reason,
                 'rejection_reason': state.reason,
-                'route_artifact': state.route_artifact,
             }
             for state in states
             if state.diagnostic_components or state.diagnostic_reason is not None
@@ -5532,6 +5807,19 @@ def _execute_cell_unchecked(
             )
             for state in states
         ],
+        'route_window_sqi_evidence': [
+            {
+                'record_id': str(state.row.record_id),
+                'participant_id': str(state.row.participant_id),
+                'role': str(state.row.role),
+                # The nested mappings are already strict JSON values.  Keep
+                # references here (rather than deep-copying them) until the
+                # current cell's streaming archive has been committed.
+                'windows': state.route_window_sqi_evidence,
+            }
+            for state in states
+            if state.route_window_sqi_evidence
+        ],
         'physical_recording_qc': [
             {
                 'record_id': state.row.record_id,
@@ -5540,6 +5828,7 @@ def _execute_cell_unchecked(
             }
             for state in states
         ],
+        'preprocessing_cache': cache_session.audit_payload(),
         'balance_line': balance_line,
         'preprocessing_hash': preprocessing_hash,
         'feature_hash': feature_hash,
@@ -5626,19 +5915,41 @@ def _artifact_index_cell_summary(
     def artifact_path(filename: str) -> str:
         return f'{prefix}/{filename}' if prefix else filename
 
-    quality_rows = compact.pop('quality_diagnostics', ())
-    history_rows = compact.pop('training_history', ())
-    compact.update({
-        'quality_diagnostics_artifact': 'quality_diagnostics.json',
-        'quality_diagnostic_row_count': len(quality_rows),
-        'training_history_artifact': 'training_history.json',
-        'training_history_row_count': len(history_rows),
-    })
+    if 'quality_diagnostics' in compact:
+        quality_rows = compact.pop('quality_diagnostics')
+        compact.update(
+            {
+                'quality_diagnostics_artifact': artifact_path(
+                    'quality_diagnostics.json'
+                ),
+                'quality_diagnostic_row_count': len(quality_rows),
+            }
+        )
+    elif compact.get('quality_diagnostics_artifact') == 'quality_diagnostics.json':
+        compact['quality_diagnostics_artifact'] = artifact_path(
+            'quality_diagnostics.json'
+        )
+    if 'training_history' in compact:
+        history_rows = compact.pop('training_history')
+        compact.update(
+            {
+                'training_history_artifact': artifact_path(
+                    'training_history.json'
+                ),
+                'training_history_row_count': len(history_rows),
+            }
+        )
+    elif compact.get('training_history_artifact') == 'training_history.json':
+        compact['training_history_artifact'] = artifact_path(
+            'training_history.json'
+        )
     if 'sampling_diagnostics' in compact:
         sampling_rows = compact.pop('sampling_diagnostics')
         compact.update(
             {
-                'sampling_diagnostics_artifact': 'sampling_diagnostics.json',
+                'sampling_diagnostics_artifact': artifact_path(
+                    'sampling_diagnostics.json'
+                ),
                 'sampling_diagnostics_row_count': len(sampling_rows),
             }
         )
@@ -5660,7 +5971,188 @@ def _artifact_index_cell_summary(
                 'route_artifacts_row_count': len(route_rows),
             }
         )
+    if 'route_window_sqi_evidence' in compact:
+        evidence_records = compact.pop('route_window_sqi_evidence')
+        evidence_count = sum(
+            len(record.get('windows', {}))
+            for record in evidence_records
+            if isinstance(record, Mapping)
+            and isinstance(record.get('windows'), Mapping)
+        )
+        compact.update(
+            {
+                'route_window_sqi_evidence_artifact': artifact_path(
+                    'route_window_sqi_evidence.jsonl.gz'
+                ),
+                'route_window_sqi_evidence_row_count': evidence_count,
+                'route_window_sqi_evidence_compression': 'gzip_mtime0_jsonl',
+                'route_window_sqi_evidence_report_consumed': False,
+            }
+        )
+    if 'preprocessing_cache' in compact:
+        cache = compact.pop('preprocessing_cache')
+        compact.update(
+            {
+                'preprocessing_cache_artifact': artifact_path(
+                    'preprocessing_cache.json'
+                ),
+                'preprocessing_cache_summary': {
+                    'mode': cache.get('mode'),
+                    'counts': cache.get('counts', {}),
+                    'logical_array_bytes': cache.get(
+                        'logical_array_bytes', 0
+                    ),
+                    'elapsed_seconds': cache.get('elapsed_seconds', 0.0),
+                    'affects_predictions': False,
+                },
+            }
+        )
     return compact
+
+
+def _write_route_window_sqi_evidence(
+    directory: Path,
+    summary: Mapping[str, Any],
+) -> tuple[int, str]:
+    """Stream complete component-level SQI evidence to deterministic gzip JSONL."""
+
+    target = directory / 'route_window_sqi_evidence.jsonl.gz'
+    if target.exists():
+        raise FileExistsError(f'artifact_overwrite_forbidden:{target}')
+    temporary = target.with_name(f'.{target.name}.tmp')
+    records = summary.get('route_window_sqi_evidence', ())
+    row_count = 0
+    try:
+        with temporary.open('wb') as raw_stream:
+            with gzip.GzipFile(
+                filename='',
+                mode='wb',
+                fileobj=raw_stream,
+                mtime=0,
+            ) as gzip_stream:
+                text_stream = io.TextIOWrapper(
+                    gzip_stream,
+                    encoding='utf-8',
+                    newline='\n',
+                )
+                try:
+                    header = {
+                        'schema_version': (
+                            'ppg_frailty.route_window_sqi_evidence.v1'
+                        ),
+                        'record_type': 'header',
+                        'repeat_index': int(summary['repeat_index']),
+                        'fold_index': int(summary['fold_index']),
+                        'config_hash': str(summary.get('config_hash', '')),
+                        'payload_contract': (
+                            'one_full_component_evidence_object_per_routing_window'
+                        ),
+                        'report_consumed': False,
+                    }
+                    json.dump(
+                        header,
+                        text_stream,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(',', ':'),
+                        allow_nan=False,
+                    )
+                    text_stream.write('\n')
+                    for record in records:
+                        if not isinstance(record, Mapping):
+                            continue
+                        windows = record.get('windows')
+                        if not isinstance(windows, Mapping):
+                            continue
+                        identity = {
+                            'record_id': str(record.get('record_id', '')),
+                            'participant_id': str(
+                                record.get('participant_id', '')
+                            ),
+                            'role': str(record.get('role', '')),
+                        }
+                        for window_id, evidence in windows.items():
+                            row = {
+                                'schema_version': (
+                                    'ppg_frailty.route_window_sqi_evidence.v1'
+                                ),
+                                'record_type': 'window_evidence',
+                                **identity,
+                                'routing_window_id': str(window_id),
+                                'evidence': evidence,
+                            }
+                            json.dump(
+                                row,
+                                text_stream,
+                                ensure_ascii=False,
+                                sort_keys=True,
+                                separators=(',', ':'),
+                                allow_nan=False,
+                            )
+                            text_stream.write('\n')
+                            row_count += 1
+                    text_stream.flush()
+                finally:
+                    # Do not let TextIOWrapper close the GzipFile before its
+                    # own context writes the deterministic footer.
+                    text_stream.detach()
+            raw_stream.flush()
+            os.fsync(raw_stream.fileno())
+        os.replace(temporary, target)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    return row_count, _stream_file_sha256(target)
+
+
+def _stream_file_sha256(path: str | Path) -> str:
+    """Hash an artifact without materializing its complete byte payload."""
+
+    digest = hashlib.sha256()
+    with Path(path).open('rb') as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _release_cell_memory() -> None:
+    """Release host cycles and CUDA allocator blocks after one persisted fold."""
+
+    gc.collect()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except ImportError:  # pragma: no cover - estimator-only environments.
+        pass
+
+
+def _cell_for_root_aggregation(
+    cell: _CellResult,
+    *,
+    artifact_prefix: str,
+) -> _CellResult:
+    """Drop high-cardinality cell payloads after their authoritative write."""
+
+    compact_summary = _artifact_index_cell_summary(
+        cell.summary,
+        artifact_prefix=artifact_prefix,
+    )
+    # Root quality diagnostics remain useful, but are now bounded record-level
+    # rows and intentionally do not contain the separately persisted route
+    # timeline or full SQI component payload.
+    compact_summary['quality_diagnostics'] = list(
+        cell.summary.get('quality_diagnostics', ())
+    )
+    return _CellResult(
+        summary=compact_summary,
+        file_rows=cell.file_rows,
+        subject_rows=cell.subject_rows,
+        window_rows=cell.window_rows,
+        role_rows=cell.role_rows,
+        member_rows=cell.member_rows,
+    )
 
 
 def _write_cell_artifacts(directory: Path, cell: _CellResult) -> None:
@@ -5671,6 +6163,21 @@ def _write_cell_artifacts(directory: Path, cell: _CellResult) -> None:
     imports = _runtime_imports()
     writer = imports['OofWriter']()
     directory.mkdir(parents=True, exist_ok=False)
+    evidence_count, evidence_sha256 = _write_route_window_sqi_evidence(
+        directory,
+        cell.summary,
+    )
+    expected_evidence_count = sum(
+        len(record.get('windows', {}))
+        for record in cell.summary.get('route_window_sqi_evidence', ())
+        if isinstance(record, Mapping)
+        and isinstance(record.get('windows'), Mapping)
+    )
+    if evidence_count != expected_evidence_count:
+        raise _ExperimentProtocolError(
+            'route_window_sqi_evidence_row_count_drift'
+        )
+    cell.summary['route_window_sqi_evidence_sha256'] = evidence_sha256
     if cell.window_rows:
         writer.write(cell.window_rows, directory / 'oof_window_predictions.parquet')
     else:
@@ -5772,6 +6279,23 @@ def _write_cell_artifacts(directory: Path, cell: _CellResult) -> None:
         },
     )
     _strict_json(
+        directory / 'preprocessing_cache.json',
+        cell.summary.get(
+            'preprocessing_cache',
+            {
+                'schema_version': 'ppg_frailty.preprocessing_cache_audit.v1',
+                'mode': 'off',
+                'counts': {},
+                'events': [],
+                'identities': {},
+                'affects_predictions': False,
+                'labels_cached': False,
+                'fold_local_artifacts_cached': False,
+                'route_masks_cached': False,
+            },
+        ),
+    )
+    _strict_json(
         directory / 'metrics_per_fold_seed.json',
         {
             'schema_version': 'ppg_frailty.metrics_per_fold_seed.v2',
@@ -5813,6 +6337,8 @@ def _write_cell_artifacts(directory: Path, cell: _CellResult) -> None:
                 'training_history.json',
                 'physical_recording_qc.json',
                 'route_artifacts.json',
+                'route_window_sqi_evidence.jsonl.gz',
+                'preprocessing_cache.json',
             ]
             + (
                 ['sampling_diagnostics.json']
@@ -6054,6 +6580,7 @@ def _run_one_outer_cell(
     epoch_override: int | None,
     progress_callback: Any,
     measure_operational_costs: bool,
+    preprocessing_cache: Mapping[str, Any] | None = None,
     legacy_bridge_profile_id: str | None = None,
     legacy_bridge_source_specification: str | None = None,
     legacy_bridge_source_specification_sha256: str | None = None,
@@ -6133,6 +6660,7 @@ def _run_one_outer_cell(
                 epoch_override=effective_epoch_override,
                 measure_operational_costs=bool(measure_operational_costs),
                 legacy_bridge=legacy_bridge,
+                preprocessing_cache=preprocessing_cache,
             )
             cell.summary["scientific_scope"] = scope
             result = ExperimentResult(
@@ -6299,6 +6827,7 @@ def run_outer_cell(
     *,
     progress_callback: Any = None,
     measure_operational_costs: bool = False,
+    preprocessing_cache: Mapping[str, Any] | None = None,
 ) -> ExperimentResult:
     """Run one complete outer cell with fold-local fitting and full records."""
 
@@ -6313,6 +6842,7 @@ def run_outer_cell(
         epoch_override=None,
         progress_callback=progress_callback,
         measure_operational_costs=measure_operational_costs,
+        preprocessing_cache=preprocessing_cache,
     )
 
 
@@ -6579,7 +7109,13 @@ def _write_full_root_artifacts(
         'oof_member_predictions.parquet',
         'quality_diagnostics.json',
         'config_metrics_v2.json',
-    ]
+    ] + (
+        ['recovery_manifest.json']
+        if result.provenance.get(
+            'recovered_from_complete_interrupted_staging', False
+        )
+        else []
+    )
     _strict_json(directory / 'run_manifest.json', manifest)
 
 
@@ -7194,6 +7730,7 @@ def run_full_experiment(
     folds: Iterable[int] = tuple(range(5)),
     measure_operational_costs: bool = False,
     progress_callback: Any = None,
+    preprocessing_cache: Mapping[str, Any] | None = None,
 ) -> ExperimentResult:
     """Execute complete outer cells, including the standard 5x5 grid."""
 
@@ -7270,9 +7807,10 @@ def run_full_experiment(
                         record_cap=None,
                         epoch_override=None,
                         measure_operational_costs=bool(measure_operational_costs),
+                        preprocessing_cache=preprocessing_cache,
                     )
                     cell.summary['scientific_scope'] = scope
-                    passed_cells.append(cell)
+                    _write_cell_artifacts(cell_directory, cell)
                     summaries.append(
                         _artifact_index_cell_summary(
                             cell.summary,
@@ -7281,7 +7819,17 @@ def run_full_experiment(
                             ),
                         )
                     )
-                    _write_cell_artifacts(cell_directory, cell)
+                    passed_cells.append(
+                        _cell_for_root_aggregation(
+                            cell,
+                            artifact_prefix=(
+                                f'repeat_{repeat_index:02d}_'
+                                f'fold_{fold_index:02d}'
+                            ),
+                        )
+                    )
+                    del cell
+                    _release_cell_memory()
                     _notify_progress(
                         progress_callback,
                         "cell_complete",
@@ -7312,6 +7860,7 @@ def run_full_experiment(
                         'reason': str(exc),
                     })
                     _write_failed_artifacts(cell_directory, cell_failure)
+                    _release_cell_memory()
                     _notify_progress(
                         progress_callback,
                         "cell_complete",
@@ -7517,6 +8066,25 @@ _EXTERNALIZED_CELL_ROW_ARTIFACTS = {
     ),
 }
 
+_EXTERNALIZED_CELL_AUDIT_ATTACHMENTS = {
+    'quality_diagnostics_artifact': (
+        'quality_diagnostics.json',
+        None,
+    ),
+    'training_history_artifact': (
+        'training_history.json',
+        None,
+    ),
+    'preprocessing_cache_artifact': (
+        'preprocessing_cache.json',
+        None,
+    ),
+    'route_window_sqi_evidence_artifact': (
+        'route_window_sqi_evidence.jsonl.gz',
+        'route_window_sqi_evidence_sha256',
+    ),
+}
+
 
 def _hydrate_externalized_cell_rows(
     root: Path,
@@ -7593,6 +8161,10 @@ _COMPARISON_SUMMARY_AUTHORITY_FIELDS = (
     'quality_mode', 'balance_line', 'representation_transform_provenance',
     'sqi_calibrator_provenance', 'physical_recording_qc',
 )
+_COMPARISON_OPTIONAL_FROZEN_PROVENANCE_FIELDS = (
+    'optimizer_parameters',
+    'sampler_parameters',
+)
 
 
 def _comparison_authority_identity(
@@ -7629,18 +8201,29 @@ def _comparison_authority_identity(
             ]
         )
     expected_frozen_fields = set(FROZEN_MODEL_RUN_PROVENANCE_FIELDS)
-    for field_name in FROZEN_MODEL_RUN_PROVENANCE_FIELDS:
+    observed_frozen_field_sets: set[frozenset[str]] = set()
+    for summary in frozen_summaries:
+        provenance = summary.get('frozen_model_run_provenance')
+        if not isinstance(provenance, Mapping):
+            raise ValueError(
+                'comparison_cell_frozen_run_provenance_contract_drift:'
+                f"r{summary.get('repeat_index')}f{summary.get('fold_index')}"
+            )
+        fields = frozenset(map(str, provenance))
+        if not expected_frozen_fields <= fields:
+            raise ValueError(
+                'comparison_cell_frozen_run_provenance_contract_drift:'
+                f"r{summary.get('repeat_index')}f{summary.get('fold_index')}"
+            )
+        observed_frozen_field_sets.add(fields)
+    if len(observed_frozen_field_sets) != 1:
+        raise ValueError('comparison_cells_mix_frozen_run_provenance_fields')
+    frozen_fields = tuple(sorted(next(iter(observed_frozen_field_sets))))
+    for field_name in frozen_fields:
         values: list[dict[str, Any]] = []
         for summary in frozen_summaries:
             provenance = summary.get('frozen_model_run_provenance')
-            if (
-                not isinstance(provenance, Mapping)
-                or set(provenance) != expected_frozen_fields
-            ):
-                raise ValueError(
-                    'comparison_cell_frozen_run_provenance_contract_drift:'
-                    f"r{summary.get('repeat_index')}f{summary.get('fold_index')}"
-                )
+            assert isinstance(provenance, Mapping)
             values.append(
                 {
                     'repeat': int(summary['repeat_index']),
@@ -7694,6 +8277,10 @@ def _allowed_comparison_authority_differences() -> frozenset[str]:
             f'frozen.{name}'
             for name in FROZEN_MODEL_RUN_PROVENANCE_FIELDS
             if name != 'fold_hash'
+        }
+        | {
+            f'frozen.{name}'
+            for name in _COMPARISON_OPTIONAL_FROZEN_PROVENANCE_FIELDS
         }
         | {f'summary.{name}' for name in _COMPARISON_SUMMARY_AUTHORITY_FIELDS}
     )
@@ -7847,6 +8434,39 @@ def _read_trusted_comparison_run(
                     'comparison_run_cell_externalized_pointer_drift:'
                     f'r{key[0]}f{key[1]}:{pointer_field}'
                 )
+            normalized_root_summary[pointer_field] = filename
+        for pointer_field, (filename, sha_field) in (
+            _EXTERNALIZED_CELL_AUDIT_ATTACHMENTS.items()
+        ):
+            root_pointer = normalized_root_summary.get(pointer_field)
+            local_pointer = normalized_local_summary.get(pointer_field)
+            if root_pointer is None and local_pointer is None:
+                continue
+            if (
+                root_pointer != f'{cell_prefix}/{filename}'
+                or local_pointer != filename
+            ):
+                raise ValueError(
+                    'comparison_run_cell_audit_attachment_pointer_drift:'
+                    f'r{key[0]}f{key[1]}:{pointer_field}'
+                )
+            attachment = root / cell_prefix / filename
+            if not attachment.is_file():
+                raise ValueError(
+                    'comparison_run_cell_audit_attachment_missing:'
+                    f'r{key[0]}f{key[1]}:{pointer_field}'
+                )
+            if sha_field is not None:
+                expected_sha = str(normalized_local_summary.get(sha_field, ''))
+                if (
+                    len(expected_sha) != 64
+                    or normalized_root_summary.get(sha_field) != expected_sha
+                    or _stream_file_sha256(attachment) != expected_sha
+                ):
+                    raise ValueError(
+                        'comparison_run_cell_audit_attachment_hash_drift:'
+                        f'r{key[0]}f{key[1]}:{pointer_field}'
+                    )
             normalized_root_summary[pointer_field] = filename
         if to_strict_json_value(normalized_local_summary) != to_strict_json_value(
             normalized_root_summary
@@ -8048,13 +8668,38 @@ def _read_trusted_comparison_run(
             (int(row.fold), int(row.split_seed), int(row.label))
         for row in oof_rows
     }
+    participant_set = set(participants)
     for repeat in range(5):
-        counts = sorted(
-            sum(row.repeat == repeat and row.fold == fold for row in oof_rows)
-            for fold in range(5)
-        )
-        if counts != [5, 6, 6, 6, 6]:
-            raise ValueError(f'comparison_run_fold_size_drift:{config_id}:repeat={repeat}')
+        repeat_participants = {
+            str(row.participant_id)
+            for row in oof_rows
+            if int(row.repeat) == repeat
+        }
+        if repeat_participants != participant_set:
+            raise ValueError(
+                f'comparison_run_repeat_roster_drift:{config_id}:repeat={repeat}'
+            )
+        for fold in range(5):
+            key = (repeat, fold)
+            oof_participants = {
+                str(row.participant_id) for row in root_subject_by_cell[key]
+            }
+            provenance = summary_by_cell[key].get('fitted_provenance')
+            fitted_values = (
+                provenance.get('fitted_participant_ids', ())
+                if isinstance(provenance, Mapping)
+                else ()
+            )
+            fitted_participants = set(map(str, fitted_values))
+            if (
+                not fitted_participants
+                or fitted_participants & oof_participants
+                or fitted_participants | oof_participants != participant_set
+            ):
+                raise ValueError(
+                    'comparison_run_train_oof_roster_drift:'
+                    f'{config_id}:repeat={repeat}:fold={fold}'
+                )
 
     stored_payload = _load_strict_json_object(root / 'config_metrics_v2.json')
     stored = stored_payload.get('config_metrics')

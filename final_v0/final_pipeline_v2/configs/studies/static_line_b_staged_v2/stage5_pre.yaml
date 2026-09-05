@@ -64,7 +64,8 @@ denoiser_benchmark:
   excluded_registered_reducers:
     learned_denoiser: unsupported_without_audited_model_artifact
     legacy_rate_only_reducers: reserved_for_separate_historical_ablation
-  scoring_peak_detector: aboy_project_v1
+  scoring_peak_detector: msptdfast_v2_3_python_port
+  scoring_peak_detector_parameters: {target_downsample_hz: 20.0, minimum_heart_rate_bpm: 30.0, window_s: 6.0, overlap_fraction: 0.2}
   validation:
     alignment: constant_lag_grid_search_per_segment
     max_lag_s: 10.0
@@ -83,6 +84,13 @@ report:
   classification_tsne_max_samples: 2000
   classification_roc_macro_grid_points: 201
   classification_score_histogram_bins: 40
+  participant_cluster_bootstrap_resamples: 10000
+  participant_cluster_bootstrap_seed: 42
+  participant_paired_permutation_resamples: 100000
+  participant_paired_permutation_seed: 42
+  detector_inference_reference_model_id: frailty29_trained_motion_detector
+  detector_inference_candidate_model_id: ptt22_trained_motion_detector
+  denoiser_inference_reference_id: identity
   required_detector_figures:
     - motion_detector_metrics
     - motion_internal_confusion_matrix

@@ -1,7 +1,8 @@
-"""Registered MSPTDfast v2 peak-detector ablation.
+"""Registered MSPTDfast v2 default peak detector.
 
 The numerical detector below is the single equation-level Python port used by
-Stage-ablation-01 and by the ordinary V2 peak-detector resolver.  It is bound
+Stage-ablation-01 and by the ordinary V2 peak-detector resolver. It is the V2
+default while remaining a comparator in the static detector ablation. It is bound
 to the reviewed ppg-beats v2.3 MATLAB source, but does not claim bitwise MATLAB
 parity.
 """

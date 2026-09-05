@@ -11,6 +11,7 @@ from ppg_frailty.signal.motion_imu import (
     CALIBRATED_ROLL_PITCH_EKF_PROFILE_ID,
     MOTION_IMU_CALIBRATION_SCHEMA,
     MOTION_IMU_CHANNEL_SCHEMA,
+    NO_GRAVITY_REMOVAL_PROFILE_ID,
     PROFILE_A_LPF_ID,
     PTT_STATIC_CALIBRATION_ROLE,
     RollPitchEkfConfig,
@@ -19,6 +20,7 @@ from ppg_frailty.signal.motion_imu import (
     fit_motion_imu_calibration,
     preprocess_motion_imu_calibrated_ekf,
     preprocess_motion_imu_lpf_ablation,
+    preprocess_motion_imu_without_gravity_removal,
 )
 from ppg_frailty.signal import build_signal_views
 
@@ -399,6 +401,31 @@ class MotionImuTests(unittest.TestCase):
                 calibration=self.calibration,
                 config=self.config,
             )
+
+    def test_no_gravity_ablation_keeps_calibrated_filtered_acceleration(self) -> None:
+        result = preprocess_motion_imu_without_gravity_removal(
+            self.acc_g,
+            self.gyro_dps,
+            fs_hz=self.fs,
+            acceleration_unit="g",
+            gyroscope_unit="deg/s",
+            participant_id="p01",
+            calibration=self.calibration,
+            config=self.config,
+        )
+        result.validate()
+        self.assertEqual(result.profile_id, NO_GRAVITY_REMOVAL_PROFILE_ID)
+        np.testing.assert_allclose(result.gravity_mps2, 0.0, atol=0.0)
+        np.testing.assert_allclose(
+            result.values[:, :3],
+            np.tile([0.0, 0.0, self.config.gravity_mps2], (self.samples, 1)),
+            rtol=0.0,
+            atol=1e-10,
+        )
+        np.testing.assert_allclose(result.values[:, 3:6], 0.0, atol=1e-12)
+        self.assertEqual(result.diagnostics["gravity_estimation"], "disabled")
+        self.assertEqual(result.diagnostics["gravity_subtraction"], "disabled")
+        self.assertEqual(result.diagnostics["executed_as"], "named_ablation_profile")
 
     def test_ptt_sit_static_calibration_is_explicit_and_participant_bound(self) -> None:
         calibration = fit_motion_imu_calibration(

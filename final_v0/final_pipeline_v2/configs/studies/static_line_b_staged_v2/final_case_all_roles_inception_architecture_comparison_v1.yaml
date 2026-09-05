@@ -1,0 +1,111 @@
+# Independent supplemental matched comparison for the corrected tuned all-role
+# finalist. Both cases use registered InceptionTime modules; no model algorithm
+# is copied into this plan.
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: final_case_all_roles_inception_architecture_comparison_v1
+  kind: catalog_sweep
+  purpose: "Compare registered Full and Small InceptionTime architectures under the corrected tuned all-role module-off configuration."
+  flow_position: "Supplemental matched architecture comparison for final-case selection."
+  decision_role: ablation
+  reference_case_id: tuned_all_roles__inception_full
+  thesis_sections:
+    - "All-role Full versus Small InceptionTime architecture comparison"
+    - "Participant-cluster paired inference and model-capacity trade-off"
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: "One matched two-level architecture factor. Input data, preprocessing, windows, training, modules, folds and seeds are identical."
+  controlled_factors:
+    - "RED, IR, A_dyn_x/y/z, GX, GY, GZ channel order and all B/R/S/W roles"
+    - "64 Hz DL input, 5 s windows, 2.5 s hop and all-eight-channel per-window robust scaling"
+    - "SQI off, motion detection off and denoising off"
+    - "AdamW, batch 16, LR 3e-4, fixed 10 epochs, WD .001, dropout .50, label smoothing .20 and row-count class weights"
+    - "Ordinary V2 Profile-A physical IMU processing, Line B aggregation, frozen participant splits, repeat seeds and reporter contract"
+  notes:
+    - "The registered Small module has four branches with 16 filters each, so its concatenated module output is 64 channels; bottleneck=16 and depth=3."
+    - "The registered Full reference has four branches with 32 filters each, concatenated module output 128 channels, bottleneck=32 and depth=6."
+    - "All internal recordings exceed the common 5 s window, so no short-record padding or data-scope difference is introduced."
+    - "This plan is separate from the completed 20260824_111943 four-case study; the two completed study products can subsequently be merged without retraining the prior four cases."
+cases:
+  - case_id: tuned_all_roles__inception_full
+    catalog_entry: inception_full
+    screen_profile_id: tuned_all_roles_inception_full_fixed10
+    output_group: raw
+    overrides: &tuned_all_roles_common
+      signal.imu.gravity_method: profile_a_lowpass_0p3hz
+      signal.imu.comparison_method: calibrated_roll_pitch_ekf
+      signal.dl_resampling.enabled: true
+      signal.dl_resampling.target_fs_hz: 64.0
+      signal.normalization.raw_ppg: per_window_robust
+      signal.normalization.raw_imu: none
+      windows.raw_dl.length_s: 5.0
+      windows.raw_dl.hop_s: 2.5
+      windows.raw_dl.end_alignment: include_right_aligned_if_distinct
+      windows.raw_dl.padding: none_complete_windows_only
+      windows.raw_dl.min_valid_fraction: 1.0
+      windows.raw_dl.cap_per_file: 128
+      windows.raw_dl.cap_fraction_per_file: null
+      model.dropout: 0.50
+      training.fixed_epochs: 10
+      training.batch_size: 16
+      training.optimizer: adamw
+      training.learning_rate: 0.0003
+      training.weight_decay: 0.001
+      training.label_smoothing: 0.20
+      training.sampler: exhaustive_shuffle_without_replacement
+      training.class_weighting: inverse_frequency
+      training.class_count_basis: row
+      training.classifier_role_families: [B, R, S, W]
+      aggregation.balance_line: line_b_equal_role_families
+      roles: [B, R1, R2, R3, R4, S1, S2, W1, W2]
+      quality.mode: "off"
+      artifact.motion_detector_enabled: false
+      artifact.denoiser_enabled: false
+      artifact.reducer: identity
+      artifact.reducer_version: identity_v1
+      artifact.degraded_policy: drop
+      artifact.parameters: {}
+    rationale: "Corrected tuned all-role Full InceptionTime reference."
+    formal_profile: null
+
+  - case_id: tuned_all_roles__inception_small
+    catalog_entry: inception_small
+    screen_profile_id: tuned_all_roles_inception_small_64out_b16_f16_d3_fixed10
+    output_group: raw
+    overrides:
+      <<: *tuned_all_roles_common
+    rationale: "Matched registered Small InceptionTime: 64-channel concatenated module output, bottleneck 16, 16 filters per branch and depth 3."
+    formal_profile: null
+execution:
+  repeats: [0, 1, 2, 3, 4]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 1
+  device: cuda
+  parallel_level: cases
+  continue_on_error: false
+  allow_parallel_deep: false
+  measure_operational_costs: false
+  preprocessing_cache:
+    mode: read_write
+    root: artifacts/studies/cache
+    namespaces:
+      - imu_calibration
+      - canonical_signal_views
+      - raw_windows
+    verify_source_sha256: true
+output:
+  root: artifacts/studies/static_line_b_staged_v2
+report:
+  top_k: 2
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10
+  figure_modules: [all]
+  compact_mean_sd: true
+  write_excel_workbook: true

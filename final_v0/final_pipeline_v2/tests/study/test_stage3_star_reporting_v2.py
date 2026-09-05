@@ -8,6 +8,8 @@ import unittest
 import warnings
 from dataclasses import replace
 from pathlib import Path
+from xml.etree import ElementTree
+from zipfile import ZipFile
 
 from ppg_frailty.reporting.analyze import (
     _stage3_star_presentation_tables,
@@ -424,7 +426,20 @@ class Stage3StarReportingTests(unittest.TestCase):
         self.assertIsNotNone(_stage3_star_fold_delta_heatmap(analysis, self.pyplot))
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            result_bundle = replace(bundle, root=root)
+            # This test exercises plot/table registration, not participant-level
+            # inference.  Its synthetic bundle deliberately has no participant
+            # OOF rows, so it must not declare confirmatory centered comparisons.
+            # Production centered-star plans retain those declarations and the
+            # reporter continues to fail closed when their OOF evidence is absent.
+            report_bridge = {
+                **bundle.plan["legacy_bridge"],
+                "centered_comparisons": [],
+            }
+            result_bundle = replace(
+                bundle,
+                root=root,
+                plan={**bundle.plan, "legacy_bridge": report_bridge},
+            )
             from unittest.mock import patch
             with patch("ppg_frailty.reporting.report.analyze_study", return_value=analysis):
                 result = generate_study_report(root, collected=result_bundle)
@@ -451,6 +466,18 @@ class Stage3StarReportingTests(unittest.TestCase):
             }
             self.assertIn("tables/stage3_star_contrasts.csv", paths)
             self.assertIn("tables/stage3_star_model_comparison.csv", paths)
+            with ZipFile(root / "tables/report_tables.xlsx") as archive:
+                workbook = ElementTree.fromstring(archive.read("xl/workbook.xml"))
+            namespace = {
+                "m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+            }
+            sheets = workbook.findall(".//m:sheet", namespace)
+            root_csvs = tuple((root / "tables").glob("*.csv"))
+            self.assertEqual(len(sheets), len(root_csvs))
+            self.assertIn(
+                "table_figure_pairs",
+                {sheet.attrib["name"] for sheet in sheets},
+            )
 
     def test_unavailable_star_delta_plot_is_warning_free(self) -> None:
         bundle, _summaries, _views, _folds = _fixture()

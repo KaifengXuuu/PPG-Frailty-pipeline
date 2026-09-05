@@ -59,6 +59,9 @@ class StudyCliHelpTests(unittest.TestCase):
         self.assertIn("--device", grid)
         self.assertIn("--measure-operational-costs", grid)
         self.assertIn("--no-measure-operational-costs", grid)
+        self.assertIn("--preprocessing-cache", grid)
+        self.assertIn("--preprocessing-cache-mode", grid)
+        self.assertIn("--preprocessing-cache-root", grid)
 
     def test_top_level_operational_cost_switches_reach_study_plans(self) -> None:
         from frailty_3class_pipeline_v2 import (
@@ -104,6 +107,26 @@ class StudyCliHelpTests(unittest.TestCase):
             )
         )
         self.assertEqual(cuda.execution.device, "cuda")
+        cached = _run_plan(
+            build_sweep_parser().parse_args(
+                [
+                    "run",
+                    "--plan",
+                    str(plan_path),
+                    "--preprocess-cache-mode",
+                    "read_write",
+                    "--preprocess-cache-root",
+                    "artifacts/studies/cache/cli-test",
+                    "--preprocessing-cache-namespaces",
+                    "canonical_signal_views,raw_windows",
+                ]
+            )
+        )
+        self.assertEqual(cached.execution.preprocessing_cache.mode, "read_write")
+        self.assertEqual(
+            cached.execution.preprocessing_cache.namespaces,
+            ("canonical_signal_views", "raw_windows"),
+        )
 
     def test_checked_in_study_plans_declare_operational_cost_policy(self) -> None:
         from ppg_frailty.study import load_study_plan
@@ -145,9 +168,16 @@ class StudyCliHelpTests(unittest.TestCase):
             case.case_id: case.config["training"]["device"]
             for case in expansion.cases
         }
-        self.assertEqual(devices["raw__compact_cnn"], "cuda")
-        self.assertEqual(devices["fusion__compact"], "cuda")
-        self.assertEqual(devices["feature_vector__logistic"], "cpu")
+        self.assertEqual(
+            devices,
+            {
+                "raw__compact_cnn": "cuda",
+                "feature_vector__logistic": "cpu",
+                "feature_matrix__inception_small": "cuda",
+                "raw__inception_full_configured": "cuda",
+            },
+        )
+        self.assertNotIn("fusion__compact", devices)
         self.assertNotIn("feature_matrix__rocket_ridge", devices)
 
 

@@ -19,10 +19,15 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from ppg_frailty.reporting import generate_study_report
+from ppg_frailty.reporting.incomplete import (
+    generate_incomplete_study_report,
+    is_incomplete_study_directory,
+)
 from ppg_frailty.study import (
     AxisSpec,
     ExecutionSpec,
     OutputSpec,
+    PreprocessingCacheSpec,
     ProgressEvent,
     ReportSpec,
     StudyInfo,
@@ -41,6 +46,15 @@ def _indices(value: str) -> tuple[int, ...]:
         return tuple(int(item.strip()) for item in value.split(",") if item.strip())
     except ValueError as error:
         raise argparse.ArgumentTypeError("use all or comma-separated indices 0..4") from error
+
+
+def _cache_namespaces(value: str) -> tuple[str, ...]:
+    result = tuple(item.strip() for item in value.split(",") if item.strip())
+    if not result:
+        raise argparse.ArgumentTypeError(
+            "cache namespaces must be a comma-separated non-empty list"
+        )
+    return result
 
 
 def _yaml_value(value: str) -> Any:
@@ -101,6 +115,42 @@ def _add_execution_arguments(parser: argparse.ArgumentParser) -> None:
         help="Disable operational-cost measurement from a loaded plan.",
     )
     parser.set_defaults(measure_operational_costs=None)
+    cache_mode = parser.add_mutually_exclusive_group()
+    cache_mode.add_argument(
+        "--preprocessing-cache",
+        dest="preprocessing_cache_mode",
+        action="store_const",
+        const="read_write",
+        help="Enable the immutable recording preprocessing cache in read/write mode.",
+    )
+    cache_mode.add_argument(
+        "--no-preprocessing-cache",
+        dest="preprocessing_cache_mode",
+        action="store_const",
+        const="off",
+        help="Disable a preprocessing cache enabled by the study plan.",
+    )
+    cache_mode.add_argument(
+        "--preprocessing-cache-mode",
+        "--preprocess-cache-mode",
+        dest="preprocessing_cache_mode",
+        choices=("off", "read_only", "read_write"),
+        help="Override preprocessing cache access mode.",
+    )
+    parser.add_argument(
+        "--preprocessing-cache-root",
+        "--preprocess-cache-root",
+        dest="preprocessing_cache_root",
+        help="Cache directory below the V2 pipeline root.",
+    )
+    parser.add_argument(
+        "--preprocessing-cache-namespaces",
+        type=_cache_namespaces,
+        help=(
+            "Comma-separated cache layers: imu_calibration,"
+            "canonical_signal_views,motion_windows,raw_windows."
+        ),
+    )
     parser.add_argument(
         "--output-root",
         help="Parent directory for a new dated, study-specific folder.",
@@ -177,6 +227,25 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _execution(args: argparse.Namespace, base: ExecutionSpec | None = None) -> ExecutionSpec:
     source = base or ExecutionSpec()
+    source_cache = source.preprocessing_cache
+    preprocessing_cache = PreprocessingCacheSpec(
+        mode=(
+            args.preprocessing_cache_mode
+            if args.preprocessing_cache_mode is not None
+            else source_cache.mode
+        ),
+        root=(
+            args.preprocessing_cache_root
+            if args.preprocessing_cache_root is not None
+            else source_cache.root
+        ),
+        namespaces=(
+            args.preprocessing_cache_namespaces
+            if args.preprocessing_cache_namespaces is not None
+            else source_cache.namespaces
+        ),
+        verify_source_sha256=True,
+    )
     return replace(
         source,
         repeats=args.repeats if args.repeats is not None else source.repeats,
@@ -194,6 +263,7 @@ def _execution(args: argparse.Namespace, base: ExecutionSpec | None = None) -> E
             if args.measure_operational_costs is not None
             else source.measure_operational_costs
         ),
+        preprocessing_cache=preprocessing_cache,
     )
 
 
@@ -285,7 +355,13 @@ def _generate_report_with_progress(
     study_status: str | None = None,
 ) -> None:
     sink(ProgressEvent(event="report_started", current=0, total=1))
-    report = generate_study_report(study_dir)
+    study_path = Path(study_dir).resolve()
+    report = (
+        generate_incomplete_study_report(study_path)
+        if is_incomplete_study_directory(study_path)
+        else generate_study_report(study_path)
+    )
+    reported_status = study_status or getattr(report, "status", None)
     sink(
         ProgressEvent(
             event="report_finished",
@@ -293,8 +369,8 @@ def _generate_report_with_progress(
             total=1,
             message=(
                 "report complete"
-                if study_status is None
-                else f"report complete · study {study_status}"
+                if reported_status is None
+                else f"report complete · study {reported_status}"
             ),
         )
     )

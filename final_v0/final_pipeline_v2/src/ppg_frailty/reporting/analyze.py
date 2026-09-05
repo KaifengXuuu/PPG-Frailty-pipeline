@@ -35,11 +35,14 @@ from ..training.evaluator import evaluate_predictions_with_abstentions
 from ..training.statistics import (
     ParticipantPrediction,
     holm_adjust_by_family_metric,
+    paired_participant_cluster_bootstrap,
     paired_participant_permutation,
+    participant_cluster_bootstrap,
 )
 from .collect import CollectedStudy
 from .classification_diagnostics import (
     classification_diagnostic_status_rows,
+    classification_per_class_metric_rows,
     classification_roc_curve_rows,
     classification_tsne_rows,
     normalize_classification_rows,
@@ -322,6 +325,52 @@ def _participant_prediction_contract(
     return tuple(predictions), membership
 
 
+def _participant_cluster_interval_fields(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    policy: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Recompute absolute BA/F1/ROC-AUC CIs from participant OOF clusters."""
+
+    predictions, _membership = _participant_prediction_contract(rows)
+    n_resamples = int(policy["bootstrap_replicates"])
+    seed = int(policy["seed"])
+    if n_resamples <= 0 or seed < 0:
+        raise ValueError("participant-cluster bootstrap controls are invalid")
+    output: dict[str, Any] = {}
+    for metric in (
+        "balanced_accuracy",
+        "macro_f1",
+        "macro_roc_auc_ovr",
+    ):
+        result = participant_cluster_bootstrap(
+            predictions,
+            metric=metric,
+            n_resamples=n_resamples,
+            seed=seed,
+        )
+        prefix = f"participant_cluster_{metric}"
+        output.update(
+            {
+                f"{prefix}_estimate": result.estimate,
+                f"{prefix}_ci95_low": result.ci95_lower,
+                f"{prefix}_ci95_high": result.ci95_upper,
+                f"{prefix}_n_resamples": result.n_resamples,
+                f"{prefix}_valid_resamples": result.valid_resamples,
+                f"{prefix}_seed": result.seed,
+                f"{prefix}_n_participants": result.n_participants,
+                f"{prefix}_n_repeats": result.n_repeats,
+                f"{prefix}_cluster_unit": result.cluster_unit,
+                f"{prefix}_interval_method": result.interval_method,
+                f"{prefix}_implementation_version": (
+                    result.implementation_version
+                ),
+                f"{prefix}_rng_contract": result.rng_contract,
+            }
+        )
+    return output
+
+
 def _paired_participant_inference(
     collected: CollectedStudy,
     *,
@@ -334,15 +383,60 @@ def _paired_participant_inference(
     if reference_case_id in (None, ""):
         return [], []
     reference_case_id = str(reference_case_id)
+    candidate_case_ids = sorted(
+        set(str(value) for value in case_ids) - {reference_case_id}
+    )
+    family = (
+        str(collected.plan.get("study", {}).get("study_id", "study"))
+        + "__declared_reference"
+    )
+
+    def unavailable_rows(candidate_case_id: str, reason: str) -> list[dict[str, Any]]:
+        comparison_id = f"{candidate_case_id}_vs_{reference_case_id}"
+        return [
+            {
+                "comparison_family": family,
+                "comparison_id": comparison_id,
+                "reference_case_id": reference_case_id,
+                "candidate_case_id": candidate_case_id,
+                "metric": metric,
+                "candidate_minus_reference": None,
+                "participant_cluster_delta_ci95_low": None,
+                "participant_cluster_delta_ci95_high": None,
+                "raw_two_sided_p_value": None,
+                "holm_adjusted_p_value": None,
+                "holm_rank": None,
+                "holm_family_size": None,
+                "alpha": None,
+                "reject_null_after_holm": None,
+                "participant_count": None,
+                "repeat_count": None,
+                "test_method": "N/A_incompatible_declared_pair",
+                "p_value_applicability": f"N/A_{reason}",
+                "comparison_contract_status": f"N/A_{reason}",
+                "automatic_selection": False,
+            }
+            for metric in (
+                "balanced_accuracy",
+                "macro_f1",
+                "macro_roc_auc_ovr",
+            )
+        ]
     status_by_case = {
         str(row.get("case_id")): str(row.get("status", "unknown"))
         for row in collected.case_records
         if row.get("case_id") is not None
     }
     if status_by_case.get(reference_case_id, "passed") != "passed":
-        return [], [
-            "Paired P values are N/A because the declared reference case did not pass."
-        ]
+        reason = "declared_reference_case_did_not_pass"
+        return (
+            [
+                row
+                for candidate_case_id in candidate_case_ids
+                for row in unavailable_rows(candidate_case_id, reason)
+            ],
+            ["Paired CI/P are N/A because the declared reference case did not pass."],
+        )
     policies = {
         str(row.get("case_id")): dict(row["evaluation_statistics"])
         for row in collected.resolved_aggregation_configs
@@ -350,9 +444,15 @@ def _paired_participant_inference(
     }
     reference_policy = policies.get(reference_case_id)
     if reference_policy is None:
-        return [], [
-            "Paired P values are N/A because the persisted reference evaluation-statistics policy is unavailable."
-        ]
+        reason = "reference_evaluation_statistics_policy_unavailable"
+        return (
+            [
+                row
+                for candidate_case_id in candidate_case_ids
+                for row in unavailable_rows(candidate_case_id, reason)
+            ],
+            ["Paired CI/P are N/A because the persisted reference evaluation-statistics policy is unavailable."],
+        )
     required_policy = {
         "cluster_unit": "participant_with_all_five_repeat_oof_predictions",
         "paired_exchange_unit": "participant",
@@ -363,39 +463,99 @@ def _paired_participant_inference(
         reference_policy.get(key) != value
         for key, value in required_policy.items()
     ):
-        return [], [
-            "Paired P values are N/A because the reference evaluation-statistics policy is not the implemented participant-cluster/Holm protocol."
-        ]
+        reason = "reference_policy_is_not_registered_participant_cluster_protocol"
+        return (
+            [
+                row
+                for candidate_case_id in candidate_case_ids
+                for row in unavailable_rows(candidate_case_id, reason)
+            ],
+            ["Paired CI/P are N/A because the reference evaluation-statistics policy is not the implemented participant-cluster/Holm protocol."],
+        )
     try:
         n_resamples = int(reference_policy["paired_permutation_replicates"])
+        bootstrap_resamples = int(
+            reference_policy.get("bootstrap_replicates", n_resamples)
+        )
         seed = int(reference_policy["seed"])
         reference_predictions, reference_membership = (
             _participant_prediction_contract(oof_by_case.get(reference_case_id, ()))
         )
+        raw_expected_repeats = collected.plan.get("execution", {}).get(
+            "repeats", ()
+        )
+        expected_repeats = (
+            {int(value) for value in raw_expected_repeats}
+            if isinstance(raw_expected_repeats, (list, tuple))
+            and raw_expected_repeats
+            else {prediction.repeat for prediction in reference_predictions}
+        )
+        observed_repeats = {
+            prediction.repeat for prediction in reference_predictions
+        }
+        if expected_repeats != observed_repeats:
+            raise ValueError("reference declared repeat roster differs from OOF")
+        if any(
+            len(
+                {
+                    split_seed
+                    for (_participant_id, row_repeat), (
+                        _fold,
+                        split_seed,
+                        _label,
+                    ) in reference_membership.items()
+                    if row_repeat == repeat
+                }
+            )
+            != 1
+            for repeat in expected_repeats
+        ):
+            raise ValueError("reference repeat contains multiple split seeds")
     except (KeyError, TypeError, ValueError) as error:
-        return [], [
-            "Paired P values are N/A for the declared reference: "
-            f"{type(error).__name__}: {error}"
-        ]
-    if n_resamples <= 0:
-        return [], ["Paired P values are N/A because the resample budget is invalid."]
-
-    family = (
-        str(collected.plan.get("study", {}).get("study_id", "study"))
-        + "__declared_reference"
-    )
+        reason = "reference_participant_oof_contract_unavailable"
+        return (
+            [
+                row
+                for candidate_case_id in candidate_case_ids
+                for row in unavailable_rows(candidate_case_id, reason)
+            ],
+            [
+                "Paired CI/P are N/A for the declared reference: "
+                f"{type(error).__name__}: {error}"
+            ],
+        )
+    if n_resamples <= 0 or bootstrap_resamples <= 0:
+        reason = "invalid_permutation_or_bootstrap_resample_budget"
+        return (
+            [
+                row
+                for candidate_case_id in candidate_case_ids
+                for row in unavailable_rows(candidate_case_id, reason)
+            ],
+            ["Paired inference is N/A because a permutation/bootstrap resample budget is invalid."],
+        )
     raw_p_values: dict[tuple[str, str, str], float] = {}
     raw_rows: dict[tuple[str, str], dict[str, Any]] = {}
+    unavailable: list[dict[str, Any]] = []
     limitations: list[str] = []
     for candidate_case_id in sorted(set(str(value) for value in case_ids)):
         if candidate_case_id == reference_case_id:
             continue
         if status_by_case.get(candidate_case_id, "passed") != "passed":
+            unavailable.extend(
+                unavailable_rows(candidate_case_id, "candidate_case_did_not_pass")
+            )
             limitations.append(
                 f"{candidate_case_id}: paired P values are N/A because the case did not pass."
             )
             continue
         if policies.get(candidate_case_id) != reference_policy:
+            unavailable.extend(
+                unavailable_rows(
+                    candidate_case_id,
+                    "candidate_evaluation_statistics_policy_differs_from_reference",
+                )
+            )
             limitations.append(
                 f"{candidate_case_id}: paired P values are N/A because its evaluation-statistics policy differs from the reference."
             )
@@ -411,17 +571,30 @@ def _paired_participant_inference(
                     "participant/repeat/fold/split-seed/label roster differs"
                 )
             comparison_id = f"{candidate_case_id}_vs_{reference_case_id}"
-            for metric in ("balanced_accuracy", "macro_f1"):
-                result = paired_participant_permutation(
+            for metric in (
+                "balanced_accuracy",
+                "macro_f1",
+                "macro_roc_auc_ovr",
+            ):
+                interval = paired_participant_cluster_bootstrap(
                     reference_predictions,
                     candidate_predictions,
                     metric=metric,
-                    n_resamples=n_resamples,
+                    n_resamples=bootstrap_resamples,
                     seed=seed,
                 )
-                raw_p_values[(family, metric, comparison_id)] = (
-                    result.two_sided_p_value
-                )
+                permutation = None
+                if metric in {"balanced_accuracy", "macro_f1"}:
+                    permutation = paired_participant_permutation(
+                        reference_predictions,
+                        candidate_predictions,
+                        metric=metric,
+                        n_resamples=n_resamples,
+                        seed=seed,
+                    )
+                    raw_p_values[(family, metric, comparison_id)] = (
+                        permutation.two_sided_p_value
+                    )
                 raw_rows[(comparison_id, metric)] = {
                     "comparison_family": family,
                     "comparison_id": comparison_id,
@@ -429,41 +602,92 @@ def _paired_participant_inference(
                     "candidate_case_id": candidate_case_id,
                     "metric": metric,
                     "candidate_minus_reference": (
-                        result.observed_candidate_minus_reference
+                        interval.observed_candidate_minus_reference
                     ),
-                    "raw_two_sided_p_value": result.two_sided_p_value,
-                    "n_resamples": result.n_resamples,
-                    "seed": result.seed,
-                    "participant_count": result.n_participants,
-                    "repeat_count": result.n_repeats,
-                    "exchange_unit": result.exchange_unit,
-                    "test_method": "paired_participant_cluster_permutation",
+                    "participant_cluster_delta_ci95_low": interval.ci95_lower,
+                    "participant_cluster_delta_ci95_high": interval.ci95_upper,
+                    "bootstrap_resamples": interval.n_resamples,
+                    "bootstrap_valid_resamples": interval.valid_resamples,
+                    "bootstrap_seed": interval.seed,
+                    "bootstrap_cluster_unit": interval.cluster_unit,
+                    "bootstrap_interval_method": interval.interval_method,
+                    "bootstrap_implementation_version": (
+                        interval.implementation_version
+                    ),
+                    "bootstrap_rng_contract": interval.rng_contract,
+                    "raw_two_sided_p_value": (
+                        None
+                        if permutation is None
+                        else permutation.two_sided_p_value
+                    ),
+                    "n_resamples": (
+                        None if permutation is None else permutation.n_resamples
+                    ),
+                    "seed": seed,
+                    "participant_count": interval.n_participants,
+                    "repeat_count": interval.n_repeats,
+                    "exchange_unit": (
+                        interval.cluster_unit
+                        if permutation is None
+                        else permutation.exchange_unit
+                    ),
+                    "test_method": (
+                        "paired_participant_cluster_bootstrap_ci_only"
+                        if permutation is None
+                        else "paired_participant_cluster_bootstrap_and_permutation"
+                    ),
+                    "permutation_implementation_version": (
+                        None
+                        if permutation is None
+                        else permutation.implementation_version
+                    ),
+                    "permutation_rng_contract": (
+                        None if permutation is None else permutation.rng_contract
+                    ),
+                    "p_value_applicability": (
+                        "N/A_no_registered_roc_auc_permutation_test"
+                        if permutation is None
+                        else "available_two_sided_participant_cluster_permutation"
+                    ),
+                    "comparison_contract_status": "matched_complete_roster",
                     "automatic_selection": False,
                 }
         except (TypeError, ValueError) as error:
+            unavailable.extend(
+                unavailable_rows(
+                    candidate_case_id,
+                    "candidate_reference_matched_oof_contract_unavailable",
+                )
+            )
             limitations.append(
                 f"{candidate_case_id}: paired P values are N/A: "
                 f"{type(error).__name__}: {error}"
             )
-    if not raw_p_values:
-        return [], limitations
-    adjusted = holm_adjust_by_family_metric(raw_p_values, alpha=0.05)
+    adjusted = (
+        holm_adjust_by_family_metric(raw_p_values, alpha=0.05)
+        if raw_p_values
+        else ()
+    )
     adjusted_by_key = {
         (row.comparison_id, row.metric): row for row in adjusted
     }
-    output: list[dict[str, Any]] = []
+    output: list[dict[str, Any]] = list(unavailable)
     for key, row in sorted(raw_rows.items()):
-        holm = adjusted_by_key[key]
+        holm = adjusted_by_key.get(key)
         output.append(
             {
                 **row,
-                "holm_adjusted_p_value": holm.adjusted_p_value,
-                "holm_rank": holm.rank,
-                "holm_family_size": holm.family_size,
-                "alpha": holm.alpha,
-                "reject_null_after_holm": holm.reject_null,
+                "holm_adjusted_p_value": (
+                    None if holm is None else holm.adjusted_p_value
+                ),
+                "holm_rank": None if holm is None else holm.rank,
+                "holm_family_size": None if holm is None else holm.family_size,
+                "alpha": None if holm is None else holm.alpha,
+                "reject_null_after_holm": (
+                    None if holm is None else holm.reject_null
+                ),
                 "interpretation": (
-                    "paired outer-OOF inference; no automatic winner and no causal ablation claim"
+                    "paired outer-OOF cluster interval; BA/F1 additionally use Holm-adjusted permutation P; no automatic winner or causal claim"
                 ),
             }
         )
@@ -810,6 +1034,12 @@ def _per_class_from_confusion(
             ),
             "precision": float(precision[index]),
             "recall": float(recall[index]),
+            "true_positive": int(true_positive[index]),
+            "false_positive": int(false_positive[index]),
+            "true_negative": int(true_negative[index]),
+            "false_negative": int(false_negative[index]),
+            "predicted_support": int(predicted[index]),
+            "observation_count": int(matrix.sum()),
             "specificity": float(specificity[index]),
             "balanced_accuracy_ovr": float(
                 (recall[index] + specificity[index]) / 2.0
@@ -1070,7 +1300,13 @@ def _route_role_quality_tables(
             retained + int(_as_bool(row.get("retained", True))),
         )
 
+    has_outer_partition = any(
+        str(row.get("outer_partition", "")) in {"outer_train", "outer_oof"}
+        for row in collected.quality_rows
+    )
     for row in collected.quality_rows:
+        if has_outer_partition and str(row.get("outer_partition")) != "outer_oof":
+            continue
         artifact = (
             row.get("route_artifact")
             if isinstance(row.get("route_artifact"), Mapping)
@@ -1125,6 +1361,19 @@ def _route_role_quality_tables(
             component_groups.setdefault(
                 (case_id, role, route_state, str(component)), []
             ).append((value, valid))
+        for component, field in (
+            ("sqi.direct_q_rate_score", "direct_q_rate_score"),
+            ("sqi.direct_q_rate_coverage", "direct_q_rate_coverage"),
+            ("sqi.direct_q_morph_score", "direct_q_morph_score"),
+            ("sqi.direct_q_morph_coverage", "direct_q_morph_coverage"),
+            ("sqi.post_q_rate_score", "post_q_rate_score"),
+            ("sqi.post_q_rate_coverage", "post_q_rate_coverage"),
+            ("motion.record_probability_diagnostic", "motion_record_probability"),
+        ):
+            value = _number(artifact.get(field))
+            component_groups.setdefault(
+                (case_id, role, route_state, component), []
+            ).append((value, value is not None))
 
     coverage: list[Mapping[str, Any]] = []
     for (
@@ -1192,6 +1441,16 @@ def _route_role_quality_tables(
         denoiser_attempt_count = 0
         denoiser_success_count = 0
         reducer_failures = 0
+        post_q_rate_pass_count = 0
+        post_q_rate_recovery_eligible_count = 0
+        post_q_rate_recovery_count = 0
+        denoiser_requested_cell_count = 0
+        denoiser_success_cell_count = 0
+        post_q_rate_pass_cell_count = 0
+        post_q_rate_recovery_eligible_cell_count = 0
+        post_q_rate_recovered_cell_count = 0
+        motion_high_cell_count = 0
+        motion_low_cell_count = 0
         for row in rows:
             components = (
                 row.get("components")
@@ -1247,18 +1506,50 @@ def _route_role_quality_tables(
                 denoiser_statuses.append(denoiser_status)
                 if str(denoiser_status).lower() == "success":
                     denoiser_success_count += 1
-            reducer_status = str(
-                artifact.get("reducer_status")
-                or artifact.get("artifact_reducer_status")
-                or ""
-            ).lower()
-            state = str(artifact.get("state") or row.get("route_status") or "").lower()
-            if (
-                reducer_status
-                and reducer_status
-                not in {"success", "identity", "not_applied", "not_requested"}
-            ) or state == "rejected_after_reduction":
-                reducer_failures += 1
+                direct_q_rate_state = str(
+                    artifact.get("direct_q_rate_state") or ""
+                ).lower()
+                post_q_rate_state = str(
+                    artifact.get("post_q_rate_state") or ""
+                ).lower()
+                if post_q_rate_state == "pass":
+                    post_q_rate_pass_count += 1
+                if direct_q_rate_state and direct_q_rate_state != "pass":
+                    post_q_rate_recovery_eligible_count += 1
+                    if post_q_rate_state == "pass":
+                        post_q_rate_recovery_count += 1
+                reducer_status = str(
+                    denoiser_status
+                    or artifact.get("reducer_status")
+                    or artifact.get("artifact_reducer_status")
+                    or ""
+                ).lower()
+                if reducer_status != "success":
+                    reducer_failures += 1
+            denoiser_requested_cell_count += int(
+                _number(artifact.get("denoiser_requested_cell_count")) or 0
+            )
+            denoiser_success_cell_count += int(
+                _number(artifact.get("denoiser_success_cell_count")) or 0
+            )
+            post_q_rate_pass_cell_count += int(
+                _number(artifact.get("post_q_rate_pass_cell_count")) or 0
+            )
+            post_q_rate_recovery_eligible_cell_count += int(
+                _number(
+                    artifact.get("post_q_rate_recovery_eligible_cell_count")
+                )
+                or 0
+            )
+            post_q_rate_recovered_cell_count += int(
+                _number(artifact.get("post_q_rate_recovered_cell_count")) or 0
+            )
+            motion_high_cell_count += int(
+                _number(artifact.get("motion_high_cell_count")) or 0
+            )
+            motion_low_cell_count += int(
+                _number(artifact.get("motion_low_cell_count")) or 0
+            )
         total_predictors = float(sum(predictor_counts))
         total_unavailable = float(sum(unavailable_counts))
         role_oof_total, role_oof_retained = role_oof_counts.get(
@@ -1267,6 +1558,9 @@ def _route_role_quality_tables(
         coverage.append(
             {
                 "case_id": case_id,
+                "evaluation_partition": (
+                    "outer_oof" if has_outer_partition else "not_reported"
+                ),
                 "role": role,
                 "route_state": route_state,
                 "signal_route": signal_route,
@@ -1331,6 +1625,53 @@ def _route_role_quality_tables(
                 },
                 "denoiser_attempt_count": denoiser_attempt_count,
                 "denoiser_success_count": denoiser_success_count,
+                "denoiser_requested_cell_count": denoiser_requested_cell_count,
+                "denoiser_success_cell_count": denoiser_success_cell_count,
+                "denoiser_failed_cell_count": (
+                    denoiser_requested_cell_count - denoiser_success_cell_count
+                ),
+                "denoiser_cell_failure_rate": (
+                    (denoiser_requested_cell_count - denoiser_success_cell_count)
+                    / denoiser_requested_cell_count
+                    if denoiser_requested_cell_count
+                    else None
+                ),
+                "post_q_rate_pass_count": post_q_rate_pass_count,
+                "post_q_rate_pass_rate": (
+                    post_q_rate_pass_count / denoiser_attempt_count
+                    if denoiser_attempt_count
+                    else None
+                ),
+                "post_q_rate_recovery_eligible_count": (
+                    post_q_rate_recovery_eligible_count
+                ),
+                "post_q_rate_recovery_count": post_q_rate_recovery_count,
+                "post_q_rate_recovery_rate": (
+                    post_q_rate_recovery_count
+                    / post_q_rate_recovery_eligible_count
+                    if post_q_rate_recovery_eligible_count
+                    else None
+                ),
+                "post_q_rate_pass_cell_count": post_q_rate_pass_cell_count,
+                "post_q_rate_pass_cell_rate": (
+                    post_q_rate_pass_cell_count / denoiser_requested_cell_count
+                    if denoiser_requested_cell_count
+                    else None
+                ),
+                "post_q_rate_recovery_eligible_cell_count": (
+                    post_q_rate_recovery_eligible_cell_count
+                ),
+                "post_q_rate_recovered_cell_count": (
+                    post_q_rate_recovered_cell_count
+                ),
+                "post_q_rate_recovery_cell_rate": (
+                    post_q_rate_recovered_cell_count
+                    / post_q_rate_recovery_eligible_cell_count
+                    if post_q_rate_recovery_eligible_cell_count
+                    else None
+                ),
+                "motion_high_cell_count": motion_high_cell_count,
+                "motion_low_cell_count": motion_low_cell_count,
                 "denoiser_ids": _joined_text(denoiser_ids),
                 "denoiser_statuses": _joined_text(denoiser_statuses),
                 "mean_unavailable_predictor_count": (
@@ -1344,7 +1685,11 @@ def _route_role_quality_tables(
                     else None
                 ),
                 "reducer_failure_count": reducer_failures,
-                "reducer_failure_rate": reducer_failures / len(rows),
+                "reducer_failure_rate": (
+                    reducer_failures / denoiser_attempt_count
+                    if denoiser_attempt_count
+                    else None
+                ),
                 "role_oof_prediction_count": role_oof_total,
                 "retained_role_oof_prediction_count": role_oof_retained,
             }
@@ -1394,6 +1739,31 @@ def _denoiser_hr_tables(
             if direct_hr is not None and post_hr is not None
             else None
         )
+        direct_ppi_s = _number(artifact.get("direct_median_valid_ppi_s"))
+        post_ppi_s = _number(
+            artifact.get("post_denoise_median_valid_ppi_s")
+        )
+        ppi_delta_ms = (
+            float((post_ppi_s - direct_ppi_s) * 1000.0)
+            if direct_ppi_s is not None and post_ppi_s is not None
+            else None
+        )
+        direct_q_rate_state = str(
+            artifact.get("direct_q_rate_state") or "not_evaluated"
+        ).lower()
+        post_q_rate_state = str(
+            artifact.get("post_q_rate_state") or "not_evaluated"
+        ).lower()
+        recovery_eligible = direct_q_rate_state not in {
+            "pass",
+            "not_evaluated",
+        }
+        denoiser_status = str(
+            artifact.get("denoiser_status")
+            or artifact.get("reducer_status")
+            or artifact.get("artifact_reducer_status")
+            or "not_reported"
+        ).lower()
         records.append(
             {
                 "case_id": str(row.get("case_id", "")),
@@ -1406,9 +1776,7 @@ def _denoiser_hr_tables(
                 "record_id": str(row.get("record_id", "")),
                 "role": str(row.get("role", "unknown")),
                 "denoiser_id": str(artifact.get("denoiser_id", "unknown")),
-                "denoiser_status": str(
-                    artifact.get("denoiser_status", "not_reported")
-                ),
+                "denoiser_status": denoiser_status,
                 "heart_rate_estimator": str(
                     artifact.get(
                         "heart_rate_estimator",
@@ -1420,6 +1788,16 @@ def _denoiser_hr_tables(
                 "post_minus_direct_hr_bpm": delta,
                 "absolute_post_minus_direct_hr_bpm": (
                     None if delta is None else abs(delta)
+                ),
+                "direct_median_valid_ppi_ms": (
+                    None if direct_ppi_s is None else direct_ppi_s * 1000.0
+                ),
+                "post_denoise_median_valid_ppi_ms": (
+                    None if post_ppi_s is None else post_ppi_s * 1000.0
+                ),
+                "post_minus_direct_ppi_ms": ppi_delta_ms,
+                "absolute_post_minus_direct_ppi_ms": (
+                    None if ppi_delta_ms is None else abs(ppi_delta_ms)
                 ),
                 "direct_valid_ppi_count": artifact.get(
                     "direct_valid_ppi_count"
@@ -1437,7 +1815,13 @@ def _denoiser_hr_tables(
                 "post_denoise_reference_wavelength": artifact.get(
                     "post_denoise_reference_wavelength"
                 ),
-                "post_q_rate_state": artifact.get("post_q_rate_state"),
+                "direct_q_rate_state": direct_q_rate_state,
+                "post_q_rate_state": post_q_rate_state,
+                "post_q_rate_recovery_eligible": recovery_eligible,
+                "post_q_rate_recovered": (
+                    recovery_eligible and post_q_rate_state == "pass"
+                ),
+                "reducer_failed": denoiser_status != "success",
                 "retained_for_classifier": _as_bool(row.get("retained", False)),
             }
         )
@@ -1499,10 +1883,73 @@ def _denoiser_hr_tables(
             )
             for values in participant_rows.values()
         ]
+        ppi_paired = [
+            row
+            for row in rows
+            if row["direct_median_valid_ppi_ms"] is not None
+            and row["post_denoise_median_valid_ppi_ms"] is not None
+        ]
+        participant_ppi_rows: dict[str, list[Mapping[str, Any]]] = {}
+        for row in ppi_paired:
+            participant_ppi_rows.setdefault(
+                str(row["participant_id"]), []
+            ).append(row)
+        participant_direct_ppi = [
+            float(
+                fmean(
+                    float(row["direct_median_valid_ppi_ms"])
+                    for row in values
+                )
+            )
+            for values in participant_ppi_rows.values()
+        ]
+        participant_post_ppi = [
+            float(
+                fmean(
+                    float(row["post_denoise_median_valid_ppi_ms"])
+                    for row in values
+                )
+            )
+            for values in participant_ppi_rows.values()
+        ]
+        participant_ppi_delta = [
+            float(
+                fmean(
+                    float(row["post_minus_direct_ppi_ms"])
+                    for row in values
+                    if row["post_minus_direct_ppi_ms"] is not None
+                )
+            )
+            for values in participant_ppi_rows.values()
+            if any(row["post_minus_direct_ppi_ms"] is not None for row in values)
+        ]
+        participant_absolute_ppi_delta = [
+            float(
+                fmean(
+                    float(row["absolute_post_minus_direct_ppi_ms"])
+                    for row in values
+                    if row["absolute_post_minus_direct_ppi_ms"] is not None
+                )
+            )
+            for values in participant_ppi_rows.values()
+            if any(
+                row["absolute_post_minus_direct_ppi_ms"] is not None
+                for row in values
+            )
+        ]
         direct_stats = _descriptive_statistics(participant_direct)
         post_stats = _descriptive_statistics(participant_post)
         delta_stats = _descriptive_statistics(participant_delta)
         absolute_stats = _descriptive_statistics(participant_absolute_delta)
+        direct_ppi_stats = _descriptive_statistics(participant_direct_ppi)
+        post_ppi_stats = _descriptive_statistics(participant_post_ppi)
+        ppi_delta_stats = _descriptive_statistics(participant_ppi_delta)
+        absolute_ppi_delta_stats = _descriptive_statistics(
+            participant_absolute_ppi_delta
+        )
+        recovery_eligible = [
+            row for row in rows if row["post_q_rate_recovery_eligible"]
+        ]
         summary.append(
             {
                 "case_id": case_id,
@@ -1514,8 +1961,45 @@ def _denoiser_hr_tables(
                     str(row["denoiser_status"]).lower() == "success"
                     for row in rows
                 ),
+                "reducer_failure_count": sum(
+                    bool(row["reducer_failed"]) for row in rows
+                ),
+                "reducer_failure_rate": (
+                    sum(bool(row["reducer_failed"]) for row in rows)
+                    / len(rows)
+                    if rows
+                    else None
+                ),
+                "post_q_rate_pass_count": sum(
+                    str(row["post_q_rate_state"]) == "pass" for row in rows
+                ),
+                "post_q_rate_pass_rate": (
+                    sum(
+                        str(row["post_q_rate_state"]) == "pass"
+                        for row in rows
+                    )
+                    / len(rows)
+                    if rows
+                    else None
+                ),
+                "post_q_rate_recovery_eligible_count": len(recovery_eligible),
+                "post_q_rate_recovery_count": sum(
+                    bool(row["post_q_rate_recovered"])
+                    for row in recovery_eligible
+                ),
+                "post_q_rate_recovery_rate": (
+                    sum(
+                        bool(row["post_q_rate_recovered"])
+                        for row in recovery_eligible
+                    )
+                    / len(recovery_eligible)
+                    if recovery_eligible
+                    else None
+                ),
                 "paired_hr_record_count": len(paired),
                 "paired_participant_count": len(participant_rows),
+                "paired_ppi_record_count": len(ppi_paired),
+                "paired_ppi_participant_count": len(participant_ppi_rows),
                 "participant_macro_direct_hr_bpm": direct_stats["mean"],
                 "participant_sd_direct_hr_bpm": direct_stats["population_sd"],
                 "participant_macro_post_denoise_hr_bpm": post_stats["mean"],
@@ -1534,6 +2018,33 @@ def _denoiser_hr_tables(
                 "participant_sd_absolute_hr_change_bpm": absolute_stats[
                     "population_sd"
                 ],
+                "participant_macro_direct_median_ppi_ms": direct_ppi_stats[
+                    "mean"
+                ],
+                "participant_sd_direct_median_ppi_ms": direct_ppi_stats[
+                    "population_sd"
+                ],
+                "participant_macro_post_denoise_median_ppi_ms": (
+                    post_ppi_stats["mean"]
+                ),
+                "participant_sd_post_denoise_median_ppi_ms": (
+                    post_ppi_stats["population_sd"]
+                ),
+                "participant_macro_ppi_endpoint_error_ms": (
+                    absolute_ppi_delta_stats["mean"]
+                ),
+                "participant_sd_ppi_endpoint_error_ms": (
+                    absolute_ppi_delta_stats["population_sd"]
+                ),
+                "participant_macro_post_minus_direct_ppi_ms": (
+                    ppi_delta_stats["mean"]
+                ),
+                "participant_sd_post_minus_direct_ppi_ms": (
+                    ppi_delta_stats["population_sd"]
+                ),
+                "endpoint_reference": (
+                    "same_record_direct_ppg_no_ecg_reference"
+                ),
                 "heart_rate_estimator": (
                     str(rows[0]["heart_rate_estimator"])
                     if rows
@@ -1896,7 +2407,7 @@ def _aggregation_hierarchy_coverage(
             "participant",
             "participant_balanced_endpoint",
             collected.subject_oof_rows,
-            lambda row: "participant",
+            lambda row: "ALL",
         ),
     )
     grouped: dict[tuple[str, int, str, str, str], list[Mapping[str, Any]]] = {}
@@ -1904,17 +2415,29 @@ def _aggregation_hierarchy_coverage(
         for row in rows:
             if (str(row.get("case_id")), level) in failed_levels:
                 continue
-            key = (
-                str(row.get("case_id")),
-                int(row.get("repeat", 0)),
-                level,
-                view,
-                labeler(row),
-            )
-            grouped.setdefault(key, []).append(row)
+            labels = (str(labeler(row)), "ALL")
+            for group_label in dict.fromkeys(labels):
+                key = (
+                    str(row.get("case_id")),
+                    int(row.get("repeat", 0)),
+                    level,
+                    view,
+                    group_label,
+                )
+                grouped.setdefault(key, []).append(row)
     output: list[Mapping[str, Any]] = []
     for (case_id, repeat, level, view, group_label), rows in sorted(grouped.items()):
         retained = [row for row in rows if row.get("retained", True) is not False]
+        all_participants = {
+            str(row.get("participant_id"))
+            for row in rows
+            if row.get("participant_id") is not None
+        }
+        retained_participants = {
+            str(row.get("participant_id"))
+            for row in retained
+            if row.get("participant_id") is not None
+        }
         output.append(
             {
                 "case_id": case_id,
@@ -1924,12 +2447,15 @@ def _aggregation_hierarchy_coverage(
                 "group_label": group_label,
                 "oof_unit_count": len(rows),
                 "retained_oof_unit_count": len(retained),
-                "participant_count": len(
-                    {
-                        str(row.get("participant_id"))
-                        for row in retained
-                        if row.get("participant_id") is not None
-                    }
+                "dropped_oof_unit_count": len(rows) - len(retained),
+                "retained_coverage": len(retained) / len(rows),
+                # Preserve the historical participant_count meaning used by
+                # existing plots: participants represented after retention.
+                "participant_count": len(retained_participants),
+                "total_participant_count": len(all_participants),
+                "retained_participant_count": len(retained_participants),
+                "dropped_participant_count": (
+                    len(all_participants - retained_participants)
                 ),
             }
         )
@@ -3584,6 +4110,7 @@ class StudyAnalysis:
     classification_roc_curves: tuple[Mapping[str, Any], ...] = ()
     classification_prediction_tsne: tuple[Mapping[str, Any], ...] = ()
     classification_diagnostic_status: tuple[Mapping[str, Any], ...] = ()
+    classifier_per_class_results: tuple[Mapping[str, Any], ...] = ()
 
 
 def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
@@ -3592,6 +4119,11 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
     manifest_cases = _manifest_cases(collected)
     statuses = _record_statuses(collected)
     trusted = _trusted_by_case(collected)
+    evaluation_policy_by_case = {
+        str(row.get("case_id")): dict(row["evaluation_statistics"])
+        for row in collected.resolved_aggregation_configs
+        if isinstance(row.get("evaluation_statistics"), Mapping)
+    }
     oof_by_case: dict[str, list[Mapping[str, Any]]] = {}
     for row in collected.subject_oof_rows:
         oof_by_case.setdefault(str(row.get("case_id")), []).append(row)
@@ -3636,6 +4168,19 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         evaluation_id="participant_outer_oof",
         aggregation_level="participant",
     )
+    classifier_per_class_results = tuple(
+        {
+            **row,
+            "case_execution_status": statuses.get(
+                str(row.get("classifier_id")), "unknown"
+            ),
+        }
+        for row in classification_per_class_metric_rows(
+            classification_prediction_scores,
+            class_names=CANONICAL_CLASS_NAMES,
+        )
+    )
+    abstention_aware_classifier_per_class_results: list[Mapping[str, Any]] = []
     classification_roc_curves = classification_roc_curve_rows(
         classification_prediction_scores,
         macro_grid_points=int(
@@ -3670,6 +4215,45 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
     for case_id, case in manifest_cases.items():
         oof_rows = oof_by_case.get(case_id, [])
         trusted_row = trusted.get(case_id, {})
+        participant_cluster_fields: dict[str, Any] = {}
+        cluster_policy = evaluation_policy_by_case.get(case_id)
+        participant_cluster_ci_reason = ""
+        if oof_rows and cluster_policy is not None:
+            try:
+                participant_cluster_fields = _participant_cluster_interval_fields(
+                    oof_rows,
+                    policy=cluster_policy,
+                )
+            except (KeyError, TypeError, ValueError) as error:
+                participant_cluster_ci_reason = (
+                    f"N/A_{type(error).__name__}: {error}"
+                )
+                notes.append(
+                    f"{case_id}: participant-cluster CI is N/A: "
+                    f"{type(error).__name__}: {error}"
+                )
+        elif not oof_rows:
+            participant_cluster_ci_reason = (
+                "N/A_no_persisted_participant_outer_oof_predictions"
+            )
+        else:
+            participant_cluster_ci_reason = (
+                "N/A_no_registered_participant_cluster_bootstrap_policy"
+            )
+        cluster_source = {**dict(trusted_row), **participant_cluster_fields}
+        participant_cluster_ci_available = all(
+            _number(cluster_source.get(field)) is not None
+            for field in (
+                "participant_cluster_balanced_accuracy_ci95_low",
+                "participant_cluster_balanced_accuracy_ci95_high",
+                "participant_cluster_macro_f1_ci95_low",
+                "participant_cluster_macro_f1_ci95_high",
+                "participant_cluster_macro_roc_auc_ovr_ci95_low",
+                "participant_cluster_macro_roc_auc_ovr_ci95_high",
+            )
+        )
+        if participant_cluster_ci_available:
+            participant_cluster_ci_reason = ""
         repeat_rows: list[Mapping[str, Any]] = []
         case_folds = fold_by_case.get(case_id, [])
         if oof_rows:
@@ -3895,6 +4479,103 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
                 float(row["recall"]) for row in aware_per_class
             )
             aware_worst_f1 = min(float(row["f1"]) for row in aware_per_class)
+            # Conditional and abstention-aware per-class results are different
+            # estimands.  Avoid duplicating the table for routes with complete
+            # coverage, but make the full-roster result explicit whenever a
+            # route abstains.  An abstained observation is a false negative for
+            # its true one-vs-rest class; no probability score is invented for
+            # ROC/PR calculations.
+            if int(pooled_aware.get("abstention_count", 0)) > 0:
+                abstained_total = int(pooled_aware["abstention_count"])
+                total = sum(int(row["support"]) for row in aware_per_class)
+                retained_total = total - abstained_total
+                for class_row in aware_per_class:
+                    true_positive = int(class_row["true_positive"])
+                    false_positive = int(class_row["false_positive"])
+                    false_negative = int(class_row["false_negative"])
+                    true_negative = (
+                        total
+                        - true_positive
+                        - false_positive
+                        - false_negative
+                    )
+                    if true_negative < 0:
+                        raise ValueError(
+                            f"{case_id}: abstention-aware one-vs-rest counts "
+                            "exceed the pooled participant roster"
+                        )
+                    specificity_denominator = true_negative + false_positive
+                    specificity = (
+                        float(true_negative / specificity_denominator)
+                        if specificity_denominator
+                        else None
+                    )
+                    recall = float(class_row["recall"])
+                    abstention_aware_classifier_per_class_results.append(
+                        {
+                            "classifier_id": case_id,
+                            "evaluation_id": (
+                                "participant_outer_oof_abstention_aware"
+                            ),
+                            "aggregation_level": "participant",
+                            "class_label": int(class_row["label"]),
+                            "class_name": CANONICAL_CLASS_NAMES.get(
+                                int(class_row["label"]),
+                                str(class_row["label"]),
+                            ),
+                            "true_positive": true_positive,
+                            "false_positive": false_positive,
+                            "true_negative": true_negative,
+                            "false_negative": false_negative,
+                            "support": int(class_row["support"]),
+                            "retained_support": int(
+                                class_row["retained_support"]
+                            ),
+                            "abstention_count": int(
+                                class_row["abstention_count"]
+                            ),
+                            "predicted_support": (
+                                true_positive + false_positive
+                            ),
+                            "observation_count": total,
+                            "input_observation_count": total,
+                            "retained_observation_count": retained_total,
+                            "excluded_observation_count": abstained_total,
+                            "precision": float(class_row["precision"]),
+                            "sensitivity": recall,
+                            "recall": recall,
+                            "specificity": specificity,
+                            "balanced_accuracy_ovr": (
+                                (recall + specificity) / 2.0
+                                if specificity is not None
+                                else None
+                            ),
+                            "f1": float(class_row["f1"]),
+                            "roc_auc_ovr": None,
+                            "pr_auc_ovr": None,
+                            "probability_metric_applicability": (
+                                "N/A_abstained_observations_have_no_frozen_"
+                                "class_probability"
+                            ),
+                            "result_applicability": "available",
+                            "case_execution_status": statuses.get(
+                                case_id, "unknown"
+                            ),
+                            "metric_scope": (
+                                "one_vs_rest_abstention_aware_full_roster;_"
+                                "abstentions_are_false_negatives_for_their_"
+                                "true_class"
+                            ),
+                            "metric_source": (
+                                "participant_oof_pooled_repeats_with_"
+                                "abstentions_as_true_class_false_negatives"
+                            ),
+                            "prediction_rule_source": (
+                                "persisted_decision_rule_for_retained_rows;_"
+                                "abstention_rule_for_excluded_rows"
+                            ),
+                        }
+                    )
         elif total_abstentions in {None, 0}:
             aware_worst_recall = (
                 aware_worst_recall
@@ -4043,42 +4724,84 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
                 else _lcb95(repeat_f1)
             ),
             "participant_cluster_balanced_accuracy_ci95_low": _number(
-                trusted_row.get(
+                cluster_source.get(
                     "participant_cluster_balanced_accuracy_ci95_low"
                 )
             ),
             "participant_cluster_balanced_accuracy_ci95_high": _number(
-                trusted_row.get(
+                cluster_source.get(
                     "participant_cluster_balanced_accuracy_ci95_high"
                 )
             ),
             "participant_cluster_balanced_accuracy_ci95": (
                 _percent_interval_text(
-                    trusted_row.get(
+                    cluster_source.get(
                         "participant_cluster_balanced_accuracy_ci95_low"
                     ),
-                    trusted_row.get(
+                    cluster_source.get(
                         "participant_cluster_balanced_accuracy_ci95_high"
                     ),
                 )
             ),
             "participant_cluster_macro_f1_ci95_low": _number(
-                trusted_row.get("participant_cluster_macro_f1_ci95_low")
+                cluster_source.get("participant_cluster_macro_f1_ci95_low")
             ),
             "participant_cluster_macro_f1_ci95_high": _number(
-                trusted_row.get("participant_cluster_macro_f1_ci95_high")
+                cluster_source.get("participant_cluster_macro_f1_ci95_high")
             ),
             "participant_cluster_macro_f1_ci95": _percent_interval_text(
-                trusted_row.get("participant_cluster_macro_f1_ci95_low"),
-                trusted_row.get("participant_cluster_macro_f1_ci95_high"),
+                cluster_source.get("participant_cluster_macro_f1_ci95_low"),
+                cluster_source.get("participant_cluster_macro_f1_ci95_high"),
             ),
+            "participant_cluster_macro_roc_auc_ovr_ci95_low": _number(
+                cluster_source.get(
+                    "participant_cluster_macro_roc_auc_ovr_ci95_low"
+                )
+            ),
+            "participant_cluster_macro_roc_auc_ovr_ci95_high": _number(
+                cluster_source.get(
+                    "participant_cluster_macro_roc_auc_ovr_ci95_high"
+                )
+            ),
+            "participant_cluster_macro_roc_auc_ovr_ci95": _percent_interval_text(
+                cluster_source.get(
+                    "participant_cluster_macro_roc_auc_ovr_ci95_low"
+                ),
+                cluster_source.get(
+                    "participant_cluster_macro_roc_auc_ovr_ci95_high"
+                ),
+            ),
+            "participant_cluster_ci_applicability": (
+                "available_recomputed_from_participant_outer_oof"
+                if participant_cluster_fields
+                else "available_from_persisted_trusted_metrics"
+                if participant_cluster_ci_available
+                else "N/A"
+            ),
+            "participant_cluster_ci_reason": participant_cluster_ci_reason,
             "participant_cluster_bootstrap_resamples": _number(
-                trusted_row.get(
+                cluster_source.get(
                     "participant_cluster_balanced_accuracy_n_resamples"
                 )
             ),
+            "participant_cluster_bootstrap_valid_resamples": _number(
+                cluster_source.get(
+                    "participant_cluster_balanced_accuracy_valid_resamples"
+                )
+            ),
             "participant_cluster_bootstrap_seed": _number(
-                trusted_row.get("participant_cluster_balanced_accuracy_seed")
+                cluster_source.get("participant_cluster_balanced_accuracy_seed")
+            ),
+            "participant_cluster_bootstrap_cluster_unit": cluster_source.get(
+                "participant_cluster_balanced_accuracy_cluster_unit"
+            ),
+            "participant_cluster_bootstrap_interval_method": cluster_source.get(
+                "participant_cluster_balanced_accuracy_interval_method"
+            ),
+            "participant_cluster_bootstrap_implementation_version": (
+                cluster_source.get(
+                    "participant_cluster_balanced_accuracy_implementation_version"
+                )
             ),
             "repeat_balanced_accuracy_population_sd": (
                 _number(
@@ -4181,9 +4904,13 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
                 "repeat_student_t_abstention_aware_primary"
             ),
             "conditional_ci_method": (
-                "participant_cluster_bootstrap_config_metrics_v2"
+                (
+                    "participant_cluster_bootstrap_recomputed_from_persisted_participant_oof"
+                    if participant_cluster_fields
+                    else "participant_cluster_bootstrap_config_metrics_v2"
+                )
                 if _number(
-                    trusted_row.get(
+                    cluster_source.get(
                         "participant_cluster_balanced_accuracy_ci95_low"
                     )
                 )
@@ -4453,9 +5180,10 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         notes.extend(paired_inference_notes)
         if paired_participant_inference:
             notes.append(
-                "Paired P values use the registered participant-cluster "
-                "permutation budget and Holm correction separately within BA "
-                "and Macro-F1; they do not trigger automatic selection."
+                "Paired BA, Macro-F1 and macro ROC-AUC differences use a shared-draw "
+                "participant-cluster bootstrap CI. BA/F1 additionally use the "
+                "registered participant-cluster permutation budget with metric-wise "
+                "Holm correction; ROC-AUC P remains explicitly N/A."
             )
 
     route_role_coverage, quality_distributions = _route_role_quality_tables(
@@ -4531,12 +5259,115 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         aggregation_view_comparison,
     )
     notes.extend(legacy_bridge_report_notes)
+    classifier_per_class_results += tuple(
+        abstention_aware_classifier_per_class_results
+    )
+    represented_classifier_ids = {
+        str(row.get("classifier_id"))
+        for row in classifier_per_class_results
+        if not str(row.get("metric_scope", "")).startswith(
+            "one_vs_rest_abstention_aware"
+        )
+    }
+    for row in all_per_class:
+        case_id = str(row.get("case_id", ""))
+        if (
+            not case_id
+            or case_id in represented_classifier_ids
+            or row.get("repeat") is not None
+        ):
+            continue
+        classifier_per_class_results += (
+            {
+                "classifier_id": case_id,
+                "evaluation_id": "participant_outer_oof_fallback",
+                "aggregation_level": "participant",
+                **{
+                    key: row.get(key)
+                    for key in (
+                        "class_label",
+                        "class_name",
+                        "true_positive",
+                        "false_positive",
+                        "true_negative",
+                        "false_negative",
+                        "support",
+                        "predicted_support",
+                        "observation_count",
+                        "precision",
+                        "specificity",
+                        "balanced_accuracy_ovr",
+                        "f1",
+                        "roc_auc_ovr",
+                        "pr_auc_ovr",
+                    )
+                },
+                "sensitivity": row.get("recall"),
+                "recall": row.get("recall"),
+                "probability_metric_applicability": (
+                    "available"
+                    if row.get("roc_auc_ovr") is not None
+                    else "N/A_no_persisted_probability_scores"
+                ),
+                "result_applicability": "available_confusion_fallback",
+                "metric_scope": "one_vs_rest_pooled_fallback",
+                "metric_source": row.get("metric_source"),
+                "prediction_rule_source": "persisted_confusion_fallback",
+            },
+        )
+    represented_classifier_ids = {
+        str(row.get("classifier_id"))
+        for row in classifier_per_class_results
+        if not str(row.get("metric_scope", "")).startswith(
+            "one_vs_rest_abstention_aware"
+        )
+    }
+    for case_id in sorted(set(manifest_cases) - represented_classifier_ids):
+        for class_label, class_name in sorted(CANONICAL_CLASS_NAMES.items()):
+            classifier_per_class_results += (
+                {
+                    "classifier_id": case_id,
+                    "evaluation_id": "participant_outer_oof",
+                    "aggregation_level": "participant",
+                    "class_label": class_label,
+                    "class_name": class_name,
+                    "true_positive": None,
+                    "false_positive": None,
+                    "true_negative": None,
+                    "false_negative": None,
+                    "support": None,
+                    "predicted_support": None,
+                    "observation_count": 0,
+                    "input_observation_count": 0,
+                    "retained_observation_count": 0,
+                    "excluded_observation_count": 0,
+                    "precision": None,
+                    "sensitivity": None,
+                    "recall": None,
+                    "specificity": None,
+                    "balanced_accuracy_ovr": None,
+                    "f1": None,
+                    "roc_auc_ovr": None,
+                    "pr_auc_ovr": None,
+                    "probability_metric_applicability": (
+                        "N/A_no_persisted_probability_or_confusion_evidence"
+                    ),
+                    "result_applicability": (
+                        "N/A_no_persisted_probability_or_confusion_evidence"
+                    ),
+                    "case_execution_status": statuses.get(case_id, "unknown"),
+                    "metric_scope": "one_vs_rest_not_computable",
+                    "metric_source": "N/A_no_classifier_evidence",
+                    "prediction_rule_source": "N/A_no_classifier_evidence",
+                },
+            )
     if repeat_per_class:
         notes.append(
             "Report-only ROC AUC is one-vs-rest macro AUC; PR AUC is "
             "one-vs-rest average precision. Per-class BA is (sensitivity + "
-            "specificity) / 2. All are recomputed from retained outer "
-            "participant OOF probabilities."
+            "specificity) / 2. All are recomputed conditional on retained "
+            "outer-participant OOF predictions; input, retained, and excluded "
+            "counts remain explicit in classifier_per_class_results."
         )
     return StudyAnalysis(
         case_summary=tuple(summaries),
@@ -4604,6 +5435,7 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
         classification_diagnostic_status=tuple(
             classification_diagnostic_status
         ),
+        classifier_per_class_results=tuple(classifier_per_class_results),
     )
 
 

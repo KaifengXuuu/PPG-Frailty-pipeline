@@ -26,26 +26,56 @@
 
 The identical standalone table is in [TEST_COMPONENTS.md](TEST_COMPONENTS.md); machine-readable copies are `tables/test_components.csv` and `.json`. Input data are reported as dataset/path, signal view, channels, units, rate, and windows—not hashes.
 
-| Cases / phases | Component role | Model / module | State | Input data (values and paths; no hashes) | Detailed fixed parameters | Algorithm and kernel (≤300 chars) |
-|---|---|---|---|---|---|---|
-| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | aggregation | line_b_equal_role_families | enabled | {"input_data":"held-out window/file probabilities","roles":["B","R1","R2","R3","R4"]} | {"balance_line":"line_b_equal_role_families","direct_all_window_participant_mean":false,"file_to_role":"ordinary_mean","hierarchy":["window","file","role","participant"],"missing_role_policy":"mean_available_roles","quality_weight_levels":[],"quality_weight_source":"none","quality_weighting":false,"role_to_participant":"ordinary_mean","window_to_file":"ordinary_mean"} |  |
-| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | classifier | InceptionTimeFull | enabled | {"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"signal_view":"x_dl_all8_window_norm","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"cap_fraction_per_file":null,"cap_per_file":128,"end_alignment":"include_right_aligned_if_distinct","hop_s":2.5,"length_s":5.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"}} | {"architecture_parameters":{"bottleneck_channels":32,"branch_count":4,"classifier_dropout":0.2,"depth":6,"dilation":1,"global_pooling":"mask_aware_global_average","kernel_sizes":[39,19,9],"model_id":"inception_full","n_classes":3,"out_channels":32,"pool_size":3,"representation_mode":"raw","residual_interval":3,"variant":"full"},"dilation":1,"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[39,19,9],"mask_aware_pooling":true,"model_id":"InceptionTimeFull","n_classes":3,"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"single_network"} |  |
-| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | dataset_adapter | frailty3_m2_20260815_a054800abda272f6 | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"allow_qc_excluded_records":false,"channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"class_id_order":[0,1,2],"class_name_order":["Pre-Frail","Robust/Non-Frail","Young"],"expected_participant_count":29,"expected_record_count":261,"manifest_version":"internal_records_v2","path":"manifests/internal_records_v2.csv","source_dataset_id":"frailty3_m2_20260815_a054800abda272f6"} |  |
-| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | denoiser | identity | identity_or_disabled_control | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_views":["filtered RED/IR","processed_imu_physical"],"manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"declared_reducer_version":"identity_v1","degraded_policy":"drop","denoiser_enabled":false,"failure_action":"no_result_no_fallback","reducer":"identity","resolved_parameters":{},"runtime_reducer_version":"identity_exact_v1"} | 逐样本复制双波长 PPG，不估计或抑制伪影；内核：恒等映射与同时间网格校验，作为未去噪直接对照。 |
-| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | evaluation | balanced_accuracy | enabled | {"class_order":["Pre-Frail","Robust/Non-Frail","Young"],"input_data":"held-out participant predictions and frailty labels"} | {"calibration_metrics":["multiclass_brier","expected_calibration_error"],"confidence_interval":"participant_cluster_bootstrap_two_sided_95","independent_test_available":false,"metric_prefix":"oof_validation_","metrics":["balanced_accuracy","macro_f1","per_class_precision_recall_f1","worst_class_recall","worst_class_f1","confusion_matrix","coverage"],"paired_delta_key":["repeat_index","fold_index","participant_id"],"primary_metric":"balanced_accuracy","rank_incomplete_configs":false,"ranking":{"automatic_final_selection":false,"manual_multiple_final_versions_allowed":true,"max_qualified_per_comparison_group":10,"preserve_ablation_provenance":true,"sort_key":"participant_level_mean_balanced_accuracy"},"statistics":{"affects_automatic_selection":false,"bootstrap_replicates":10000,"cluster_unit":"participant_with_all_five_repeat_oof_predictions","confidence_interval":"two_sided_95_percentile","lcb95_metrics":["participant_level_mean_balanced_accuracy","participant_level_mean_macro_f1"],"lcb95_percentile":2.5,"multiplicity_correction":"holm_within_comparison_family","paired_exchange_unit":"participant","paired_permutation_replicates":100000,"seed":42},"unit":"participant"} |  |
-| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | feature_extractor | feature_vector_282_v3 | auxiliary_not_classifier_input | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","engineering_window":{"cap_fraction_per_file":null,"cap_per_file":null,"end_alignment":"left_start_regular_grid","hop_s":2.0,"length_s":10.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"},"input_views":["x_analysis/x_native","processed_imu_physical"],"manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"enabled_groups":["ppi_basic_rate","hrv_time_domain","hrv_spectral","hrv_nonlinear","morphology","dual_optical","engineering_summary"],"engineering_sequence_schema":"engineering_10s_hop2s_thesis_115_v3","file_aggregation":["mean","population_sd"],"file_vector_schema":"feature_vector_282_v3","matrix_k":150,"matrix_schema":"ordered_feature_matrix_d115_by_150_engineering_v4","missing_physiology_encoding":"nan_and_validity_false","prv_library_comparison_scope":"fixed_ppi_vectors_only_no_classifier","prv_primary_backend":"local_manual","rate_prv_min_duration_s":8.0,"rate_prv_min_peaks":5,"registry_id":"feature_vector_282_v3","sample_entropy":{"m":2,"min_intervals":200,"r_sd_fraction":0.2},"spectral_bands_hz":{"hf":[0.15,0.4],"lf":[0.04,0.15],"vlf":[0.003,0.04]},"spectral_prv_min_coverage":0.8,"spectral_prv_min_duration_s":300.0,"spectral_prv_min_intervals":200,"tachogram_fs_hz":4.0,"technical_metadata_allowed":false,"time_prv_min_coverage":0.8,"time_prv_min_duration_s":60.0,"time_prv_min_intervals":30} |  |
-| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | imu_preprocessing | profile_a_lowpass_0p3hz | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_channels":["AX","AY","AZ","GX","GY","GZ"],"manifest_path":"manifests/internal_records_v2.csv","output_view":"processed_imu_physical","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"calibration_start_s":5.0,"calibration_stop_s":100.0,"comparison_method":"calibrated_roll_pitch_ekf","failure_action":"fail_closed","gravity_filter_order":4,"gravity_lowpass_hz":0.3,"gravity_method":"profile_a_lowpass_0p3hz","gravity_mps2":9.81,"initialization":"same_participant_static_calibration","output_units":{"acceleration":"m/s^2","gyroscope":"rad/s","jerk":"m/s^3"},"required_axes":6,"sensor_filter_order":3,"sensor_lowpass_acc_hz":20.0,"sensor_lowpass_gyro_hz":40.0} |  |
-| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | motion_detector | formal_local_supervised_motion_detector_v2 | disabled_control | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_view":"RED/IR + processed physical A_dyn/GX/GY/GZ","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":64,"device":"cuda","enabled":false,"evidence_path":null,"threshold_source":"bundle_frozen","window_probability_aggregation":"median"} |  |
-| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | peak_detector | aboy_project_v1 | enabled | {"channels":["RED","IR"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_view":"x_analysis/x_native","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"detector_id":"aboy_project_v1","failure_action":"fail_closed_no_fallback","min_observation_sec":8.0,"min_peaks":5} |  |
-| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | ppg_preprocessing | butterworth_sos | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_channels":["RED","IR"],"input_view":"repaired native PPG","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"analysis_view":{"additional_filter":"none","direct_source":"x_filter_0p2_to_8hz","non_identity_semantics":"rate_only","non_identity_source":"aligned_x_ar"},"gap_repair":{"all_missing_channel_action":"reject_record","edge_extrapolation":false,"max_gap_samples":100,"method":"linear_inside_only"},"ppg_filter":{"family":"butterworth_sos","high_hz":8.0,"low_hz":0.2,"notch_enabled":false,"order":3,"phase":"zero_phase","short_signal_policy":"reject"}} |  |
-| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | representation | raw | enabled | {"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"signal_view":"x_dl_all8_window_norm","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"cap_fraction_per_file":null,"cap_per_file":128,"end_alignment":"include_right_aligned_if_distinct","hop_s":2.5,"length_s":5.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"}} | {"input_contract":{"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"representation_mode":"raw","signal_view":"x_dl_all8_window_norm","window":{"cap_fraction_per_file":null,"cap_per_file":128,"end_alignment":"include_right_aligned_if_distinct","hop_s":2.5,"length_s":5.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"}},"representation_mode":"raw"} |  |
-| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | signal_views_and_scaling | parallel_physical_analysis_and_dl_views | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"views":["processed_imu_physical","x_dl_all8_window_norm","x_analysis/x_native"]} | {"dl_resampling":{"enabled":true,"method":"polyphase_anti_alias","preserve_feature_grid_hz":400.0,"target_fs_hz":64.0},"normalization":{"clip_after_scale":[-8.0,8.0],"iqr_fallback":"standard_deviation_then_finite_one","mad_consistency_divisor":0.6744897501960817,"raw_imu":"none","raw_ppg":"per_window_robust","robust_iqr_divisor":1.349,"scale_epsilon":1e-08,"standard_ddof":0}} |  |
-| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | split_registry | frailty3_future_corrected_sgkf5_v2 | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","groups":"participant_id","labels":"frailty_class","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"n_repeats":5,"n_splits":5,"path":"splits/sgkf5_repeated_grouped_5x5_v2.csv","registry_id":"frailty3_future_corrected_sgkf5_v2","runtime_recompute":false,"split_seeds":[42,10042,20042,30042,40042]} |  |
-| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | sqi | quality_off | disabled_control | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_views":["x_analysis","pulse train","processed_imu_physical"],"manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"components":[],"failure_action":"fail_closed","fit_scope":"not_applied_off","flatline_duration_s":1.0,"high_quality_rule":"not_applied","long_gap_max_samples":100,"mode":"off","window_selection":{"application_scope":"outer_train_only","keep_fraction":1.0,"policy":"none","score_algorithm":"legacy_cardiac_motion_window_sqi_v1"}} |  |
-| b16_lr1e-3 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"representation_mode":"raw","signal_view":"x_dl_all8_window_norm","window":{"cap_fraction_per_file":null,"cap_per_file":128,"end_alignment":"include_right_aligned_if_distinct","hop_s":2.5,"length_s":5.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":16,"cache_policy":"disabled","class_count_basis":"row","class_weight_beta":0.999,"class_weighting":"inverse_frequency","classifier_role_families":["B","R"],"deterministic_algorithms":true,"device":"cuda","epoch_profile":"default_10","epoch_rule":"fixed_epoch","execution_mode":"formal","fixed_epochs":10,"focal_gamma":2.0,"gradient_clip_norm":null,"inner_grouped_folds":0,"inner_patience":0,"label_smoothing":0.0,"learning_rate":0.001,"loss":"cross_entropy","maximum_inner_epochs":0,"n_classes":3,"num_workers":0,"optimizer":"adamw","optimizer_parameters":{"amsgrad":false,"betas":[0.9,0.999],"eps":1e-08,"maximize":false},"outer_labels_visible_to_trainer":false,"participant_window_quota":"all","refit_on_all_outer_training":true,"sampler":"exhaustive_shuffle_without_replacement","samples_per_epoch":null,"seed":42,"training_balance":"equal_role_families","weight_decay":0.0001} |  |
-| b16_lr3e-4 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"representation_mode":"raw","signal_view":"x_dl_all8_window_norm","window":{"cap_fraction_per_file":null,"cap_per_file":128,"end_alignment":"include_right_aligned_if_distinct","hop_s":2.5,"length_s":5.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":16,"cache_policy":"disabled","class_count_basis":"row","class_weight_beta":0.999,"class_weighting":"inverse_frequency","classifier_role_families":["B","R"],"deterministic_algorithms":true,"device":"cuda","epoch_profile":"default_10","epoch_rule":"fixed_epoch","execution_mode":"formal","fixed_epochs":10,"focal_gamma":2.0,"gradient_clip_norm":null,"inner_grouped_folds":0,"inner_patience":0,"label_smoothing":0.0,"learning_rate":0.0003,"loss":"cross_entropy","maximum_inner_epochs":0,"n_classes":3,"num_workers":0,"optimizer":"adamw","optimizer_parameters":{"amsgrad":false,"betas":[0.9,0.999],"eps":1e-08,"maximize":false},"outer_labels_visible_to_trainer":false,"participant_window_quota":"all","refit_on_all_outer_training":true,"sampler":"exhaustive_shuffle_without_replacement","samples_per_epoch":null,"seed":42,"training_balance":"equal_role_families","weight_decay":0.0001} |  |
-| b32_lr3e-4 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"representation_mode":"raw","signal_view":"x_dl_all8_window_norm","window":{"cap_fraction_per_file":null,"cap_per_file":128,"end_alignment":"include_right_aligned_if_distinct","hop_s":2.5,"length_s":5.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":32,"cache_policy":"disabled","class_count_basis":"row","class_weight_beta":0.999,"class_weighting":"inverse_frequency","classifier_role_families":["B","R"],"deterministic_algorithms":true,"device":"cuda","epoch_profile":"default_10","epoch_rule":"fixed_epoch","execution_mode":"formal","fixed_epochs":10,"focal_gamma":2.0,"gradient_clip_norm":null,"inner_grouped_folds":0,"inner_patience":0,"label_smoothing":0.0,"learning_rate":0.0003,"loss":"cross_entropy","maximum_inner_epochs":0,"n_classes":3,"num_workers":0,"optimizer":"adamw","optimizer_parameters":{"amsgrad":false,"betas":[0.9,0.999],"eps":1e-08,"maximize":false},"outer_labels_visible_to_trainer":false,"participant_window_quota":"all","refit_on_all_outer_training":true,"sampler":"exhaustive_shuffle_without_replacement","samples_per_epoch":null,"seed":42,"training_balance":"equal_role_families","weight_decay":0.0001} |  |
-| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | window_planner | window_plan_v1 | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_views":["x_dl_all8_window_norm","x_analysis/x_native","processed_imu_physical"],"manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"engineering":{"cap_fraction_per_file":null,"cap_per_file":null,"end_alignment":"left_start_regular_grid","hop_s":2.0,"length_s":10.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"},"raw_dl":{"cap_fraction_per_file":null,"cap_per_file":128,"end_alignment":"include_right_aligned_if_distinct","hop_s":2.5,"length_s":5.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"},"shared_planner_version":"window_plan_v1"} |  |
+| Cases / phases | Component role | Model / module | State | Input data (values and paths; no hashes) | Detailed fixed parameters | Algorithm and kernel (≤300 chars) | Reporter profile | Model reporter extension | Algorithm / literature source |
+|---|---|---|---|---|---|---|---|---|---|
+| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | aggregation | line_b_equal_role_families | enabled | {"input_data":"held-out window/file probabilities","roles":["B","R1","R2","R3","R4"]} | {"balance_line":"line_b_equal_role_families","direct_all_window_participant_mean":false,"file_to_role":"ordinary_mean","hierarchy":["window","file","role","participant"],"missing_role_policy":"mean_available_roles","quality_weight_levels":[],"quality_weight_source":"none","quality_weighting":false,"role_to_participant":"ordinary_mean","window_to_file":"ordinary_mean"} | executable line_b_equal_role_families hierarchy ending in participant-balanced output | audit_provenance_v1 | audit_provenance_v1 | Project registry implementation: ppg_frailty.training.aggregation.aggregate_hierarchy; no separate external literature source claimed |
+| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | classifier | InceptionTimeFull | enabled | {"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"signal_view":"x_dl_all8_window_norm","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"cap_fraction_per_file":null,"cap_per_file":128,"end_alignment":"include_right_aligned_if_distinct","hop_s":2.5,"length_s":5.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"}} | {"architecture_parameters":{"bottleneck_channels":32,"branch_count":4,"classifier_dropout":0.2,"depth":6,"dilation":1,"global_pooling":"mask_aware_global_average","kernel_sizes":[39,19,9],"model_id":"inception_full","n_classes":3,"out_channels":32,"pool_size":3,"representation_mode":"raw","residual_interval":3,"variant":"full"},"dilation":1,"dropout":0.2,"ensemble_size":1,"input_channel_order":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"input_channels":8,"input_channels_resolution":"canonical_frailty_raw_8","kernel_sizes":[39,19,9],"mask_aware_pooling":true,"model_id":"InceptionTimeFull","n_classes":3,"seed_policy":"outer_cv_repeat_seed_equals_split_seed","variant":"single_network"} | Six-block, single-network InceptionTime adaptation with bottleneck and parallel fixed-sample kernels; not the paper's five-member ensemble. | multiclass_participant_oof_v1 | inceptiontime_single_network_model_v1 | Fawaz et al. (2020), InceptionTime, DOI:10.1007/s10618-020-00710-y |
+| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | dataset_adapter | frailty3_m2_20260815_a054800abda272f6 | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"allow_qc_excluded_records":false,"channel_order":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"class_id_order":[0,1,2],"class_name_order":["Pre-Frail","Robust/Non-Frail","Young"],"expected_participant_count":29,"expected_record_count":261,"manifest_version":"internal_records_v2","path":"manifests/internal_records_v2.csv","source_dataset_id":"frailty3_m2_20260815_a054800abda272f6"} | Persisted dataset_adapter contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: dataset_adapter; no separate external literature source claimed |
+| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | denoiser | identity | identity_or_disabled_control | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_views":["filtered RED/IR","processed_imu_physical"],"manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"declared_reducer_version":"identity_v1","degraded_policy":"drop","denoiser_enabled":false,"failure_action":"no_result_no_fallback","reducer":"identity","resolved_parameters":{},"runtime_reducer_version":"identity_exact_v1"} | 逐样本复制双波长 PPG，不估计或抑制伪影；内核：恒等映射与同时间网格校验，作为未去噪直接对照。 | audit_provenance_v1 | not_applicable | N/A — component was not executed |
+| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | evaluation | balanced_accuracy | enabled | {"class_order":["Pre-Frail","Robust/Non-Frail","Young"],"input_data":"held-out participant predictions and frailty labels"} | {"calibration_metrics":["multiclass_brier","expected_calibration_error"],"confidence_interval":"participant_cluster_bootstrap_two_sided_95","independent_test_available":false,"metric_prefix":"oof_validation_","metrics":["balanced_accuracy","macro_f1","per_class_precision_recall_f1","worst_class_recall","worst_class_f1","confusion_matrix","coverage"],"paired_delta_key":["repeat_index","fold_index","participant_id"],"primary_metric":"balanced_accuracy","rank_incomplete_configs":false,"ranking":{"automatic_final_selection":false,"manual_multiple_final_versions_allowed":true,"max_qualified_per_comparison_group":10,"preserve_ablation_provenance":true,"sort_key":"participant_level_mean_balanced_accuracy"},"statistics":{"affects_automatic_selection":false,"bootstrap_replicates":10000,"cluster_unit":"participant_with_all_five_repeat_oof_predictions","confidence_interval":"two_sided_95_percentile","lcb95_metrics":["participant_level_mean_balanced_accuracy","participant_level_mean_macro_f1"],"lcb95_percentile":2.5,"multiplicity_correction":"holm_within_comparison_family","paired_exchange_unit":"participant","paired_permutation_replicates":100000,"seed":42},"unit":"participant"} | Persisted evaluation contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: evaluation; no separate external literature source claimed |
+| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | feature_extractor | feature_vector_282_v3 | auxiliary_not_classifier_input | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","engineering_window":{"cap_fraction_per_file":null,"cap_per_file":null,"end_alignment":"left_start_regular_grid","hop_s":2.0,"length_s":10.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"},"input_views":["x_analysis/x_native","processed_imu_physical"],"manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"enabled_groups":["ppi_basic_rate","hrv_time_domain","hrv_spectral","hrv_nonlinear","morphology","dual_optical","engineering_summary"],"engineering_sequence_schema":"engineering_10s_hop2s_thesis_115_v3","file_aggregation":["mean","population_sd"],"file_vector_schema":"feature_vector_282_v3","matrix_k":150,"matrix_schema":"ordered_feature_matrix_d115_by_150_engineering_v4","missing_physiology_encoding":"nan_and_validity_false","prv_library_comparison_scope":"fixed_ppi_vectors_only_no_classifier","prv_primary_backend":"local_manual","rate_prv_min_duration_s":8.0,"rate_prv_min_peaks":5,"registry_id":"feature_vector_282_v3","sample_entropy":{"m":2,"min_intervals":200,"r_sd_fraction":0.2},"spectral_bands_hz":{"hf":[0.15,0.4],"lf":[0.04,0.15],"vlf":[0.003,0.04]},"spectral_prv_min_coverage":0.8,"spectral_prv_min_duration_s":300.0,"spectral_prv_min_intervals":200,"tachogram_fs_hz":4.0,"technical_metadata_allowed":false,"time_prv_min_coverage":0.8,"time_prv_min_duration_s":60.0,"time_prv_min_intervals":30} | Persisted feature_extractor contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: feature_extractor; no separate external literature source claimed |
+| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | imu_preprocessing | profile_a_lowpass_0p3hz | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_channels":["AX","AY","AZ","GX","GY","GZ"],"manifest_path":"manifests/internal_records_v2.csv","output_view":"processed_imu_physical","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"calibration_start_s":5.0,"calibration_stop_s":100.0,"comparison_method":"calibrated_roll_pitch_ekf","failure_action":"fail_closed","gravity_filter_order":4,"gravity_lowpass_hz":0.3,"gravity_method":"profile_a_lowpass_0p3hz","gravity_mps2":9.81,"initialization":"same_participant_static_calibration","output_units":{"acceleration":"m/s^2","gyroscope":"rad/s","jerk":"m/s^3"},"required_axes":6,"sensor_filter_order":3,"sensor_lowpass_acc_hz":20.0,"sensor_lowpass_gyro_hz":40.0} | executable gravity-separation profile with profile-specific numerical parameters and no silent fallback | audit_provenance_v1 | audit_provenance_v1 | Project registry implementation: ppg_frailty.signal.preprocess.materialize_signal_preprocessing_config; no separate external literature source claimed |
+| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | motion_detector | formal_local_supervised_motion_detector_v2 | disabled_control | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_view":"RED/IR + processed physical A_dyn/GX/GY/GZ","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":64,"device":"cuda","enabled":false,"evidence_path":null,"threshold_source":"bundle_frozen","window_probability_aggregation":"median"} |  | audit_provenance_v1 | not_applicable | N/A — component was not executed |
+| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | peak_detector | aboy_project_v1 | enabled | {"channels":["RED","IR"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_view":"x_analysis/x_native","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"detector_id":"aboy_project_v1","failure_action":"fail_closed_no_fallback","min_observation_sec":8.0,"min_peaks":5} | Historical shared-preprocessing Aboy-family project detector. | audit_provenance_v1 | audit_provenance_v1 | Historical project adaptation; algorithm family: Aboy et al. (2005), DOI:10.1109/TBME.2005.855725 |
+| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | ppg_preprocessing | butterworth_sos | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_channels":["RED","IR"],"input_view":"repaired native PPG","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"analysis_view":{"additional_filter":"none","direct_source":"x_filter_0p2_to_8hz","non_identity_semantics":"rate_only","non_identity_source":"aligned_x_ar"},"gap_repair":{"all_missing_channel_action":"reject_record","edge_extrapolation":false,"max_gap_samples":100,"method":"linear_inside_only"},"ppg_filter":{"family":"butterworth_sos","high_hz":8.0,"low_hz":0.2,"notch_enabled":false,"order":3,"phase":"zero_phase","short_signal_policy":"reject"}} | executable PPG filter family; order, passband, phase, notch and short-signal policy are validated config parameters rather than separate profile IDs | audit_provenance_v1 | audit_provenance_v1 | Project registry implementation: ppg_frailty.signal.preprocess.materialize_signal_preprocessing_config; no separate external literature source claimed |
+| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | representation | raw | enabled | {"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"dataset_id":"frailty3_m2_20260815_a054800abda272f6","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"representation_mode":"raw","roles":["B","R1","R2","R3","R4"],"signal_view":"x_dl_all8_window_norm","source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"window":{"cap_fraction_per_file":null,"cap_per_file":128,"end_alignment":"include_right_aligned_if_distinct","hop_s":2.5,"length_s":5.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"}} | {"input_contract":{"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"representation_mode":"raw","signal_view":"x_dl_all8_window_norm","window":{"cap_fraction_per_file":null,"cap_per_file":128,"end_alignment":"include_right_aligned_if_distinct","hop_s":2.5,"length_s":5.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"}},"representation_mode":"raw"} | Line A window->file->participant; Line B window->file->role_family->participant | audit_provenance_v1 | audit_provenance_v1 | Project registry implementation: ppg_frailty.representations.raw; no separate external literature source claimed |
+| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | signal_views_and_scaling | parallel_physical_analysis_and_dl_views | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"},"views":["processed_imu_physical","x_dl_all8_window_norm","x_analysis/x_native"]} | {"dl_resampling":{"enabled":true,"method":"polyphase_anti_alias","preserve_feature_grid_hz":400.0,"target_fs_hz":64.0},"normalization":{"clip_after_scale":[-8.0,8.0],"iqr_fallback":"standard_deviation_then_finite_one","mad_consistency_divisor":0.6744897501960817,"raw_imu":"none","raw_ppg":"per_window_robust","robust_iqr_divisor":1.349,"scale_epsilon":1e-08,"standard_ddof":0}} | Persisted signal_views_and_scaling contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: signal_views_and_scaling; no separate external literature source claimed |
+| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | split_registry | frailty3_future_corrected_sgkf5_v2 | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","groups":"participant_id","labels":"frailty_class","manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"n_repeats":5,"n_splits":5,"path":"splits/sgkf5_repeated_grouped_5x5_v2.csv","registry_id":"frailty3_future_corrected_sgkf5_v2","runtime_recompute":false,"split_seeds":[42,10042,20042,30042,40042]} | Persisted split_registry contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: split_registry; no separate external literature source claimed |
+| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | sqi | quality_off | disabled_control | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_views":["x_analysis","pulse train","processed_imu_physical"],"manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"components":[],"failure_action":"fail_closed","fit_scope":"not_applied_off","flatline_duration_s":1.0,"high_quality_rule":"not_applied","long_gap_max_samples":100,"mode":"off","window_selection":{"application_scope":"outer_train_only","keep_fraction":1.0,"policy":"none","score_algorithm":"legacy_cardiac_motion_window_sqi_v1"}} |  | audit_provenance_v1 | not_applicable | N/A — component was not executed |
+| b16_lr1e-3 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"representation_mode":"raw","signal_view":"x_dl_all8_window_norm","window":{"cap_fraction_per_file":null,"cap_per_file":128,"end_alignment":"include_right_aligned_if_distinct","hop_s":2.5,"length_s":5.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":16,"cache_policy":"disabled","class_count_basis":"row","class_weight_beta":0.999,"class_weighting":"inverse_frequency","classifier_role_families":["B","R"],"deterministic_algorithms":true,"device":"cuda","epoch_profile":"default_10","epoch_rule":"fixed_epoch","execution_mode":"formal","fixed_epochs":10,"focal_gamma":2.0,"gradient_clip_norm":null,"inner_grouped_folds":0,"inner_patience":0,"label_smoothing":0.0,"learning_rate":0.001,"loss":"cross_entropy","maximum_inner_epochs":0,"n_classes":3,"num_workers":0,"optimizer":"adamw","optimizer_parameters":{"amsgrad":false,"betas":[0.9,0.999],"eps":1e-08,"maximize":false},"outer_labels_visible_to_trainer":false,"participant_window_quota":"all","refit_on_all_outer_training":true,"sampler":"exhaustive_shuffle_without_replacement","samples_per_epoch":null,"seed":42,"training_balance":"equal_role_families","weight_decay":0.0001} | AdamW optimizer with decoupled weight decay and persisted hyperparameters. | audit_provenance_v1 | audit_provenance_v1 | Loshchilov & Hutter (2019), DOI:10.48550/arXiv.1711.05101 |
+| b16_lr3e-4 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"representation_mode":"raw","signal_view":"x_dl_all8_window_norm","window":{"cap_fraction_per_file":null,"cap_per_file":128,"end_alignment":"include_right_aligned_if_distinct","hop_s":2.5,"length_s":5.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":16,"cache_policy":"disabled","class_count_basis":"row","class_weight_beta":0.999,"class_weighting":"inverse_frequency","classifier_role_families":["B","R"],"deterministic_algorithms":true,"device":"cuda","epoch_profile":"default_10","epoch_rule":"fixed_epoch","execution_mode":"formal","fixed_epochs":10,"focal_gamma":2.0,"gradient_clip_norm":null,"inner_grouped_folds":0,"inner_patience":0,"label_smoothing":0.0,"learning_rate":0.0003,"loss":"cross_entropy","maximum_inner_epochs":0,"n_classes":3,"num_workers":0,"optimizer":"adamw","optimizer_parameters":{"amsgrad":false,"betas":[0.9,0.999],"eps":1e-08,"maximize":false},"outer_labels_visible_to_trainer":false,"participant_window_quota":"all","refit_on_all_outer_training":true,"sampler":"exhaustive_shuffle_without_replacement","samples_per_epoch":null,"seed":42,"training_balance":"equal_role_families","weight_decay":0.0001} | AdamW optimizer with decoupled weight decay and persisted hyperparameters. | audit_provenance_v1 | audit_provenance_v1 | Loshchilov & Hutter (2019), DOI:10.48550/arXiv.1711.05101 |
+| b32_lr3e-4 | trainer | adamw | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","labels":"participant frailty class","manifest_path":"manifests/internal_records_v2.csv","model_input":{"channels":["RED","IR","A_dyn_x","A_dyn_y","A_dyn_z","GX","GY","GZ"],"representation_mode":"raw","signal_view":"x_dl_all8_window_norm","window":{"cap_fraction_per_file":null,"cap_per_file":128,"end_alignment":"include_right_aligned_if_distinct","hop_s":2.5,"length_s":5.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"}},"participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"batch_size":32,"cache_policy":"disabled","class_count_basis":"row","class_weight_beta":0.999,"class_weighting":"inverse_frequency","classifier_role_families":["B","R"],"deterministic_algorithms":true,"device":"cuda","epoch_profile":"default_10","epoch_rule":"fixed_epoch","execution_mode":"formal","fixed_epochs":10,"focal_gamma":2.0,"gradient_clip_norm":null,"inner_grouped_folds":0,"inner_patience":0,"label_smoothing":0.0,"learning_rate":0.0003,"loss":"cross_entropy","maximum_inner_epochs":0,"n_classes":3,"num_workers":0,"optimizer":"adamw","optimizer_parameters":{"amsgrad":false,"betas":[0.9,0.999],"eps":1e-08,"maximize":false},"outer_labels_visible_to_trainer":false,"participant_window_quota":"all","refit_on_all_outer_training":true,"sampler":"exhaustive_shuffle_without_replacement","samples_per_epoch":null,"seed":42,"training_balance":"equal_role_families","weight_decay":0.0001} | AdamW optimizer with decoupled weight decay and persisted hyperparameters. | audit_provenance_v1 | audit_provenance_v1 | Loshchilov & Hutter (2019), DOI:10.48550/arXiv.1711.05101 |
+| b16_lr1e-3; b16_lr3e-4; b32_lr3e-4 | window_planner | window_plan_v1 | enabled | {"dataset_id":"frailty3_m2_20260815_a054800abda272f6","input_views":["x_dl_all8_window_norm","x_analysis/x_native","processed_imu_physical"],"manifest_path":"manifests/internal_records_v2.csv","participants":29,"pipeline_fs_hz":400.0,"records":261,"roles":["B","R1","R2","R3","R4"],"source_channels":["RED","IR","AX","AY","AZ","GX","GY","GZ"],"source_units":{"ACC":"g","GYRO":"deg/s","PPG":"raw_counts"}} | {"engineering":{"cap_fraction_per_file":null,"cap_per_file":null,"end_alignment":"left_start_regular_grid","hop_s":2.0,"length_s":10.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"},"raw_dl":{"cap_fraction_per_file":null,"cap_per_file":128,"end_alignment":"include_right_aligned_if_distinct","hop_s":2.5,"length_s":5.0,"min_valid_fraction":1.0,"padding":"none_complete_windows_only"},"shared_planner_version":"window_plan_v1"} | Persisted window_planner contract; detailed values remain in the component input and fixed-parameter fields. | audit_provenance_v1 | audit_provenance_v1 | Project component-role audit binding: window_planner; no separate external literature source claimed |
+
+## Model/module-owned reporter contracts and literature
+
+The complete generated methods record is in [REPORT_METHODS.md](REPORT_METHODS.md). Profiles are selected from the persisted component identities and affect presentation only—not training, predictions, thresholds, or ranking.
+
+| Profile | Kind | Scope | Components | Required tables | Required figures | Literature | Module sources |
+|---|---|---|---|---|---|---|---|
+| audit_provenance_v1 | endpoint_or_module | Configuration and provenance audit | ["aggregation:line_b_equal_role_families", "dataset_adapter:frailty3_m2_20260815_a054800abda272f6", "denoiser:identity", "evaluation:balanced_accuracy", "feature_extractor:feature_vector_282_v3", "imu_preprocessing:profile_a_lowpass_0p3hz", "motion_detector:formal_local_supervised_motion_detector_v2", "peak_detector:aboy_project_v1", "ppg_preprocessing:butterworth_sos", "representation:raw", "signal_views_and_scaling:parallel_physical_analysis_and_dl_views", "split_registry:frailty3_future_corrected_sgkf5_v2", "sqi:quality_off", "trainer:adamw", "window_planner:window_plan_v1"] | ["test_components", "reproducibility_summary"] | [] | [] | ["Historical project adaptation; algorithm family: Aboy et al. (2005), DOI:10.1109/TBME.2005.855725", "Loshchilov & Hutter (2019), DOI:10.48550/arXiv.1711.05101", "N/A — component was not executed", "Project component-role audit binding: dataset_adapter; no separate external literature source claimed", "Project component-role audit binding: evaluation; no separate external literature source claimed", "Project component-role audit binding: feature_extractor; no separate external literature source claimed", "Project component-role audit binding: signal_views_and_scaling; no separate external literature source claimed", "Project component-role audit binding: split_registry; no separate external literature source claimed", "Project component-role audit binding: window_planner; no separate external literature source claimed", "Project registry implementation: ppg_frailty.representations.raw; no separate external literature source claimed", "Project registry implementation: ppg_frailty.signal.preprocess.materialize_signal_preprocessing_config; no separate external literature source claimed", "Project registry implementation: ppg_frailty.training.aggregation.aggregate_hierarchy; no separate external literature source claimed"] |
+| inceptiontime_single_network_model_v1 | model_or_module_extension | InceptionTime single-network model extension | ["classifier:InceptionTimeFull"] | ["training_history_raw", "test_components"] | ["learning_curves", "top_learning_curves", "balanced_accuracy_learning_curves", "top_balanced_accuracy_learning_curves"] | [] | ["Fawaz et al. (2020), InceptionTime, DOI:10.1007/s10618-020-00710-y"] |
+| multiclass_participant_oof_v1 | endpoint_or_module | Multiclass frailty classifier | ["classifier:InceptionTimeFull"] | ["case_summary", "metric_distribution_summary", "repeat_metrics", "repeat_per_class_metrics", "per_class_metrics", "confusion_matrices", "classification_prediction_scores", "classification_prediction_tsne", "classification_roc_curves", "classification_diagnostic_status", "paired_participant_inference", "comparison_conclusions"] | ["classification_prediction_scores", "classification_prediction_tsne", "classification_roc_auc_curves", "leaderboard", "stability", "macro_f1_stability", "roc_pr_auc_stability", "per_class_metric_stability", "confusion_matrices", "confusion_matrices_row_normalized", "per_class", "calibration"] | ["Brodersen et al. (2010), balanced accuracy, DOI:10.1109/ICPR.2010.764", "Sokolova & Lapalme (2009), classification measures including F-score, DOI:10.1016/j.ipm.2009.03.002", "Fawcett (2006), ROC analysis, DOI:10.1016/j.patrec.2005.10.010", "Efron & Tibshirani (1993), An Introduction to the Bootstrap, DOI:10.1007/978-1-4899-4541-9", "Holm (1979), sequentially rejective multiple testing, DOI:10.2307/4615733"] | ["Fawaz et al. (2020), InceptionTime, DOI:10.1007/s10618-020-00710-y"] |
+
+## Comprehensive comparison and confidence-qualified conclusion
+
+P values are null-hypothesis tail probabilities, not the probability that a model is best. Repeat Student-t CIs and participant-cluster bootstrap CIs are kept separate. The lossless table and full narrative are in [RESULT_INTERPRETATION.md](RESULT_INTERPRETATION.md) and `tables/comparison_conclusions.json`.
+
+| Rank | Case | BA mean ± SD (%) | BA participant-cluster 95% CI (%) | Macro-F1 mean ± SD (%) | Macro-F1 participant-cluster 95% CI (%) | Macro ROC-AUC mean ± SD (%) | Worst-fold BA (%) | Worst-class F1 (%) | BA Holm P | F1 Holm P | P-value role |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | b16_lr3e-4 | 59.5 ± 6.2 | [45.4, 73.0] | 59.4 ± 6.3 | [44.4, 72.3] | 75.7 ± 3.1 | 33.3 | 52.5 | N/A | N/A | N/A_no_eligible_paired_comparison |
+| 2 | b16_lr1e-3 | 55.2 ± 5.1 | [41.9, 67.9] | 55.4 ± 6.3 | [41.1, 67.5] | 74.9 ± 3.6 | 33.3 | 51.6 | N/A | N/A | N/A_no_eligible_paired_comparison |
+| 3 | b32_lr3e-4 | 54.3 ± 3.0 | [41.5, 66.2] | 53.4 ± 3.6 | [39.9, 64.9] | 72.3 ± 2.7 | 33.3 | 50.8 | N/A | N/A | N/A_no_eligible_paired_comparison |
+
+### Conclusions by evidence angle
+
+| Angle | Case | Finding | Confidence | Selection effect |
+|---|---|---|---|---|
+| point_estimates | b16_lr3e-4 | Highest participant-OOF BA is b16_lr3e-4: 59.5 ± 6.2 percent; Macro-F1 59.4 ± 6.3 percent; macro ROC-AUC 75.7 ± 3.1 percent. | descriptive | none_by_itself |
+| uncertainty | b16_lr3e-4 | Repeat t-CI and participant-cluster percentile CI are reported separately; marginal CI overlap is not used as a significance test. | evidence_completeness_high_with_cluster_ci_not_superiority | supports_precision_audit_only |
+| paired_inference | N/A | No eligible paired P-value family is available; superiority is not established. | exploratory_or_unavailable | none_automatic |
+| robustness | b16_lr3e-4 | Worst-fold BA=33.3%; worst-class F1=52.5%. These stress metrics can disagree with mean BA ranking. | evidence_completeness_high_with_cluster_ci_not_superiority | secondary_review |
+| selection | N/A | Persisted choice=none by manual review only; no automatic selection in ordinary study reporter; participant-OOF point-estimate top=b16_lr3e-4; agreement=N/A. This is a screening choice, not an independent final-test winner. | not_established_no_selection | retain_persisted_choice_without_rewriting_history |
 
 ## Seed and data-split reproducibility
 
@@ -421,97 +451,103 @@ The complete resolved varied/controlled tables are [varied_parameters.csv](table
 
 Primary ranking is by participant-level, repeat-recomputed abstention-aware balanced accuracy, then participant coverage and abstention-aware Macro-F1. Conditional retained-only metrics remain visible but never lead the ranking; deployment measurements do not filter this table.
 
-| Rank | Case | Abstention-aware BA, mean ± SD (%) | Abstention-aware precision | Abstention-aware recall | Abstention-aware Macro-F1, mean ± SD (%) | Participant coverage | Abstentions | Abstentions by class | Conditional BA, mean ± SD (%) | Conditional Macro-F1, mean ± SD (%) | Macro ROC AUC, mean ± SD (%) | Macro PR AUC, mean ± SD (%) | Conditional BA LCB95 | Conditional Macro-F1 LCB95 | Aware worst-fold BA | Conditional worst-fold BA | Worst recall | Worst F1 | Source | Frailty endpoint | Motion auxiliary outer-OOF | Interpretation |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | b16_lr3e-4 | 59.5 ± 6.2 | 0.6136 | 0.5954 | 59.4 ± 6.3 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 59.5 ± 6.2 | 59.4 ± 6.3 | 75.7 ± 3.1 | 66.7 ± 4.1 | 0.4537 | 0.4439 | 0.3333 | 0.3333 | 0.5167 | 0.5254 | config_metrics_v2 | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
-| 2 | b16_lr1e-3 | 55.2 ± 5.1 | 0.5836 | 0.5519 | 55.4 ± 6.3 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 55.2 ± 5.1 | 55.4 ± 6.3 | 74.9 ± 3.6 | 66.8 ± 5.1 | 0.4185 | 0.4112 | 0.3333 | 0.3333 | 0.5500 | 0.5156 | config_metrics_v2 | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
-| 3 | b32_lr3e-4 | 54.3 ± 3.0 | 0.5568 | 0.5426 | 53.4 ± 3.6 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 54.3 ± 3.0 | 53.4 ± 3.6 | 72.3 ± 2.7 | 63.0 ± 3.6 | 0.4148 | 0.3992 | 0.3333 | 0.3333 | 0.5111 | 0.5082 | config_metrics_v2 | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| Rank | Case | Abstention-aware BA, mean ± SD (%) | Abstention-aware precision | Abstention-aware recall | Abstention-aware Macro-F1, mean ± SD (%) | Participant coverage | Abstentions | Abstentions by class | Conditional BA, mean ± SD (%) | Conditional BA cluster 95% CI (%) | Conditional Macro-F1, mean ± SD (%) | Conditional Macro-F1 cluster 95% CI (%) | Macro ROC AUC, mean ± SD (%) | Macro PR AUC, mean ± SD (%) | Conditional BA LCB95 | Conditional Macro-F1 LCB95 | Aware worst-fold BA | Conditional worst-fold BA | Worst recall | Worst F1 | Source | Frailty endpoint | Motion auxiliary outer-OOF | Interpretation |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | b16_lr3e-4 | 59.5 ± 6.2 | 0.6136 | 0.5954 | 59.4 ± 6.3 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 59.5 ± 6.2 | [45.4, 73.0] | 59.4 ± 6.3 | [44.4, 72.3] | 75.7 ± 3.1 | 66.7 ± 4.1 | 0.4537 | 0.4439 | 0.3333 | 0.3333 | 0.5167 | 0.5254 | config_metrics_v2 | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| 2 | b16_lr1e-3 | 55.2 ± 5.1 | 0.5836 | 0.5519 | 55.4 ± 6.3 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 55.2 ± 5.1 | [41.9, 67.9] | 55.4 ± 6.3 | [41.1, 67.5] | 74.9 ± 3.6 | 66.8 ± 5.1 | 0.4185 | 0.4112 | 0.3333 | 0.3333 | 0.5500 | 0.5156 | config_metrics_v2 | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
+| 3 | b32_lr3e-4 | 54.3 ± 3.0 | 0.5568 | 0.5426 | 53.4 ± 3.6 | 1.0000 | 0 | [[0, 0], [1, 0], [2, 0]] | 54.3 ± 3.0 | [41.5, 66.2] | 53.4 ± 3.6 | [39.9, 64.9] | 72.3 ± 2.7 | 63.0 ± 3.6 | 0.4148 | 0.3992 | 0.3333 | 0.3333 | 0.5111 | 0.5082 | config_metrics_v2 | outer_heldout_participant_oof | N/A | not_applicable_no_auxiliary_motion_evidence |
 
 ## Repeat-level predictive distributions
 
-Mean and sample SD are shown in one percentage column; lossless CI, range, mean, and SD values remain in the matching JSON table.
+Mean and sample SD are shown in one percentage column and the two-sided repeat-level Student-t 95% CI is shown beside it. Lossless bounds, range, mean, and SD remain in the matching JSON table.
 
-| Case | Metric | Repeats | Mean ± SD (%) | Source |
-|---|---|---|---|---|
-| b16_lr3e-4 | balanced_accuracy | 5 | 59.5 ± 6.2 | participant_oof |
-| b16_lr3e-4 | macro_f1 | 5 | 59.4 ± 6.3 | participant_oof |
-| b16_lr3e-4 | macro_roc_auc_ovr | 5 | 75.7 ± 3.1 | participant_oof |
-| b16_lr3e-4 | macro_pr_auc_ovr | 5 | 66.7 ± 4.1 | participant_oof |
-| b16_lr3e-4 | abstention_aware_balanced_accuracy | 5 | 59.5 ± 6.2 | participant_oof |
-| b16_lr3e-4 | abstention_aware_macro_f1 | 5 | 59.4 ± 6.3 | participant_oof |
-| b16_lr1e-3 | balanced_accuracy | 5 | 55.2 ± 5.1 | participant_oof |
-| b16_lr1e-3 | macro_f1 | 5 | 55.4 ± 6.3 | participant_oof |
-| b16_lr1e-3 | macro_roc_auc_ovr | 5 | 74.9 ± 3.6 | participant_oof |
-| b16_lr1e-3 | macro_pr_auc_ovr | 5 | 66.8 ± 5.1 | participant_oof |
-| b16_lr1e-3 | abstention_aware_balanced_accuracy | 5 | 55.2 ± 5.1 | participant_oof |
-| b16_lr1e-3 | abstention_aware_macro_f1 | 5 | 55.4 ± 6.3 | participant_oof |
-| b32_lr3e-4 | balanced_accuracy | 5 | 54.3 ± 3.0 | participant_oof |
-| b32_lr3e-4 | macro_f1 | 5 | 53.4 ± 3.6 | participant_oof |
-| b32_lr3e-4 | macro_roc_auc_ovr | 5 | 72.3 ± 2.7 | participant_oof |
-| b32_lr3e-4 | macro_pr_auc_ovr | 5 | 63.0 ± 3.6 | participant_oof |
-| b32_lr3e-4 | abstention_aware_balanced_accuracy | 5 | 54.3 ± 3.0 | participant_oof |
-| b32_lr3e-4 | abstention_aware_macro_f1 | 5 | 53.4 ± 3.6 | participant_oof |
+| Case | Metric | Repeats | Mean ± SD (%) | Repeat 95% CI (%) | Source |
+|---|---|---|---|---|---|
+| b16_lr3e-4 | balanced_accuracy | 5 | 59.5 ± 6.2 | [51.9, 67.2] | participant_oof |
+| b16_lr3e-4 | macro_f1 | 5 | 59.4 ± 6.3 | [51.6, 67.3] | participant_oof |
+| b16_lr3e-4 | macro_roc_auc_ovr | 5 | 75.7 ± 3.1 | [71.9, 79.5] | participant_oof |
+| b16_lr3e-4 | macro_pr_auc_ovr | 5 | 66.7 ± 4.1 | [61.6, 71.9] | participant_oof |
+| b16_lr3e-4 | abstention_aware_balanced_accuracy | 5 | 59.5 ± 6.2 | [51.9, 67.2] | participant_oof |
+| b16_lr3e-4 | abstention_aware_macro_f1 | 5 | 59.4 ± 6.3 | [51.6, 67.3] | participant_oof |
+| b16_lr1e-3 | balanced_accuracy | 5 | 55.2 ± 5.1 | [48.8, 61.6] | participant_oof |
+| b16_lr1e-3 | macro_f1 | 5 | 55.4 ± 6.3 | [47.5, 63.2] | participant_oof |
+| b16_lr1e-3 | macro_roc_auc_ovr | 5 | 74.9 ± 3.6 | [70.4, 79.4] | participant_oof |
+| b16_lr1e-3 | macro_pr_auc_ovr | 5 | 66.8 ± 5.1 | [60.4, 73.1] | participant_oof |
+| b16_lr1e-3 | abstention_aware_balanced_accuracy | 5 | 55.2 ± 5.1 | [48.8, 61.6] | participant_oof |
+| b16_lr1e-3 | abstention_aware_macro_f1 | 5 | 55.4 ± 6.3 | [47.5, 63.2] | participant_oof |
+| b32_lr3e-4 | balanced_accuracy | 5 | 54.3 ± 3.0 | [50.5, 58.0] | participant_oof |
+| b32_lr3e-4 | macro_f1 | 5 | 53.4 ± 3.6 | [48.9, 57.9] | participant_oof |
+| b32_lr3e-4 | macro_roc_auc_ovr | 5 | 72.3 ± 2.7 | [68.9, 75.6] | participant_oof |
+| b32_lr3e-4 | macro_pr_auc_ovr | 5 | 63.0 ± 3.6 | [58.6, 67.5] | participant_oof |
+| b32_lr3e-4 | abstention_aware_balanced_accuracy | 5 | 54.3 ± 3.0 | [50.5, 58.0] | participant_oof |
+| b32_lr3e-4 | abstention_aware_macro_f1 | 5 | 53.4 ± 3.6 | [48.9, 57.9] | participant_oof |
 
 <details><summary>Per-class repeat distributions</summary>
 
-| Case | Class | Metric | Repeats | Mean ± SD (%) |
-|---|---|---|---|---|
-| b16_lr1e-3 | Pre-Frail | balanced_accuracy_ovr | 5 | 67.8 ± 5.4 |
-| b16_lr1e-3 | Pre-Frail | f1 | 5 | 54.7 ± 9.0 |
-| b16_lr1e-3 | Pre-Frail | recall | 5 | 55.6 ± 17.6 |
-| b16_lr1e-3 | Pre-Frail | specificity | 5 | 80.0 ± 10.6 |
-| b16_lr1e-3 | Pre-Frail | roc_auc_ovr | 5 | 79.4 ± 2.7 |
-| b16_lr1e-3 | Pre-Frail | pr_auc_ovr | 5 | 64.1 ± 3.0 |
-| b16_lr1e-3 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 56.9 ± 5.1 |
-| b16_lr1e-3 | Robust/Non-Frail | f1 | 5 | 50.9 ± 8.2 |
-| b16_lr1e-3 | Robust/Non-Frail | recall | 5 | 55.0 ± 15.1 |
-| b16_lr1e-3 | Robust/Non-Frail | specificity | 5 | 58.8 ± 8.3 |
-| b16_lr1e-3 | Robust/Non-Frail | roc_auc_ovr | 5 | 63.9 ± 8.0 |
-| b16_lr1e-3 | Robust/Non-Frail | pr_auc_ovr | 5 | 61.6 ± 9.1 |
-| b16_lr1e-3 | Young | balanced_accuracy_ovr | 5 | 72.7 ± 11.2 |
-| b16_lr1e-3 | Young | f1 | 5 | 60.6 ± 19.4 |
-| b16_lr1e-3 | Young | recall | 5 | 55.0 ± 19.0 |
-| b16_lr1e-3 | Young | specificity | 5 | 90.5 ± 7.5 |
-| b16_lr1e-3 | Young | roc_auc_ovr | 5 | 81.4 ± 6.8 |
-| b16_lr1e-3 | Young | pr_auc_ovr | 5 | 74.7 ± 11.3 |
-| b16_lr3e-4 | Pre-Frail | balanced_accuracy_ovr | 5 | 71.2 ± 9.0 |
-| b16_lr3e-4 | Pre-Frail | f1 | 5 | 59.8 ± 11.8 |
-| b16_lr3e-4 | Pre-Frail | recall | 5 | 64.4 ± 18.3 |
-| b16_lr3e-4 | Pre-Frail | specificity | 5 | 78.0 ± 7.6 |
-| b16_lr3e-4 | Pre-Frail | roc_auc_ovr | 5 | 80.0 ± 3.6 |
-| b16_lr3e-4 | Pre-Frail | pr_auc_ovr | 5 | 63.2 ± 7.8 |
-| b16_lr3e-4 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 60.0 ± 5.6 |
-| b16_lr3e-4 | Robust/Non-Frail | f1 | 5 | 52.3 ± 7.1 |
-| b16_lr3e-4 | Robust/Non-Frail | recall | 5 | 51.7 ± 10.9 |
-| b16_lr3e-4 | Robust/Non-Frail | specificity | 5 | 68.2 ± 9.8 |
-| b16_lr3e-4 | Robust/Non-Frail | roc_auc_ovr | 5 | 64.0 ± 5.3 |
-| b16_lr3e-4 | Robust/Non-Frail | pr_auc_ovr | 5 | 62.1 ± 5.1 |
-| b16_lr3e-4 | Young | balanced_accuracy_ovr | 5 | 76.0 ± 6.1 |
-| b16_lr3e-4 | Young | f1 | 5 | 66.3 ± 9.8 |
-| b16_lr3e-4 | Young | recall | 5 | 62.5 ± 8.8 |
-| b16_lr3e-4 | Young | specificity | 5 | 89.5 ± 8.5 |
-| b16_lr3e-4 | Young | roc_auc_ovr | 5 | 83.1 ± 7.5 |
-| b16_lr3e-4 | Young | pr_auc_ovr | 5 | 74.9 ± 13.2 |
-| b32_lr3e-4 | Pre-Frail | balanced_accuracy_ovr | 5 | 64.6 ± 7.4 |
-| b32_lr3e-4 | Pre-Frail | f1 | 5 | 49.4 ± 12.9 |
-| b32_lr3e-4 | Pre-Frail | recall | 5 | 51.1 ± 20.2 |
-| b32_lr3e-4 | Pre-Frail | specificity | 5 | 78.0 ± 7.6 |
-| b32_lr3e-4 | Pre-Frail | roc_auc_ovr | 5 | 77.3 ± 5.8 |
-| b32_lr3e-4 | Pre-Frail | pr_auc_ovr | 5 | 60.4 ± 7.5 |
-| b32_lr3e-4 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 57.6 ± 4.9 |
-| b32_lr3e-4 | Robust/Non-Frail | f1 | 5 | 49.4 ± 11.3 |
-| b32_lr3e-4 | Robust/Non-Frail | recall | 5 | 51.7 ± 19.0 |
-| b32_lr3e-4 | Robust/Non-Frail | specificity | 5 | 63.5 ± 12.1 |
-| b32_lr3e-4 | Robust/Non-Frail | roc_auc_ovr | 5 | 58.5 ± 4.6 |
-| b32_lr3e-4 | Robust/Non-Frail | pr_auc_ovr | 5 | 55.5 ± 6.1 |
-| b32_lr3e-4 | Young | balanced_accuracy_ovr | 5 | 73.3 ± 7.6 |
-| b32_lr3e-4 | Young | f1 | 5 | 61.3 ± 11.7 |
-| b32_lr3e-4 | Young | recall | 5 | 60.0 ± 16.3 |
-| b32_lr3e-4 | Young | specificity | 5 | 86.7 ± 10.3 |
-| b32_lr3e-4 | Young | roc_auc_ovr | 5 | 81.0 ± 5.2 |
-| b32_lr3e-4 | Young | pr_auc_ovr | 5 | 73.3 ± 7.5 |
+| Case | Class | Metric | Repeats | Mean ± SD (%) | Repeat 95% CI (%) |
+|---|---|---|---|---|---|
+| b16_lr1e-3 | Pre-Frail | balanced_accuracy_ovr | 5 | 67.8 ± 5.4 | [61.1, 74.5] |
+| b16_lr1e-3 | Pre-Frail | f1 | 5 | 54.7 ± 9.0 | [43.5, 65.9] |
+| b16_lr1e-3 | Pre-Frail | recall | 5 | 55.6 ± 17.6 | [33.7, 77.4] |
+| b16_lr1e-3 | Pre-Frail | specificity | 5 | 80.0 ± 10.6 | [66.8, 93.2] |
+| b16_lr1e-3 | Pre-Frail | roc_auc_ovr | 5 | 79.4 ± 2.7 | [76.0, 82.9] |
+| b16_lr1e-3 | Pre-Frail | pr_auc_ovr | 5 | 64.1 ± 3.0 | [60.3, 67.9] |
+| b16_lr1e-3 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 56.9 ± 5.1 | [50.6, 63.2] |
+| b16_lr1e-3 | Robust/Non-Frail | f1 | 5 | 50.9 ± 8.2 | [40.6, 61.1] |
+| b16_lr1e-3 | Robust/Non-Frail | recall | 5 | 55.0 ± 15.1 | [36.2, 73.8] |
+| b16_lr1e-3 | Robust/Non-Frail | specificity | 5 | 58.8 ± 8.3 | [48.5, 69.2] |
+| b16_lr1e-3 | Robust/Non-Frail | roc_auc_ovr | 5 | 63.9 ± 8.0 | [54.0, 73.8] |
+| b16_lr1e-3 | Robust/Non-Frail | pr_auc_ovr | 5 | 61.6 ± 9.1 | [50.3, 72.9] |
+| b16_lr1e-3 | Young | balanced_accuracy_ovr | 5 | 72.7 ± 11.2 | [58.8, 86.7] |
+| b16_lr1e-3 | Young | f1 | 5 | 60.6 ± 19.4 | [36.5, 84.6] |
+| b16_lr1e-3 | Young | recall | 5 | 55.0 ± 19.0 | [31.5, 78.5] |
+| b16_lr1e-3 | Young | specificity | 5 | 90.5 ± 7.5 | [81.1, 99.8] |
+| b16_lr1e-3 | Young | roc_auc_ovr | 5 | 81.4 ± 6.8 | [73.0, 89.9] |
+| b16_lr1e-3 | Young | pr_auc_ovr | 5 | 74.7 ± 11.3 | [60.7, 88.7] |
+| b16_lr3e-4 | Pre-Frail | balanced_accuracy_ovr | 5 | 71.2 ± 9.0 | [60.0, 82.4] |
+| b16_lr3e-4 | Pre-Frail | f1 | 5 | 59.8 ± 11.8 | [45.2, 74.4] |
+| b16_lr3e-4 | Pre-Frail | recall | 5 | 64.4 ± 18.3 | [41.8, 87.1] |
+| b16_lr3e-4 | Pre-Frail | specificity | 5 | 78.0 ± 7.6 | [68.6, 87.4] |
+| b16_lr3e-4 | Pre-Frail | roc_auc_ovr | 5 | 80.0 ± 3.6 | [75.6, 84.4] |
+| b16_lr3e-4 | Pre-Frail | pr_auc_ovr | 5 | 63.2 ± 7.8 | [53.5, 72.9] |
+| b16_lr3e-4 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 60.0 ± 5.6 | [53.0, 66.9] |
+| b16_lr3e-4 | Robust/Non-Frail | f1 | 5 | 52.3 ± 7.1 | [43.4, 61.1] |
+| b16_lr3e-4 | Robust/Non-Frail | recall | 5 | 51.7 ± 10.9 | [38.2, 65.2] |
+| b16_lr3e-4 | Robust/Non-Frail | specificity | 5 | 68.2 ± 9.8 | [56.0, 80.5] |
+| b16_lr3e-4 | Robust/Non-Frail | roc_auc_ovr | 5 | 64.0 ± 5.3 | [57.5, 70.6] |
+| b16_lr3e-4 | Robust/Non-Frail | pr_auc_ovr | 5 | 62.1 ± 5.1 | [55.8, 68.4] |
+| b16_lr3e-4 | Young | balanced_accuracy_ovr | 5 | 76.0 ± 6.1 | [68.4, 83.6] |
+| b16_lr3e-4 | Young | f1 | 5 | 66.3 ± 9.8 | [54.0, 78.5] |
+| b16_lr3e-4 | Young | recall | 5 | 62.5 ± 8.8 | [51.5, 73.5] |
+| b16_lr3e-4 | Young | specificity | 5 | 89.5 ± 8.5 | [78.9, 100.1] |
+| b16_lr3e-4 | Young | roc_auc_ovr | 5 | 83.1 ± 7.5 | [73.8, 92.4] |
+| b16_lr3e-4 | Young | pr_auc_ovr | 5 | 74.9 ± 13.2 | [58.5, 91.3] |
+| b32_lr3e-4 | Pre-Frail | balanced_accuracy_ovr | 5 | 64.6 ± 7.4 | [55.3, 73.8] |
+| b32_lr3e-4 | Pre-Frail | f1 | 5 | 49.4 ± 12.9 | [33.5, 65.4] |
+| b32_lr3e-4 | Pre-Frail | recall | 5 | 51.1 ± 20.2 | [26.0, 76.2] |
+| b32_lr3e-4 | Pre-Frail | specificity | 5 | 78.0 ± 7.6 | [68.6, 87.4] |
+| b32_lr3e-4 | Pre-Frail | roc_auc_ovr | 5 | 77.3 ± 5.8 | [70.1, 84.6] |
+| b32_lr3e-4 | Pre-Frail | pr_auc_ovr | 5 | 60.4 ± 7.5 | [51.0, 69.7] |
+| b32_lr3e-4 | Robust/Non-Frail | balanced_accuracy_ovr | 5 | 57.6 ± 4.9 | [51.6, 63.6] |
+| b32_lr3e-4 | Robust/Non-Frail | f1 | 5 | 49.4 ± 11.3 | [35.4, 63.4] |
+| b32_lr3e-4 | Robust/Non-Frail | recall | 5 | 51.7 ± 19.0 | [28.1, 75.3] |
+| b32_lr3e-4 | Robust/Non-Frail | specificity | 5 | 63.5 ± 12.1 | [48.6, 78.5] |
+| b32_lr3e-4 | Robust/Non-Frail | roc_auc_ovr | 5 | 58.5 ± 4.6 | [52.9, 64.2] |
+| b32_lr3e-4 | Robust/Non-Frail | pr_auc_ovr | 5 | 55.5 ± 6.1 | [47.9, 63.1] |
+| b32_lr3e-4 | Young | balanced_accuracy_ovr | 5 | 73.3 ± 7.6 | [63.9, 82.7] |
+| b32_lr3e-4 | Young | f1 | 5 | 61.3 ± 11.7 | [46.8, 75.8] |
+| b32_lr3e-4 | Young | recall | 5 | 60.0 ± 16.3 | [39.8, 80.2] |
+| b32_lr3e-4 | Young | specificity | 5 | 86.7 ± 10.3 | [73.8, 99.5] |
+| b32_lr3e-4 | Young | roc_auc_ovr | 5 | 81.0 ± 5.2 | [74.4, 87.5] |
+| b32_lr3e-4 | Young | pr_auc_ovr | 5 | 73.3 ± 7.5 | [63.9, 82.7] |
 
 </details>
+
+## Paired participant-cluster inference
+
+Each candidate is compared with the declared reference on the exact participant/repeat/fold/split roster. P values are two-sided participant-cluster permutation results; Holm adjustment is applied separately within BA and Macro-F1. These comparisons do not select a winner and do not turn this representation screen into a causal ablation.
+
+N/A — no rows were available.
 
 ## Aggregation sensitivity from the same file-level OOF
 
@@ -544,203 +580,248 @@ All three rows reuse the same fitted held-out OOF probabilities; they are not th
 
 <details><summary>Hierarchy coverage: B/R1–R4 window/file views and B/R role-balanced view</summary>
 
-| Case | Repeat | Level | View | Group | OOF units | Retained units | Participants |
-|---|---|---|---|---|---|---|---|
-| b16_lr1e-3 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| b16_lr1e-3 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| b16_lr1e-3 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| b16_lr1e-3 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| b16_lr1e-3 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| b16_lr1e-3 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| b16_lr1e-3 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| b16_lr1e-3 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| b16_lr1e-3 | 0 | window | window_balanced_to_participant | B | 3479 | 3479 | 29 |
-| b16_lr1e-3 | 0 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 29 |
-| b16_lr1e-3 | 0 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 29 |
-| b16_lr1e-3 | 0 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 29 |
-| b16_lr1e-3 | 0 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 29 |
-| b16_lr1e-3 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| b16_lr1e-3 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| b16_lr1e-3 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| b16_lr1e-3 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| b16_lr1e-3 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| b16_lr1e-3 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| b16_lr1e-3 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| b16_lr1e-3 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| b16_lr1e-3 | 1 | window | window_balanced_to_participant | B | 3479 | 3479 | 29 |
-| b16_lr1e-3 | 1 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 29 |
-| b16_lr1e-3 | 1 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 29 |
-| b16_lr1e-3 | 1 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 29 |
-| b16_lr1e-3 | 1 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 29 |
-| b16_lr1e-3 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| b16_lr1e-3 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| b16_lr1e-3 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| b16_lr1e-3 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| b16_lr1e-3 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| b16_lr1e-3 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| b16_lr1e-3 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| b16_lr1e-3 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| b16_lr1e-3 | 2 | window | window_balanced_to_participant | B | 3479 | 3479 | 29 |
-| b16_lr1e-3 | 2 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 29 |
-| b16_lr1e-3 | 2 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 29 |
-| b16_lr1e-3 | 2 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 29 |
-| b16_lr1e-3 | 2 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 29 |
-| b16_lr1e-3 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| b16_lr1e-3 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| b16_lr1e-3 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| b16_lr1e-3 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| b16_lr1e-3 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| b16_lr1e-3 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| b16_lr1e-3 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| b16_lr1e-3 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| b16_lr1e-3 | 3 | window | window_balanced_to_participant | B | 3479 | 3479 | 29 |
-| b16_lr1e-3 | 3 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 29 |
-| b16_lr1e-3 | 3 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 29 |
-| b16_lr1e-3 | 3 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 29 |
-| b16_lr1e-3 | 3 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 29 |
-| b16_lr1e-3 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| b16_lr1e-3 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| b16_lr1e-3 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| b16_lr1e-3 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| b16_lr1e-3 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| b16_lr1e-3 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| b16_lr1e-3 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| b16_lr1e-3 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| b16_lr1e-3 | 4 | window | window_balanced_to_participant | B | 3479 | 3479 | 29 |
-| b16_lr1e-3 | 4 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 29 |
-| b16_lr1e-3 | 4 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 29 |
-| b16_lr1e-3 | 4 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 29 |
-| b16_lr1e-3 | 4 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 29 |
-| b16_lr3e-4 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| b16_lr3e-4 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| b16_lr3e-4 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| b16_lr3e-4 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| b16_lr3e-4 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| b16_lr3e-4 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| b16_lr3e-4 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| b16_lr3e-4 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| b16_lr3e-4 | 0 | window | window_balanced_to_participant | B | 3479 | 3479 | 29 |
-| b16_lr3e-4 | 0 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 29 |
-| b16_lr3e-4 | 0 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 29 |
-| b16_lr3e-4 | 0 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 29 |
-| b16_lr3e-4 | 0 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 29 |
-| b16_lr3e-4 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| b16_lr3e-4 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| b16_lr3e-4 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| b16_lr3e-4 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| b16_lr3e-4 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| b16_lr3e-4 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| b16_lr3e-4 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| b16_lr3e-4 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| b16_lr3e-4 | 1 | window | window_balanced_to_participant | B | 3479 | 3479 | 29 |
-| b16_lr3e-4 | 1 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 29 |
-| b16_lr3e-4 | 1 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 29 |
-| b16_lr3e-4 | 1 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 29 |
-| b16_lr3e-4 | 1 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 29 |
-| b16_lr3e-4 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| b16_lr3e-4 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| b16_lr3e-4 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| b16_lr3e-4 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| b16_lr3e-4 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| b16_lr3e-4 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| b16_lr3e-4 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| b16_lr3e-4 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| b16_lr3e-4 | 2 | window | window_balanced_to_participant | B | 3479 | 3479 | 29 |
-| b16_lr3e-4 | 2 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 29 |
-| b16_lr3e-4 | 2 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 29 |
-| b16_lr3e-4 | 2 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 29 |
-| b16_lr3e-4 | 2 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 29 |
-| b16_lr3e-4 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| b16_lr3e-4 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| b16_lr3e-4 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| b16_lr3e-4 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| b16_lr3e-4 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| b16_lr3e-4 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| b16_lr3e-4 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| b16_lr3e-4 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| b16_lr3e-4 | 3 | window | window_balanced_to_participant | B | 3479 | 3479 | 29 |
-| b16_lr3e-4 | 3 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 29 |
-| b16_lr3e-4 | 3 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 29 |
-| b16_lr3e-4 | 3 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 29 |
-| b16_lr3e-4 | 3 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 29 |
-| b16_lr3e-4 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| b16_lr3e-4 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| b16_lr3e-4 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| b16_lr3e-4 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| b16_lr3e-4 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| b16_lr3e-4 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| b16_lr3e-4 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| b16_lr3e-4 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| b16_lr3e-4 | 4 | window | window_balanced_to_participant | B | 3479 | 3479 | 29 |
-| b16_lr3e-4 | 4 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 29 |
-| b16_lr3e-4 | 4 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 29 |
-| b16_lr3e-4 | 4 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 29 |
-| b16_lr3e-4 | 4 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 29 |
-| b32_lr3e-4 | 0 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| b32_lr3e-4 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| b32_lr3e-4 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| b32_lr3e-4 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| b32_lr3e-4 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| b32_lr3e-4 | 0 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| b32_lr3e-4 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| b32_lr3e-4 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| b32_lr3e-4 | 0 | window | window_balanced_to_participant | B | 3479 | 3479 | 29 |
-| b32_lr3e-4 | 0 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 29 |
-| b32_lr3e-4 | 0 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 29 |
-| b32_lr3e-4 | 0 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 29 |
-| b32_lr3e-4 | 0 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 29 |
-| b32_lr3e-4 | 1 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| b32_lr3e-4 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| b32_lr3e-4 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| b32_lr3e-4 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| b32_lr3e-4 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| b32_lr3e-4 | 1 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| b32_lr3e-4 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| b32_lr3e-4 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| b32_lr3e-4 | 1 | window | window_balanced_to_participant | B | 3479 | 3479 | 29 |
-| b32_lr3e-4 | 1 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 29 |
-| b32_lr3e-4 | 1 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 29 |
-| b32_lr3e-4 | 1 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 29 |
-| b32_lr3e-4 | 1 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 29 |
-| b32_lr3e-4 | 2 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| b32_lr3e-4 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| b32_lr3e-4 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| b32_lr3e-4 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| b32_lr3e-4 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| b32_lr3e-4 | 2 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| b32_lr3e-4 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| b32_lr3e-4 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| b32_lr3e-4 | 2 | window | window_balanced_to_participant | B | 3479 | 3479 | 29 |
-| b32_lr3e-4 | 2 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 29 |
-| b32_lr3e-4 | 2 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 29 |
-| b32_lr3e-4 | 2 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 29 |
-| b32_lr3e-4 | 2 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 29 |
-| b32_lr3e-4 | 3 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| b32_lr3e-4 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| b32_lr3e-4 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| b32_lr3e-4 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| b32_lr3e-4 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| b32_lr3e-4 | 3 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| b32_lr3e-4 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| b32_lr3e-4 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| b32_lr3e-4 | 3 | window | window_balanced_to_participant | B | 3479 | 3479 | 29 |
-| b32_lr3e-4 | 3 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 29 |
-| b32_lr3e-4 | 3 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 29 |
-| b32_lr3e-4 | 3 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 29 |
-| b32_lr3e-4 | 3 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 29 |
-| b32_lr3e-4 | 4 | file | line_a_equal_files | B | 29 | 29 | 29 |
-| b32_lr3e-4 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 29 |
-| b32_lr3e-4 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 29 |
-| b32_lr3e-4 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 29 |
-| b32_lr3e-4 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 29 |
-| b32_lr3e-4 | 4 | participant | participant_balanced_endpoint | participant | 29 | 29 | 29 |
-| b32_lr3e-4 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 29 |
-| b32_lr3e-4 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 29 |
-| b32_lr3e-4 | 4 | window | window_balanced_to_participant | B | 3479 | 3479 | 29 |
-| b32_lr3e-4 | 4 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 29 |
-| b32_lr3e-4 | 4 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 29 |
-| b32_lr3e-4 | 4 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 29 |
-| b32_lr3e-4 | 4 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 29 |
+| Case | Repeat | Level | View | Group | OOF units | Retained units | Dropped units | Retained coverage | All participants | Retained participants | Dropped participants |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| b16_lr1e-3 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 0 | window | window_balanced_to_participant | ALL | 17333 | 17333 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 0 | window | window_balanced_to_participant | B | 3479 | 3479 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 0 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 0 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 0 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 0 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 1 | window | window_balanced_to_participant | ALL | 17333 | 17333 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 1 | window | window_balanced_to_participant | B | 3479 | 3479 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 1 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 1 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 1 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 1 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 2 | window | window_balanced_to_participant | ALL | 17333 | 17333 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 2 | window | window_balanced_to_participant | B | 3479 | 3479 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 2 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 2 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 2 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 2 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 3 | window | window_balanced_to_participant | ALL | 17333 | 17333 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 3 | window | window_balanced_to_participant | B | 3479 | 3479 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 3 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 3 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 3 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 3 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 4 | window | window_balanced_to_participant | ALL | 17333 | 17333 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 4 | window | window_balanced_to_participant | B | 3479 | 3479 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 4 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 4 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 4 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr1e-3 | 4 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 0 | window | window_balanced_to_participant | ALL | 17333 | 17333 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 0 | window | window_balanced_to_participant | B | 3479 | 3479 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 0 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 0 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 0 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 0 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 1 | window | window_balanced_to_participant | ALL | 17333 | 17333 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 1 | window | window_balanced_to_participant | B | 3479 | 3479 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 1 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 1 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 1 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 1 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 2 | window | window_balanced_to_participant | ALL | 17333 | 17333 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 2 | window | window_balanced_to_participant | B | 3479 | 3479 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 2 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 2 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 2 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 2 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 3 | window | window_balanced_to_participant | ALL | 17333 | 17333 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 3 | window | window_balanced_to_participant | B | 3479 | 3479 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 3 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 3 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 3 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 3 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 4 | window | window_balanced_to_participant | ALL | 17333 | 17333 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 4 | window | window_balanced_to_participant | B | 3479 | 3479 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 4 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 4 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 4 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 0 | 1.0000 | 29 | 29 | 0 |
+| b16_lr3e-4 | 4 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 0 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 0 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 0 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 0 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 0 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 0 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 0 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 0 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 0 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 0 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 0 | window | window_balanced_to_participant | ALL | 17333 | 17333 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 0 | window | window_balanced_to_participant | B | 3479 | 3479 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 0 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 0 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 0 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 0 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 1 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 1 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 1 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 1 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 1 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 1 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 1 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 1 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 1 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 1 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 1 | window | window_balanced_to_participant | ALL | 17333 | 17333 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 1 | window | window_balanced_to_participant | B | 3479 | 3479 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 1 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 1 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 1 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 1 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 2 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 2 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 2 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 2 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 2 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 2 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 2 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 2 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 2 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 2 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 2 | window | window_balanced_to_participant | ALL | 17333 | 17333 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 2 | window | window_balanced_to_participant | B | 3479 | 3479 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 2 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 2 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 2 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 2 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 3 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 3 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 3 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 3 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 3 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 3 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 3 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 3 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 3 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 3 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 3 | window | window_balanced_to_participant | ALL | 17333 | 17333 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 3 | window | window_balanced_to_participant | B | 3479 | 3479 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 3 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 3 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 3 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 3 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 4 | file | line_a_equal_files | ALL | 145 | 145 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 4 | file | line_a_equal_files | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 4 | file | line_a_equal_files | R1 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 4 | file | line_a_equal_files | R2 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 4 | file | line_a_equal_files | R3 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 4 | file | line_a_equal_files | R4 | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 4 | participant | participant_balanced_endpoint | ALL | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 4 | role | line_b_equal_role_families | ALL | 58 | 58 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 4 | role | line_b_equal_role_families | B | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 4 | role | line_b_equal_role_families | R | 29 | 29 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 4 | window | window_balanced_to_participant | ALL | 17333 | 17333 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 4 | window | window_balanced_to_participant | B | 3479 | 3479 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 4 | window | window_balanced_to_participant | R1 | 3447 | 3447 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 4 | window | window_balanced_to_participant | R2 | 3452 | 3452 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 4 | window | window_balanced_to_participant | R3 | 3472 | 3472 | 0 | 1.0000 | 29 | 29 | 0 |
+| b32_lr3e-4 | 4 | window | window_balanced_to_participant | R4 | 3483 | 3483 | 0 | 1.0000 | 29 | 29 | 0 |
 
 </details>
 
@@ -770,23 +851,23 @@ N/A — no rows were available.
 
 This table separates direct and processed rate paths, retained coverage, unavailable predictors, and reducer failures for each role/route state.
 
-| Case | Role | Quality tier | Motion | Route state | Signal route | Retained coverage | Abstention | Abstention reasons | Direct | Processed | Unavailable predictors | Denoiser attempts | Denoiser successes | Reducer failures |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| b16_lr1e-3 | B | excellent | off | full_direct | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| b16_lr1e-3 | R1 | excellent | off | full_direct | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| b16_lr1e-3 | R2 | excellent | off | full_direct | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| b16_lr1e-3 | R3 | excellent | off | full_direct | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| b16_lr1e-3 | R4 | excellent | off | full_direct | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| b16_lr3e-4 | B | excellent | off | full_direct | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| b16_lr3e-4 | R1 | excellent | off | full_direct | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| b16_lr3e-4 | R2 | excellent | off | full_direct | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| b16_lr3e-4 | R3 | excellent | off | full_direct | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| b16_lr3e-4 | R4 | excellent | off | full_direct | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| b32_lr3e-4 | B | excellent | off | full_direct | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| b32_lr3e-4 | R1 | excellent | off | full_direct | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| b32_lr3e-4 | R2 | excellent | off | full_direct | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| b32_lr3e-4 | R3 | excellent | off | full_direct | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
-| b32_lr3e-4 | R4 | excellent | off | full_direct | direct_x_filter | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 |
+| Case | Role | Quality tier | Motion | Route state | Signal route | Files | Retained files | Dropped files | Retained coverage | Abstention | Abstention reasons | Direct | Processed | Unavailable predictors | Denoiser attempts | Denoiser successes | Reducer failures | Reducer failure rate | Post Q_rate pass rate | Recovery eligible | Q_rate recovered | Q_rate recovery rate |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| b16_lr1e-3 | B | excellent | off | full_direct | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| b16_lr1e-3 | R1 | excellent | off | full_direct | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| b16_lr1e-3 | R2 | excellent | off | full_direct | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| b16_lr1e-3 | R3 | excellent | off | full_direct | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| b16_lr1e-3 | R4 | excellent | off | full_direct | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| b16_lr3e-4 | B | excellent | off | full_direct | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| b16_lr3e-4 | R1 | excellent | off | full_direct | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| b16_lr3e-4 | R2 | excellent | off | full_direct | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| b16_lr3e-4 | R3 | excellent | off | full_direct | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| b16_lr3e-4 | R4 | excellent | off | full_direct | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| b32_lr3e-4 | B | excellent | off | full_direct | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| b32_lr3e-4 | R1 | excellent | off | full_direct | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| b32_lr3e-4 | R2 | excellent | off | full_direct | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| b32_lr3e-4 | R3 | excellent | off | full_direct | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
+| b32_lr3e-4 | R4 | excellent | off | full_direct | direct_x_filter | 725 | 725 | 0 | 1.0000 | 0.0000 | not_reported | 0 | 0 | N/A | 0 | 0 | 0 | 0.0000 | N/A | 0 | 0 | N/A |
 
 ## SQI state, score, and coverage provenance by each route
 
@@ -810,9 +891,9 @@ Direct and post-denoiser coverage are reported separately so the configured mini
 | b32_lr3e-4 | R3 | excellent | not_reported | N/A | N/A | not_reported | N/A | N/A | not_reported | N/A | N/A |
 | b32_lr3e-4 | R4 | excellent | not_reported | N/A | N/A | not_reported | N/A | N/A | not_reported | N/A | N/A |
 
-## Denoiser paired heart-rate comparison
+## Denoiser paired HR/PPI endpoint audit
 
-HR is calculated as `60 / median(valid PPI seconds)` from the same registered peak detector before and after the single denoiser attempt. Rows are paired within recording and averaged within participant before the participant-macro summary. Use the `outer_oof` rows for the primary held-out comparison; outer-train rows remain audit-only.
+HR is calculated as `60 / median(valid PPI seconds)` from the same registered peak detector before and after the single denoiser attempt. Rows are paired within recording and averaged within participant before the participant-macro summary. Use the `outer_oof` rows for the primary held-out comparison; outer-train rows remain audit-only. HR/PPI endpoint error here is absolute post-denoise minus same-record direct-PPG change; Frailty29 has no ECG reference, so it is not physiological accuracy.
 
 N/A — no rows were available.
 

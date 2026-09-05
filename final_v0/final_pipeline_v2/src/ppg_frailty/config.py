@@ -1624,7 +1624,7 @@ def _validate_formal_ablation_materialization(data: Mapping[str, Any]) -> None:
         ) != ("default_10", 10),
         "filter": filter_pair != (0.2, 8.0),
         "gravity": gravity != "profile_a_lowpass_0p3hz",
-        "peak_detector": detector_id != "aboy_project_v1",
+        "peak_detector": detector_id != "msptdfast_v2_3_python_port",
         "aggregation": balance_pair
         != ("equal_role_families", "line_b_equal_role_families"),
         "sampler": training["sampler"]
@@ -1708,6 +1708,9 @@ def _validate_formal_ablation_materialization(data: Mapping[str, Any]) -> None:
         expected = {
             "profile_a_lowpass_0p3hz": "profile_a_lowpass_0p3hz",
             "calibrated_roll_pitch_ekf_ablation": "calibrated_roll_pitch_ekf",
+            "sensor_filter_only_no_gravity_removal_ablation": (
+                "sensor_filter_only_no_gravity_removal"
+            ),
         }.get(profile_id)
         if expected is None or gravity != expected:
             raise ValueError("IMU gravity materialization identity drift")
@@ -2112,15 +2115,22 @@ def load_formal_ablation_profiles(path: str | Path) -> dict[str, Any]:
         "entries": [
             {"profile_id": "profile_a_lowpass_0p3hz", "method": "profile_a_lowpass_0p3hz", "catalog_role": "reference", "auto_run": False},
             {"profile_id": "calibrated_roll_pitch_ekf_ablation", "method": "calibrated_roll_pitch_ekf", "catalog_role": "ablation", "auto_run": False},
+            {"profile_id": "sensor_filter_only_no_gravity_removal_ablation", "method": "sensor_filter_only_no_gravity_removal", "catalog_role": "ablation", "auto_run": False},
         ],
     }
     expected_peak_detector = {
-        "reference_profile_id": "aboy_project_v1",
+        "reference_profile_id": "msptdfast_v2_3_python_port",
         "silent_fallback_forbidden": True,
         "entries": [
             {
-                "profile_id": "aboy_project_v1",
-                "detector_id": "aboy_project_v1",
+                "profile_id": "msptdfast_v2_3_python_port",
+                "detector_id": "msptdfast_v2_3_python_port",
+                "parameters": {
+                    "target_downsample_hz": 20.0,
+                    "minimum_heart_rate_bpm": 30.0,
+                    "window_s": 6.0,
+                    "overlap_fraction": 0.2,
+                },
                 "catalog_role": "reference",
                 "auto_run": False,
             },
@@ -2133,18 +2143,6 @@ def load_formal_ablation_profiles(path: str | Path) -> dict[str, Any]:
             {
                 "profile_id": "dual_polarity_prominence_v1_ablation",
                 "detector_id": "dual_polarity_prominence_v1_ablation",
-                "catalog_role": "ablation",
-                "auto_run": False,
-            },
-            {
-                "profile_id": "msptdfast_v2_3_python_port",
-                "detector_id": "msptdfast_v2_3_python_port",
-                "parameters": {
-                    "target_downsample_hz": 20.0,
-                    "minimum_heart_rate_bpm": 30.0,
-                    "window_s": 6.0,
-                    "overlap_fraction": 0.2,
-                },
                 "catalog_role": "ablation",
                 "auto_run": False,
             },
@@ -2285,11 +2283,13 @@ def materialize_formal_ablation_config(
         elif family == "imu_gravity":
             method = str(selected["method"])
             payload["signal"]["imu"]["gravity_method"] = method
-            payload["signal"]["imu"]["comparison_method"] = (
-                "profile_a_lowpass_0p3hz"
-                if method == "calibrated_roll_pitch_ekf"
-                else "calibrated_roll_pitch_ekf"
-            )
+            payload["signal"]["imu"]["comparison_method"] = {
+                "calibrated_roll_pitch_ekf": "profile_a_lowpass_0p3hz",
+                "profile_a_lowpass_0p3hz": "calibrated_roll_pitch_ekf",
+                "sensor_filter_only_no_gravity_removal": (
+                    "profile_a_lowpass_0p3hz"
+                ),
+            }[method]
         elif family == "sampler":
             payload["training"]["sampler"] = str(selected["sampler"])
         elif family == "class_count_basis":

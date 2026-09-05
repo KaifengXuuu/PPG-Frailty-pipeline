@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import csv
 import hashlib
 import importlib.util
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
+import yaml
 
 from ppg_frailty.artifact import get_reducer as canonical_get_reducer
 from ppg_frailty.peaks import detect_pulses
@@ -24,7 +27,18 @@ from ppg_frailty.peaks.msptdfast_v2 import (
 from ppg_frailty.quality.stage5_pre import (
     PEAK_ABLATION_SCHEMA,
     STAGE5_SCHEMA,
+    _aggregate_benchmark,
+    _annotate_denoiser_uncertainty,
+    _detector_report_rows,
+    _denoiser_activity_result_rows,
     _file_prediction_rows,
+    _holm_adjusted_p_values,
+    _holm_sidak_step_down,
+    _motion_detector_conclusion_rows,
+    _paired_participant_sign_flip_p,
+    _participant_mean_percentile_ci,
+    _static_peak_rank_sum_comparisons,
+    _stage5_reporter_output_status,
     _stage_directory,
     _rank_and_mark_denoiser_rows,
     align_and_score_beats,
@@ -64,6 +78,217 @@ def _cuda_available() -> bool:
 
 
 class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
+    def test_participant_bootstrap_sign_flip_and_holm_are_deterministic(self) -> None:
+        values = [0.70, 0.75, 0.80, 0.85, 0.90]
+        first_ci = _participant_mean_percentile_ci(
+            values, n_resamples=2000, seed=42
+        )
+        second_ci = _participant_mean_percentile_ci(
+            values, n_resamples=2000, seed=42
+        )
+        self.assertEqual(first_ci, second_ci)
+        self.assertLessEqual(first_ci[0], np.mean(values))
+        self.assertGreaterEqual(first_ci[1], np.mean(values))
+
+        p_value = _paired_participant_sign_flip_p(
+            [1.0] * 8, n_resamples=100_000, seed=42
+        )
+        self.assertLess(p_value, 0.02)
+        self.assertEqual(
+            _paired_participant_sign_flip_p(
+                [0.0] * 8, n_resamples=100_000, seed=42
+            ),
+            1.0,
+        )
+        adjusted = _holm_adjusted_p_values(
+            {"a": 0.01, "b": 0.03, "c": 0.20}
+        )
+        self.assertEqual(adjusted, {"a": 0.03, "b": 0.06, "c": 0.2})
+
+    def test_motion_detector_conclusions_never_cross_endpoint_strata(self) -> None:
+        def rows(*, correct: bool) -> list[dict[str, object]]:
+            return [
+                {
+                    "participant_id": participant,
+                    "file_id": f"{participant}_{label}",
+                    "activity_label": label,
+                    "repeat_index": 0,
+                    "fold_index": 0,
+                    "p_active": (
+                        0.9 if (label == 1) == correct else 0.1
+                    ),
+                    "threshold": 0.5,
+                    "predicted_activity": label if correct else 1 - label,
+                }
+                for participant in ("p1", "p2")
+                for label in (0, 1)
+            ]
+
+        metrics, _ = _detector_report_rows(
+            [
+                (
+                    "model_a",
+                    "frailty29_outer_oof",
+                    "source_grouped_oof",
+                    rows(correct=False),
+                ),
+                (
+                    "model_b",
+                    "frailty29_outer_oof",
+                    "source_grouped_oof",
+                    rows(correct=True),
+                ),
+                (
+                    "model_cross_dataset",
+                    "frailty29_trained_to_ptt22",
+                    "frozen_cross_dataset",
+                    rows(correct=True),
+                ),
+            ],
+            participant_cluster_bootstrap_resamples=31,
+            participant_cluster_bootstrap_seed=17,
+        )
+        conclusions = _motion_detector_conclusion_rows(
+            metrics,
+            denoiser_enabled=False,
+        )
+        endpoints = {
+            (
+                row["target_dataset"],
+                row["evaluation_scope"],
+                row["aggregation_level"],
+            ): row
+            for row in conclusions
+            if row["angle"].startswith("motion_detector_endpoint::")
+        }
+        self.assertEqual(len(endpoints), 4)
+        self.assertEqual(
+            endpoints[("frailty29", "source_grouped_oof", "window")][
+                "leading_or_selected_case"
+            ],
+            "model_b",
+        )
+        self.assertEqual(
+            endpoints[("ptt22", "frozen_cross_dataset", "window")][
+                "leading_or_selected_case"
+            ],
+            "model_cross_dataset",
+        )
+        self.assertEqual(
+            endpoints[("frailty29", "source_grouped_oof", "window")][
+                "within_stratum_candidate_count"
+            ],
+            2,
+        )
+        self.assertTrue(
+            all(
+                "No comparison is made across target datasets" in row["finding"]
+                for row in endpoints.values()
+            )
+        )
+        self.assertTrue(
+            all(
+                row["participant_cluster_bootstrap_resamples"] == 31
+                and row["participant_cluster_bootstrap_seed"] == 17
+                for row in metrics
+            )
+        )
+
+    def test_obsolete_subject_confusions_require_complete_window_file_replacements(
+        self,
+    ) -> None:
+        obsolete_ids = (
+            "motion_internal_subject_confusion_matrix",
+            "motion_ptt_subject_confusion_matrix",
+            "motion_ptt_training_oof_subject_confusion_matrix",
+            "motion_internal_reverse_subject_confusion_matrix",
+        )
+        datasets = (
+            "frailty29_outer_oof",
+            "frailty29_trained_to_ptt22",
+            "ptt22_outer_oof",
+            "ptt22_trained_to_frailty29",
+        )
+        replacement_figures = (
+            "motion_internal_confusion_matrix",
+            "motion_internal_file_confusion_matrix",
+            "motion_ptt_confusion_matrix",
+            "motion_ptt_file_confusion_matrix",
+            "motion_ptt_training_oof_confusion_matrix",
+            "motion_ptt_training_oof_file_confusion_matrix",
+            "motion_internal_reverse_confusion_matrix",
+            "motion_internal_reverse_file_confusion_matrix",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            tables = root / "tables"
+            figures = root / "figures"
+            tables.mkdir()
+            figures.mkdir()
+            window_rows = [
+                {"dataset": dataset, "aggregation_level": "window"}
+                for dataset in datasets
+            ]
+            file_rows = [
+                {
+                    "dataset": dataset,
+                    "aggregation_level": "file_median_window_probability",
+                }
+                for dataset in datasets
+            ]
+            for table_name, rows in (
+                ("motion_detector_window_confusion", window_rows),
+                ("motion_detector_file_confusion", file_rows),
+            ):
+                (tables / f"{table_name}.json").write_text(
+                    json.dumps(rows), encoding="utf-8"
+                )
+                (tables / f"{table_name}.csv").write_text(
+                    "dataset,aggregation_level\n", encoding="utf-8"
+                )
+            for figure_id in replacement_figures:
+                (figures / f"{figure_id}.png").touch()
+
+            rows = _stage5_reporter_output_status(
+                profile_rows=(),
+                report_config={"required_detector_figures": obsolete_ids},
+                tables=tables,
+                figures=figures,
+                reverse_available=True,
+                denoiser_enabled=False,
+            )
+
+            self.assertEqual({row["output_id"] for row in rows}, set(obsolete_ids))
+            self.assertTrue(
+                all(
+                    row["status"] == "N/A"
+                    and row["reason"]
+                    == "superseded_by_window_and_file_level_contract"
+                    and row["replacement_status"] == "generated"
+                    for row in rows
+                )
+            )
+            self.assertTrue(
+                all(
+                    not (figures / f"{output_id}.png").exists()
+                    for output_id in obsolete_ids
+                )
+            )
+
+            (figures / "motion_ptt_file_confusion_matrix.png").unlink()
+            with self.assertRaisesRegex(
+                ValueError,
+                "motion_ptt_subject_confusion_matrix",
+            ):
+                _stage5_reporter_output_status(
+                    profile_rows=(),
+                    report_config={"required_detector_figures": obsolete_ids},
+                    tables=tables,
+                    figures=figures,
+                    reverse_available=True,
+                    denoiser_enabled=False,
+                )
+
     def test_stage5_uses_the_canonical_pipeline_reducer_factory(self) -> None:
         self.assertIs(stage5_get_reducer, canonical_get_reducer)
 
@@ -89,6 +314,12 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
         self.assertEqual(plan.payload["ptt_dataset"]["record_count"], 66)
         self.assertEqual(plan.payload["motion_detector"]["internal_participant_count"], 29)
         self.assertEqual(plan.payload["motion_detector"]["training_device"], "cuda")
+        self.assertFalse(
+            any(
+                "subject_confusion_matrix" in figure_id
+                for figure_id in plan.payload["report"]["required_detector_figures"]
+            )
+        )
         self.assertEqual(
             plan.payload["motion_detector"]["split"]["method"],
             "StratifiedGroupKFold",
@@ -109,6 +340,10 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
             ],
         )
         self.assertNotIn("learned_denoiser", plan.payload["denoiser_benchmark"]["reducers"])
+        self.assertEqual(
+            plan.payload["denoiser_benchmark"]["scoring_peak_detector"],
+            MSPTDFAST_V2_ID,
+        )
         serialized = json.dumps(plan.payload, sort_keys=True).lower()
         self.assertNotIn("training_gate", serialized)
         self.assertNotIn("phase0", serialized)
@@ -123,7 +358,7 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
         self.assertEqual(plan.payload["motion_denoiser"], "not_used_pure_static_experiment")
         self.assertEqual(
             {row["algorithm_id"] for row in plan.payload["algorithms"]},
-            {"aboy_project_v1", ABOY_V2_ID, "msptdfast_v2_3_python_port"},
+            {"aboy_project", "msptdfast_v2_3_python_port"},
         )
         implementations = {
             row["algorithm_id"]: row["implementation"]
@@ -132,10 +367,35 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
         self.assertEqual(
             implementations[MSPTDFAST_V2_ID], MSPTDFAST_IMPLEMENTATION_PATH
         )
-        self.assertEqual(implementations[ABOY_V2_ID], ABOY_V2_IMPLEMENTATION_PATH)
+        self.assertEqual(
+            implementations["aboy_project"], ABOY_V2_IMPLEMENTATION_PATH
+        )
+        modules = {
+            row["algorithm_id"]: row["module_id"]
+            for row in plan.payload["algorithms"]
+        }
+        self.assertEqual(modules["aboy_project"], ABOY_V2_ID)
+        self.assertNotIn("aboy_project_v1", modules.values())
+        self.assertEqual(plan.payload["validation"]["lag_window_s"], 300.0)
+        self.assertEqual(plan.payload["validation"]["beat_tolerance_s"], 0.15)
         self.assertEqual(
             plan.payload["detector_input"],
             "repaired_native_ppg_each_registered_module_owns_preprocessing",
+        )
+        statistical = plan.payload["validation"]["statistical_comparison"]
+        self.assertEqual(
+            statistical["metrics"],
+            [
+                "recording_f1_percent",
+                "recording_sensitivity_percent",
+                "recording_positive_predictive_value_percent",
+                "recording_ibi_ppi_rmse_ms",
+                "execution_time_percent_of_ppg_signal_duration",
+            ],
+        )
+        self.assertEqual(
+            statistical["family_definition"],
+            "all_selected_metrics_channels_and_reference_comparators",
         )
 
     def test_peak_ablation_rejects_a_study_local_detector_copy(self) -> None:
@@ -149,18 +409,123 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            with self.assertRaisesRegex(ValueError, "registered MSPTDfast module"):
+            with self.assertRaisesRegex(ValueError, "registered default MSPTDfast module"):
                 load_motion_peak_plan(copied)
 
     def test_delay_shift_does_not_change_interval_error(self) -> None:
         reference = np.arange(0.5, 20.0, 0.8)
         predicted = reference + 0.34
         result = align_and_score_beats(reference, predicted)
-        # The official tie rule chooses the smallest absolute lag that still
-        # places every beat inside the 0.2-s tolerance, not the physical delay.
         self.assertAlmostEqual(result["lag_s"], 0.16, places=8)
         self.assertAlmostEqual(result["f1"], 1.0)
         self.assertAlmostEqual(result["ibi_ppi_rmse_ms"], 0.0, places=9)
+
+    def test_recording_lag_can_change_at_300_seconds(self) -> None:
+        reference = np.arange(1.0, 599.0, 1.0)
+        predicted = reference + np.where(reference < 300.0, 0.2, 0.46)
+        result = align_and_score_beats(
+            reference,
+            predicted,
+            max_lag_s=1.0,
+            lag_step_s=0.01,
+            tolerance_s=0.15,
+            lag_window_s=300.0,
+            recording_duration_s=600.0,
+        )
+        self.assertEqual(len(result["lag_windows"]), 2)
+        self.assertNotEqual(
+            result["lag_windows"][0]["lag_s"],
+            result["lag_windows"][1]["lag_s"],
+        )
+        self.assertEqual(result["ncorrect"], result["nref"])
+        self.assertAlmostEqual(result["f1_percent"], 100.0)
+
+    def test_holm_sidak_step_down_is_monotone(self) -> None:
+        adjusted, rejected, ranks = _holm_sidak_step_down(
+            [0.01, 0.04, 0.20], alpha=0.05
+        )
+        self.assertEqual(ranks, [1, 2, 3])
+        self.assertLessEqual(adjusted[0], adjusted[1])
+        self.assertLessEqual(adjusted[1], adjusted[2])
+        self.assertEqual(rejected, [True, False, False])
+
+    def test_static_peak_rank_sum_unifies_all_endpoint_channel_tests(self) -> None:
+        rows = []
+        for participant_index in range(4):
+            for algorithm, offset in (
+                ("msptdfast_v2_3_python_port", 0.0),
+                ("aboy_project", 2.0),
+            ):
+                for channel in ("RED", "IR"):
+                    rows.append(
+                        {
+                            "participant_id": f"p{participant_index}",
+                            "record_id": f"p{participant_index}_sit",
+                            "algorithm_or_reducer": algorithm,
+                            "channel": channel,
+                            "status": "passed",
+                            "f1_percent": 99.0 - offset - participant_index,
+                            "sensitivity_percent": (
+                                99.0 - offset - participant_index
+                            ),
+                            "positive_predictive_value_percent": (
+                                98.0 - offset - participant_index
+                            ),
+                            "ibi_ppi_rmse_ms": (
+                                10.0 + offset + participant_index
+                            ),
+                            "execution_time_percent": (
+                                0.01 + 0.01 * offset + participant_index * 0.001
+                            ),
+                        }
+                    )
+        comparisons = _static_peak_rank_sum_comparisons(
+            rows,
+            reference_algorithm_id="msptdfast_v2_3_python_port",
+            alpha=0.05,
+            registered_metric_ids=["recording_f1_percent"],
+        )
+        self.assertEqual(len(comparisons), 10)
+        self.assertEqual(
+            {row["metric"] for row in comparisons},
+            {
+                "recording_f1_percent",
+                "recording_sensitivity_percent",
+                "recording_positive_predictive_value_percent",
+                "recording_ibi_ppi_rmse_ms",
+                "execution_time_percent_of_ppg_signal_duration",
+            },
+        )
+        self.assertEqual(
+            {row["holm_sidak_family_size"] for row in comparisons}, {10}
+        )
+        self.assertTrue(
+            all(row["pairing_used_by_test"] is False for row in comparisons)
+        )
+        self.assertEqual(
+            {
+                row["analysis_registration"]
+                for row in comparisons
+                if row["metric"] == "recording_f1_percent"
+            },
+            {"prespecified_in_resolved_plan"},
+        )
+        self.assertEqual(
+            {
+                row["analysis_registration"]
+                for row in comparisons
+                if row["metric"] != "recording_f1_percent"
+            },
+            {"retrospective_supplement_requested_2026-08-24"},
+        )
+        self.assertEqual(
+            {
+                row["registered_family_size"]
+                for row in comparisons
+                if row["metric"] == "recording_f1_percent"
+            },
+            {2},
+        )
 
     def test_interval_metric_excludes_nonconsecutive_matches(self) -> None:
         reference = np.asarray([0.0, 1.0, 2.0, 3.0, 4.0])
@@ -263,30 +628,80 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
                 encoding="utf-8",
             )
             rows = []
-            for algorithm, f1, rmse in (
-                ("aboy_project_v1", 0.90, 20.0),
-                (ABOY_V2_ID, 0.91, 19.0),
-                ("msptdfast_v2_3_python_port", 0.92, 18.0),
-            ):
-                for channel in ("RED", "IR"):
-                    rows.append({
-                        "algorithm_or_reducer": algorithm,
-                        "activity_group": "static",
-                        "channel": channel,
-                        "participant_count": 22,
-                        "segment_count": 22,
-                        "participant_macro_f1": f1,
-                        "participant_macro_ibi_ppi_rmse_ms": rmse,
-                        "total_runtime_s": 1.0,
-                    })
+            for participant_index in range(2):
+                for algorithm, f1, rmse in (
+                    ("aboy_project", 91.0, 19.0),
+                    ("msptdfast_v2_3_python_port", 92.0, 18.0),
+                ):
+                    for channel in ("RED", "IR"):
+                        rows.append({
+                            "participant_id": f"p{participant_index}",
+                            "record_id": f"p{participant_index}_sit",
+                            "algorithm_or_reducer": algorithm,
+                            "activity_group": "static",
+                            "channel": channel,
+                            "status": "passed",
+                            "f1_percent": f1 + participant_index,
+                            "sensitivity_percent": f1 + participant_index,
+                            "positive_predictive_value_percent": f1 + participant_index,
+                            "ibi_ppi_rmse_ms": rmse + participant_index,
+                            "execution_time_percent": 0.1 + participant_index * 0.01,
+                        })
             (root / "static_peak_ablation.json").write_text(
-                json.dumps({"summary_rows": rows}), encoding="utf-8"
+                json.dumps({
+                    "schema_version":
+                        "ppg_frailty.stage_ablation_01_static_peak_result.v3",
+                    "rows": rows,
+                    "statistical_comparisons": [],
+                }),
+                encoding="utf-8",
             )
             result = generate_motion_peak_report(root)
             self.assertEqual(result["figure_count"], 5)
+            static_report = (root / "STUDY_SUMMARY.md").read_text(
+                encoding="utf-8"
+            )
+            static_headers = [
+                line
+                for line in static_report.splitlines()
+                if line.startswith("| ") and not line.startswith("| ---")
+            ]
+            self.assertTrue(static_headers)
+            self.assertTrue(
+                all(line.count("|") - 1 <= 8 for line in static_headers)
+            )
             self.assertTrue((root / "tables" / "report_tables.xlsx").is_file())
             self.assertTrue((root / "tables" / "table_figure_pairs.csv").is_file())
             self.assertTrue((root / "tables" / "test_components.csv").is_file())
+            self.assertTrue(
+                (root / "tables/static_peak_detector_recording_metrics.csv").is_file()
+            )
+            self.assertTrue(
+                (root / "tables/static_peak_detector_rank_sum_holm_sidak.csv").is_file()
+            )
+            self.assertTrue(
+                (root / "tables/static_peak_detector_significance_summary.csv").is_file()
+            )
+            comparison_rows = json.loads(
+                (root / "tables/result_comparison.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            rank_sum_rows = [
+                row
+                for row in comparison_rows
+                if row.get("test") == "wilcoxon_rank_sum_two_sided"
+            ]
+            self.assertTrue(rank_sum_rows)
+            self.assertEqual(len(rank_sum_rows), 10)
+            self.assertEqual(
+                {row["holm_sidak_family_size"] for row in rank_sum_rows},
+                {10},
+            )
+            self.assertEqual(
+                {row["evidence_type"] for row in rank_sum_rows},
+                {"recording_rank_sum_endpoint_test"},
+            )
             self.assertTrue((root / "TEST_COMPONENTS.md").is_file())
             self.assertTrue((root / "STUDY_SUMMARY.html").is_file())
             self.assertIn(
@@ -365,8 +780,17 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             plan = load_motion_peak_plan(PLAN_ROOT / "stage5_pre.yaml")
+            resolved_payload = yaml.safe_load(plan.path.read_text(encoding="utf-8"))
+            resolved_payload["report"]["participant_cluster_bootstrap_resamples"] = 257
+            resolved_payload["report"]["participant_cluster_bootstrap_seed"] = 7
+            resolved_payload["report"]["required_detector_figures"].extend(
+                [
+                    "motion_internal_subject_confusion_matrix",
+                    "motion_ptt_subject_confusion_matrix",
+                ]
+            )
             (root / "resolved_plan.yaml").write_text(
-                plan.path.read_text(encoding="utf-8"), encoding="utf-8"
+                yaml.safe_dump(resolved_payload, sort_keys=False), encoding="utf-8"
             )
             (root / "study_manifest.json").write_text(
                 json.dumps({
@@ -458,25 +882,35 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
                 }),
                 encoding="utf-8",
             )
-            summary = [{
-                "algorithm_or_reducer": "identity",
-                "activity_group": "dynamic",
-                "channel": "RED",
-                "participant_count": 22,
-                "segment_count": 44,
-                "participant_macro_f1": 0.8,
-                "participant_macro_ibi_ppi_rmse_ms": 30.0,
-                "total_runtime_s": 2.0,
-            }]
+            summary = [
+                {
+                    "algorithm_or_reducer": "identity",
+                    "activity_group": activity_group,
+                    "channel": "RED",
+                    "participant_count": 22,
+                    "segment_count": 44,
+                    "participant_macro_f1": 0.8,
+                    "participant_macro_ibi_ppi_rmse_ms": 30.0,
+                    "total_runtime_s": 2.0,
+                }
+                for activity_group in ("static", "dynamic")
+            ]
             (denoiser / "denoiser_benchmark.json").write_text(
                 json.dumps({"summary_rows": summary}), encoding="utf-8"
             )
             result = generate_motion_peak_report(root)
             self.assertEqual(result["figure_count"], 17)
             self.assertTrue((root / "tables" / "report_tables.xlsx").is_file())
+            self.assertTrue(
+                (root / "tables" / "inference_configuration.csv").is_file()
+            )
             self.assertTrue((root / "tables" / "table_figure_pairs.csv").is_file())
             self.assertTrue((root / "tables" / "denoiser_algorithms.csv").is_file())
             component_table = (root / "TEST_COMPONENTS.md").read_text(encoding="utf-8")
+            component_header = next(
+                line for line in component_table.splitlines() if line.startswith("| ")
+            )
+            self.assertTrue(component_header.startswith("| Model / module |"))
             self.assertIn("Algorithm and kernel (≤300 chars)", component_table)
             self.assertIn("pca_bss", component_table)
             generate_motion_peak_report(root)
@@ -486,17 +920,113 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
                 "<table>",
                 (root / "STUDY_SUMMARY.html").read_text(encoding="utf-8"),
             )
+            report_text = (root / "STUDY_SUMMARY.md").read_text(encoding="utf-8")
+            markdown_headers = [
+                line
+                for line in report_text.splitlines()
+                if line.startswith("| ") and not line.startswith("| ---")
+            ]
+            self.assertTrue(markdown_headers)
+            self.assertTrue(
+                all(line.count("|") - 1 <= 8 for line in markdown_headers)
+            )
+            html_text = (root / "STUDY_SUMMARY.html").read_text(
+                encoding="utf-8"
+            )
+            html_headings = re.findall(
+                r"<thead><tr>(.*?)</tr></thead>", html_text
+            )
+            self.assertTrue(html_headings)
+            self.assertTrue(
+                all(heading.count("<th>") <= 8 for heading in html_headings)
+            )
+            detector_section = report_text.split(
+                "#### Detector — Balanced accuracy", 1
+            )[1]
+            detector_header = next(
+                line for line in detector_section.splitlines() if line.startswith("| ")
+            )
+            self.assertTrue(detector_header.startswith("| model_id |"))
+            self.assertEqual(detector_header.count("|"), 7)
+            denoiser_section = report_text.split(
+                "### Denoiser results: static", 1
+            )[1]
+            denoiser_header = next(
+                line for line in denoiser_section.splitlines() if line.startswith("| ")
+            )
+            self.assertEqual(
+                denoiser_header,
+                "| denoiser | IR/RED | RMSE ± SD (ms) | F1 ± SD (%) | RMSE P versus identity |",
+            )
+            self.assertEqual(denoiser_header.count("|"), 6)
+            self.assertIn("mean ± SD", report_text)
+            self.assertIn("Detector P is N/A because", report_text)
+            self.assertIn(
+                "displayed RMSE P is the retrospective exploratory",
+                report_text,
+            )
+            with (root / "tables/motion_detector_balanced_accuracy.csv").open(
+                encoding="utf-8", newline=""
+            ) as handle:
+                self.assertEqual(len(next(csv.reader(handle))), 6)
+            for activity_group in ("static", "dynamic"):
+                with (root / f"tables/denoiser_{activity_group}.csv").open(
+                    encoding="utf-8", newline=""
+                ) as handle:
+                    denoiser_table = list(csv.DictReader(handle))
+                self.assertTrue(denoiser_table)
+                self.assertEqual(
+                    list(denoiser_table[0]),
+                    [
+                        "denoiser",
+                        "IR/RED",
+                        "RMSE ± SD (ms)",
+                        "F1 ± SD (%)",
+                        "RMSE P versus identity",
+                    ],
+                )
+                rmse_means = [
+                    float(row["RMSE ± SD (ms)"].split(" ± ", 1)[0].rstrip("*"))
+                    for row in denoiser_table
+                    if row["RMSE ± SD (ms)"] != "N/A"
+                ]
+                self.assertEqual(rmse_means, sorted(rmse_means))
+            for retired in (
+                "denoiser_beat_f1_red.csv",
+                "denoiser_beat_f1_ir.csv",
+                "denoiser_sensitivity_red.csv",
+                "denoiser_sensitivity_ir.csv",
+                "denoiser_ppv_red.csv",
+                "denoiser_ppv_ir.csv",
+                "denoiser_ibi_ppi_rmse_red.csv",
+                "denoiser_ibi_ppi_rmse_ir.csv",
+            ):
+                self.assertFalse((root / "tables" / retired).exists())
+            with (root / "tables/result_comparison.csv").open(
+                encoding="utf-8", newline=""
+            ) as handle:
+                self.assertEqual(len(next(csv.reader(handle))), 8)
+            for table_name in (
+                "motion_detector_training_source_inference.csv",
+                "denoiser_paired_inference.csv",
+            ):
+                with (root / "tables" / table_name).open(
+                    encoding="utf-8", newline=""
+                ) as handle:
+                    inference_rows = list(csv.reader(handle))
+                self.assertGreaterEqual(len(inference_rows), 2)
+                self.assertEqual(len(inference_rows[0]), 8)
             detector = json.loads(
                 (root / "tables/motion_detector_metrics.json").read_text(
                     encoding="utf-8"
                 )
             )
             self.assertEqual(len(detector), 4)
-            self.assertEqual(
-                set(detector[0]),
+            self.assertTrue(
                 {
                     "model_id",
                     "dataset",
+                    "target_dataset",
                     "evaluation_scope",
                     "aggregation_level",
                     "file_score_aggregation",
@@ -511,17 +1041,234 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
                     "roc_auc",
                     "pr_auc",
                     "worst_fold_balanced_accuracy",
-                },
+                    "worst_fold_balanced_accuracy_applicability",
+                    "worst_fold_balanced_accuracy_reason",
+                    "repeat_uncertainty_applicability",
+                    "repeat_uncertainty_reason",
+                    "balanced_accuracy_repeat_sample_sd",
+                    "balanced_accuracy_repeat_t_ci95_low",
+                    "balanced_accuracy_repeat_t_ci95_high",
+                    "balanced_accuracy_participant_cluster_ci95_low",
+                    "balanced_accuracy_participant_cluster_ci95_high",
+                    "macro_f1_participant_cluster_ci95_low",
+                    "macro_f1_participant_cluster_ci95_high",
+                    "sensitivity_participant_cluster_ci95_low",
+                    "sensitivity_participant_cluster_ci95_high",
+                    "specificity_participant_cluster_ci95_low",
+                    "specificity_participant_cluster_ci95_high",
+                    "roc_auc_participant_cluster_ci95_low",
+                    "roc_auc_participant_cluster_ci95_high",
+                    "roc_auc_participant_cluster_ci95_applicability",
+                    "roc_auc_participant_cluster_ci95_reason",
+                    "participant_cluster_ci95_applicability",
+                    "participant_cluster_ci95_method",
+                    "participant_cluster_bootstrap_resamples",
+                    "participant_cluster_bootstrap_seed",
+                    "roc_pr_participant_cluster_ci95_applicability",
+                    "roc_pr_participant_cluster_ci95_reason",
+                    "paired_inference_applicability",
+                    "paired_inference_reason",
+                    "balanced_accuracy_p_value",
+                    "macro_f1_p_value",
+                }.issubset(detector[0]),
             )
             self.assertEqual(
                 {row["aggregation_level"] for row in detector}, {"window", "file"}
             )
+            self.assertEqual(
+                {
+                    (row["dataset"], row["target_dataset"])
+                    for row in detector
+                },
+                {
+                    ("frailty29_outer_oof", "frailty29"),
+                    ("frailty29_trained_to_ptt22", "ptt22"),
+                },
+            )
+            self.assertTrue(
+                all(
+                    row["repeat_uncertainty_applicability"] == "N/A"
+                    and row["balanced_accuracy_repeat_sample_sd"] is None
+                    and row["balanced_accuracy_repeat_t_ci95_low"] is None
+                    and row["balanced_accuracy_repeat_t_ci95_high"] is None
+                    and row["paired_inference_applicability"] == "N/A"
+                    and row["balanced_accuracy_p_value"] is None
+                    and row["macro_f1_p_value"] is None
+                    for row in detector
+                )
+            )
+            self.assertTrue(
+                all(
+                    row["participant_cluster_ci95_applicability"] == "available"
+                    and row["participant_cluster_bootstrap_resamples"] == 257
+                    and row["participant_cluster_bootstrap_seed"] == 7
+                    and row["balanced_accuracy_participant_cluster_ci95_low"]
+                    <= row["balanced_accuracy"]
+                    <= row["balanced_accuracy_participant_cluster_ci95_high"]
+                    and row["macro_f1_participant_cluster_ci95_low"]
+                    <= row["macro_f1"]
+                    <= row["macro_f1_participant_cluster_ci95_high"]
+                    and row["sensitivity_participant_cluster_ci95_low"]
+                    <= row["sensitivity"]
+                    <= row["sensitivity_participant_cluster_ci95_high"]
+                    and row["specificity_participant_cluster_ci95_low"]
+                    <= row["specificity"]
+                    <= row["specificity_participant_cluster_ci95_high"]
+                    and row["roc_auc_participant_cluster_ci95_low"]
+                    <= row["roc_auc"]
+                    <= row["roc_auc_participant_cluster_ci95_high"]
+                    and row["roc_auc_participant_cluster_ci95_applicability"]
+                    == "available"
+                    and row["roc_auc_participant_cluster_ci95_reason"] == ""
+                    and row["roc_pr_participant_cluster_ci95_applicability"]
+                    == "N/A"
+                    and bool(row["roc_pr_participant_cluster_ci95_reason"])
+                    for row in detector
+                )
+            )
+            internal_metrics = [
+                row for row in detector
+                if row["evaluation_scope"] == "source_grouped_oof"
+            ]
+            transfer_metrics = [
+                row for row in detector
+                if row["evaluation_scope"] == "frozen_cross_dataset"
+            ]
+            self.assertTrue(
+                all(
+                    row["worst_fold_balanced_accuracy_applicability"]
+                    == "available"
+                    for row in internal_metrics
+                )
+            )
+            self.assertTrue(
+                all(
+                    row["worst_fold_balanced_accuracy_applicability"] == "N/A"
+                    and row["worst_fold_balanced_accuracy_reason"]
+                    == "frozen_target_evaluation_has_no_training_fold_axis"
+                    for row in transfer_metrics
+                )
+            )
+            conclusions = json.loads(
+                (root / "tables/result_conclusions.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            endpoint_conclusions = [
+                row for row in conclusions
+                if row["angle"].startswith("motion_detector_endpoint::")
+            ]
+            self.assertEqual(len(endpoint_conclusions), 4)
+            self.assertEqual(
+                {
+                    (
+                        row["target_dataset"],
+                        row["evaluation_scope"],
+                        row["aggregation_level"],
+                    )
+                    for row in endpoint_conclusions
+                },
+                {
+                    ("frailty29", "source_grouped_oof", "window"),
+                    ("frailty29", "source_grouped_oof", "file"),
+                    ("ptt22", "frozen_cross_dataset", "window"),
+                    ("ptt22", "frozen_cross_dataset", "file"),
+                },
+            )
+            self.assertTrue(
+                all(
+                    "no within-stratum candidate family" in row["finding"]
+                    and "No comparison is made across target datasets" in row["finding"]
+                    for row in endpoint_conclusions
+                )
+            )
+            uncertainty_conclusion = next(
+                row for row in conclusions
+                if row["angle"] == "uncertainty_and_inference"
+            )
+            self.assertIn("seed=7", uncertainty_conclusion["finding"])
+            self.assertIn("resamples=257", uncertainty_conclusion["finding"])
+            denoiser_rows = json.loads(
+                (root / "tables/denoiser_summary.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(
+                denoiser_rows[0]["denoiser_sd_interpretation"],
+                "descriptive_between_subject_variability_not_repeat_training_uncertainty",
+            )
+            self.assertEqual(denoiser_rows[0]["denoiser_sd_applicability"], "N/A")
+            self.assertEqual(
+                denoiser_rows[0]["repeat_uncertainty_applicability"], "N/A"
+            )
+            output_status = json.loads(
+                (root / "tables/reporter_output_status.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertTrue(output_status)
+            self.assertTrue(
+                all(row["status"] in {"generated", "N/A"} for row in output_status)
+            )
+            self.assertTrue(
+                all(row["reason"] for row in output_status if row["status"] == "N/A")
+            )
+            obsolete_status = [
+                row
+                for row in output_status
+                if row["output_id"]
+                in {
+                    "motion_internal_subject_confusion_matrix",
+                    "motion_ptt_subject_confusion_matrix",
+                }
+            ]
+            self.assertEqual(len(obsolete_status), 2)
+            self.assertTrue(
+                all(
+                    row["status"] == "N/A"
+                    and row["reason"]
+                    == "superseded_by_window_and_file_level_contract"
+                    and row["replacement_status"] == "generated"
+                    for row in obsolete_status
+                )
+            )
+            self.assertFalse(
+                (root / "figures/motion_internal_subject_confusion_matrix.png").exists()
+            )
+            self.assertFalse(
+                (root / "figures/motion_ptt_subject_confusion_matrix.png").exists()
+            )
+            self.assertEqual(
+                {
+                    row["status"]
+                    for row in output_status
+                    if "reporter_profile:" in row["required_by"]
+                },
+                {"generated"},
+            )
+            reproducibility = json.loads(
+                (root / "tables/reproducibility_summary.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            bootstrap_audit = next(
+                row for row in reproducibility
+                if row["evidence_scope"] == "participant_cluster_bootstrap_report"
+            )
+            self.assertIsNone(bootstrap_audit["repeat_count"])
+            self.assertEqual(bootstrap_audit["resample_count"], 257)
+            self.assertIsNone(bootstrap_audit["split_seed"])
+            self.assertEqual(bootstrap_audit["resampling_seed"], 7)
             file_confusion = json.loads(
                 (root / "tables/motion_detector_file_confusion.json").read_text(
                     encoding="utf-8"
                 )
             )
             self.assertEqual(len(file_confusion), 2)
+            self.assertEqual(
+                {row["model_id"] for row in file_confusion},
+                {"frailty29_trained_motion_detector"},
+            )
             self.assertEqual(
                 file_confusion[0]["aggregation_level"],
                 "file_median_window_probability",
@@ -559,6 +1306,30 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
             )
             self.assertTrue(
                 all("false_positive_rate" in row for row in roc_rows)
+            )
+            per_class_rows = json.loads(
+                (root / "tables/motion_detector_per_class_results.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(len(per_class_rows), 8)
+            self.assertEqual(
+                {row["class_name"] for row in per_class_rows},
+                {"static", "motion"},
+            )
+            self.assertEqual(
+                {row["aggregation_level"] for row in per_class_rows},
+                {"window", "file"},
+            )
+            self.assertTrue(
+                all(
+                    row["prediction_rule_source"]
+                    == "normalized_predicted_label_preserves_frozen_threshold"
+                    for row in per_class_rows
+                )
+            )
+            self.assertTrue(
+                (root / "tables/TABLE_COLUMN_DEFINITIONS.md").is_file()
             )
             tsne_rows = json.loads(
                 (root / "tables/motion_detector_prediction_tsne.json").read_text(
@@ -606,14 +1377,266 @@ class Stage5PreAndStaticPeakAblationTests(unittest.TestCase):
         ]
         numeric, display = _rank_and_mark_denoiser_rows(rows, "static")
         self.assertEqual([row["algorithm_or_reducer"] for row in numeric], ["b", "a"])
-        self.assertEqual(display[0]["activity_group"], "static*")
+        self.assertEqual(display[0]["algorithm_or_reducer"], "b*")
+        self.assertEqual(display[0]["activity_group"], "static")
         self.assertEqual(
             display[0]["participant_macro_ibi_ppi_rmse_ms"], "8.0*"
         )
-        self.assertEqual(display[1]["activity_group"], "static*")
+        self.assertEqual(display[1]["algorithm_or_reducer"], "a*")
         self.assertEqual(display[1]["participant_macro_f1"], "0.95*")
         _, single_display = _rank_and_mark_denoiser_rows([rows[0]], "static")
-        self.assertEqual(single_display[0]["activity_group"], "static**")
+        self.assertEqual(single_display[0]["algorithm_or_reducer"], "a**")
+
+    def test_denoiser_activity_table_has_five_columns_rmse_order_and_marks(self) -> None:
+        summary = [
+            {
+                "algorithm_or_reducer": "identity",
+                "activity_group": "static",
+                "channel": "RED",
+                "participant_macro_f1": 0.80,
+                "participant_macro_f1_sd": 0.03,
+                "participant_macro_ibi_ppi_rmse_ms": 5.0,
+                "participant_macro_ibi_ppi_rmse_ms_sd": 1.5,
+            },
+            {
+                "algorithm_or_reducer": "fastica_bss",
+                "activity_group": "static",
+                "channel": "IR",
+                "participant_macro_f1": 0.70,
+                "participant_macro_f1_sd": 0.02,
+                "participant_macro_ibi_ppi_rmse_ms": 4.0,
+                "participant_macro_ibi_ppi_rmse_ms_sd": 1.0,
+            },
+            {
+                "algorithm_or_reducer": "pca_bss",
+                "activity_group": "static",
+                "channel": "IR",
+                "participant_macro_f1": 0.95,
+                "participant_macro_f1_sd": 0.01,
+                "participant_macro_ibi_ppi_rmse_ms": 6.0,
+                "participant_macro_ibi_ppi_rmse_ms_sd": 2.0,
+            },
+        ]
+        inference = [
+            {
+                "candidate_denoiser": candidate,
+                "activity_group": "static",
+                "channel": "IR",
+                "metric": "participant_macro_ibi_ppi_rmse_ms",
+                "holm_adjusted_p_value": p_value,
+            }
+            for candidate, p_value in (("fastica_bss", 0.01), ("pca_bss", 0.20))
+        ]
+        rows = _denoiser_activity_result_rows(
+            summary,
+            inference,
+            activity_group="static",
+            reference_id="identity",
+        )
+        self.assertTrue(all(len(row) == 5 for row in rows))
+        self.assertEqual(
+            [row["denoiser"] for row in rows],
+            ["fastica_bss*", "identity", "pca_bss*"],
+        )
+        self.assertEqual(rows[0]["RMSE ± SD (ms)"], "4.0 ± 1.0*")
+        self.assertEqual(rows[2]["F1 ± SD (%)"], "95.0 ± 1.0*")
+        self.assertEqual(rows[0]["RMSE P versus identity"], "0.0100")
+        self.assertEqual(rows[1]["RMSE P versus identity"], "Reference")
+
+        single = _denoiser_activity_result_rows(
+            summary[:1],
+            (),
+            activity_group="static",
+            reference_id="identity",
+        )
+        self.assertEqual(single[0]["denoiser"], "identity**")
+        self.assertTrue(single[0]["RMSE ± SD (ms)"].endswith("*"))
+        self.assertTrue(single[0]["F1 ± SD (%)"].endswith("*"))
+
+    def test_denoiser_sd_is_explicitly_between_subject_sample_sd(self) -> None:
+        rows = _annotate_denoiser_uncertainty([
+            {
+                "algorithm_or_reducer": "pca_bss",
+                "activity_group": "dynamic",
+                "channel": "IR",
+                "participant_macro_f1": 0.9,
+                "participant_macro_f1_sd": 0.05,
+            }
+        ])
+        self.assertEqual(
+            rows[0]["denoiser_sd_estimator"],
+            "between_subject_sample_sd_ddof1",
+        )
+        self.assertEqual(rows[0]["denoiser_sd_applicability"], "available")
+        self.assertEqual(rows[0]["denoiser_sd_unit"], "subject")
+        self.assertEqual(rows[0]["repeat_uncertainty_applicability"], "N/A")
+
+    def test_denoiser_subject_macro_pools_counts_and_interval_sse(self) -> None:
+        def passed(
+            participant_id: str,
+            *,
+            true_positive: int,
+            false_positive: int,
+            false_negative: int,
+            matched_intervals: int,
+            rmse_ms: float,
+            runtime_s: float,
+        ) -> dict[str, object]:
+            return {
+                "participant_id": participant_id,
+                "algorithm_or_reducer": "pca_bss",
+                "activity_group": "dynamic",
+                "channel": "RED",
+                "status": "passed",
+                "true_positives": true_positive,
+                "false_positives": false_positive,
+                "false_negatives": false_negative,
+                "matched_interval_count": matched_intervals,
+                "ibi_ppi_rmse_ms": rmse_ms,
+                "runtime_s": runtime_s,
+            }
+
+        def failed(participant_id: str, runtime_s: float) -> dict[str, object]:
+            return {
+                "participant_id": participant_id,
+                "algorithm_or_reducer": "pca_bss",
+                "activity_group": "dynamic",
+                "channel": "RED",
+                "status": "failed",
+                "runtime_s": runtime_s,
+            }
+
+        rows = [
+            passed(
+                "p1",
+                true_positive=8,
+                false_positive=2,
+                false_negative=2,
+                matched_intervals=4,
+                rmse_ms=10.0,
+                runtime_s=1.0,
+            ),
+            passed(
+                "p1",
+                true_positive=2,
+                false_positive=0,
+                false_negative=8,
+                matched_intervals=1,
+                rmse_ms=20.0,
+                runtime_s=2.0,
+            ),
+            passed(
+                "p2",
+                true_positive=3,
+                false_positive=1,
+                false_negative=1,
+                matched_intervals=4,
+                rmse_ms=30.0,
+                runtime_s=3.0,
+            ),
+            failed("p2", 4.0),
+            failed("p3", 5.0),
+        ]
+        summary = _aggregate_benchmark(rows)
+        self.assertEqual(len(summary), 1)
+        row = summary[0]
+        self.assertEqual(row["attempted_participant_count"], 3)
+        self.assertEqual(row["passed_participant_count"], 2)
+        self.assertEqual(row["failed_participant_count"], 2)
+        self.assertEqual(row["all_failed_participant_count"], 1)
+        self.assertEqual(row["partially_failed_participant_count"], 1)
+        self.assertAlmostEqual(row["participant_coverage_rate"], 2.0 / 3.0)
+        self.assertEqual(row["attempted_segment_count"], 5)
+        self.assertEqual(row["passed_segment_count"], 3)
+        self.assertEqual(row["failed_segment_count"], 2)
+        self.assertAlmostEqual(row["segment_coverage_rate"], 3.0 / 5.0)
+        self.assertEqual(row["participant_count"], 2)
+        self.assertEqual(row["segment_count"], 3)
+        self.assertAlmostEqual(row["participant_macro_f1"], 0.6875)
+        self.assertAlmostEqual(row["participant_macro_sensitivity"], 0.625)
+        self.assertAlmostEqual(
+            row["participant_macro_positive_predictive_value"],
+            (10.0 / 12.0 + 3.0 / 4.0) / 2.0,
+        )
+        p1_rmse = np.sqrt((10.0**2 * 4 + 20.0**2) / 5.0)
+        self.assertAlmostEqual(
+            row["participant_macro_ibi_ppi_rmse_ms"],
+            (p1_rmse + 30.0) / 2.0,
+        )
+        self.assertEqual(row["rmse_evaluable_participant_count"], 2)
+        self.assertEqual(row["rmse_evaluable_segment_count"], 3)
+        self.assertEqual(row["matched_interval_count"], 9)
+        self.assertEqual(row["passed_runtime_s"], 6.0)
+        self.assertEqual(row["failed_runtime_s"], 9.0)
+        self.assertEqual(row["total_runtime_s"], 15.0)
+
+    def test_denoiser_all_failed_group_is_na_and_sorts_last(self) -> None:
+        rows = [
+            {
+                "participant_id": "p1",
+                "algorithm_or_reducer": "good",
+                "activity_group": "static",
+                "channel": "RED",
+                "status": "passed",
+                "true_positives": 4,
+                "false_positives": 1,
+                "false_negatives": 1,
+                "matched_interval_count": 3,
+                "ibi_ppi_rmse_ms": 12.0,
+                "runtime_s": 1.0,
+            },
+            {
+                "participant_id": "p1",
+                "algorithm_or_reducer": "all_failed",
+                "activity_group": "static",
+                "channel": "RED",
+                "status": "failed",
+                "runtime_s": 2.0,
+            },
+            {
+                "participant_id": "p2",
+                "algorithm_or_reducer": "all_failed",
+                "activity_group": "static",
+                "channel": "RED",
+                "status": "failed",
+                "runtime_s": 3.0,
+            },
+        ]
+        summary = _aggregate_benchmark(rows)
+        by_algorithm = {
+            row["algorithm_or_reducer"]: row for row in summary
+        }
+        failed = by_algorithm["all_failed"]
+        self.assertEqual(failed["attempted_participant_count"], 2)
+        self.assertEqual(failed["all_failed_participant_count"], 2)
+        self.assertEqual(failed["participant_coverage_rate"], 0.0)
+        self.assertEqual(failed["segment_coverage_rate"], 0.0)
+        self.assertIsNone(failed["participant_macro_f1"])
+        self.assertIsNone(failed["participant_macro_ibi_ppi_rmse_ms"])
+        numeric, display = _rank_and_mark_denoiser_rows(summary, "static")
+        self.assertEqual(
+            [row["algorithm_or_reducer"] for row in numeric],
+            ["good", "all_failed"],
+        )
+        self.assertEqual(display[-1]["activity_group"], "static")
+
+    def test_denoiser_aggregation_rejects_inconsistent_passed_evidence(self) -> None:
+        row = {
+            "participant_id": "p1",
+            "algorithm_or_reducer": "pca_bss",
+            "activity_group": "static",
+            "channel": "RED",
+            "status": "passed",
+            "true_positives": 4,
+            "false_positives": 1,
+            "false_negatives": 1,
+            "nref": 99,
+            "matched_interval_count": 3,
+            "ibi_ppi_rmse_ms": 12.0,
+            "runtime_s": 1.0,
+        }
+        with self.assertRaisesRegex(ValueError, "nref disagrees"):
+            _aggregate_benchmark([row])
 
     def test_file_rows_use_median_probability_and_frozen_threshold(
         self,

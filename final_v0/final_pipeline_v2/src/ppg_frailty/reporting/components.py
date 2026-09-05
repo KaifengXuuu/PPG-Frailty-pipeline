@@ -16,17 +16,72 @@ from typing import Any, Mapping, Sequence
 import yaml
 
 from ..motion_ids import FORMAL_MOTION_MODEL_ID
+from .profiles import annotate_component_row, annotate_component_rows
+from .tabular import markdown_column_definitions_block
 
 
 TEST_COMPONENT_COLUMNS: tuple[tuple[str, str], ...] = (
-    ("participating_cases", "Cases / phases"),
-    ("component_role", "Component role"),
     ("module_id", "Model / module"),
+    ("component_role", "Component role"),
+    ("participating_cases", "Cases / phases"),
     ("execution_state", "State"),
     ("input_data", "Input data (values and paths; no hashes)"),
     ("fixed_parameters", "Detailed fixed parameters"),
     ("algorithm_kernel_description", "Algorithm and kernel (≤300 chars)"),
+    ("reporter_profile_id", "Reporter profile"),
+    ("model_reporter_extension_id", "Model reporter extension"),
+    ("algorithm_references", "Algorithm / literature source"),
 )
+
+TOP_MODEL_CONFIGURATION_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("predictive_rank", "Rank"),
+    ("case_id", "Case"),
+    ("model_id", "Model"),
+    ("representation_mode", "Representation"),
+    ("resolved_config_path", "Resolved config"),
+    ("config_section", "Section"),
+    ("parameter_path", "Parameter"),
+    ("resolved_value", "Resolved value"),
+)
+
+# Human-facing tables are deliberately narrower than the lossless CSV/JSON row.
+# The three views together cover every field in ``TEST_COMPONENT_COLUMNS`` while
+# keeping unrelated audit concepts out of one horizontally scrolling table.
+TEST_COMPONENT_VIEW_SCHEMAS: tuple[
+    tuple[str, tuple[tuple[str, str], ...]], ...
+] = (
+    (
+        "Participation and reporter binding",
+        (
+            ("module_id", "Model / module"),
+            ("component_role", "Component role"),
+            ("participating_cases", "Cases / phases"),
+            ("execution_state", "State"),
+            ("reporter_profile_id", "Reporter profile"),
+            ("model_reporter_extension_id", "Model reporter extension"),
+        ),
+    ),
+    (
+        "Input data and fixed parameters",
+        (
+            ("module_id", "Model / module"),
+            ("component_role", "Component role"),
+            ("input_data", "Input data (values and paths; no hashes)"),
+            ("fixed_parameters", "Detailed fixed parameters"),
+        ),
+    ),
+    (
+        "Algorithm kernel and literature",
+        (
+            ("module_id", "Model / module"),
+            ("component_role", "Component role"),
+            ("algorithm_kernel_description", "Algorithm and kernel (≤300 chars)"),
+            ("algorithm_references", "Algorithm / literature source"),
+        ),
+    ),
+)
+
+_MAX_HUMAN_FACING_TABLE_COLUMNS = 8
 
 _HASH_KEY = re.compile(r"(?:^|_)(?:sha(?:1|224|256|384|512)?|hash|checksum)(?:_|$)", re.I)
 
@@ -66,11 +121,12 @@ def _row(
     parameters: Any,
     *,
     description: str = "",
+    reporter_profile_id: str | None = None,
 ) -> dict[str, str]:
     text = str(description).strip()
     if len(text) > 300:
         raise ValueError(f"{module_id} algorithm/kernel description exceeds 300 characters")
-    return {
+    return annotate_component_row({
         "participating_cases": str(case),
         "component_role": str(role),
         "module_id": str(module_id),
@@ -78,7 +134,29 @@ def _row(
         "input_data": _cell(input_data),
         "fixed_parameters": _cell(parameters),
         "algorithm_kernel_description": text,
-    }
+        **(
+            {"reporter_profile_id": reporter_profile_id}
+            if reporter_profile_id is not None
+            else {}
+        ),
+    })
+
+
+def _declared_component_identity(
+    module_id: Any,
+    *,
+    declared_state: str,
+) -> tuple[str, str]:
+    """Return an explicit N/A identity for an absent persisted declaration.
+
+    Historical and synthetic report fixtures can predate a component section.
+    Absence is not an unknown active module: the row remains visible, but is
+    marked not executed so the active-module registry still fails closed.
+    """
+
+    if module_id is None or not str(module_id).strip() or str(module_id) == "unavailable":
+        return "not_declared", "not_executed_not_declared"
+    return str(module_id), str(declared_state)
 
 
 def _group_identical_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, str]]:
@@ -90,10 +168,14 @@ def _group_identical_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, s
     output: list[dict[str, str]] = []
     for key, cases in grouped.items():
         row = dict(zip(fields, key))
+        assembled = {
+            "participating_cases": "; ".join(sorted(dict.fromkeys(cases))),
+            **row,
+        }
         output.append(
             {
-                "participating_cases": "; ".join(sorted(dict.fromkeys(cases))),
-                **row,
+                field: assembled.get(field, "")
+                for field, _label in TEST_COMPONENT_COLUMNS
             }
         )
     return sorted(
@@ -105,22 +187,48 @@ def _group_identical_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, s
 
 
 def markdown_test_component_table(rows: Sequence[Mapping[str, Any]]) -> str:
-    """Render the one canonical Markdown table reused verbatim in two files."""
+    """Render canonical narrow Markdown views reused verbatim in two files.
+
+    The lossless table serialization remains one row with
+    :data:`TEST_COMPONENT_COLUMNS`; this function changes presentation only.
+    """
 
     if not rows:
         return "N/A — no persisted component configuration was available."
-    headings = [label for _, label in TEST_COMPONENT_COLUMNS]
-    lines = [
-        "| " + " | ".join(headings) + " |",
-        "|" + "|".join("---" for _ in headings) + "|",
-    ]
-    for row in rows:
-        rendered = []
-        for field, _ in TEST_COMPONENT_COLUMNS:
-            value = str(row.get(field, "")).replace("|", r"\|").replace("\n", " ")
-            rendered.append(value)
-        lines.append("| " + " | ".join(rendered) + " |")
-    return "\n".join(lines)
+    annotated = annotate_component_rows(rows)
+    lines: list[str] = []
+    for title, schema in TEST_COMPONENT_VIEW_SCHEMAS:
+        if len(schema) > _MAX_HUMAN_FACING_TABLE_COLUMNS:
+            raise ValueError(
+                f"human-facing test-component table {title!r} has "
+                f"{len(schema)} columns; maximum is {_MAX_HUMAN_FACING_TABLE_COLUMNS}"
+            )
+        headings = [label for _field, label in schema]
+        lines.extend(
+            (
+                f"### {title}",
+                "",
+                "| " + " | ".join(headings) + " |",
+                "|" + "|".join("---" for _ in headings) + "|",
+            )
+        )
+        for row in annotated:
+            rendered = []
+            for field, _label in schema:
+                value = str(row.get(field, "")).replace("|", r"\|").replace("\n", " ")
+                rendered.append(value)
+            lines.append("| " + " | ".join(rendered) + " |")
+        lines.extend(
+            (
+                "",
+                markdown_column_definitions_block(
+                    [field for field, _label in schema],
+                    display_labels=[label for _field, label in schema],
+                ),
+                "",
+            )
+        )
+    return "\n".join(lines).rstrip()
 
 
 def write_test_component_markdown(root: str | Path, rows: Sequence[Mapping[str, Any]]) -> Path:
@@ -165,6 +273,91 @@ def _resolved_case_configs(
         payload = yaml.safe_load(target.read_text(encoding="utf-8"))
         if isinstance(payload, Mapping):
             output.append((case_id, payload))
+    return output
+
+
+def _flatten_resolved_config(
+    value: Any,
+    *,
+    prefix: str = "",
+) -> list[tuple[str, Any]]:
+    """Flatten one hash-free resolved config without losing empty containers."""
+
+    cleaned = without_hashes(value)
+    if isinstance(cleaned, Mapping):
+        if not cleaned:
+            return [(prefix, {})]
+        rows: list[tuple[str, Any]] = []
+        for key in sorted(cleaned, key=str):
+            path = f"{prefix}.{key}" if prefix else str(key)
+            rows.extend(_flatten_resolved_config(cleaned[key], prefix=path))
+        return rows
+    # Lists are kept as a complete ordered value. Expanding list indices would
+    # make channel/role orders harder to audit and would not add information.
+    return [(prefix, cleaned)]
+
+
+def build_top_model_configuration_rows(
+    root: str | Path,
+    manifest: Mapping[str, Any],
+    predictive_leaderboard: Sequence[Mapping[str, Any]],
+    *,
+    top_k: int = 5,
+) -> list[dict[str, Any]]:
+    """Return complete long-form resolved configs for the ranked top models.
+
+    The leaderboard supplies ranking only. Configuration values are reread from
+    the immutable per-case resolved YAML recorded by the manifest. Provenance
+    hashes are deliberately excluded because named input data and executable
+    values—not hashes—belong in this human configuration table.
+    """
+
+    if top_k < 0:
+        raise ValueError("top_k must be non-negative")
+    if top_k == 0:
+        return []
+    root_path = Path(root).resolve()
+    config_by_case = dict(_resolved_case_configs(root_path, manifest))
+    manifest_by_case = {
+        str(row.get("case_id")): row
+        for row in manifest.get("cases", ())
+        if isinstance(row, Mapping) and row.get("case_id") not in (None, "")
+    }
+    ranked = sorted(
+        (
+            row
+            for row in predictive_leaderboard
+            if str(row.get("case_id", "")) in config_by_case
+        ),
+        key=lambda row: (
+            int(row.get("predictive_rank", 10**9)),
+            str(row.get("case_id", "")),
+        ),
+    )[:top_k]
+    output: list[dict[str, Any]] = []
+    for fallback_rank, ranked_row in enumerate(ranked, start=1):
+        case_id = str(ranked_row["case_id"])
+        config = config_by_case[case_id]
+        model = config.get("model", {})
+        model = model if isinstance(model, Mapping) else {}
+        manifest_row = manifest_by_case.get(case_id, {})
+        resolved_path = str(manifest_row.get("resolved_config_path", "N/A"))
+        rank = int(ranked_row.get("predictive_rank", fallback_rank))
+        for parameter_path, resolved_value in _flatten_resolved_config(config):
+            output.append(
+                {
+                    "predictive_rank": rank,
+                    "case_id": case_id,
+                    "model_id": str(model.get("model_id", "N/A")),
+                    "representation_mode": str(
+                        config.get("representation_mode", "N/A")
+                    ),
+                    "resolved_config_path": resolved_path,
+                    "config_section": parameter_path.split(".", 1)[0],
+                    "parameter_path": parameter_path,
+                    "resolved_value": _cell(resolved_value),
+                }
+            )
     return output
 
 
@@ -459,24 +652,122 @@ def build_pipeline_test_component_rows(
             pass
         representation = _representation_input(config)
         trainer_id, trainer_parameters = _trainer_component(config)
+        dataset_id, dataset_state = _declared_component_identity(
+            common.get("dataset_id"), declared_state="enabled"
+        )
+        split_id, split_state = _declared_component_identity(
+            config.get("splits", {}).get("registry_id"), declared_state="enabled"
+        )
+        ppg_filter_id, ppg_filter_state = _declared_component_identity(
+            signal.get("ppg_filter", {}).get("family"), declared_state="enabled"
+        )
+        imu_id, imu_state = _declared_component_identity(
+            signal.get("imu", {}).get("gravity_method"), declared_state="enabled"
+        )
+        peak_id, peak_state = _declared_component_identity(
+            signal.get("peak_detector", {}).get("detector_id"),
+            declared_state="enabled",
+        )
+        signal_views_id, signal_views_state = _declared_component_identity(
+            "parallel_physical_analysis_and_dl_views" if signal else None,
+            declared_state="enabled",
+        )
+        window_id, window_state = _declared_component_identity(
+            config.get("windows", {}).get("shared_planner_version"),
+            declared_state="enabled",
+        )
+        quality_mode = quality.get("mode")
+        sqi_id, sqi_state = _declared_component_identity(
+            f"quality_{quality_mode}" if quality_mode is not None else None,
+            declared_state=(
+                "enabled" if quality_mode != "off" else "disabled_control"
+            ),
+        )
+        motion_declared = (
+            "motion_detector_enabled" in artifact or bool(motion_detector)
+        )
+        motion_id, motion_state = _declared_component_identity(
+            (
+                motion_detector.get("model_id", FORMAL_MOTION_MODEL_ID)
+                if motion_declared
+                else None
+            ),
+            declared_state=(
+                "enabled"
+                if artifact.get("motion_detector_enabled")
+                else "disabled_control"
+            ),
+        )
+        denoiser_declared = (
+            "denoiser_enabled" in artifact or "reducer" in artifact
+        )
+        denoiser_id, denoiser_state = _declared_component_identity(
+            reducer_id if denoiser_declared else None,
+            declared_state=(
+                "enabled"
+                if artifact.get("denoiser_enabled")
+                else "identity_or_disabled_control"
+            ),
+        )
+        feature_id, feature_state = _declared_component_identity(
+            config.get("features", {}).get("registry_id"),
+            declared_state=(
+                "enabled"
+                if config.get("representation_mode")
+                in {"feature_vector", "feature_matrix", "fusion"}
+                else "auxiliary_not_classifier_input"
+            ),
+        )
+        representation_id, representation_state = _declared_component_identity(
+            config.get("representation_mode"), declared_state="enabled"
+        )
+        classifier_id, classifier_state = _declared_component_identity(
+            model.get("model_id"), declared_state="enabled"
+        )
+        resolved_trainer_id, trainer_state = _declared_component_identity(
+            trainer_id, declared_state="enabled"
+        )
+        aggregation_id, aggregation_state = _declared_component_identity(
+            config.get("aggregation", {}).get("balance_line"),
+            declared_state="enabled",
+        )
+        evaluation_id, evaluation_state = _declared_component_identity(
+            config.get("evaluation", {}).get("primary_metric"),
+            declared_state="enabled",
+        )
+        sqi_profile = (
+            "sqi_route_coverage_v1"
+            if quality_mode is not None and quality_mode != "off"
+            else "audit_provenance_v1"
+        )
+        motion_profile = (
+            "motion_route_component_v1"
+            if motion_state == "enabled"
+            else "audit_provenance_v1"
+        )
+        denoiser_profile = (
+            "frailty_denoiser_route_v1"
+            if denoiser_state == "enabled"
+            else "audit_provenance_v1"
+        )
         rows.extend(
             (
-                _row(case_id, "dataset_adapter", common.get("dataset_id"), "enabled", common, config.get("manifest", {})),
-                _row(case_id, "split_registry", config.get("splits", {}).get("registry_id"), "enabled", {**common, "groups": "participant_id", "labels": "frailty_class"}, config.get("splits", {})),
-                _row(case_id, "ppg_preprocessing", signal.get("ppg_filter", {}).get("family"), "enabled", {**common, "input_channels": ["RED", "IR"], "input_view": "repaired native PPG"}, {"ppg_filter": signal.get("ppg_filter"), "gap_repair": signal.get("gap_repair"), "analysis_view": signal.get("analysis_view")}),
-                _row(case_id, "imu_preprocessing", signal.get("imu", {}).get("gravity_method"), "enabled", {**common, "input_channels": ["AX", "AY", "AZ", "GX", "GY", "GZ"], "output_view": "processed_imu_physical"}, signal.get("imu", {})),
-                _row(case_id, "peak_detector", signal.get("peak_detector", {}).get("detector_id"), "enabled", {**common, "input_view": "x_analysis/x_native", "channels": ["RED", "IR"]}, signal.get("peak_detector", {})),
-                _row(case_id, "signal_views_and_scaling", "parallel_physical_analysis_and_dl_views", "enabled", {**common, "views": ["processed_imu_physical", "x_dl_all8_window_norm", "x_analysis/x_native"]}, {"normalization": signal.get("normalization"), "dl_resampling": signal.get("dl_resampling")}),
-                _row(case_id, "window_planner", config.get("windows", {}).get("shared_planner_version"), "enabled", {**common, "input_views": ["x_dl_all8_window_norm", "x_analysis/x_native", "processed_imu_physical"]}, config.get("windows", {})),
-                _row(case_id, "sqi", f"quality_{quality.get('mode', 'unknown')}", "enabled" if quality.get("mode") != "off" else "disabled_control", {**common, "input_views": ["x_analysis", "pulse train", "processed_imu_physical"]}, quality),
-                _row(case_id, "motion_detector", motion_detector.get("model_id", FORMAL_MOTION_MODEL_ID), "enabled" if artifact.get("motion_detector_enabled") else "disabled_control", {**common, "input_view": "RED/IR + processed physical A_dyn/GX/GY/GZ"}, {"enabled": artifact.get("motion_detector_enabled"), **dict(motion_detector)}),
-                _row(case_id, "denoiser", reducer_id, "enabled" if artifact.get("denoiser_enabled") else "identity_or_disabled_control", {**common, "input_views": ["filtered RED/IR", "processed_imu_physical"]}, {"denoiser_enabled": artifact.get("denoiser_enabled"), "reducer": reducer_id, "declared_reducer_version": artifact.get("reducer_version"), "runtime_reducer_version": runtime_reducer_version, "resolved_parameters": resolved_reducer_parameters, "degraded_policy": artifact.get("degraded_policy"), "failure_action": artifact.get("failure_action")}, description=reducer_description),
-                _row(case_id, "feature_extractor", config.get("features", {}).get("registry_id"), "enabled" if config.get("representation_mode") in {"feature_vector", "feature_matrix", "fusion"} else "auxiliary_not_classifier_input", {**common, "input_views": ["x_analysis/x_native", "processed_imu_physical"], "engineering_window": config.get("windows", {}).get("engineering")}, config.get("features", {})),
-                _row(case_id, "representation", config.get("representation_mode"), "enabled", {**common, **representation}, {"representation_mode": config.get("representation_mode"), "input_contract": representation}),
-                _row(case_id, "classifier", model.get("model_id"), "enabled", {**common, **representation}, model),
-                _row(case_id, "trainer", trainer_id, "enabled", {**common, "model_input": representation, "labels": "participant frailty class"}, trainer_parameters),
-                _row(case_id, "aggregation", config.get("aggregation", {}).get("balance_line"), "enabled", {"input_data": "held-out window/file probabilities", "roles": common.get("roles")}, config.get("aggregation", {})),
-                _row(case_id, "evaluation", config.get("evaluation", {}).get("primary_metric"), "enabled", {"input_data": "held-out participant predictions and frailty labels", "class_order": config.get("manifest", {}).get("class_name_order")}, config.get("evaluation", {})),
+                _row(case_id, "dataset_adapter", dataset_id, dataset_state, common, config.get("manifest", {})),
+                _row(case_id, "split_registry", split_id, split_state, {**common, "groups": "participant_id", "labels": "frailty_class"}, config.get("splits", {})),
+                _row(case_id, "ppg_preprocessing", ppg_filter_id, ppg_filter_state, {**common, "input_channels": ["RED", "IR"], "input_view": "repaired native PPG"}, {"ppg_filter": signal.get("ppg_filter"), "gap_repair": signal.get("gap_repair"), "analysis_view": signal.get("analysis_view")}),
+                _row(case_id, "imu_preprocessing", imu_id, imu_state, {**common, "input_channels": ["AX", "AY", "AZ", "GX", "GY", "GZ"], "output_view": "processed_imu_physical"}, signal.get("imu", {})),
+                _row(case_id, "peak_detector", peak_id, peak_state, {**common, "input_view": "x_analysis/x_native", "channels": ["RED", "IR"]}, signal.get("peak_detector", {})),
+                _row(case_id, "signal_views_and_scaling", signal_views_id, signal_views_state, {**common, "views": ["processed_imu_physical", "x_dl_all8_window_norm", "x_analysis/x_native"]}, {"normalization": signal.get("normalization"), "dl_resampling": signal.get("dl_resampling")}),
+                _row(case_id, "window_planner", window_id, window_state, {**common, "input_views": ["x_dl_all8_window_norm", "x_analysis/x_native", "processed_imu_physical"]}, config.get("windows", {})),
+                _row(case_id, "sqi", sqi_id, sqi_state, {**common, "input_views": ["x_analysis", "pulse train", "processed_imu_physical"]}, quality, reporter_profile_id=sqi_profile),
+                _row(case_id, "motion_detector", motion_id, motion_state, {**common, "input_view": "RED/IR + processed physical A_dyn/GX/GY/GZ"}, {"enabled": artifact.get("motion_detector_enabled"), **dict(motion_detector)}, reporter_profile_id=motion_profile),
+                _row(case_id, "denoiser", denoiser_id, denoiser_state, {**common, "input_views": ["filtered RED/IR", "processed_imu_physical"]}, {"denoiser_enabled": artifact.get("denoiser_enabled"), "reducer": reducer_id if denoiser_declared else "not_declared", "declared_reducer_version": artifact.get("reducer_version"), "runtime_reducer_version": runtime_reducer_version if denoiser_declared else "not_applicable", "resolved_parameters": resolved_reducer_parameters if denoiser_declared else {}, "degraded_policy": artifact.get("degraded_policy"), "failure_action": artifact.get("failure_action")}, description=reducer_description if denoiser_declared else "", reporter_profile_id=denoiser_profile),
+                _row(case_id, "feature_extractor", feature_id, feature_state, {**common, "input_views": ["x_analysis/x_native", "processed_imu_physical"], "engineering_window": config.get("windows", {}).get("engineering")}, config.get("features", {})),
+                _row(case_id, "representation", representation_id, representation_state, {**common, **representation}, {"representation_mode": config.get("representation_mode"), "input_contract": representation}),
+                _row(case_id, "classifier", classifier_id, classifier_state, {**common, **representation}, model),
+                _row(case_id, "trainer", resolved_trainer_id, trainer_state, {**common, "model_input": representation, "labels": "participant frailty class"}, trainer_parameters),
+                _row(case_id, "aggregation", aggregation_id, aggregation_state, {"input_data": "held-out window/file probabilities", "roles": common.get("roles")}, config.get("aggregation", {})),
+                _row(case_id, "evaluation", evaluation_id, evaluation_state, {"input_data": "held-out participant predictions and frailty labels", "class_order": config.get("manifest", {}).get("class_name_order")}, config.get("evaluation", {})),
             )
         )
     return _group_identical_rows(rows)
@@ -536,6 +827,8 @@ def _peak_detector_parameters(algorithm_id: str, declared: Mapping[str, Any]) ->
 def build_motion_peak_test_component_rows(
     resolved_plan: Mapping[str, Any],
     manifest: Mapping[str, Any],
+    *,
+    study_root: str | Path | None = None,
 ) -> list[dict[str, str]]:
     """Build the same contract rows for Stage5-pre and peak ablation reports."""
 
@@ -562,6 +855,68 @@ def build_motion_peak_test_component_rows(
 
         detector = dict(resolved_plan.get("motion_detector", {}))
         trainer = _motion_architecture_and_training(str(detector.get("training_device", "cuda")))
+
+        def persisted_threshold(
+            stage_id: str,
+            filename: str,
+            field: str,
+        ) -> dict[str, Any]:
+            if study_root is None:
+                return {
+                    "provenance_status": "not_available_without_study_root",
+                    "fit_scope": "not_inferred_from_current_defaults",
+                }
+            stage = manifest.get("stages", {}).get(stage_id, {})
+            if not isinstance(stage, Mapping) or not stage.get("artifact_dir"):
+                return {
+                    "provenance_status": "stage_not_executed",
+                    "fit_scope": "not_applicable",
+                }
+            source = Path(study_root) / str(stage["artifact_dir"]) / filename
+            if not source.is_file():
+                return {
+                    "provenance_status": "persisted_threshold_evidence_missing",
+                    "fit_scope": "not_inferred_from_current_defaults",
+                }
+            payload = json.loads(source.read_text(encoding="utf-8"))
+            threshold = payload.get(field, {})
+            if not isinstance(threshold, Mapping):
+                return {
+                    "provenance_status": "persisted_threshold_field_missing",
+                    "fit_scope": "not_inferred_from_current_defaults",
+                }
+            projected_fields = (
+                "schema_version",
+                "threshold_rule_id",
+                "fit_scope",
+                "score_origin",
+                "score_space",
+                "center_statistic",
+                "participant_weighting",
+                "observed_row_count",
+                "static_center",
+                "motion_center",
+                "threshold",
+            )
+            return {
+                "provenance_status": "read_from_persisted_execution_evidence",
+                **{
+                    key: threshold.get(key)
+                    for key in projected_fields
+                    if key in threshold
+                },
+            }
+
+        internal_threshold = persisted_threshold(
+            "internal_motion_oof",
+            "motion_internal_evidence.json",
+            "final_threshold",
+        )
+        reverse_threshold = persisted_threshold(
+            "ptt_motion_training_ablation",
+            "motion_ptt_training_evidence.json",
+            "deployment_threshold",
+        )
         internal_input = {
             "dataset_id": M2_DATASET_VERSION_ID,
             "manifest_path": M2_FILE_MANIFEST.as_posix(),
@@ -576,10 +931,10 @@ def build_motion_peak_test_component_rows(
         }
         rows.extend(
             (
-                _row("Frailty29 OOF + all-29 final → PTT22", "motion_detector", FORMAL_MOTION_MODEL_ID, "executed", {"training": internal_input, "frozen_evaluation": ptt_input}, {**trainer, "split": detector.get("split"), "threshold": "participant-balanced midpoint fitted from strict OOF only", "external_fit_or_recalibration": detector.get("external_fit_or_recalibration")}),
-                _row("PTT22 OOF + all-22 final → Frailty29", "motion_detector_reverse_ablation", FORMAL_MOTION_MODEL_ID, "executed" if detector.get("reverse_ablation", {}).get("enabled") else "disabled", {"training": ptt_input, "frozen_evaluation": internal_input}, {**trainer, "reverse_ablation": detector.get("reverse_ablation"), "threshold": "participant-balanced midpoint fitted from strict PTT OOF only"}),
+                _row("Frailty29 OOF + all-29 final → PTT22", "motion_detector", FORMAL_MOTION_MODEL_ID, "executed", {"training": internal_input, "frozen_evaluation": ptt_input}, {**trainer, "split": detector.get("split"), "threshold": internal_threshold, "external_fit_or_recalibration": detector.get("external_fit_or_recalibration")}),
+                _row("PTT22 OOF + all-22 final → Frailty29", "motion_detector_reverse_ablation", FORMAL_MOTION_MODEL_ID, "executed" if detector.get("reverse_ablation", {}).get("enabled") else "disabled", {"training": ptt_input, "frozen_evaluation": internal_input}, {**trainer, "reverse_ablation": detector.get("reverse_ablation"), "threshold": reverse_threshold}),
                 _row("all motion-detector phases", "imu_preprocessing", "calibrated_roll_pitch_ekf", "executed", {"input_channels": ["AX", "AY", "AZ", "GX", "GY", "GZ"], "internal_units": {"ACC": "g", "GYRO": "deg/s"}, "ptt_units": {"ACC": "m/s² identity conversion", "GYRO": "deg/s → rad/s"}, "output_view": "processed_imu_physical"}, asdict(RollPitchEkfConfig())),
-                _row("all motion-detector phases", "motion_threshold", "participant_balanced_midpoint", "executed", {"input_data": "strict grouped-OOF probabilities and protocol activity labels"}, {"fit_scope": "OOF training dataset only", "held_out_or_cross_dataset_tuning": False, "deployment_application": "frozen once"}),
+                _row("Frailty29-trained deployment route", "motion_threshold", "participant_balanced_midpoint", "executed", {"input_data": internal_threshold.get("score_origin", "persisted evidence unavailable")}, {**internal_threshold, "held_out_or_cross_dataset_tuning": False, "deployment_application": "frozen once"}),
             )
         )
         benchmark = dict(resolved_plan.get("denoiser_benchmark", {}))
@@ -600,10 +955,17 @@ def build_motion_peak_test_component_rows(
             )
     else:
         validation = dict(resolved_plan.get("validation", {}))
+        beat_reporter_profile = (
+            "beat_detector_recording_v1"
+            if float(validation.get("lag_window_s", 0.0)) == 300.0
+            and float(validation.get("beat_tolerance_s", 0.0)) == 0.15
+            else "beat_detector_legacy_persisted_v1"
+        )
         for declared in resolved_plan.get("algorithms", ()):
             if not isinstance(declared, Mapping):
                 continue
             algorithm_id = str(declared.get("algorithm_id"))
+            module_id = str(declared.get("module_id", algorithm_id))
             rows.append(
                 _row(
                     "PTT sit static peak ablation",
@@ -611,7 +973,12 @@ def build_motion_peak_test_component_rows(
                     algorithm_id,
                     "executed",
                     {**ptt_input, "selected_activity": "sit", "input_view": resolved_plan.get("detector_input"), "channels": ["RED", "IR"], "scoring_windows_s": validation.get("lag_window_s")},
-                    _peak_detector_parameters(algorithm_id, declared),
+                    {
+                        "registered_module_id": module_id,
+                        "display_name": declared.get("display_name", algorithm_id),
+                        **_peak_detector_parameters(module_id, declared),
+                    },
+                    reporter_profile_id=beat_reporter_profile,
                 )
             )
         rows.append(
@@ -622,6 +989,7 @@ def build_motion_peak_test_component_rows(
                 "executed",
                 {"reference": validation.get("reference"), "annotation_column": ptt.get("ecg_peak_annotation_column"), "predictions": "detected PPG pulse times"},
                 validation,
+                reporter_profile_id=beat_reporter_profile,
             )
         )
     return _group_identical_rows(rows)
@@ -629,8 +997,11 @@ def build_motion_peak_test_component_rows(
 
 __all__ = [
     "TEST_COMPONENT_COLUMNS",
+    "TEST_COMPONENT_VIEW_SCHEMAS",
+    "TOP_MODEL_CONFIGURATION_COLUMNS",
     "build_motion_peak_test_component_rows",
     "build_pipeline_test_component_rows",
+    "build_top_model_configuration_rows",
     "markdown_test_component_table",
     "without_hashes",
     "write_test_component_markdown",

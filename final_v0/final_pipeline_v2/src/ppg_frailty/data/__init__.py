@@ -9,6 +9,20 @@ are addressed by complete provenance identities.
 """
 
 from .cache import CacheIdentity, ContentAddressedCache
+from .recording_cache import (
+    ImmutableCacheConflictError,
+    NamedSourceDependency,
+    OrderedModuleSpec,
+    RecordingCacheAccessError,
+    RecordingCacheBuild,
+    RecordingCacheCorruptionError,
+    RecordingCacheEntry,
+    RecordingCacheError,
+    RecordingCacheIdentity,
+    RecordingCacheResult,
+    RecordingCacheSourceError,
+    RecordingPreprocessingCache,
+)
 from .external_manifest import (
     ExternalManifestError,
     ExternalRecord,
@@ -87,6 +101,18 @@ __all__ = [
     "QCStatus",
     "QCThresholds",
     "RecordingQCAdmission",
+    "ImmutableCacheConflictError",
+    "NamedSourceDependency",
+    "OrderedModuleSpec",
+    "RecordingCacheAccessError",
+    "RecordingCacheBuild",
+    "RecordingCacheCorruptionError",
+    "RecordingCacheEntry",
+    "RecordingCacheError",
+    "RecordingCacheIdentity",
+    "RecordingCacheResult",
+    "RecordingCacheSourceError",
+    "RecordingPreprocessingCache",
     "ROLE_FAMILIES",
     "WindowPlan",
     "WindowSlice",

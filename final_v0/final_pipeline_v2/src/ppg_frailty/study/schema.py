@@ -25,6 +25,10 @@ _CATALOG_OUTPUT_GROUPS = frozenset(
 )
 _SPARSE_SEARCH_METHODS = frozenset({"deterministic_sparse_profiles"})
 _FORMAL_PROFILE_FAMILIES = frozenset({"fixed_kernel_samples"})
+_PREPROCESSING_CACHE_MODES = frozenset({"off", "read_only", "read_write"})
+_PREPROCESSING_CACHE_NAMESPACES = frozenset(
+    {"imu_calibration", "canonical_signal_views", "motion_windows", "raw_windows"}
+)
 _LEGACY_BRIDGE_RUNTIME_STATUS = "implemented_advisory_audit_v1"
 _SAFE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,127}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -1051,6 +1055,81 @@ class StudyInfo:
 
 
 @dataclass(frozen=True)
+class PreprocessingCacheSpec:
+    """Operational recording cache; never a scientific grid axis."""
+
+    mode: str = "off"
+    root: str = "artifacts/studies/cache"
+    namespaces: tuple[str, ...] = (
+        "imu_calibration",
+        "canonical_signal_views",
+        "motion_windows",
+        "raw_windows",
+    )
+    verify_source_sha256: bool = True
+
+    def __post_init__(self) -> None:
+        if self.mode not in _PREPROCESSING_CACHE_MODES:
+            raise ValueError(
+                "preprocessing cache mode must be off, read_only, or read_write"
+            )
+        if not isinstance(self.root, str) or not self.root.strip():
+            raise ValueError("preprocessing cache root must be non-empty")
+        if (
+            not self.namespaces
+            or len(self.namespaces) != len(set(self.namespaces))
+            or not set(self.namespaces) <= _PREPROCESSING_CACHE_NAMESPACES
+        ):
+            raise ValueError(
+                "preprocessing cache namespaces must be a unique non-empty subset "
+                f"of {sorted(_PREPROCESSING_CACHE_NAMESPACES)}"
+            )
+        if self.verify_source_sha256 is not True:
+            raise ValueError(
+                "preprocessing cache requires source SHA-256 verification"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "mode": self.mode,
+            "root": self.root,
+            "namespaces": list(self.namespaces),
+            "verify_source_sha256": self.verify_source_sha256,
+        }
+
+
+def preprocessing_cache_from_mapping(
+    value: Mapping[str, Any] | None,
+) -> PreprocessingCacheSpec:
+    payload = _strict_mapping(
+        value or {},
+        label="execution.preprocessing_cache",
+        required=frozenset(),
+        optional=frozenset(
+            {"mode", "root", "namespaces", "verify_source_sha256"}
+        ),
+    )
+    namespaces = payload.get(
+        "namespaces",
+        [
+            "imu_calibration",
+            "canonical_signal_views",
+            "motion_windows",
+            "raw_windows",
+        ],
+    )
+    return PreprocessingCacheSpec(
+        mode=str(payload.get("mode", "off")),
+        root=str(payload.get("root", "artifacts/studies/cache")),
+        namespaces=_string_tuple(
+            namespaces,
+            label="execution.preprocessing_cache.namespaces",
+        ),
+        verify_source_sha256=payload.get("verify_source_sha256", True),
+    )
+
+
+@dataclass(frozen=True)
 class ExecutionSpec:
     """Execution controls which never define a scientific grid axis."""
 
@@ -1062,6 +1141,9 @@ class ExecutionSpec:
     continue_on_error: bool = True
     allow_parallel_deep: bool = False
     measure_operational_costs: bool = False
+    preprocessing_cache: PreprocessingCacheSpec = field(
+        default_factory=PreprocessingCacheSpec
+    )
 
     def __post_init__(self) -> None:
         _unique_int_tuple(self.repeats, label="repeats")
@@ -1081,6 +1163,10 @@ class ExecutionSpec:
         ):
             if not isinstance(getattr(self, name), bool):
                 raise TypeError(f"execution {name} must be boolean")
+        if not isinstance(self.preprocessing_cache, PreprocessingCacheSpec):
+            raise TypeError(
+                "execution preprocessing_cache must be PreprocessingCacheSpec"
+            )
 
 
 @dataclass(frozen=True)
@@ -1099,6 +1185,7 @@ class ReportSpec:
     """Presentation settings; these do not alter model fitting or predictions."""
 
     top_k: int = 10
+    detailed_configuration_top_k: int = 0
     write_html: bool = True
     write_static_figures: bool = True
     calibration_bins: int = 10
@@ -1114,6 +1201,10 @@ class ReportSpec:
     def __post_init__(self) -> None:
         if not 1 <= int(self.top_k) <= 100:
             raise ValueError("report top_k must lie in 1..100")
+        if not 0 <= int(self.detailed_configuration_top_k) <= 100:
+            raise ValueError(
+                "report detailed_configuration_top_k must lie in 0..100"
+            )
         if not 2 <= int(self.calibration_bins) <= 100:
             raise ValueError("calibration_bins must lie in 2..100")
         if not self.figure_modules or any(
@@ -1236,6 +1327,10 @@ class StudyPlan:
             if self.legacy_bridge is not None:
                 if not isinstance(self.legacy_bridge, LegacyBridgeSpec):
                     raise TypeError("legacy_bridge must be LegacyBridgeSpec or None")
+                if self.execution.preprocessing_cache.mode != "off":
+                    raise ValueError(
+                        "legacy bridge requires preprocessing cache mode=off"
+                    )
                 if self.catalog.scope != "selected_ordinary":
                     raise ValueError(
                         "legacy bridge requires catalog scope=selected_ordinary"
@@ -1364,10 +1459,14 @@ class StudyPlan:
                 "measure_operational_costs": (
                     self.execution.measure_operational_costs
                 ),
+                "preprocessing_cache": self.execution.preprocessing_cache.to_dict(),
             },
             "output": {"root": self.output.root},
             "report": {
                 "top_k": self.report.top_k,
+                "detailed_configuration_top_k": (
+                    self.report.detailed_configuration_top_k
+                ),
                 "write_html": self.report.write_html,
                 "write_static_figures": self.report.write_static_figures,
                 "calibration_bins": self.report.calibration_bins,
@@ -1474,6 +1573,7 @@ def execution_from_mapping(value: Mapping[str, Any] | None) -> ExecutionSpec:
                 "continue_on_error",
                 "allow_parallel_deep",
                 "measure_operational_costs",
+                "preprocessing_cache",
             }
         ),
     )
@@ -1486,6 +1586,9 @@ def execution_from_mapping(value: Mapping[str, Any] | None) -> ExecutionSpec:
         continue_on_error=payload.get("continue_on_error", True),
         allow_parallel_deep=payload.get("allow_parallel_deep", False),
         measure_operational_costs=payload.get("measure_operational_costs", False),
+        preprocessing_cache=preprocessing_cache_from_mapping(
+            payload.get("preprocessing_cache")
+        ),
     )
 
 

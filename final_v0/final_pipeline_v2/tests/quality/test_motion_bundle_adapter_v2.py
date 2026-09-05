@@ -31,7 +31,10 @@ from ppg_frailty.quality.motion_bundle_adapter import (
     motion_recording_from_signal_views,
     resolve_reused_motion_detector_config,
 )
-from ppg_frailty.representations.motion import MOTION_NETWORK_SCHEMA_SHA256
+from ppg_frailty.representations.motion import (
+    MOTION_NETWORK_SCHEMA_SHA256,
+    build_motion_window_tensors,
+)
 from ppg_frailty.signal.motion_imu import (
     MotionImuResult,
     RollPitchEkfConfig,
@@ -217,6 +220,52 @@ class ReusedMotionBundleLoadTest(unittest.TestCase):
                 "model_identity_from_bundle_not_adapter",
             )
             self.assertEqual(loader.call_args.kwargs["runtime_device"], "cpu")
+            auxiliary_config = ReusedMotionDetectorConfig(
+                enabled=True,
+                evidence_path=evidence_path,
+                expected_evidence_sha256=sha256_file(evidence_path),
+                device="cpu",
+                batch_size=5,
+                reuse_scope="all29_frozen_in_sample_auxiliary",
+            )
+            with patch(
+                "ppg_frailty.quality.motion_bundle_adapter.load_formal_motion_model",
+                return_value=runtime,
+            ):
+                auxiliary = load_reused_motion_detector(
+                    auxiliary_config,
+                    outer_train_participant_ids=tuple(roster[:23]),
+                    outer_oof_participant_ids=tuple(roster[23:]),
+                )
+            self.assertEqual(
+                auxiliary.provenance["reuse_scope"],
+                "all29_reused_in_sample_auxiliary",
+            )
+            self.assertEqual(
+                auxiliary.provenance["outer_oof_participant_ids"],
+                roster[23:],
+            )
+            self.assertFalse(auxiliary.provenance["valid_outer_oof_claim"])
+            with self.assertRaisesRegex(
+                ValueError,
+                "outer cell roster differs",
+            ):
+                load_reused_motion_detector(
+                    auxiliary_config,
+                    outer_train_participant_ids=tuple(roster[:23]),
+                    outer_oof_participant_ids=tuple(
+                        [*roster[23:-1], "not_in_frailty29"]
+                    ),
+                )
+            with self.assertRaisesRegex(
+                ValueError,
+                "cannot be used inside outer OOF routing",
+            ):
+                load_reused_motion_detector(
+                    config,
+                    outer_train_participant_ids=tuple(roster[:23]),
+                    outer_oof_participant_ids=tuple(roster[23:]),
+                )
             with self.assertRaisesRegex(ValueError, "SHA-256 mismatch"):
                 load_reused_motion_detector(
                     ReusedMotionDetectorConfig(
@@ -410,6 +459,40 @@ class ReusedMotionInferenceTest(unittest.TestCase):
         )
         self.assertEqual(series.file_median_probability_diagnostic, 0.5)
         self.assertIn("diagnostic_only", series.reason)
+
+    def test_precomputed_native_windows_bypass_rematerialization(self) -> None:
+        detector = _loaded_detector(0.5)
+        recording = _recording()
+        windows = build_motion_window_tensors(
+            recording.ppg_red_ir,
+            recording.motion_imu,
+            record_id=recording.record_id,
+            participant_id=recording.participant_id,
+            role_or_activity=recording.role_or_activity,
+            dataset_id=recording.dataset_id,
+            fs_hz=recording.fs_hz,
+        )
+        with (
+            patch(
+                "ppg_frailty.quality.motion_bundle_adapter."
+                "build_motion_window_tensors",
+                side_effect=AssertionError("warm hit must not rebuild windows"),
+            ),
+            patch(
+                "ppg_frailty.quality.motion_bundle_adapter."
+                "predict_formal_motion_probability",
+                return_value=np.asarray([0.4, 0.6]),
+            ),
+        ):
+            series = infer_reused_motion_windows(
+                detector,
+                recording,
+                precomputed_windows=windows,
+            )
+        self.assertEqual(
+            [row.start_sample_400 for row in series.decisions],
+            [0, 800],
+        )
 
     def test_missing_and_short_motion_fail_closed_as_unfit(self) -> None:
         detector = _loaded_detector()

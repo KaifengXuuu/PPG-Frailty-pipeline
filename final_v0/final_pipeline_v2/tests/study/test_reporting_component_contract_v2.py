@@ -9,8 +9,12 @@ import yaml
 
 from ppg_frailty.catalog import resolved_catalog_payloads
 from ppg_frailty.reporting.components import (
+    TEST_COMPONENT_COLUMNS,
+    TEST_COMPONENT_VIEW_SCHEMAS,
+    TOP_MODEL_CONFIGURATION_COLUMNS,
     build_motion_peak_test_component_rows,
     build_pipeline_test_component_rows,
+    build_top_model_configuration_rows,
     markdown_test_component_table,
     write_test_component_markdown,
 )
@@ -21,6 +25,108 @@ PLAN_ROOT = ROOT / "configs/studies/static_line_b_staged_v2"
 
 
 class ReportingComponentContractTests(unittest.TestCase):
+    def test_top_five_configuration_table_is_complete_ranked_and_hash_free(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cases = []
+            leaderboard = []
+            for rank in range(1, 7):
+                case_id = f"case-{rank}"
+                relative = Path("cases") / case_id / "resolved_config.yaml"
+                target = root / relative
+                target.parent.mkdir(parents=True)
+                target.write_text(
+                    yaml.safe_dump(
+                        {
+                            "manifest": {
+                                "path": "manifests/frailty29.csv",
+                                "source_manifest_sha256": f"hidden-{rank}",
+                            },
+                            "roles": ["B", "R1", "S1", "W1"],
+                            "representation_mode": "raw",
+                            "signal": {
+                                "channel_order": ["RED", "IR", "AX", "AY"],
+                                "imu": {"gravity_method": f"profile-{rank}"},
+                            },
+                            "model": {
+                                "model_id": "InceptionTimeSmall",
+                                "architecture_parameters": {
+                                    "module_depth": 3,
+                                    "filters_per_branch": 16,
+                                },
+                            },
+                            "training": {"batch_size": 16, "learning_rate": 0.0003},
+                            "artifact": {},
+                        },
+                        sort_keys=False,
+                    ),
+                    encoding="utf-8",
+                )
+                cases.append(
+                    {"case_id": case_id, "resolved_config_path": relative.as_posix()}
+                )
+                leaderboard.append({"case_id": case_id, "predictive_rank": rank})
+
+            rows = build_top_model_configuration_rows(
+                root,
+                {"cases": cases},
+                tuple(reversed(leaderboard)),
+                top_k=5,
+            )
+
+        self.assertEqual({row["predictive_rank"] for row in rows}, set(range(1, 6)))
+        self.assertNotIn("case-6", {row["case_id"] for row in rows})
+        self.assertEqual(
+            {field for field, _label in TOP_MODEL_CONFIGURATION_COLUMNS},
+            set(rows[0]),
+        )
+        by_case_and_path = {
+            (row["case_id"], row["parameter_path"]): row["resolved_value"]
+            for row in rows
+        }
+        self.assertEqual(
+            by_case_and_path[("case-1", "model.architecture_parameters.module_depth")],
+            "3",
+        )
+        self.assertEqual(
+            by_case_and_path[("case-1", "roles")],
+            '["B","R1","S1","W1"]',
+        )
+        serialized = json.dumps(rows, ensure_ascii=False).lower()
+        self.assertNotIn("sha256", serialized)
+        self.assertNotIn("hidden-", serialized)
+
+    def test_human_component_views_are_complete_and_narrow(self) -> None:
+        lossless_fields = {field for field, _label in TEST_COMPONENT_COLUMNS}
+        view_fields = {
+            field
+            for _title, schema in TEST_COMPONENT_VIEW_SCHEMAS
+            for field, _label in schema
+        }
+        self.assertEqual(view_fields, lossless_fields)
+        self.assertTrue(
+            all(len(schema) <= 8 for _title, schema in TEST_COMPONENT_VIEW_SCHEMAS)
+        )
+
+        row = {
+            field: f"value-{field}"
+            for field, _label in TEST_COMPONENT_COLUMNS
+        }
+        row["component_role"] = "classifier"
+        row["module_id"] = "CompactCNN1D"
+        row["execution_state"] = "executed"
+        row["reporter_profile_id"] = "multiclass_participant_oof_v1"
+        rendered = markdown_test_component_table([row])
+        for title, _schema in TEST_COMPONENT_VIEW_SCHEMAS:
+            self.assertIn(f"### {title}", rendered)
+        markdown_headers = [
+            line
+            for line in rendered.splitlines()
+            if line.startswith("| ") and not line.startswith("| Column")
+        ]
+        self.assertTrue(markdown_headers)
+        self.assertTrue(all(line.count("|") - 1 <= 8 for line in markdown_headers))
+
     def test_logistic_trainer_reports_classical_fit_not_dl_epochs(self) -> None:
         config = next(
             value
@@ -206,6 +312,8 @@ class ReportingComponentContractTests(unittest.TestCase):
             self.assertIn('"runtime_reducer_version":"identity_exact_v1"', identity["fixed_parameters"])
             standalone = write_test_component_markdown(root, rows).read_text(encoding="utf-8")
             self.assertIn(markdown_test_component_table(rows), standalone)
+            self.assertTrue(standalone.endswith("\n"))
+            self.assertFalse(standalone.endswith("\n\n"))
 
     def test_stage5_lists_every_denoiser_with_resolved_kernel_metadata(self) -> None:
         plan = yaml.safe_load((PLAN_ROOT / "stage5_pre.yaml").read_text(encoding="utf-8"))

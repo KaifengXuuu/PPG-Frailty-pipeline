@@ -5,24 +5,32 @@ three exact modes:
 
 ## Peak detector contract
 
-The current production default remains the historical **project
-Aboy++-inspired detector** registered as `aboy_project_v1`; this name does not
-claim exact reproduction of the published upstream Aboy++ implementation.
-`aboy_project_v2` is a separate registered ablation candidate implementing the
-authoritative seven-step project contract: it owns the 0.2 Hz high-pass,
+The current production default is `msptdfast_v2_3_python_port`, the shared
+MSPTDfast (v.2) equation-level Python port. `aboy_project_v2` is the explicit
+ablation implementing the authoritative seven-step project contract: it owns
+the 0.2 Hz high-pass,
 selects polarity independently in each complete non-overlapping 10 s block,
 updates HRI against the retained-Pd median, and physically removes ratio-failed
 peaks before physiological/MAD interval cleaning. Every formal config persists
 `signal.peak_detector.detector_id` and
 `failure_action: fail_closed_no_fallback`.
 
-The v2 candidate and two other tested comparators are ordinary parallel modules
-rather than code copied into study runners: `dual_polarity_prominence_v1_ablation`
-and `msptdfast_v2_3_python_port`. Stage-ablation-01 v2 and the classifier pipeline
-both import the single implementation in `peaks/msptdfast_v2.py`; the latter is
-an equation-level Python port bound to the reviewed ppg-beats v2.3 source hash,
-not a claim of bitwise MATLAB parity. Missing or unknown IDs are errors, and a
-detector failure never invokes another detector as fallback.
+Stage-ablation-01 labels the v2 module `aboy_project` in its comparison output
+and compares it only with the default MSPTDfast module. The historical
+`aboy_project_v1` remains registered as an implicit backup for deliberate,
+explicit selection but is absent from that formal test. It is not an automatic
+runtime fallback. The classifier pipeline and Stage-ablation-01 import the same
+MSPTDfast implementation in `peaks/msptdfast_v2.py`, bound to the reviewed
+ppg-beats v2.3 source hash without claiming bitwise MATLAB parity. Missing or
+unknown IDs are errors, and detector failures remain fail-closed.
+
+The static assessment runs each detector once per complete PTT sit recording
+and wavelength. ECG-to-PPG lag is re-estimated in consecutive 300 s windows;
+the closest unused PPG beat within +/-150 ms is correct. Recording sensitivity,
+PPV and F1 are percentages summarized by median and IQR, boxplot whiskers show
+the 10th/90th percentiles, and MSPTDfast F1 comparisons use two-sided Wilcoxon
+rank-sum tests with Holm-Sidak step-down correction. Runtime is wall time as a
+percentage of PPG duration and reports the actual execution environment.
 
 ## Dual-wavelength optical contract
 

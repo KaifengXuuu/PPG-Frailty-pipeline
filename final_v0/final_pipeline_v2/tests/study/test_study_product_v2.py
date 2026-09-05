@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import tempfile
 import unittest
@@ -14,6 +15,13 @@ from unittest.mock import patch
 import yaml
 
 from ppg_frailty.reporting import generate_study_report
+from ppg_frailty.reporting.report import (
+    _COMPARISON_REPORT_TABLES,
+    _PAIRED_INFERENCE_REPORT_TABLES,
+    _PAIRWISE_REPEAT_DELTA_REPORT_TABLES,
+    _PER_CLASS_REPORT_TABLES,
+    _PREDICTIVE_REPORT_TABLES,
+)
 from ppg_frailty.reporting.analyze import (
     _cell_repeat_rows,
     _denoiser_hr_tables,
@@ -210,6 +218,47 @@ class StudyProductTests(unittest.TestCase):
 
         analysis = analyze_study(bundle)
 
+        per_class_by_case_and_scope: dict[
+            tuple[str, str], list[dict[str, Any]]
+        ] = {}
+        for row in analysis.classifier_per_class_results:
+            per_class_by_case_and_scope.setdefault(
+                (str(row["classifier_id"]), str(row["metric_scope"])), []
+            ).append(dict(row))
+        selective_aware = per_class_by_case_and_scope[
+            (
+                "selective",
+                "one_vs_rest_abstention_aware_full_roster;_"
+                "abstentions_are_false_negatives_for_their_true_class",
+            )
+        ]
+        self.assertEqual(len(selective_aware), 3)
+        self.assertTrue(
+            all(
+                row["excluded_observation_count"] == 3
+                for row in selective_aware
+            )
+        )
+        self.assertTrue(
+            all(row["roc_auc_ovr"] is None for row in selective_aware)
+        )
+        all_abstain_aware = per_class_by_case_and_scope[
+            (
+                "all_abstain",
+                "one_vs_rest_abstention_aware_full_roster;_"
+                "abstentions_are_false_negatives_for_their_true_class",
+            )
+        ]
+        self.assertEqual(len(all_abstain_aware), 3)
+        self.assertTrue(all(row["f1"] == 0.0 for row in all_abstain_aware))
+        all_abstain_conditional = per_class_by_case_and_scope[
+            ("all_abstain", "one_vs_rest_not_computable")
+        ]
+        self.assertEqual(len(all_abstain_conditional), 3)
+        self.assertTrue(
+            all(row["f1"] is None for row in all_abstain_conditional)
+        )
+
         self.assertEqual(
             [row["case_id"] for row in analysis.predictive_leaderboard],
             ["complete", "selective", "all_abstain"],
@@ -337,9 +386,59 @@ class StudyProductTests(unittest.TestCase):
                         {
                             "record_id": "record_a",
                             "role": "B",
+                            "artifact_reducer_name": "pca_bss",
                             "route_artifact": {
-                                "quality_tier": "excellent",
-                                "motion_state": "low_motion",
+                                "direct_hr_bpm": 72.0,
+                                "denoiser_invocation_count": 1,
+                                "native_routing_window_count": 2,
+                                "motion_file_median_probability_diagnostic_only": 0.7,
+                                "motion_provenance": {
+                                    "enabled": True,
+                                    "training_scope": "all29",
+                                },
+                                "cells": [
+                                    {
+                                        "final_tier": "acceptable",
+                                        "motion_state": "high",
+                                        "motion_probability": 0.8,
+                                        "motion_threshold": 0.6,
+                                        "direct_q_rate_score": 0.6,
+                                        "direct_q_rate_state": "pass",
+                                        "direct_q_morph_score": 0.7,
+                                        "direct_q_morph_state": "pass",
+                                        "post_q_rate_score": 0.8,
+                                        "post_q_rate_state": "pass",
+                                        "source_route": "processed",
+                                        "denoiser_requested": True,
+                                        "denoiser_status": "success",
+                                    },
+                                    {
+                                        "final_tier": "excellent",
+                                        "motion_state": "low",
+                                        "motion_probability": 0.4,
+                                        "motion_threshold": 0.5,
+                                        "direct_q_rate_score": 0.8,
+                                        "direct_q_rate_state": "pass",
+                                        "direct_q_morph_score": 0.9,
+                                        "direct_q_morph_state": "pass",
+                                        "post_q_rate_score": None,
+                                        "post_q_rate_state": None,
+                                        "source_route": "direct",
+                                        "denoiser_requested": False,
+                                        "denoiser_status": "not_requested",
+                                    },
+                                ],
+                                "native_window_sqi_evidence": {
+                                    "window_0": {
+                                        "direct": {
+                                            "q_rate": {"coverage": 0.9},
+                                            "q_morph": {"coverage": 0.8},
+                                        },
+                                        "post_reduction": {
+                                            "q_rate": {"coverage": 1.0}
+                                        },
+                                    }
+                                },
                             },
                         },
                         {
@@ -365,13 +464,236 @@ class StudyProductTests(unittest.TestCase):
         self.assertIn("components", by_record["record_a"])
         self.assertEqual(
             by_record["record_a"]["route_artifact"]["quality_tier"],
-            "excellent",
+            "mixed:acceptable|excellent",
+        )
+        projected_route = by_record["record_a"]["route_artifact"]
+        self.assertNotIn("cells", projected_route)
+        self.assertNotIn("native_window_sqi_evidence", projected_route)
+        self.assertEqual(projected_route["routing_cell_count"], 2)
+        self.assertEqual(projected_route["native_sqi_window_count"], 1)
+        self.assertTrue(projected_route["denoiser_attempted"])
+        self.assertEqual(projected_route["denoiser_id"], "pca_bss")
+        self.assertEqual(projected_route["denoiser_status"], "success")
+        self.assertAlmostEqual(projected_route["motion_record_probability"], 0.7)
+        self.assertNotIn("motion_threshold", projected_route)
+        self.assertEqual(
+            projected_route["motion_threshold_consistency_status"],
+            "inconsistent_multiple_values",
+        )
+        self.assertAlmostEqual(projected_route["direct_q_rate_score"], 0.7)
+        self.assertAlmostEqual(projected_route["direct_q_rate_coverage"], 0.9)
+        self.assertAlmostEqual(projected_route["post_q_rate_coverage"], 1.0)
+        self.assertEqual(
+            projected_route["report_projection"]["detail_fields_omitted"],
+            ["cells", "native_window_sqi_evidence"],
         )
         self.assertEqual(
             by_record["record_b"]["route_artifact"]["motion_state"],
             "high_motion",
         )
         self.assertIn("route_artifacts_artifact", by_record["record_b"])
+
+    def test_quality_collection_joins_deduplicated_route_rows_by_cell(self) -> None:
+        for repeat, fold, q_rate_score in ((0, 1, 0.61), (1, 0, 0.91)):
+            cell = self.root / "case" / f"repeat_{repeat:02d}_fold_{fold:02d}"
+            cell.mkdir(parents=True)
+            (cell / "quality_diagnostics.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "ppg_frailty.quality_diagnostics.v2",
+                        "repeat_index": repeat,
+                        "fold_index": fold,
+                        "quality_mode": "route",
+                        "rows": [
+                            {
+                                "record_id": "shared_record",
+                                "participant_id": "P01",
+                                "role": "B",
+                                "components": {
+                                    "non_predictor_features": {
+                                        "sqi.q_rate": {
+                                            "value": q_rate_score,
+                                            "valid": True,
+                                        }
+                                    }
+                                },
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (cell / "route_artifacts.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "ppg_frailty.route_artifacts.v2",
+                        "repeat_index": repeat,
+                        "fold_index": fold,
+                        "rows": [
+                            {
+                                "record_id": "shared_record",
+                                "participant_id": "P01",
+                                "role": "B",
+                                "route_artifact": {
+                                    "cells": [
+                                        {
+                                            "final_tier": "excellent",
+                                            "motion_state": "low",
+                                            "motion_probability": 0.2,
+                                            "motion_threshold": 0.5,
+                                            "direct_q_rate_score": q_rate_score,
+                                            "direct_q_rate_state": "pass",
+                                            "direct_q_morph_score": 0.8,
+                                            "direct_q_morph_state": "pass",
+                                            "source_route": "direct",
+                                            "denoiser_requested": False,
+                                        }
+                                    ],
+                                    "native_window_sqi_evidence": {
+                                        "window_0": {
+                                            "state": "acceptable",
+                                            "reasons": ["compact_fixture"],
+                                            "direct": {
+                                                "state": "pass",
+                                                "reasons": [],
+                                                "q_rate": {
+                                                    "state": "pass",
+                                                    "score": q_rate_score,
+                                                    "coverage": 0.75,
+                                                    "threshold": 0.5,
+                                                    "reasons": [],
+                                                },
+                                                "q_morph": {
+                                                    "state": "pass",
+                                                    "score": 0.8,
+                                                    "coverage": 0.7,
+                                                    "threshold": 0.65,
+                                                    "reasons": [],
+                                                },
+                                            },
+                                            "post_reduction": None,
+                                        }
+                                    },
+                                },
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (cell / "run_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "ppg_frailty.run_manifest.v2",
+                        "cell": {
+                            "route_artifacts_row_count": 1,
+                            "fitted_provenance": {
+                                "fitted_participant_ids": ["P01"]
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+        rows = _quality_rows("case_001", self.root / "case")
+
+        self.assertEqual(len(rows), 2)
+        by_cell = {(row["repeat"], row["fold"]): row for row in rows}
+        self.assertEqual(set(by_cell), {(0, 1), (1, 0)})
+        for repeat, fold, q_rate_score in ((0, 1, 0.61), (1, 0, 0.91)):
+            row = by_cell[(repeat, fold)]
+            route = row["route_artifact"]
+            self.assertEqual(row["outer_partition"], "outer_train")
+            self.assertIn("quality_diagnostics_artifact", row)
+            self.assertIn("route_artifacts_artifact", row)
+            self.assertNotIn("cells", route)
+            self.assertNotIn("native_window_sqi_evidence", route)
+            self.assertEqual(route["routing_cell_count"], 1)
+            self.assertEqual(route["native_sqi_window_count"], 1)
+            self.assertAlmostEqual(route["direct_q_rate_score"], q_rate_score)
+            self.assertAlmostEqual(route["direct_q_rate_coverage"], 0.75)
+            self.assertEqual(route["direct_q_rate_state"], "pass")
+            self.assertNotIn("window_0", json.dumps(row, sort_keys=True))
+
+    def test_root_quality_index_joins_per_cell_route_artifacts(self) -> None:
+        case = self.root / "case"
+        case.mkdir()
+        quality_cells = []
+        for repeat, fold, tier, fitted in (
+            (0, 0, "excellent", ["P01"]),
+            (1, 1, "unfit", ["P99"]),
+        ):
+            quality_cells.append(
+                {
+                    "repeat_index": repeat,
+                    "fold_index": fold,
+                    "quality_mode": "route",
+                    "rows": [
+                        {
+                            "record_id": "shared_record",
+                            "participant_id": "P01",
+                            "role": "B",
+                        }
+                    ],
+                }
+            )
+            cell = case / f"repeat_{repeat:02d}_fold_{fold:02d}"
+            cell.mkdir()
+            (cell / "route_artifacts.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "ppg_frailty.route_artifacts.v2",
+                        "repeat_index": repeat,
+                        "fold_index": fold,
+                        "rows": [
+                            {
+                                "record_id": "shared_record",
+                                "participant_id": "P01",
+                                "role": "B",
+                                "route_artifact": {"quality_tier": tier},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (cell / "run_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "cell": {
+                            "route_artifacts_row_count": 1,
+                            "fitted_provenance": {
+                                "fitted_participant_ids": fitted
+                            },
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+        (case / "quality_diagnostics.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "ppg_frailty.quality_diagnostics.v2",
+                    "status": "passed",
+                    "cells": quality_cells,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        rows = _quality_rows("case_001", case)
+
+        self.assertEqual(len(rows), 2)
+        by_cell = {(row["repeat"], row["fold"]): row for row in rows}
+        self.assertEqual(
+            by_cell[(0, 0)]["route_artifact"]["quality_tier"], "excellent"
+        )
+        self.assertEqual(
+            by_cell[(1, 1)]["route_artifact"]["quality_tier"], "unfit"
+        )
+        self.assertEqual(by_cell[(0, 0)]["outer_partition"], "outer_train")
+        self.assertEqual(by_cell[(1, 1)]["outer_partition"], "outer_oof")
 
     def plan(self, *, ensemble: bool = False):
         if ensemble:
@@ -759,12 +1081,46 @@ class StudyProductTests(unittest.TestCase):
         self.assertIn("Deployment measurements", summary)
         self.assertIn("Macro-F1 LCB95", summary)
         self.assertIn("Paired participant-cluster inference", summary)
+        for title, _columns in (
+            *_COMPARISON_REPORT_TABLES,
+            *_PREDICTIVE_REPORT_TABLES,
+            *_PER_CLASS_REPORT_TABLES,
+            *_PAIRED_INFERENCE_REPORT_TABLES,
+        ):
+            self.assertIn(f"### {title}", summary)
+        for title, _columns in _PAIRWISE_REPEAT_DELTA_REPORT_TABLES:
+            self.assertIn(f"#### {title}", summary)
+        self.assertIn(
+            "<summary>Column definitions and formulas</summary>", summary
+        )
+        self.assertIsNotNone(report.summary_html)
+        summary_html = report.summary_html.read_text(encoding="utf-8")
+        self.assertIn(
+            '<details class="column-definitions">', summary_html
+        )
         self.assertIn(
             "Aggregation sensitivity from the same file-level OOF",
             summary,
         )
         self.assertIn("not selection evidence", summary)
         self.assertIn("N/A — no rows were available.", summary)
+        component_rows = json.loads(
+            (
+                result.output_directory / "tables" / "test_components.json"
+            ).read_text(encoding="utf-8")
+        )
+        undeclared_ppg = next(
+            row
+            for row in component_rows
+            if row["component_role"] == "ppg_preprocessing"
+        )
+        self.assertEqual(undeclared_ppg["module_id"], "not_declared")
+        self.assertEqual(
+            undeclared_ppg["execution_state"], "not_executed_not_declared"
+        )
+        self.assertEqual(
+            undeclared_ppg["model_reporter_extension_id"], "not_applicable"
+        )
         self.assertEqual(
             json.loads(
                 (
@@ -790,6 +1146,10 @@ class StudyProductTests(unittest.TestCase):
         self.assertIn("tables/predictive_leaderboard.csv", paths)
         self.assertIn("tables/metric_distribution_summary.csv", paths)
         self.assertIn("tables/paired_participant_inference.csv", paths)
+        self.assertIn("tables/pairwise_repeat_metric_deltas.csv", paths)
+        self.assertIn("tables/classifier_per_class_results.csv", paths)
+        self.assertIn("tables/table_column_definitions.csv", paths)
+        self.assertIn("tables/TABLE_COLUMN_DEFINITIONS.md", paths)
         self.assertIn("tables/test_components.csv", paths)
         self.assertIn("TEST_COMPONENTS.md", paths)
         self.assertIn("tables/worst_class_f1_stability.csv", paths)
@@ -804,6 +1164,28 @@ class StudyProductTests(unittest.TestCase):
         self.assertIn("tables/reproducibility_cells.csv", paths)
         self.assertIn("tables/reproducibility_splits.csv", paths)
         self.assertIn("tables/reproducibility_issues.csv", paths)
+        column_definitions = json.loads(
+            (
+                result.output_directory
+                / "tables"
+                / "table_column_definitions.json"
+            ).read_text(encoding="utf-8")
+        )
+        documented_columns = {
+            (str(row["table_name"]), str(row["column_name"]))
+            for row in column_definitions
+        }
+        for csv_path in (result.output_directory / "tables").glob("*.csv"):
+            if csv_path.stem == "table_column_definitions":
+                continue
+            with csv_path.open(encoding="utf-8", newline="") as stream:
+                header = next(csv.reader(stream), [])
+            for column_name in header:
+                self.assertIn(
+                    (csv_path.stem, column_name),
+                    documented_columns,
+                    msg=f"missing column definition for {csv_path.name}:{column_name}",
+                )
         reproducibility = json.loads(
             (
                 result.output_directory
@@ -817,6 +1199,40 @@ class StudyProductTests(unittest.TestCase):
             {"PASS", "FAIL", "NOT_VERIFIABLE"},
         )
         self.assertFalse(reproducibility[0]["training_or_report_gate"])
+        paired_inference = json.loads(
+            (
+                result.output_directory
+                / "tables"
+                / "paired_participant_inference.json"
+            ).read_text(encoding="utf-8")
+        )
+        repeat_deltas = json.loads(
+            (
+                result.output_directory
+                / "tables"
+                / "pairwise_repeat_metric_deltas.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(len(paired_inference), 3)
+        self.assertEqual(len(repeat_deltas), 2)
+        self.assertTrue(
+            all(
+                row["comparison_contract_status"]
+                == "N/A_frozen_split_registry_not_verifiable"
+                and row["candidate_minus_reference"] is None
+                for row in paired_inference
+            )
+        )
+        self.assertTrue(
+            all(
+                row["comparison_contract_status"]
+                == "N/A_frozen_split_registry_not_verifiable"
+                and row["balanced_accuracy_delta"] is None
+                and row["macro_f1_delta"] is None
+                and row["macro_roc_auc_ovr_delta"] is None
+                for row in repeat_deltas
+            )
+        )
         self.assertEqual(
             len(
                 [
@@ -1439,6 +1855,27 @@ class StudyProductTests(unittest.TestCase):
             {hierarchy_counts[("role", role)] for role in ("B", "R")},
             {3},
         )
+        all_window = next(
+            row
+            for row in analysis.aggregation_hierarchy_coverage
+            if row["repeat"] == 0
+            and row["aggregation_level"] == "window"
+            and row["group_label"] == "ALL"
+        )
+        self.assertEqual(
+            all_window["oof_unit_count"],
+            all_window["retained_oof_unit_count"]
+            + all_window["dropped_oof_unit_count"],
+        )
+        self.assertAlmostEqual(
+            all_window["retained_coverage"],
+            all_window["retained_oof_unit_count"]
+            / all_window["oof_unit_count"],
+        )
+        self.assertGreaterEqual(
+            all_window["total_participant_count"],
+            all_window["retained_participant_count"],
+        )
         self.assertAlmostEqual(
             float(
                 by_line[LINE_B_EQUAL_ROLE_FAMILIES][
@@ -1884,6 +2321,30 @@ class StudyProductTests(unittest.TestCase):
         }
         self.assertEqual(distributions[("B", "sqi.q_rate")]["mean"], 0.8)
 
+        outer_oof = tuple(
+            {**dict(row), "outer_partition": "outer_oof"}
+            for row in bundle.quality_rows
+        )
+        outer_train = tuple(
+            {
+                **dict(row),
+                "participant_id": "P02",
+                "record_id": f"train_{index}",
+                "outer_partition": "outer_train",
+            }
+            for index, row in enumerate(bundle.quality_rows)
+        )
+        partitioned = analyze_study(
+            replace(bundle, quality_rows=outer_oof + outer_train)
+        )
+        partitioned_by_role = {
+            row["role"]: row for row in partitioned.route_role_coverage
+        }
+        self.assertEqual(partitioned_by_role["B"]["record_count"], 1)
+        self.assertEqual(
+            partitioned_by_role["B"]["evaluation_partition"], "outer_oof"
+        )
+
     def test_denoiser_hr_tables_preserve_pairs_and_participant_macro(self) -> None:
         rows = []
         for participant_id, direct_values, post_values in (
@@ -1912,8 +2373,11 @@ class StudyProductTests(unittest.TestCase):
                             ),
                             "direct_hr_bpm": direct_hr,
                             "post_denoise_hr_bpm": post_hr,
+                            "direct_median_valid_ppi_s": 0.80,
+                            "post_denoise_median_valid_ppi_s": 0.75,
                             "direct_valid_ppi_count": 20,
                             "post_denoise_valid_ppi_count": 21,
+                            "direct_q_rate_state": "fail",
                             "post_q_rate_state": "pass",
                         },
                     }
@@ -1938,6 +2402,18 @@ class StudyProductTests(unittest.TestCase):
         )
         self.assertAlmostEqual(
             overall["participant_macro_post_minus_direct_hr_bpm"], 2.75
+        )
+        self.assertEqual(overall["reducer_failure_count"], 0)
+        self.assertEqual(overall["reducer_failure_rate"], 0.0)
+        self.assertEqual(overall["post_q_rate_recovery_eligible_count"], 4)
+        self.assertEqual(overall["post_q_rate_recovery_count"], 4)
+        self.assertEqual(overall["post_q_rate_recovery_rate"], 1.0)
+        self.assertAlmostEqual(
+            overall["participant_macro_ppi_endpoint_error_ms"], 50.0
+        )
+        self.assertEqual(
+            overall["endpoint_reference"],
+            "same_record_direct_ppg_no_ecg_reference",
         )
 
 

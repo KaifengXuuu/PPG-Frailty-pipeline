@@ -43,17 +43,26 @@ def atomic_write_json(path: str | Path, value: Any, *, root: str | Path) -> None
     root_path = Path(root).resolve()
     target = Path(path).resolve(strict=False)
     target.relative_to(root_path)
-    payload = json.dumps(
-        value,
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix(target.suffix + ".tmp")
+    encoder = json.JSONEncoder(
         ensure_ascii=False,
         indent=2,
         sort_keys=True,
         allow_nan=False,
-    ) + "\n"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_suffix(target.suffix + ".tmp")
-    temporary.write_text(payload, encoding="utf-8", newline="\n")
-    temporary.replace(target)
+    )
+    try:
+        with temporary.open("w", encoding="utf-8", newline="\n") as stream:
+            for chunk in encoder.iterencode(value):
+                stream.write(chunk)
+            stream.write("\n")
+        temporary.replace(target)
+    finally:
+        # Encoding can fail after a valid prefix has already been streamed (for
+        # example when ``allow_nan=False`` encounters a late NaN).  Such a
+        # partial temporary must never survive or replace the previous target.
+        if temporary.exists():
+            temporary.unlink()
 
 
 def assert_training_only(
@@ -116,4 +125,3 @@ def runtime_environment() -> dict[str, Any]:
     except ImportError:
         environment["torch"] = None
     return environment
-

@@ -81,7 +81,7 @@ from .views import (
 )
 
 
-CANONICAL_DETECTOR_ID = "aboy_project_v1"
+CANONICAL_DETECTOR_ID = "msptdfast_v2_3_python_port"
 
 
 def detect_pulses(*args: Any, detector_id: str, **kwargs: Any) -> PulseResult:

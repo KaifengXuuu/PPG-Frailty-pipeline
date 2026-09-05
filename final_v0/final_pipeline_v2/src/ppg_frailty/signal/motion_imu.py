@@ -44,6 +44,9 @@ CALIBRATED_ROLL_PITCH_EKF_PROFILE_ID = (
 PROFILE_A_LPF_ID = (
     "profile_a_sensor_lpf_order3_gravity_0p3hz_v4_ablation"
 )
+NO_GRAVITY_REMOVAL_PROFILE_ID = (
+    "sensor_lpf_order3_no_gravity_removal_v1_ablation"
+)
 PTT_STATIC_CALIBRATION_ROLE = "PTT_SIT_STATIC_CALIBRATION"
 FORMAL_STATIC_CALIBRATION_ROLES = ("B", PTT_STATIC_CALIBRATION_ROLE)
 MOTION_IMU_CALIBRATION_SCHEMA = (
@@ -244,6 +247,7 @@ class MotionImuResult:
         known_profiles = {
             CALIBRATED_ROLL_PITCH_EKF_PROFILE_ID,
             PROFILE_A_LPF_ID,
+            NO_GRAVITY_REMOVAL_PROFILE_ID,
         }
         if self.profile_id not in known_profiles:
             raise ValueError("motion IMU result profile identity is stale or unknown")
@@ -921,6 +925,78 @@ def preprocess_motion_imu_profile_a_lpf(
     )
 
 
+def preprocess_motion_imu_without_gravity_removal(
+    acceleration: np.ndarray,
+    gyroscope: np.ndarray,
+    *,
+    fs_hz: float,
+    acceleration_unit: str,
+    gyroscope_unit: str,
+    participant_id: str,
+    calibration: MotionImuCalibration,
+    config: RollPitchEkfConfig,
+) -> MotionImuResult:
+    """Keep calibrated, sensor-filtered acceleration without subtracting gravity.
+
+    This registered ablation shares the SI conversion, participant-bound static
+    sensor-bias calibration and 20/40 Hz sensor filters with the Profile-A/EKF
+    routes.  Its only executable difference is that no gravity vector is
+    estimated or removed: ``A_input = a_filtered``.
+    """
+
+    acc_filtered, gyro_filtered, input_lineage = _prepare_si_inputs(
+        acceleration,
+        gyroscope,
+        fs_hz=fs_hz,
+        acceleration_unit=acceleration_unit,
+        gyroscope_unit=gyroscope_unit,
+        participant_id=participant_id,
+        calibration=calibration,
+        config=config,
+    )
+    zero_gravity = np.zeros_like(acc_filtered)
+    zero_tilt = np.zeros(acc_filtered.shape[0], dtype=np.float64)
+    diagnostics = {
+        "profile_id": NO_GRAVITY_REMOVAL_PROFILE_ID,
+        "unit_conversion": {
+            "acceleration": f"{acceleration_unit}->m/s^2",
+            "gyroscope": f"{gyroscope_unit}->rad/s",
+            "g_to_mps2_factor": config.gravity_mps2,
+        },
+        "calibration_artifact_sha256": calibration.artifact_sha256,
+        "calibration_participant_id": calibration.participant_id,
+        "calibration_file_id": calibration.file_id,
+        "calibration_source_role": calibration.source_role,
+        "runtime_participant_id": str(participant_id),
+        "sensor_filters": {
+            "phase": "zero_phase",
+            "order": config.sensor_filter_order,
+            "acceleration_lowpass_hz": config.accelerometer_lowpass_hz,
+            "gyroscope_lowpass_hz": config.gyroscope_lowpass_hz,
+        },
+        "gravity_estimation": "disabled",
+        "gravity_subtraction": "disabled",
+        "output_acceleration_semantics": (
+            "calibrated_sensor_filtered_acceleration_including_gravity"
+        ),
+        "roll_pitch_semantics": "not_estimated_zero_audit_placeholders",
+        "silent_fallback": False,
+        "fallback_profile": None,
+        "executed_as": "named_ablation_profile",
+        **input_lineage,
+    }
+    return _motion_result(
+        acc_filtered,
+        gyro_filtered,
+        zero_gravity,
+        zero_tilt,
+        zero_tilt.copy(),
+        fs_hz=fs_hz,
+        profile_id=NO_GRAVITY_REMOVAL_PROFILE_ID,
+        diagnostics=diagnostics,
+    )
+
+
 # Backward-compatible import name. The runtime identity and persisted profile
 # ID are unchanged; only its catalog role was changed from ablation to reference.
 preprocess_motion_imu_lpf_ablation = preprocess_motion_imu_profile_a_lpf
@@ -932,6 +1008,7 @@ __all__ = [
     "MOTION_IMU_CHANNEL_SCHEMA",
     "MOTION_IMU_CHANNEL_UNITS",
     "FORMAL_STATIC_CALIBRATION_ROLES",
+    "NO_GRAVITY_REMOVAL_PROFILE_ID",
     "PROFILE_A_LPF_ID",
     "PTT_STATIC_CALIBRATION_ROLE",
     "MotionImuCalibration",
@@ -940,5 +1017,6 @@ __all__ = [
     "fit_motion_imu_calibration",
     "preprocess_motion_imu_calibrated_ekf",
     "preprocess_motion_imu_profile_a_lpf",
+    "preprocess_motion_imu_without_gravity_removal",
     "preprocess_motion_imu_lpf_ablation",
 ]
