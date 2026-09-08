@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ppg-frailty-final-pipeline-v5"
+version = "5.0.0"
+description = "Data-only, configurable PPG frailty pipeline with modular analysis"
+requires-python = "==3.11.14"
+dependencies = [
+  "numpy==2.3.5",
+  "scipy==1.16.3",
+  "scikit-learn==1.8.0",
+  "PyYAML==6.0.3",
+  "joblib==1.5.3",
+  "pandas==2.3.3",
+  "pyarrow==25.0.1",
+  "filelock==3.20.0",
+]
+
+[project.optional-dependencies]
+deep = ["torch==2.9.1+cu126"]
+reporting = ["matplotlib==3.10.8", "tqdm==4.67.1", "openpyxl==3.1.5"]
+dashboard = ["dash==3.3.0", "plotly==6.5.0"]
+legacy-artifacts = ["PyWavelets==1.9.0"]
+prv-rhenan-legacy-compare = ["hrv==0.2.10"]
+test = ["pytest==9.1.1"]
+
+[project.scripts]
+ppg-frailty-v5 = "ppg_frailty.v5.cli:main"
+ppg-frailty-sweep-v5 = "ppg_frailty.v5.sweep:main"
+ppg-frailty-analyse-v5 = "ppg_frailty.v5_reporting.cli:main"
+ppg-frailty-export-model-config-v5 = "ppg_frailty.v5.model_config_export:main"
+ppg-frailty-comparison-sequence-v5 = "ppg_frailty.dashboard.sequence_cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

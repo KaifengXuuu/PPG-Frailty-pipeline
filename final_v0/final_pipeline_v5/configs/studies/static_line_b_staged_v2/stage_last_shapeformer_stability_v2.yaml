@@ -1,0 +1,57 @@
+# Run this final, high-cost stage in three explicit steps:
+# 1) one cell (default command);
+# 2) one repeat: add --repeats 0 --folds all;
+# 3) only if stable, full 5x5: add --repeats all --folds all.
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: staged_static_stage_last_shapeformer_stability_v2
+  kind: catalog_sweep
+  purpose: "Isolate ShapeFormer implementation/stability diagnostics from all ordinary model studies."
+  flow_position: "Stage last after all ordinary, bridge, ensemble, quality, and ablation work; advance one-cell to one-repeat to 5x5 manually."
+  decision_role: robustness
+  reference_case_id: shapeformer__channel_specific_osd
+  thesis_sections:
+    - "ShapeFormer channel-specific OSD/PISD route"
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: "One frozen ShapeFormer implementation tested with progressively larger CV budgets."
+  controlled_factors:
+    - "Canonical eight-channel frailty raw tensor and frozen ShapeFormer architecture"
+    - "Quality off; identity reducer; motion override disabled"
+    - "No other model shares this study or its failure status"
+  notes:
+    - "A one-cell or one-repeat result is diagnostic only and cannot be ranked as final evidence."
+    - "The fixed-effect-size ShapeFormer variant belongs to a separate named ablation, not this stability stage."
+cases:
+  - case_id: shapeformer__channel_specific_osd
+    catalog_entry: shapeformer_channel_specific_osd
+    screen_profile_id: canonical
+    output_group: raw
+    overrides: {}
+    rationale: "Canonical channel-specific OSD/PISD ShapeFormer implementation."
+    formal_profile: null
+execution:
+  repeats: [0]
+  folds: [0]
+  jobs: 1
+  device: cuda
+  parallel_level: cases
+  continue_on_error: false
+  allow_parallel_deep: false
+  measure_operational_costs: false
+output:
+  root: artifacts/studies/static_line_b_staged_v2
+report:
+  top_k: 1
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10
+  figure_modules: [all]
+  compact_mean_sd: true
+  write_excel_workbook: true

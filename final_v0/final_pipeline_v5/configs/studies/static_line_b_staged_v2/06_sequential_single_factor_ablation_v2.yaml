@@ -1,0 +1,85 @@
+# Retained single-factor CompactCNN learning-rate ablation. All cases share
+# the selected V2-core plus B0/B2/B7 state and differ only in learning rate.
+# The newer InceptionTime tuning route is stage6_batch_LR_search.yaml.
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: staged_static_06_learning_rate_v3
+  kind: catalog_sweep
+  purpose: "Confirm one CompactCNN learning-rate factor on the selected V2-core plus B0/B2/B7 state."
+  flow_position: "Retained Stage 6 single-factor ablation; superseded for InceptionTime tuning by the resource-aware Stage 6 plans."
+  decision_role: ablation
+  reference_case_id: compact_cnn_lr001
+  thesis_sections:
+    - "Sequential single-factor training ablations"
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: "One learning-rate factor only; all B0/B2/B7 and V2-core controls are identical."
+  controlled_factors:
+    - "CompactCNN1D architecture, 64 Hz, 5/2.5 s and all-eight DL window scaling"
+    - "AdamW, batch32, participant-count class weights and Line B aggregation"
+  notes:
+    - "This retained CompactCNN ablation is separate from the InceptionTime successive-halving study."
+cases:
+  - case_id: compact_cnn_lr0003
+    catalog_entry: compact_cnn
+    screen_profile_id: v2_core_b0_b2_b7_selected
+    output_group: raw
+    overrides: &common_lr0003
+      signal.dl_resampling.enabled: true
+      signal.dl_resampling.target_fs_hz: 64.0
+      signal.normalization.raw_ppg: per_window_median_iqr_over_1p349_sd_finite
+      signal.normalization.raw_imu: none
+      windows.raw_dl.length_s: 5.0
+      windows.raw_dl.hop_s: 2.5
+      training.optimizer: adamw
+      training.batch_size: 32
+      training.sampler: exhaustive_shuffle_without_replacement
+      training.class_weighting: outer_train_window_inverse_frequency
+      training.class_count_basis: row
+      training.learning_rate: 0.0003
+      aggregation.balance_line: line_b_equal_role_families
+    rationale: "Learning-rate ablation at 3e-4."
+    formal_profile: null
+  - case_id: compact_cnn_lr001
+    catalog_entry: compact_cnn
+    screen_profile_id: v2_core_b0_b2_b7_selected
+    output_group: raw
+    overrides:
+      <<: *common_lr0003
+      training.learning_rate: 0.001
+    rationale: "B0 learning-rate reference at 1e-3."
+    formal_profile: null
+  - case_id: compact_cnn_lr003
+    catalog_entry: compact_cnn
+    screen_profile_id: v2_core_b0_b2_b7_selected
+    output_group: raw
+    overrides:
+      <<: *common_lr0003
+      training.learning_rate: 0.003
+    rationale: "Learning-rate ablation at 3e-3."
+    formal_profile: null
+execution:
+  repeats: [0, 1, 2, 3, 4]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 1
+  device: cuda
+  parallel_level: cases
+  continue_on_error: true
+  allow_parallel_deep: false
+  measure_operational_costs: true
+output:
+  root: artifacts/studies/static_line_b_staged_v2
+report:
+  top_k: 3
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10
+  figure_modules: [all]
+  compact_mean_sd: true
+  write_excel_workbook: true

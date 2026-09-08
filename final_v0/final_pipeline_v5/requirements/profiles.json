@@ -1,0 +1,58 @@
+{
+  "pipeline_generation": "final_pipeline_v2",
+  "profiles": [
+    {
+      "kind": "base",
+      "normal_pipeline_import": true,
+      "profile_id": "core",
+      "requirements_file": "requirements-core.txt",
+      "status": "resolution_input_only"
+    },
+    {
+      "kind": "delta_on_core",
+      "normal_pipeline_import": false,
+      "profile_id": "deep",
+      "requirements_file": "requirements-deep.txt",
+      "status": "resolution_input_only"
+    },
+    {
+      "kind": "delta_on_core",
+      "normal_pipeline_import": false,
+      "profile_id": "formal_benchmark",
+      "requirements_file": "requirements-formal-benchmark.txt",
+      "status": "resolution_input_only"
+    },
+    {
+      "kind": "isolated_function_comparison_environment",
+      "normal_pipeline_import": false,
+      "profile_id": "prv_aura_compare",
+      "requirements_file": "requirements-prv-aura-compare.txt",
+      "status": "pinned_optional_environment_hrv_analysis_1_0_2"
+    },
+    {
+      "kind": "legacy_function_comparison_delta",
+      "normal_pipeline_import": false,
+      "profile_id": "prv_rhenan_legacy_compare",
+      "requirements_file": "requirements-prv-rhenan-legacy-compare.txt",
+      "status": "resolution_input_only"
+    }
+  ],
+  "resolution_policy": {
+    "core_deep_formal_benchmark": "install_declared_requirements_and_run_tests",
+    "prv_aura_compare": "create_optional_isolated_environment_from_pinned_requirements",
+    "prv_rhenan_legacy_compare": "isolated_pending_no_normal_pipeline_install",
+    "supplemental_artifact_legacy_ablation": "isolated_optional_pending_no_normal_pipeline_install"
+  },
+  "schema_version": "ppg_frailty.v2_dependency_profiles.v1",
+  "supplemental_optional_inputs": [
+    {
+      "blocks_formal_benchmark": false,
+      "input_id": "artifact_legacy_ablation",
+      "requirements_file": "requirements-artifact-legacy-ablation.txt",
+      "scope": [
+        "dwt_a2_legacy"
+      ],
+      "status": "resolution_input_only"
+    }
+  ]
+}

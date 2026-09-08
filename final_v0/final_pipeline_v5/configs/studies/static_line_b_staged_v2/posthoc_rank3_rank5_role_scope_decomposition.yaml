@@ -1,0 +1,53 @@
+schema_version: ppg_frailty.role_scope_decomposition.v1
+
+study:
+  study_id: rank3_rank5_role_scope_decomposition_v1
+  purpose: >-
+    Prediction-locked decomposition of the Rank 3 versus Rank 5 difference into
+    the all-role-training contribution at static aggregation and the S/W
+    aggregation contribution with the fitted all-role models held fixed.
+
+sources:
+  static_training:
+    name: Rank 5 — static-trained Full InceptionTime
+    study_dir: artifacts/studies/static_line_b_staged_v2/20260824_111943_catalog_sweep_final-case-comparison-inception-full-v1
+    case_id: inception_full_tuned_static
+    training_role_families: [B, R]
+    expected_files_per_participant: 5
+  all_role_training:
+    name: Rank 3 — all-role-trained Full InceptionTime
+    study_dir: artifacts/studies/static_line_b_staged_v2/20260824_160517_catalog_sweep_final-case-all-roles-inception-architecture-comparison-v1
+    case_id: tuned_all_roles__inception_full
+    training_role_families: [B, R, S, W]
+    expected_files_per_participant: 9
+
+ranking_evidence:
+  leaderboard_path: artifacts/studies/static_line_b_staged_v2/20260824_final_case_inception_small_no_gravity_merged_v2/tables/predictive_leaderboard.csv
+  static_case_id: previous__raw__inception_full_tuned_static
+  static_expected_rank: 5
+  all_role_case_id: architecture__raw__tuned_all_roles__inception_full
+  all_role_expected_rank: 3
+
+aggregation_scopes:
+  static: [B, R]
+  all: [B, R, S, W]
+  balance_line: line_b_equal_role_families
+
+inference:
+  expected_participants: 29
+  expected_repeats: [0, 1, 2, 3, 4]
+  expected_class_order: [0, 1, 2]
+  metrics: [balanced_accuracy, macro_f1, macro_roc_auc_ovr]
+  bootstrap_resamples: 10000
+  permutation_resamples: 100000
+  seed: 42
+  alpha: 0.05
+  multiplicity_family: rank3_rank5_three_contrast_role_scope_path
+  require_complete_retention: true
+  probability_tolerance: 1.0e-12
+
+output:
+  slug: posthoc-rank3-rank5-role-scope-decomposition-v1
+  write_static_figures: true
+  write_excel_workbook: true
+  write_result_backup: true

@@ -1,0 +1,72 @@
+schema_version: ppg_frailty.environment_lock.v1
+lock_id: finalcase_v2_numeric_20260824
+purpose: >-
+  Exact numerical runtime used by the V2 finalcase evidence and frozen for V5
+  numerical-equivalence runs. Reporting-only packages are isolated from model
+  computation.
+numeric_equivalence:
+  atol: 1.0e-6
+  rtol: 0.0
+  require_equal_row_identity: true
+  require_equal_split_assignment: true
+runtime:
+  python: 3.11.14
+  packages:
+    numpy: 2.3.5
+    scipy: 1.16.3
+    scikit-learn: 1.8.0
+    pandas: 2.3.3
+    PyYAML: 6.0.3
+    joblib: 1.5.3
+    pyarrow: 25.0.1
+    torch: 2.9.1+cu126
+    filelock: 3.20.0
+    fsspec: 2025.12.0
+    Jinja2: 3.1.6
+    MarkupSafe: 2.1.5
+    mpmath: 1.3.0
+    networkx: 3.6.1
+    sympy: 1.14.0
+    triton: 3.5.1
+    nvidia-cublas-cu12: 12.6.4.1
+    nvidia-cuda-cupti-cu12: 12.6.80
+    nvidia-cuda-nvrtc-cu12: 12.6.77
+    nvidia-cuda-runtime-cu12: 12.6.77
+    nvidia-cudnn-cu12: 9.10.2.21
+    nvidia-cufft-cu12: 11.3.0.4
+    nvidia-cufile-cu12: 1.11.1.6
+    nvidia-curand-cu12: 10.3.7.77
+    nvidia-cusolver-cu12: 11.7.1.2
+    nvidia-cusparse-cu12: 12.5.4.2
+    nvidia-cusparselt-cu12: 0.7.1
+    nvidia-nccl-cu12: 2.27.5
+    nvidia-nvjitlink-cu12: 12.6.85
+    nvidia-nvshmem-cu12: 3.3.20
+    nvidia-nvtx-cu12: 12.6.77
+    python-dateutil: 2.9.0.post0
+    pytz: 2025.2
+    tzdata: 2025.3
+    six: 1.17.0
+    threadpoolctl: 3.6.0
+    typing_extensions: 4.15.0
+    packaging: 25.0
+    setuptools: 80.9.0
+accelerator:
+  required_for_numeric_equivalence: true
+  required_for_cuda_runs: true
+  gpu_name: NVIDIA GeForce RTX 4080
+  compute_capability: [8, 9]
+  driver_version: "560.81"
+  torch_cuda: "12.6"
+  cudnn: 91002
+determinism:
+  deterministic_algorithms: true
+  cudnn_deterministic: true
+  cudnn_benchmark: false
+  cublas_workspace_config: ":4096:8"
+evidence:
+  v2_finalcase_run: >-
+    final_pipeline_v2/artifacts/studies/static_line_b_staged_v2/
+    20260824_175009_catalog_sweep_stage0-inception-small-no-gravity-supplement-v1/
+    raw/tuned_all_roles__inception_small_no_gravity/attempts/attempt_001/experiment
+  runtime_source: V2 runtime manifests plus the protected conda ml environment

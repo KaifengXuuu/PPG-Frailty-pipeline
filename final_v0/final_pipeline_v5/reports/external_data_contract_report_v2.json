@@ -1,0 +1,224 @@
+{
+  "formal_assignment_count": 110,
+  "generated_artifacts": {
+    "external_manifest": {
+      "bytes": 71588,
+      "path": "manifests/external_records_v2.csv",
+      "sha256": "e35e9a9678372e8123110e2675736c5cffd48b7688ba8c74db41d15d8d89c295"
+    },
+    "ptt_formal_repeated_folds": {
+      "bytes": 39919,
+      "path": "splits/ptt_formal_repeated_grouped_5x5_v2.csv",
+      "sha256": "138f999da334e2280c9e7df3304f9f017496f0ed6b60562a8d33e3c69c502dec"
+    }
+  },
+  "independent_test_claim": false,
+  "manifest_audit": {
+    "contract_schema_version": "external_records_v2",
+    "dataset_record_counts": {
+      "ptt_ppg_1_1_0_local": 66,
+      "simultaneous_measurements_1_0_0_local": 14
+    },
+    "independence_claim": "none_not_an_independent_external_test",
+    "ptt_activity_counts": {
+      "run": 22,
+      "sit": 22,
+      "walk": 22
+    },
+    "ptt_channel_mapping_provenance": {
+      "historical_m2_status": "unresolved_red_ir_mapping_conflict",
+      "official_channel_statement": {
+        "pleth_1": {
+          "sampling_rate_hz": 500.0,
+          "sensor": "MAX30101",
+          "site": "distal",
+          "wavelength_label": "red"
+        },
+        "pleth_2": {
+          "sampling_rate_hz": 500.0,
+          "sensor": "MAX30101",
+          "site": "distal",
+          "wavelength_label": "infrared"
+        }
+      },
+      "official_page_evidence_status": "official_v1_0_0_page_statement",
+      "official_page_url": "https://physionet.org/content/pulse-transit-time-ppg/1.0.0/",
+      "official_page_verified_on": "2026-08-16",
+      "official_page_version": "1.0.0",
+      "project_adoption_decision": "user_confirmed_v2_002",
+      "project_mapping": {
+        "IR": "pleth_2",
+        "RED": "pleth_1"
+      },
+      "project_site": "left_index_finger_distal",
+      "published_statement_reconciliation": {
+        "resolution": "project_adopted_distal_pleth_1_red_pleth_2_ir_v2",
+        "v1_0_data_description": {
+          "section": "Data Description",
+          "statement": "pleth_1 red; pleth_2 infrared",
+          "url": "https://physionet.org/content/pulse-transit-time-ppg/1.0.0/",
+          "version": "1.0.0"
+        },
+        "v1_0_methods": {
+          "section": "Methods",
+          "statement": "pleth_1 infrared; pleth_2 red",
+          "url": "https://physionet.org/content/pulse-transit-time-ppg/1.0.0/",
+          "version": "1.0.0"
+        },
+        "v1_1_data_description": {
+          "section": "Data Description",
+          "statement": "pleth_1 red; pleth_2 infrared",
+          "url": "https://physionet.org/content/pulse-transit-time-ppg/1.1.0/",
+          "version": "1.1.0"
+        }
+      },
+      "source_manifest_rewritten": false
+    },
+    "ptt_distal_channel_mapping": {
+      "IR": "pleth_2",
+      "RED": "pleth_1"
+    },
+    "ptt_imu_unit_conflict_provenance": {
+      "canonical_csv_numeric_evidence": {
+        "first_acceleration_norm": 9.5797893503896,
+        "first_acceleration_xyz": [
+          4.298409,
+          1.371349,
+          -8.450766
+        ],
+        "first_gyroscope_norm": 0.00902431681624709,
+        "first_gyroscope_xyz": [
+          0.007759,
+          -0.000482,
+          0.004583
+        ],
+        "interpretation_boundary": "V2-036 adopts source acceleration as m/s^2 from the sitting gravity magnitude; gyro values do not contradict the header's deg/s declaration but are not an independent device calibration",
+        "record_id": "s1_sit",
+        "relative_path": "physionet.org/files/pulse-transit-time-ppg/1.1.0/csv/s1_sit.csv",
+        "sha256": "25601a60611e01fe138a88829b202c95f047764f5ee232b4d3457df460133391"
+      },
+      "canonical_evidence_artifact": {
+        "relative_path": "final_v0/final_pipeline_v2/manifests/ptt_imu_unit_evidence_v2_036.json",
+        "schema_version": "ppg_frailty.ptt_imu_unit_evidence.v3",
+        "sha256": "c03669029f9e58e53ae24e5e9208aa47541b93d8fcc0b9dea2f215165dc70ee5"
+      },
+      "formal_action": "require exact V2-036 artifact path/hash before conversion, EKF, materialization, or evaluation",
+      "historical_code_transform": {
+        "acceleration": "legacy multiply source values by 9.80665; prohibited for V2-036 PTT",
+        "authority": "historical_implementation_only_not_unit_resolution",
+        "formal_v2_036_use": "forbidden_for_acceleration_provenance_only",
+        "function_lines": {
+          "acceleration_g_to_m_per_s2": 130,
+          "deg2rad": 125
+        },
+        "gyroscope": "legacy degrees-to-radians conversion retained",
+        "relative_path": "pttppg_denoiser_onnx_runtime.py",
+        "sha256": "bc76aa4387987408464bd686d4c3dbb464497d37f7f4a8c746f1c5304e773cd7"
+      },
+      "historical_source_status": "unresolved_source_level_unit_contradiction",
+      "official_declarations": [
+        {
+          "acceleration_unit": "g",
+          "gyroscope_unit": "degrees/s",
+          "section": "Data Description",
+          "url": "https://physionet.org/content/pulse-transit-time-ppg/1.0.0/",
+          "version": "1.0.0"
+        },
+        {
+          "acceleration_unit": "g",
+          "gyroscope_unit": "degrees/s",
+          "section": "Data Description",
+          "url": "https://physionet.org/content/pulse-transit-time-ppg/1.1.0/",
+          "version": "1.1.0"
+        }
+      ],
+      "project_adopted_units": {
+        "acceleration_conversion": "identity_m_per_s2_no_scale",
+        "acceleration_unit": "m/s^2",
+        "decision_authority": "user_confirmed_project_decision",
+        "decision_date": "2026-08-17",
+        "decision_id": "V2-036",
+        "gyroscope_conversion": "degrees_per_second_to_radians_per_second",
+        "gyroscope_evidence_boundary": "WFDB header plus historical deg2rad path with no observed numeric conflict; not independently device-calibrated",
+        "gyroscope_unit": "deg/s"
+      },
+      "status": "project_resolved_v2_036_source_manifest_conflict_retained",
+      "wfdb_header_declaration": {
+        "acceleration_unit": "g",
+        "gyroscope_unit": "deg/s",
+        "relative_path": "physionet.org/files/pulse-transit-time-ppg/1.1.0/s1_sit.hea",
+        "sha256": "8f4570b9f58c43d9f0bf1dac3eba71d91acd0d85c6bff33067b7db897ae7209f"
+      }
+    },
+    "ptt_source_wavelength_status": "unresolved_red_ir_mapping_conflict",
+    "ptt_subject_count": 22,
+    "ptt_wavelength_interpretation": "project_adopted_distal_pleth_1_red_pleth_2_ir_v2",
+    "record_count_excluded": 1,
+    "record_count_included": 79,
+    "record_count_total": 80,
+    "sim_included_count": 13,
+    "source_manifest_sha256": "43ab3273346469e9f689ce32da9c5ad280d0a53a8bc8864adf5716f40f9f024e"
+  },
+  "mapping_provenance": {
+    "historical_m2_status": "unresolved_red_ir_mapping_conflict",
+    "official_channel_statement": {
+      "pleth_1": {
+        "sampling_rate_hz": 500.0,
+        "sensor": "MAX30101",
+        "site": "distal",
+        "wavelength_label": "red"
+      },
+      "pleth_2": {
+        "sampling_rate_hz": 500.0,
+        "sensor": "MAX30101",
+        "site": "distal",
+        "wavelength_label": "infrared"
+      }
+    },
+    "official_page_evidence_status": "official_v1_0_0_page_statement",
+    "official_page_url": "https://physionet.org/content/pulse-transit-time-ppg/1.0.0/",
+    "official_page_verified_on": "2026-08-16",
+    "official_page_version": "1.0.0",
+    "project_adoption_decision": "user_confirmed_v2_002",
+    "project_mapping": {
+      "IR": "pleth_2",
+      "RED": "pleth_1"
+    },
+    "project_site": "left_index_finger_distal",
+    "published_statement_reconciliation": {
+      "resolution": "project_adopted_distal_pleth_1_red_pleth_2_ir_v2",
+      "v1_0_data_description": {
+        "section": "Data Description",
+        "statement": "pleth_1 red; pleth_2 infrared",
+        "url": "https://physionet.org/content/pulse-transit-time-ppg/1.0.0/",
+        "version": "1.0.0"
+      },
+      "v1_0_methods": {
+        "section": "Methods",
+        "statement": "pleth_1 infrared; pleth_2 red",
+        "url": "https://physionet.org/content/pulse-transit-time-ppg/1.0.0/",
+        "version": "1.0.0"
+      },
+      "v1_1_data_description": {
+        "section": "Data Description",
+        "statement": "pleth_1 red; pleth_2 infrared",
+        "url": "https://physionet.org/content/pulse-transit-time-ppg/1.1.0/",
+        "version": "1.1.0"
+      }
+    },
+    "source_manifest_rewritten": false
+  },
+  "pipeline_generation": "final_pipeline_v2",
+  "ptt_benchmark_executed": false,
+  "ptt_distal_mapping": {
+    "IR": "pleth_2",
+    "RED": "pleth_1"
+  },
+  "schema_version": "ppg_frailty.external_data_contract_report.v2",
+  "source_manifest": {
+    "path": "final_v0/M2_data_manifest_and_evaluation_protocol/manifests/external_record_manifest.csv",
+    "sha256": "43ab3273346469e9f689ce32da9c5ad280d0a53a8bc8864adf5716f40f9f024e"
+  },
+  "source_page": "https://physionet.org/content/pulse-transit-time-ppg/1.0.0/",
+  "status": "passed"
+}

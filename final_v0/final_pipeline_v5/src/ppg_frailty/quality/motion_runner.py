@@ -1,0 +1,1227 @@
+"""Injected smoke/internal motion runners and source-bound execution cores.
+
+Nothing in this module runs at import time. Public injected runners can never
+emit formal evidence or reach PTT. Formal internal/PTT execution is exposed only
+by canonical entry points in quality.motion_reference, which load hash-bound
+source files and call the private cores with fixed scientific adapters.
+
+The small ``smoke`` mode exists solely for interface/bug tests.  Formal source,
+schema, split, roster and outer-isolation checks are data-integrity boundaries;
+they do not depend on a private authorization token or a metric threshold.
+Formal callers may observe integer progress counters but cannot inject data or
+scientific callbacks.
+"""
+from __future__ import annotations
+import hashlib
+import json
+import math
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable, Iterable, Mapping, Sequence
+import numpy as np
+from ..representations.motion import MOTION_NETWORK_SCHEMA_SHA256, motion_network_schema_payload
+from ..data.external_folds import PTT_FORMAL_FOLD_SIZES, PTT_FORMAL_REGISTRY_ID, PTT_FORMAL_REPEAT_SEEDS, load_formal_ptt_repeated_folds, resolve_formal_ptt_split
+from ..data.external_manifest import M2_EXTERNAL_MANIFEST_SHA256
+from ..data.folds import M2_SPLIT_FILE_SHA256, M2_SPLIT_PAYLOAD_SHA256
+from ..motion_ids import FORMAL_MOTION_MODEL_ID
+from ..provenance import sha256_file as _sha256_file, stable_payload_sha256 as _payload_sha256
+from .motion import (
+    MOTION_DEPLOYMENT_THRESHOLD_FIT_SCOPE, MOTION_DEPLOYMENT_THRESHOLD_SCHEMA, MOTION_DEPLOYMENT_THRESHOLD_SCORE_ORIGIN, MOTION_FOLD_COUNT, MOTION_INTERNAL_EVIDENCE_SCHEMA,
+    MOTION_MAJOR_METRIC_FIELDS, MOTION_MIDPOINT_THRESHOLD_SCHEMA, MOTION_OOF_PARTICIPANT_REPEAT_ROWS, MOTION_PARTICIPANT_COUNT, MOTION_REPEAT_COUNT, MOTION_SOURCE_SPLIT_REGISTRY_ID,
+    MOTION_SPLIT_CSV_SHA256, MOTION_SPLIT_REGISTRY_ID, MOTION_SPLIT_SEED, MOTION_THRESHOLD_FIT_SCOPE,
+    MOTION_THRESHOLD_RULE_ID, MOTION_THRESHOLD_SCORE_ORIGIN, MOTION_TRAINING_SEED,
+    PTT_SPLIT_CSV_SHA256, MotionFoldJob, PttExternalReadinessAudit, _audit_ptt_external_readiness_payload,
+    fit_train_only_midpoint_threshold, load_motion_fold_jobs, motion_activity_label, validate_motion_major_metrics,
+)
+
+MOTION_WINDOW_OOF_SCHEMA = 'ppg_frailty.motion_window_oof.imu_iqr_over_1p349.v3'
+MOTION_EXTERNAL_REPORT_SCHEMA = 'ppg_frailty.motion_ptt_external_report.imu_iqr_over_1p349.v3'
+MOTION_PTT_TRAINING_OOF_SCHEMA = 'ppg_frailty.motion_ptt_training_oof.v1'
+MOTION_PTT_TRAINING_EVIDENCE_SCHEMA = 'ppg_frailty.motion_ptt_training_evidence.v1'
+MOTION_INTERNAL_REVERSE_REPORT_SCHEMA = 'ppg_frailty.motion_internal_reverse_evaluation.v1'
+MOTION_INPUT_SCHEMA_STATUS = 'frozen_before_training'
+_SHA256_LENGTH = 64
+_METRIC_NAMES = ('balanced_accuracy', 'macro_f1', 'sensitivity', 'specificity', 'roc_auc', 'pr_auc', 'ece')
+ProgressCallback = Callable[[int, int, str], None]
+
+def _notify_progress(callback: ProgressCallback | None, current: int, total: int, label: str) -> None:
+    if callback is not None:
+        callback(current, total, label)
+
+def _require(condition: object, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+def _flag(reasons: list[str], condition: object, reason: str) -> None:
+    if condition:
+        reasons.append(reason)
+
+def _ptt_activity_label(activity: object) -> int | None:
+    normalized = str(activity).strip().lower()
+    return 0 if normalized == 'sit' else 1 if normalized in {'walk', 'run'} else None
+
+class FormalMotionEntryRequiredError(RuntimeError):
+    pass
+
+@dataclass(frozen=True)
+class MotionWindowExample:
+    window_id: str
+    participant_id: str
+    file_id: str
+    role_or_activity: str
+    activity_label: int
+    values: Any
+    dataset_id: str
+
+    def validate_common(self) -> None:
+        _require(self.window_id and self.participant_id and self.file_id,
+                 'motion window identity fields must be non-empty')
+        _require(self.activity_label in {0, 1}, 'motion activity_label must be static=0 or motion=1')
+        _require(self.dataset_id, 'motion dataset_id must be explicit')
+
+    def validate_internal(self) -> None:
+        self.validate_common()
+        _require(motion_activity_label(self.role_or_activity) == self.activity_label,
+                 'internal motion label disagrees with canonical B/R/S/W role')
+
+    def validate_ptt(self) -> None:
+        self.validate_common()
+        activity = self.role_or_activity.strip().lower()
+        expected = 0 if activity == 'sit' else 1 if activity in {'walk', 'run'} else None
+        _require(expected is not None and expected == self.activity_label,
+                 'PTT activity must map sit=0 and walk/run=1')
+
+@dataclass(frozen=True)
+class MotionPredictionInput:
+    values: Any
+
+@dataclass(frozen=True)
+class MotionFitContext:
+    execution_mode: str
+    repeat_index: int
+    fold_index: int
+    split_seed: int
+    training_seed: int
+    final_fit: bool
+    training_participant_ids: tuple[str, ...]
+    held_out_participant_ids: tuple[str, ...]
+    model_input_schema_sha256: str
+    artifact_directory: Path
+    training_dataset_kind: str = 'frailty29'
+
+@dataclass(frozen=True)
+class MotionFittedArtifact:
+    runtime_model: Any
+    model_id: str
+    artifact_path: str
+    artifact_sha256: str
+    model_input_schema_sha256: str
+    training_participant_ids: tuple[str, ...]
+    parameter_count: int
+    inference_cost: Mapping[str, Any]
+
+@dataclass(frozen=True)
+class MotionInternalRunResult:
+    evidence: Mapping[str, Any]
+    window_oof_rows: tuple[Mapping[str, Any], ...]
+    evidence_path: str | None
+    evidence_sha256: str | None
+    window_oof_path: str | None
+    window_oof_sha256: str | None
+
+@dataclass(frozen=True)
+class MotionExternalRunResult:
+    report: Mapping[str, Any]
+    prediction_rows: tuple[Mapping[str, Any], ...]
+    report_path: str
+    report_sha256: str
+    prediction_path: str
+    prediction_sha256: str
+
+@dataclass(frozen=True)
+class MotionPttTrainingRunResult:
+    evidence: Mapping[str, Any]
+    oof_rows: tuple[Mapping[str, Any], ...]
+    evidence_path: str
+    evidence_sha256: str
+    oof_path: str
+    oof_sha256: str
+
+FitModel = Callable[[Sequence[MotionWindowExample], MotionFitContext], MotionFittedArtifact]
+PredictProbability = Callable[[Any, Sequence[MotionPredictionInput]], Sequence[float]]
+LoadFrozenModel = Callable[[Path, Mapping[str, Any]], Any]
+
+# Deterministic artifact codecs keep JSON/Parquet hashes bound to their schemas.
+def _is_sha256(value: object) -> bool:
+    text = str(value)
+    return len(text) == _SHA256_LENGTH and all((character in '0123456789abcdef' for character in text))
+
+def _strict_json_bytes(payload: object, *, pretty: bool = True) -> bytes:
+    return (json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2 if pretty else None, separators=None if pretty else
+                       (',', ':'), allow_nan=False) + ('\n' if pretty else '')).encode('utf-8')
+
+def _write_strict_json(path: Path, payload: object) -> str:
+    if path.exists():
+        raise FileExistsError(f'refusing to overwrite existing motion artifact: {path}')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + '.tmp')
+    temporary.write_bytes(_strict_json_bytes(payload))
+    temporary.replace(path)
+    return _sha256_file(path)
+
+def _validate_formal_motion_schema_file(path: Path) -> str:
+    try:
+        payload = json.loads(path.read_text(encoding='utf-8'))
+    except json.JSONDecodeError as exc:
+        raise ValueError('formal motion input schema is invalid JSON') from exc
+    expected = {**motion_network_schema_payload(), 'semantic_sha256': MOTION_NETWORK_SCHEMA_SHA256}
+    _require(payload == expected, 'formal motion input schema semantic content drift')
+    return MOTION_NETWORK_SCHEMA_SHA256
+
+_PARQUET_VARIANTS = {
+    MOTION_WINDOW_OOF_SCHEMA: ('role_family', True),
+    MOTION_EXTERNAL_REPORT_SCHEMA: ('activity', False),
+    MOTION_PTT_TRAINING_OOF_SCHEMA: ('activity', True),
+    MOTION_INTERNAL_REVERSE_REPORT_SCHEMA: ('role_family', False),
+}
+
+def _motion_arrow_schema(schema_version: str, pa: Any) -> Any:
+    variant = next((value for name, value in _PARQUET_VARIANTS.items() if schema_version == name), None)
+    if variant is None:
+        raise ValueError('unregistered motion Parquet schema_version')
+    role_field, oof = variant
+    prefix = (
+        (('schema_version', pa.string()), ('repeat_index', pa.int16()), ('fold_index', pa.int16()),
+         ('split_seed', pa.int64()), ('training_seed', pa.int64())) if oof
+        else (('schema_version', pa.string()), ('dataset_id', pa.string()))
+    )
+    shared = (
+        ('window_id', pa.string()), ('participant_id', pa.string()), ('file_id', pa.string()),
+        (role_field, pa.string()), ('activity_label', pa.int8()), ('p_active', pa.float64()),
+        ('threshold', pa.float64()), ('predicted_activity', pa.int8()),
+    )
+    provenance = (
+        (('score_origin', pa.string()), ('threshold_score_origin', pa.string()),
+         ('model_artifact_sha256', pa.string())) if oof
+        else (('model_artifact_sha256', pa.string()), ('threshold_artifact_sha256', pa.string()),
+              ('action', pa.string()))
+    )
+    return pa.schema([(name, data_type, False) for name, data_type in prefix + shared + provenance])
+
+def _write_parquet(path: Path, rows: Sequence[Mapping[str, Any]]) -> str:
+    try:
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+    except ImportError as exc:
+        raise RuntimeError('formal motion OOF/external output requires the pyarrow benchmark profile') from exc
+    _require(rows, 'motion Parquet output requires at least one row')
+    versions = {str(row.get('schema_version', '')) for row in rows}
+    _require(len(versions) == 1, 'motion Parquet rows mix schema versions')
+    schema = _motion_arrow_schema(versions.pop(), pa)
+    expected_names = set(schema.names)
+    _require(not any(set(row) != expected_names for row in rows),
+             'motion Parquet row keys differ from the typed schema')
+    if path.exists():
+        raise FileExistsError(f'refusing to overwrite existing motion artifact: {path}')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    canonical_rows = [dict(row) for row in rows]
+    table = pa.Table.from_pylist(canonical_rows, schema=schema)
+    temporary = path.with_suffix(path.suffix + '.tmp')
+    pq.write_table(table, temporary)
+    observed = pq.read_table(temporary)
+    if not observed.schema.equals(schema, check_metadata=False):
+        temporary.unlink(missing_ok=True)
+        raise RuntimeError('motion Parquet readback schema drift')
+    if observed.to_pylist() != canonical_rows:
+        temporary.unlink(missing_ok=True)
+        raise RuntimeError('motion Parquet readback value drift')
+    temporary.replace(path)
+    return _sha256_file(path)
+
+def _read_motion_parquet(path: Path, schema_version: str) -> list[dict[str, Any]]:
+    try:
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+    except ImportError as exc:
+        raise RuntimeError('motion Parquet validation requires pyarrow') from exc
+    expected = _motion_arrow_schema(schema_version, pa)
+    table = pq.read_table(path)
+    _require(table.schema.equals(expected, check_metadata=False), 'motion Parquet typed schema drift')
+    rows = table.to_pylist()
+    _require(rows, 'motion Parquet contains no rows')
+    return rows
+
+# Shared prediction-row and metric kernels prevent internal/PTT/reverse schema drift.
+def _probabilities(predictor: PredictProbability, model: Any, rows: Sequence[MotionWindowExample]) -> np.ndarray:
+    prediction_inputs = tuple((MotionPredictionInput(values=row.values) for row in rows))
+    values = np.asarray(predictor(model, prediction_inputs), dtype=np.float64)
+    _require(values.ndim == 1 and values.size == len(rows),
+             'motion predictor must return one probability per input window')
+    _require(np.all(np.isfinite(values)) and not np.any((values < 0.0) | (values > 1.0)),
+             'motion predictor returned non-finite or out-of-range probabilities')
+    return values
+
+def _oof_prediction_row(example: MotionWindowExample, probability: float, *, schema_version: str, role_field: str, repeat_index: int, fold_index: int, split_seed: int,
+                        training_seed: int, threshold: float, model_sha256: str) -> dict[str, Any]:
+    return {
+        'schema_version': schema_version, 'repeat_index': repeat_index, 'fold_index': fold_index, 'split_seed': split_seed, 'training_seed': training_seed,
+        'window_id': example.window_id, 'participant_id': example.participant_id, 'file_id': example.file_id, role_field: example.role_or_activity,
+        'activity_label': example.activity_label, 'p_active': float(probability), 'threshold': threshold, 'predicted_activity': int(probability >= threshold),
+        'score_origin': 'strict_outer_oof_model_prediction', 'threshold_score_origin': MOTION_THRESHOLD_SCORE_ORIGIN, 'model_artifact_sha256': model_sha256
+    }
+
+def _frozen_evaluation_rows(examples: Sequence[MotionWindowExample], probabilities: Sequence[float], *, schema_version: str, role_field: str, threshold: float, model_sha256: str,
+                            threshold_sha256: str) -> list[dict[str, Any]]:
+    return [{
+        'schema_version': schema_version, 'dataset_id': example.dataset_id, 'window_id': example.window_id, 'participant_id': example.participant_id, 'file_id': example.file_id,
+        role_field: example.role_or_activity, 'activity_label': example.activity_label, 'p_active': float(probability), 'threshold': threshold,
+        'predicted_activity': int(probability >= threshold), 'model_artifact_sha256': model_sha256, 'threshold_artifact_sha256': threshold_sha256,
+        'action': 'evaluation_only_never_fit_or_recalibrate'
+    } for example, probability in zip(examples, probabilities, strict=True)]
+
+def _rank_average(values: np.ndarray) -> np.ndarray:
+    order = np.argsort(values, kind='mergesort')
+    ranks = np.empty(values.size, dtype=np.float64)
+    cursor = 0
+    while cursor < values.size:
+        stop = cursor + 1
+        while stop < values.size and values[order[stop]] == values[order[cursor]]:
+            stop += 1
+        ranks[order[cursor:stop]] = 0.5 * (cursor + 1 + stop)
+        cursor = stop
+    return ranks
+
+def _roc_auc(labels: np.ndarray, probabilities: np.ndarray) -> float:
+    positives = labels == 1
+    positive_count = int(np.sum(positives))
+    negative_count = int(labels.size - positive_count)
+    _require(positive_count != 0 and negative_count != 0, 'ROC AUC requires both static and motion classes')
+    rank_sum = float(np.sum(_rank_average(probabilities)[positives]))
+    return (rank_sum - positive_count * (positive_count + 1) / 2.0) / (positive_count * negative_count)
+
+def _pr_auc_average_precision(labels: np.ndarray, probabilities: np.ndarray) -> float:
+    positive_count = int(np.sum(labels == 1))
+    _require(positive_count != 0, 'PR AUC requires motion examples')
+    order = np.argsort(-probabilities, kind='mergesort')
+    ordered_labels = labels[order]
+    ordered_scores = probabilities[order]
+    cumulative_true = np.cumsum(ordered_labels == 1)
+    group_ends = np.flatnonzero(np.r_[ordered_scores[:-1] != ordered_scores[1:], True])
+    true_positive = cumulative_true[group_ends].astype(np.float64)
+    predicted_positive = (group_ends + 1).astype(np.float64)
+    recall = true_positive / positive_count
+    precision = true_positive / predicted_positive
+    recall_increment = np.diff(np.r_[0.0, recall])
+    return float(np.sum(recall_increment * precision))
+
+def _binary_metrics(labels: np.ndarray, probabilities: np.ndarray, threshold: float) -> dict[str, float]:
+    _require(labels.size != 0 and set(labels.tolist()) == {0, 1},
+             'motion metrics require both static and motion classes')
+    predicted = (probabilities >= threshold).astype(np.int64)
+    recalls: list[float] = []
+    f1s: list[float] = []
+    for class_id in (0, 1):
+        true_positive = int(np.sum((labels == class_id) & (predicted == class_id)))
+        false_negative = int(np.sum((labels == class_id) & (predicted != class_id)))
+        false_positive = int(np.sum((labels != class_id) & (predicted == class_id)))
+        recall = true_positive / (true_positive + false_negative)
+        precision = true_positive / (true_positive + false_positive) if true_positive + false_positive else 0.0
+        f1 = 2.0 * precision * recall / (precision + recall) if precision + recall else 0.0
+        recalls.append(float(recall))
+        f1s.append(float(f1))
+    return {
+        'balanced_accuracy': float(np.mean(recalls)), 'macro_f1': float(np.mean(f1s)), 'sensitivity': recalls[1], 'specificity': recalls[0],
+        'roc_auc': _roc_auc(labels, probabilities), 'pr_auc': _pr_auc_average_precision(labels, probabilities)
+    }
+
+def _ece(labels: np.ndarray, probabilities: np.ndarray, *, bins: int = 10) -> float:
+    boundaries = np.linspace(0.0, 1.0, bins + 1)
+    total = float(labels.size)
+    value = 0.0
+    for index in range(bins):
+        lower, upper = (boundaries[index], boundaries[index + 1])
+        mask = (probabilities >= lower) & (probabilities <= upper if index == bins - 1 else probabilities < upper)
+        if np.any(mask):
+            value += float(np.sum(mask)) / total * abs(float(np.mean(probabilities[mask])) - float(np.mean(labels[mask])))
+    return float(value)
+
+def participant_macro_motion_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, float]:
+    participant_metrics: list[dict[str, float]] = []
+    ece_values: list[float] = []
+    participant_ids = sorted({str(row['participant_id']) for row in rows})
+    for participant_id in participant_ids:
+        selected = [row for row in rows if str(row['participant_id']) == participant_id]
+        labels = np.asarray([int(row['activity_label']) for row in selected], dtype=np.int64)
+        probabilities = np.asarray([float(row['p_active']) for row in selected], dtype=np.float64)
+        thresholds = {float(row['threshold']) for row in selected}
+        _require(len(thresholds) == 1, 'participant metric rows mix motion thresholds')
+        participant_metrics.append(_binary_metrics(labels, probabilities, thresholds.pop()))
+        ece_values.append(_ece(labels, probabilities))
+    _require(participant_metrics, 'participant metrics require OOF rows')
+    result = {name: float(np.mean([item[name] for item in participant_metrics])) for name in _METRIC_NAMES[:-1]}
+    result['ece'] = float(np.mean(ece_values))
+    return result
+
+def _major_metrics(overall: Mapping[str, float], fold_metrics: Sequence[Mapping[str, Any]], *, parameter_count: int, inference_cost: Mapping[str, Any]) -> dict[str, Any]:
+    result = {f"participant_macro_{name.removeprefix('macro_')}": overall[name]
+              for name in _METRIC_NAMES[:-1]}
+    result.update(worst_fold_balanced_accuracy=min(float(row['balanced_accuracy']) for row in fold_metrics),
+                  ece=overall['ece'], parameter_count=parameter_count, inference_cost=dict(inference_cost))
+    return result
+
+def _validate_inference_cost(inference_cost: Mapping[str, Any], parameter_count: int) -> None:
+    validate_motion_major_metrics({
+        'participant_macro_balanced_accuracy': 0.5, 'worst_fold_balanced_accuracy': 0.5, 'participant_macro_f1': 0.5, 'ece': 0.5, 'parameter_count': parameter_count,
+        'inference_cost': dict(inference_cost)
+    })
+
+def _validate_fitted_artifact(fitted: MotionFittedArtifact, *, context: MotionFitContext, output_root: Path) -> Path:
+    _require(fitted.model_id == FORMAL_MOTION_MODEL_ID,
+             'motion fit callback returned an unregistered formal model ID')
+    _require(fitted.model_input_schema_sha256 == context.model_input_schema_sha256,
+             'motion fitted artifact input schema hash drift')
+    _require(tuple(sorted(fitted.training_participant_ids)) == tuple(sorted(context.training_participant_ids)),
+             'motion fitted artifact training roster drift')
+    _require(_is_sha256(fitted.artifact_sha256), 'motion fitted artifact SHA-256 is invalid')
+    artifact_path = Path(fitted.artifact_path).resolve()
+    if not artifact_path.is_file():
+        raise FileNotFoundError(f'motion fitted artifact missing: {artifact_path}')
+    if context.execution_mode.startswith('formal'):
+        try:
+            artifact_path.relative_to(output_root.resolve())
+        except ValueError as exc:
+            raise ValueError('formal motion model artifact must stay inside output_dir') from exc
+    _require(_sha256_file(artifact_path) == fitted.artifact_sha256,
+             'motion fitted artifact file SHA-256 mismatch')
+    _validate_inference_cost(fitted.inference_cost, fitted.parameter_count)
+    return artifact_path
+
+def _validate_examples(examples: Sequence[MotionWindowExample], *, internal: bool) -> None:
+    _require(examples, 'motion runner requires materialized windows')
+    ids = [item.window_id for item in examples]
+    _require(len(set(ids)) == len(ids), 'motion window_id values must be unique')
+    for item in examples:
+        item.validate_internal() if internal else item.validate_ptt()
+
+def _validate_jobs(jobs: Sequence[MotionFoldJob], participant_ids: set[str], *, execution_mode: str) -> None:
+    _require(execution_mode in {'formal', 'internal', 'smoke'}, 'motion execution_mode must be formal, internal, or smoke')
+    _require(jobs, 'motion runner requires at least one frozen fold job')
+    cells = [(job.repeat_index, job.fold_index) for job in jobs]
+    _require(len(set(cells)) == len(cells), 'motion fold jobs contain duplicate cells')
+    for job in jobs:
+        _require(not (job.repeat_index < 0 or job.repeat_index >= MOTION_REPEAT_COUNT),
+                 'motion job repeat_index is outside the frozen protocol')
+        _require(not (job.fold_index < 0 or job.fold_index >= MOTION_FOLD_COUNT),
+                 'motion job fold_index is outside the frozen protocol')
+        _require(job.split_seed == MOTION_SPLIT_SEED, 'motion job split seed drift')
+        _require(job.training_seed == MOTION_TRAINING_SEED, 'motion job training seed drift')
+        _require(job.registry_id == MOTION_SPLIT_REGISTRY_ID, 'motion job registry ID drift')
+        _require(job.registry_csv_sha256 == MOTION_SPLIT_CSV_SHA256, 'motion job registry hash drift')
+        _require(not job.runtime_split_recomputation_allowed, 'runtime motion split recomputation is forbidden')
+        train = set(job.train_participant_ids)
+        oof = set(job.oof_participant_ids)
+        _require(not train & oof and train | oof == participant_ids,
+                 'motion job is not a disjoint complete participant partition')
+    if execution_mode == 'formal':
+        expected_cells = {(repeat_index, fold_index) for repeat_index in range(MOTION_REPEAT_COUNT) for fold_index in range(MOTION_FOLD_COUNT)}
+        _require(not participant_ids or len(participant_ids) == MOTION_PARTICIPANT_COUNT,
+                 'formal motion run requires exactly 29 participants')
+        _require(set(cells) == expected_cells, 'formal motion run requires the five seed-42 SGKF cells')
+        for repeat_index in range(MOTION_REPEAT_COUNT):
+            repeat_oof = [participant for job in jobs if job.repeat_index == repeat_index for participant in job.oof_participant_ids]
+            _require(len(repeat_oof) == len(participant_ids) and set(repeat_oof) == participant_ids,
+                     'formal motion repeat is not an exact OOF participant partition')
+
+def _validate_internal_oof_rows(rows: Sequence[Mapping[str, Any]], jobs: Sequence[MotionFoldJob]) -> None:
+    _require(rows, 'motion OOF table contains no rows')
+    job_by_cell = {(job.repeat_index, job.fold_index): job for job in jobs}
+    seen: set[tuple[int, str]] = set()
+    participants_by_cell: dict[tuple[int, int], set[str]] = {cell: set() for cell in job_by_cell}
+    for row in rows:
+        try:
+            repeat = int(row['repeat_index'])
+            fold = int(row['fold_index'])
+            label = int(row['activity_label'])
+            probability = float(row['p_active'])
+            threshold = float(row['threshold'])
+            predicted = int(row['predicted_activity'])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError('motion OOF row has invalid typed values') from exc
+        cell = (repeat, fold)
+        job = job_by_cell.get(cell)
+        _require(job is not None, 'motion OOF row is not bound to a frozen cell')
+        window_key = (repeat, str(row['window_id']))
+        _require(window_key not in seen, 'motion OOF table contains duplicate repeat/window rows')
+        seen.add(window_key)
+        participant = str(row['participant_id'])
+        participants_by_cell[cell].add(participant)
+        _require(participant in job.oof_participant_ids,
+                 'motion OOF row participant is not held out in its cell')
+        provenance_matches = (
+            row.get('schema_version') == MOTION_WINDOW_OOF_SCHEMA
+            and int(row['split_seed']) == job.split_seed and int(row['training_seed']) == job.training_seed
+            and row.get('score_origin') == 'strict_outer_oof_model_prediction'
+            and row.get('threshold_score_origin') == MOTION_THRESHOLD_SCORE_ORIGIN
+        )
+        _require(provenance_matches, 'motion OOF row protocol provenance drift')
+        _require(label == motion_activity_label(str(row['role_family'])),
+                 'motion OOF row label disagrees with role family')
+        score_valid = (np.isfinite(probability) and 0.0 <= probability <= 1.0
+                       and np.isfinite(threshold) and 0.0 < threshold < 1.0
+                       and predicted == int(probability >= threshold)
+                       and _is_sha256(row.get('model_artifact_sha256')))
+        _require(score_valid, 'motion OOF row score/prediction/hash semantics drift')
+    for cell, job in job_by_cell.items():
+        _require(participants_by_cell[cell] == set(job.oof_participant_ids),
+                 'motion OOF cell participant coverage is incomplete')
+
+def _validate_internal_evidence_semantics(rows: Sequence[Mapping[str, Any]], jobs: Sequence[MotionFoldJob], evidence: Mapping[str, Any]) -> tuple[str, ...]:
+    try:
+        _validate_internal_oof_rows(rows, jobs)
+    except ValueError:
+        return ('frozen_window_oof_semantic_validation_failed', )
+    reasons: list[str] = []
+    _flag(reasons, int(evidence.get('window_oof_row_count', -1)) != len(rows), 'window_oof_row_count_drift')
+    cell_evidence_value = evidence.get('cell_evidence')
+    cell_metrics_value = evidence.get('cell_metrics')
+    if not isinstance(cell_evidence_value, list) or not isinstance(cell_metrics_value, list):
+        return ('cell_evidence_or_metrics_missing', )
+    evidence_by_cell = {(int(item['repeat_index']), int(item['fold_index'])): item
+                        for item in cell_evidence_value if isinstance(item, Mapping)
+                        and 'repeat_index' in item and 'fold_index' in item}
+    metrics_by_cell = {(int(item['repeat_index']), int(item['fold_index'])): item
+                       for item in cell_metrics_value if isinstance(item, Mapping)
+                       and 'repeat_index' in item and 'fold_index' in item}
+    expected_cells = {(job.repeat_index, job.fold_index) for job in jobs}
+    _flag(reasons, set(evidence_by_cell) != expected_cells or len(cell_evidence_value) != len(expected_cells),
+          'cell_evidence_identity_drift')
+    _flag(reasons, set(metrics_by_cell) != expected_cells or len(cell_metrics_value) != len(expected_cells),
+          'cell_metrics_identity_drift')
+    recomputed_cells: list[dict[str, float]] = []
+    for cell in sorted(expected_cells):
+        selected = [row for row in rows if (int(row['repeat_index']), int(row['fold_index'])) == cell]
+        if not selected:
+            reasons.append('cell_oof_rows_missing')
+            continue
+        evidence_row = evidence_by_cell.get(cell, {})
+        thresholds = {float(row['threshold']) for row in selected}
+        hashes = {str(row['model_artifact_sha256']) for row in selected}
+        threshold_payload = evidence_row.get('threshold')
+        threshold_drift = (
+            len(thresholds) != 1 or not isinstance(threshold_payload, Mapping)
+            or thresholds.pop() != float(threshold_payload.get('threshold', float('nan')))
+        )
+        _flag(reasons, threshold_drift, 'cell_threshold_not_bound_to_oof_rows')
+        _flag(reasons, hashes != {str(evidence_row.get('model_artifact_sha256', ''))},
+              'cell_model_not_bound_to_oof_rows')
+        _flag(reasons, int(evidence_row.get('oof_window_count', -1)) != len(selected),
+              'cell_oof_window_count_drift')
+        recomputed = participant_macro_motion_metrics(selected)
+        recomputed_cells.append(recomputed)
+        declared = metrics_by_cell.get(cell, {})
+        for name in ('balanced_accuracy', 'macro_f1', 'ece'):
+            close = np.isclose(recomputed[name], float(declared.get(name, float('nan'))), rtol=0.0, atol=1e-12)
+            _flag(reasons, not close, f'cell_{name}_metric_drift')
+    overall = participant_macro_motion_metrics(rows)
+    declared_major = evidence.get('major_metrics')
+    if not isinstance(declared_major, Mapping):
+        reasons.append('major_metrics_missing')
+    else:
+        expected_major = {
+            'participant_macro_balanced_accuracy': overall['balanced_accuracy'], 'participant_macro_f1': overall['macro_f1'], 'ece': overall['ece'],
+            'worst_fold_balanced_accuracy': min((item['balanced_accuracy'] for item in recomputed_cells))
+        }
+        for name, expected in expected_major.items():
+            close = np.isclose(expected, float(declared_major.get(name, float('nan'))), rtol=0.0, atol=1e-12)
+            _flag(reasons, not close, f'major_{name}_drift')
+    return tuple(dict.fromkeys(reasons))
+
+def _validate_external_prediction_rows(rows: Sequence[Mapping[str, Any]], *, expected_participant_ids: set[str]) -> None:
+    if not rows or len({str(row['window_id']) for row in rows}) != len(rows):
+        raise ValueError('PTT motion prediction rows are empty or duplicate')
+    observed = {str(row['participant_id']) for row in rows}
+    if observed != expected_participant_ids:
+        raise ValueError('PTT motion prediction participant coverage drift')
+    for row in rows:
+        probability = float(row['p_active'])
+        threshold = float(row['threshold'])
+        expected_label = _ptt_activity_label(row['activity'])
+        if row.get('schema_version') != MOTION_EXTERNAL_REPORT_SCHEMA or expected_label is None or int(
+                row['activity_label']) != expected_label or (not np.isfinite(probability)) or (not 0.0 <= probability <= 1.0) or (not np.isfinite(threshold)) or (int(
+                    row['predicted_activity']) != int(probability >= threshold)) or (not _is_sha256(row.get('model_artifact_sha256'))) or (not _is_sha256(
+                        row.get('threshold_artifact_sha256'))) or (row.get('action') != 'evaluation_only_never_fit_or_recalibrate'):
+            raise ValueError('PTT motion prediction row semantic drift')
+
+def _threshold_and_hash(fitted: MotionFittedArtifact, train_rows: Sequence[MotionWindowExample], oof_participant_ids: Iterable[str],
+                        predictor: PredictProbability) -> tuple[Mapping[str, Any], str]:
+    train_probabilities = _probabilities(predictor, fitted.runtime_model, train_rows)
+    threshold = fit_train_only_midpoint_threshold(train_probabilities, [row.activity_label for row in train_rows], [row.participant_id for row in train_rows],
+                                                  training_participant_ids=fitted.training_participant_ids, forbidden_oof_participant_ids=oof_participant_ids,
+                                                  forbidden_ptt_participant_ids=(), score_origin=MOTION_THRESHOLD_SCORE_ORIGIN).as_dict()
+    return (threshold, _payload_sha256(threshold))
+
+def _fit_oof_cell(train_rows: Sequence[MotionWindowExample], held_out_rows: Sequence[MotionWindowExample],
+                  context: MotionFitContext, *, row_schema: str, role_field: str, fit_model: FitModel,
+                  predictor: PredictProbability, output_root: Path
+                  ) -> tuple[list[dict[str, Any]], MotionFittedArtifact, Path, Mapping[str, Any], str, dict[str, float]]:
+    """Fit one frozen split and materialize its train-only-threshold OOF rows."""
+    fitted = fit_model(train_rows, context)
+    model_path = _validate_fitted_artifact(fitted, context=context, output_root=output_root)
+    threshold, threshold_sha256 = _threshold_and_hash(fitted, train_rows, context.held_out_participant_ids,
+                                                      predictor)
+    probabilities = _probabilities(predictor, fitted.runtime_model, held_out_rows)
+    threshold_value = float(threshold['threshold'])
+    rows = [
+        _oof_prediction_row(example, probability, schema_version=row_schema, role_field=role_field,
+                            repeat_index=context.repeat_index, fold_index=context.fold_index,
+                            split_seed=context.split_seed, training_seed=context.training_seed,
+                            threshold=threshold_value, model_sha256=fitted.artifact_sha256)
+        for example, probability in zip(held_out_rows, probabilities, strict=True)
+    ]
+    metrics = participant_macro_motion_metrics(rows)
+    return rows, fitted, model_path, threshold, threshold_sha256, metrics
+
+def _deployment_threshold_from_oof(rows: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], str]:
+    _require(rows and not any(row.get('score_origin') != 'strict_outer_oof_model_prediction' for row in rows),
+             'deployment threshold requires strict outer-OOF predictions')
+    participant_ids = tuple(sorted({str(row['participant_id']) for row in rows}))
+    class_centers: dict[int, list[float]] = {0: [], 1: []}
+    for participant_id in participant_ids:
+        participant_rows = [row for row in rows if str(row['participant_id']) == participant_id]
+        for class_id in (0, 1):
+            values = [float(row['p_active']) for row in participant_rows if int(row['activity_label']) == class_id]
+            _require(values, f'OOF participant {participant_id!r} lacks motion class {class_id}')
+            class_centers[class_id].append(float(np.median(values)))
+    static_center = float(np.median(class_centers[0]))
+    motion_center = float(np.median(class_centers[1]))
+    _require(0.0 <= static_center < motion_center <= 1.0, 'OOF deployment score centres are unordered')
+    roster_bytes = json.dumps(list(participant_ids), ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False).encode('utf-8')
+    payload = {
+        'schema_version': MOTION_DEPLOYMENT_THRESHOLD_SCHEMA, 'threshold_rule_id': MOTION_THRESHOLD_RULE_ID, 'score_origin': MOTION_DEPLOYMENT_THRESHOLD_SCORE_ORIGIN,
+        'fit_scope': MOTION_DEPLOYMENT_THRESHOLD_FIT_SCOPE, 'participant_ids': list(participant_ids), 'participant_roster_sha256': hashlib.sha256(roster_bytes).hexdigest(),
+        'static_center': static_center, 'motion_center': motion_center, 'threshold': (static_center + motion_center) / 2.0,
+        'center_statistic': 'median_of_participant_class_medians', 'participant_weighting': 'each_oof_participant_equal_within_each_class',
+        'score_space': 'calibrated_p_active_probability', 'class_ids': [0, 1], 'observed_row_count': len(rows)
+    }
+    return (payload, _payload_sha256(payload))
+
+# Authoritative internal OOF path: fold fitting, train-only thresholds, then all-participant final fit.
+def _run_internal_motion_oof_impl(examples: Sequence[MotionWindowExample], fold_jobs: Sequence[MotionFoldJob], *, fit_model: FitModel, predict_probability: PredictProbability,
+                                  model_input_schema_path: str | Path, expected_model_input_schema_sha256: str, output_dir: str | Path,
+                                  motion_split_csv_path: str | Path | None = None, execution_mode: str, write_artifacts: bool = True,
+    formal_source_evidence: Mapping[str, Any] | None = None, progress_callback: ProgressCallback | None = None) -> MotionInternalRunResult:
+    if execution_mode == 'formal':
+        _require(isinstance(formal_source_evidence, Mapping), 'formal internal motion source evidence is required')
+        from .motion_reference import verify_formal_internal_source_evidence
+        source_reasons = verify_formal_internal_source_evidence(formal_source_evidence)
+        _require(not source_reasons, 'formal internal motion source evidence rejected: ' + ';'.join(source_reasons))
+    elif formal_source_evidence is not None:
+        raise ValueError('non-formal injected runner may not carry formal source evidence')
+    records = tuple(examples)
+    jobs = tuple(fold_jobs)
+    _validate_examples(records, internal=True)
+    participant_ids = {item.participant_id for item in records}
+    _validate_jobs(jobs, participant_ids, execution_mode=execution_mode)
+    verified_split_path: Path | None = None
+    if execution_mode == 'formal':
+        _require(motion_split_csv_path is not None, 'formal motion run requires the real hash-bound split CSV path')
+        verified_split_path = Path(motion_split_csv_path).resolve()
+        authoritative_jobs = load_motion_fold_jobs(verified_split_path)
+        ordered_jobs = tuple(sorted(jobs, key=lambda item: (item.repeat_index, item.fold_index)))
+        _require(ordered_jobs == authoritative_jobs,
+                 'caller motion jobs differ from the real hash-bound corrected SGKF assignments')
+    _require(execution_mode != 'formal' or write_artifacts, 'formal motion run may not suppress frozen artifacts')
+    schema_path = Path(model_input_schema_path).resolve()
+    if not schema_path.is_file():
+        raise FileNotFoundError(f'motion input schema file not found: {schema_path}')
+    _require(_is_sha256(expected_model_input_schema_sha256), 'expected motion input schema SHA-256 is invalid')
+    _require(_sha256_file(schema_path) == expected_model_input_schema_sha256,
+             'motion input schema file SHA-256 mismatch')
+    semantic_schema_sha256 = _validate_formal_motion_schema_file(schema_path) if execution_mode == 'formal' else expected_model_input_schema_sha256
+    root = Path(output_dir).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    window_oof_rows: list[dict[str, Any]] = []
+    cell_evidence: list[dict[str, Any]] = []
+    cell_metrics: list[dict[str, Any]] = []
+    ordered_jobs = sorted(jobs, key=lambda item: (item.repeat_index, item.fold_index))
+    progress_total = len(ordered_jobs) + 1
+    for job_index, job in enumerate(ordered_jobs):
+        _notify_progress(progress_callback, job_index, progress_total, f'train internal repeat {job.repeat_index + 1} fold {job.fold_index + 1}')
+        train_ids = set(job.train_participant_ids)
+        oof_ids = set(job.oof_participant_ids)
+        train_rows = tuple((row for row in records if row.participant_id in train_ids))
+        oof_rows = tuple((row for row in records if row.participant_id in oof_ids))
+        _require(train_rows and oof_rows, 'motion fold contains an empty train or OOF window set')
+        cell_dir = root / f'repeat_{job.repeat_index}' / f'fold_{job.fold_index}'
+        cell_dir.mkdir(parents=True, exist_ok=True)
+        context = MotionFitContext(execution_mode=execution_mode, repeat_index=job.repeat_index, fold_index=job.fold_index, split_seed=job.split_seed,
+                                   training_seed=job.training_seed, final_fit=False, training_participant_ids=tuple(sorted(train_ids)),
+                                   held_out_participant_ids=tuple(sorted(oof_ids)), model_input_schema_sha256=semantic_schema_sha256, artifact_directory=cell_dir)
+        current_rows, fitted, model_path, threshold, threshold_sha256, metrics = _fit_oof_cell(
+            train_rows, oof_rows, context, row_schema=MOTION_WINDOW_OOF_SCHEMA, role_field='role_family',
+            fit_model=fit_model, predictor=predict_probability, output_root=root)
+        window_oof_rows.extend(current_rows)
+        cell_metrics.append({'repeat_index': job.repeat_index, 'fold_index': job.fold_index, **metrics})
+        cell_row: dict[str, Any] = {
+            'repeat_index': job.repeat_index, 'fold_index': job.fold_index, 'training_participant_count': len(train_ids), 'oof_participant_count': len(oof_ids),
+            'model_artifact_path': str(model_path), 'model_artifact_sha256': fitted.artifact_sha256, 'model_input_schema_sha256': semantic_schema_sha256,
+            'parameter_count': fitted.parameter_count, 'inference_cost': dict(fitted.inference_cost), 'threshold_artifact_sha256': threshold_sha256,
+            'threshold_fit_scope': MOTION_THRESHOLD_FIT_SCOPE, 'threshold': threshold, 'oof_window_count': len(current_rows)
+        }
+        cell_evidence.append(cell_row)
+    _validate_internal_oof_rows(window_oof_rows, jobs)
+    repeat_participant_metrics: list[dict[str, float]] = []
+    for repeat_index in sorted({job.repeat_index for job in jobs}):
+        selected = [row for row in window_oof_rows if row['repeat_index'] == repeat_index]
+        repeat_participant_metrics.append(participant_macro_motion_metrics(selected))
+    final_dir = root / 'final_all_internal'
+    final_dir.mkdir(parents=True, exist_ok=True)
+    final_context = MotionFitContext(execution_mode=execution_mode, repeat_index=-1, fold_index=-1, split_seed=MOTION_SPLIT_SEED, training_seed=MOTION_TRAINING_SEED,
+                                     final_fit=True, training_participant_ids=tuple(sorted(participant_ids)), held_out_participant_ids=(),
+                                     model_input_schema_sha256=semantic_schema_sha256, artifact_directory=final_dir)
+    _notify_progress(progress_callback, len(ordered_jobs), progress_total, 'fit final all-participant motion model')
+    final_fitted = fit_model(records, final_context)
+    final_model_path = _validate_fitted_artifact(final_fitted, context=final_context, output_root=root)
+    final_threshold, final_threshold_sha256 = _deployment_threshold_from_oof(window_oof_rows)
+    _notify_progress(progress_callback, progress_total, progress_total, 'completed final all-participant motion model')
+    repeat_average = {
+        name: float(np.mean([item[name] for item in repeat_participant_metrics])) for name in _METRIC_NAMES
+    }
+    major_metrics = _major_metrics(
+        repeat_average, cell_metrics, parameter_count=final_fitted.parameter_count,
+        inference_cost=final_fitted.inference_cost,
+    )
+    internal_metric_order = ('participant_macro_balanced_accuracy', 'worst_fold_balanced_accuracy',
+                             'participant_macro_f1', 'participant_macro_sensitivity',
+                             'participant_macro_specificity', 'participant_macro_roc_auc',
+                             'participant_macro_pr_auc', 'ece', 'parameter_count', 'inference_cost')
+    major_metrics = {name: major_metrics[name] for name in internal_metric_order}
+    validate_motion_major_metrics(major_metrics)
+    formal = execution_mode == 'formal'
+    evidence: dict[str, Any] = {
+        'schema_version': MOTION_INTERNAL_EVIDENCE_SCHEMA,
+        'execution_status': 'completed_formal_not_smoke' if formal else 'completed_internal_injected_not_formal' if execution_mode == 'internal' else 'completed_smoke_not_formal',
+        'scientific_scope': 'frailty29_single_sgkf5_oof' if formal else 'injected_internal_nonformal' if execution_mode == 'internal' else 'synthetic_or_reduced_smoke',
+        'model_id': FORMAL_MOTION_MODEL_ID, 'split_registry_id': MOTION_SPLIT_REGISTRY_ID, 'source_split_registry_id': MOTION_SOURCE_SPLIT_REGISTRY_ID,
+        'split_registry_csv_sha256': MOTION_SPLIT_CSV_SHA256, 'upstream_split_registry_file_sha256': M2_SPLIT_FILE_SHA256,
+        'upstream_split_registry_payload_sha256': M2_SPLIT_PAYLOAD_SHA256,
+        'split_registry_csv_path': str(verified_split_path) if verified_split_path is not None else 'smoke_not_bound', 'participant_count': len(participant_ids),
+        'oof_participant_repeat_rows': MOTION_OOF_PARTICIPANT_REPEAT_ROWS if formal else len(participant_ids) * len({j.repeat_index
+                                                                                                                     for j in jobs}),
+        'model_input_schema_status': MOTION_INPUT_SCHEMA_STATUS, 'model_input_schema_path': str(schema_path), 'model_input_schema_file_sha256': expected_model_input_schema_sha256,
+        'model_input_schema_sha256': semantic_schema_sha256, 'threshold_rule_id': MOTION_THRESHOLD_RULE_ID, 'threshold_score_origin': MOTION_DEPLOYMENT_THRESHOLD_SCORE_ORIGIN,
+        'major_metric_names': list(MOTION_MAJOR_METRIC_FIELDS), 'major_metrics': major_metrics, 'cell_metrics': cell_metrics, 'cell_evidence': cell_evidence,
+        'window_oof_row_count': len(window_oof_rows), 'model_and_threshold_frozen_before_ptt': formal, 'final_model': {
+            'artifact_path': str(final_model_path), 'artifact_sha256': final_fitted.artifact_sha256, 'model_input_schema_sha256': semantic_schema_sha256,
+            'training_participant_ids': list(final_fitted.training_participant_ids), 'parameter_count': final_fitted.parameter_count,
+            'inference_cost': dict(final_fitted.inference_cost)
+        }, 'final_threshold': final_threshold, 'final_threshold_artifact_sha256': final_threshold_sha256, 'ablation_executed': False
+    }
+    if formal:
+        evidence['formal_entry_id'] = str(formal_source_evidence['formal_entry_id'])
+        evidence['formal_source_evidence'] = dict(formal_source_evidence)
+    evidence_path: str | None = None
+    evidence_sha256: str | None = None
+    oof_path: str | None = None
+    oof_sha256: str | None = None
+    if write_artifacts:
+        if formal:
+            output_oof = root / 'motion_window_oof.parquet'
+            oof_sha256 = _write_parquet(output_oof, window_oof_rows)
+            oof_path = str(output_oof)
+            evidence['window_oof_parquet_path'] = oof_path
+            evidence['window_oof_parquet_sha256'] = oof_sha256
+        else:
+            output_oof = root / 'motion_window_oof_smoke.json'
+            oof_sha256 = _write_strict_json(output_oof, window_oof_rows)
+            oof_path = str(output_oof)
+            evidence['smoke_window_oof_json_path'] = oof_path
+            evidence['smoke_window_oof_json_sha256'] = oof_sha256
+        output_evidence = root / 'motion_internal_evidence.json'
+        evidence_sha256 = _write_strict_json(output_evidence, evidence)
+        evidence_path = str(output_evidence)
+    return MotionInternalRunResult(evidence=evidence, window_oof_rows=tuple(window_oof_rows), evidence_path=evidence_path, evidence_sha256=evidence_sha256,
+                                   window_oof_path=oof_path, window_oof_sha256=oof_sha256)
+
+def load_motion_internal_evidence(evidence_path: str | Path, *, expected_sha256: str) -> tuple[dict[str, Any], str]:
+    _require(_is_sha256(expected_sha256), 'expected internal evidence SHA-256 is invalid')
+    source = Path(evidence_path).resolve()
+    if not source.is_file():
+        raise FileNotFoundError(f'internal motion evidence archive not found: {source}')
+    observed = _sha256_file(source)
+    _require(observed == expected_sha256, 'internal motion evidence archive SHA-256 mismatch')
+    try:
+        payload = json.loads(source.read_text(encoding='utf-8'))
+    except json.JSONDecodeError as exc:
+        raise ValueError('internal motion evidence archive is invalid JSON') from exc
+    _require(isinstance(payload, dict), 'internal motion evidence archive must contain one JSON object')
+    return (payload, observed)
+
+def _threshold_payload_is_bound_to_participants(payload: object, expected_participant_ids: Iterable[str]) -> bool:
+    if not isinstance(payload, Mapping):
+        return False
+    expected = tuple(sorted((str(value) for value in expected_participant_ids)))
+    observed_value = payload.get('participant_ids')
+    if not isinstance(observed_value, (list, tuple)):
+        return False
+    observed = tuple(sorted((str(value) for value in observed_value)))
+    if len(observed) != len(set(observed)) or observed != expected:
+        return False
+    roster_bytes = json.dumps(sorted(set(observed)), ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False).encode('utf-8')
+    try:
+        static_center = float(payload['static_center'])
+        motion_center = float(payload['motion_center'])
+        threshold = float(payload['threshold'])
+    except (KeyError, TypeError, ValueError):
+        return False
+    midpoint = (static_center + motion_center) / 2.0
+    train_only = payload.get('schema_version') == MOTION_MIDPOINT_THRESHOLD_SCHEMA and payload.get('score_origin') == MOTION_THRESHOLD_SCORE_ORIGIN and (
+        payload.get('fit_scope') == MOTION_THRESHOLD_FIT_SCOPE)
+    deployment_oof = payload.get('schema_version') == MOTION_DEPLOYMENT_THRESHOLD_SCHEMA and payload.get('score_origin') == MOTION_DEPLOYMENT_THRESHOLD_SCORE_ORIGIN and (
+        payload.get('fit_scope') == MOTION_DEPLOYMENT_THRESHOLD_FIT_SCOPE)
+    return bool((train_only or deployment_oof) and payload.get('threshold_rule_id') == MOTION_THRESHOLD_RULE_ID
+                and (payload.get('participant_roster_sha256') == hashlib.sha256(roster_bytes).hexdigest()) and (tuple(payload.get('class_ids',
+                                                                                                                                  ())) == (0, 1)) and np.isfinite(static_center)
+                and np.isfinite(motion_center) and np.isfinite(threshold) and (0.0 <= static_center < threshold < motion_center <= 1.0) and (abs(threshold - midpoint) <= 1e-15))
+
+def _frozen_file_matches(path_value: object, sha256_value: object, *, required_root: Path | None = None, parquet_envelope: bool = False) -> bool:
+    if not _is_sha256(sha256_value):
+        return False
+    candidate = Path(str(path_value)).resolve()
+    if not candidate.is_file():
+        return False
+    if required_root is not None:
+        try:
+            candidate.relative_to(required_root.resolve())
+        except ValueError:
+            return False
+    if _sha256_file(candidate) != str(sha256_value):
+        return False
+    if parquet_envelope:
+        size = candidate.stat().st_size
+        if size < 12:
+            return False
+        with candidate.open('rb') as handle:
+            leading = handle.read(4)
+            handle.seek(-4, 2)
+            trailing = handle.read(4)
+        if leading != b'PAR1' or trailing != b'PAR1':
+            return False
+    return True
+
+def _frozen_model_reloads(model: Mapping[str, Any], participant_ids: Iterable[str], *, cell: bool) -> bool:
+    path_field = 'model_artifact_path' if cell else 'artifact_path'
+    hash_field = 'model_artifact_sha256' if cell else 'artifact_sha256'
+    try:
+        from .motion_adapters import load_formal_motion_model
+        metadata = {
+            'artifact_sha256': model[hash_field], 'training_participant_ids': list(participant_ids),
+            'parameter_count': model['parameter_count'], 'inference_cost': model['inference_cost'],
+            'model_input_schema_sha256': model['model_input_schema_sha256'],
+        }
+        load_formal_motion_model(Path(str(model[path_field])).resolve(), metadata)
+    except (KeyError, OSError, RuntimeError, TypeError, ValueError):
+        return False
+    return True
+
+def _verify_frozen_internal_assets(evidence: Mapping[str, Any], *, archive_root: Path, require_complete_oof_archive: bool = True) -> tuple[str, ...]:
+    reasons: list[str] = []
+    source_evidence = evidence.get('formal_source_evidence')
+    if not isinstance(source_evidence, Mapping):
+        reasons.append('formal_source_evidence_missing')
+    else:
+        try:
+            from .motion_reference import verify_formal_internal_source_evidence
+            reasons.extend(verify_formal_internal_source_evidence(source_evidence))
+        except (ImportError, OSError, TypeError, ValueError):
+            reasons.append('formal_source_evidence_semantic_reload_failed')
+    split_path = Path(str(evidence.get('split_registry_csv_path', ''))).resolve()
+    try:
+        authoritative_jobs = load_motion_fold_jobs(split_path)
+    except (FileNotFoundError, KeyError, TypeError, ValueError):
+        authoritative_jobs = ()
+        reasons.append('frozen_internal_split_csv_missing_or_hash_mismatch')
+    job_by_cell = {(job.repeat_index, job.fold_index): job for job in authoritative_jobs}
+    schema_matches = _frozen_file_matches(evidence.get('model_input_schema_path'), evidence.get('model_input_schema_file_sha256'))
+    _flag(reasons, not schema_matches, 'frozen_model_input_schema_missing_or_hash_mismatch')
+    if schema_matches:
+        try:
+            semantic_hash = _validate_formal_motion_schema_file(Path(str(evidence['model_input_schema_path'])).resolve())
+        except (KeyError, OSError, TypeError, ValueError):
+            reasons.append('frozen_model_input_schema_semantic_drift')
+        else:
+            _flag(reasons, evidence.get('model_input_schema_sha256') != semantic_hash,
+                  'frozen_model_input_schema_semantic_hash_drift')
+    parquet_matches = not require_complete_oof_archive or _frozen_file_matches(evidence.get('window_oof_parquet_path'), evidence.get('window_oof_parquet_sha256'),
+                                                                               required_root=archive_root, parquet_envelope=True)
+    if require_complete_oof_archive and not parquet_matches:
+        reasons.append('frozen_window_oof_parquet_missing_or_hash_mismatch')
+    elif require_complete_oof_archive and authoritative_jobs:
+        try:
+            oof_rows = _read_motion_parquet(Path(str(evidence['window_oof_parquet_path'])).resolve(), MOTION_WINDOW_OOF_SCHEMA)
+        except (KeyError, OSError, RuntimeError, TypeError, ValueError):
+            reasons.append('frozen_window_oof_parquet_typed_readback_failed')
+        else:
+            try:
+                semantic_reasons = _validate_internal_evidence_semantics(oof_rows, authoritative_jobs, evidence)
+            except (KeyError, TypeError, ValueError, ZeroDivisionError):
+                reasons.append('frozen_window_oof_evidence_semantic_validation_failed')
+            else:
+                reasons.extend(semantic_reasons)
+    cell_rows = evidence.get('cell_evidence') if require_complete_oof_archive else ()
+    if isinstance(cell_rows, list):
+        for row in cell_rows:
+            if not isinstance(row, Mapping):
+                continue
+            try:
+                cell = (int(row['repeat_index']), int(row['fold_index']))
+            except (KeyError, TypeError, ValueError):
+                continue
+            job = job_by_cell.get(cell)
+            if job is None:
+                reasons.append('cell_not_bound_to_authoritative_split')
+                continue
+            _flag(reasons, row.get('training_participant_count') != len(job.train_participant_ids),
+                  'cell_training_participant_count_drift')
+            _flag(reasons, row.get('oof_participant_count') != len(job.oof_participant_ids),
+                  'cell_oof_participant_count_drift')
+            _flag(reasons, row.get('model_input_schema_sha256') != evidence.get('model_input_schema_sha256'),
+                  'cell_model_input_schema_hash_drift')
+            model_matches = _frozen_file_matches(row.get('model_artifact_path'), row.get('model_artifact_sha256'), required_root=archive_root)
+            if not model_matches:
+                reasons.append('cell_model_artifact_missing_or_hash_mismatch')
+            elif not _frozen_model_reloads(row, job.train_participant_ids, cell=True):
+                reasons.append('cell_model_artifact_semantic_reload_failed')
+            threshold = row.get('threshold')
+            if not _threshold_payload_is_bound_to_participants(threshold, job.train_participant_ids) or _payload_sha256(threshold) != row.get('threshold_artifact_sha256'):
+                reasons.append('cell_threshold_artifact_missing_or_hash_mismatch')
+    all_participants = tuple(sorted({participant_id for job in authoritative_jobs for participant_id in (*job.train_participant_ids, *job.oof_participant_ids)}))
+    final_model = evidence.get('final_model')
+    if not isinstance(final_model, Mapping):
+        reasons.append('frozen_final_model_missing')
+    else:
+        final_model_matches = _frozen_file_matches(final_model.get('artifact_path'), final_model.get('artifact_sha256'), required_root=archive_root)
+        _flag(reasons, not final_model_matches, 'frozen_final_model_missing_or_hash_mismatch')
+        roster_value = final_model.get('training_participant_ids')
+        roster_drift = not isinstance(roster_value, (list, tuple)) or tuple(
+            sorted(str(value) for value in roster_value)
+        ) != all_participants
+        _flag(reasons, roster_drift, 'frozen_final_model_training_roster_drift')
+        _flag(reasons, final_model.get('model_input_schema_sha256') != evidence.get('model_input_schema_sha256'),
+              'frozen_final_model_input_schema_hash_drift')
+        if final_model_matches and not _frozen_model_reloads(final_model, all_participants, cell=False):
+            reasons.append('frozen_final_model_semantic_reload_failed')
+    final_threshold = evidence.get('final_threshold')
+    if not _threshold_payload_is_bound_to_participants(final_threshold, all_participants) or _payload_sha256(final_threshold) != evidence.get('final_threshold_artifact_sha256'):
+        reasons.append('frozen_final_threshold_missing_or_hash_mismatch')
+    return tuple(dict.fromkeys(reasons))
+
+def audit_ptt_external_readiness(evidence_path: str | Path, *, expected_sha256: str) -> PttExternalReadinessAudit:
+    evidence, _ = load_motion_internal_evidence(evidence_path, expected_sha256=expected_sha256)
+    audit = _audit_ptt_external_readiness_payload(evidence)
+    reasons = [] if audit.ready else list(audit.reasons)
+    if audit.ready:
+        reasons.extend(_verify_frozen_internal_assets(evidence, archive_root=Path(evidence_path).resolve().parent))
+    return PttExternalReadinessAudit(ready=not reasons and audit.ready, reasons=tuple(dict.fromkeys(reasons)) if reasons else audit.reasons)
+
+# PTT training and frozen cross-dataset evaluations reuse the same row/metric contracts.
+def _run_ptt_motion_training_ablation_impl(examples: Sequence[MotionWindowExample], *, ptt_split_csv: str | Path, fit_model: FitModel, predict_probability: PredictProbability,
+                                           model_input_schema_path: str | Path, expected_model_input_schema_sha256: str, output_dir: str | Path,
+                                           formal_source_evidence: Mapping[str, Any], progress_callback: ProgressCallback | None = None) -> MotionPttTrainingRunResult:
+    from .motion_reference import verify_formal_ptt_source_evidence
+    reasons = verify_formal_ptt_source_evidence(formal_source_evidence)
+    _require(not reasons, 'formal PTT training source evidence rejected: ' + ';'.join(reasons))
+    records = tuple(examples)
+    _validate_examples(records, internal=False)
+    participants = tuple(sorted({row.participant_id for row in records}))
+    _require(len(participants) == 22, 'PTT training ablation requires exactly 22 participants')
+    split_path = Path(ptt_split_csv).resolve()
+    _require(_sha256_file(split_path) == PTT_SPLIT_CSV_SHA256, 'PTT training split CSV SHA-256 drift')
+    split_rows = load_formal_ptt_repeated_folds(split_path)
+    jobs = [resolve_formal_ptt_split(split_rows, repeat_index=0, fold_index=fold_index) for fold_index in range(5)]
+    oof_roster = [participant for job in jobs for participant in job['oof_subject_ids']]
+    _require(len(oof_roster) == 22 and set(oof_roster) == set(participants),
+             'PTT repeat-0 folds are not an exact participant OOF partition')
+    schema_path = Path(model_input_schema_path).resolve()
+    _require(_sha256_file(schema_path) == expected_model_input_schema_sha256,
+             'PTT training input schema file hash drift')
+    semantic_schema_sha256 = _validate_formal_motion_schema_file(schema_path)
+    root = Path(output_dir).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    oof_rows: list[dict[str, Any]] = []
+    cell_metrics: list[dict[str, Any]] = []
+    cell_evidence: list[dict[str, Any]] = []
+    for job_index, job in enumerate(jobs):
+        fold_index = int(job['fold_index'])
+        train_ids = tuple((str(value) for value in job['train_subject_ids']))
+        oof_ids = tuple((str(value) for value in job['oof_subject_ids']))
+        _notify_progress(progress_callback, job_index, 6, f'train PTT repeat 1 fold {fold_index + 1}')
+        train_examples = tuple((row for row in records if row.participant_id in train_ids))
+        held_out = tuple((row for row in records if row.participant_id in oof_ids))
+        cell_dir = root / 'repeat_0' / f'fold_{fold_index}'
+        context = MotionFitContext(execution_mode='formal_ptt_training', repeat_index=0, fold_index=fold_index, split_seed=42, training_seed=MOTION_TRAINING_SEED, final_fit=False,
+                                   training_participant_ids=train_ids, held_out_participant_ids=oof_ids, model_input_schema_sha256=semantic_schema_sha256,
+                                   artifact_directory=cell_dir, training_dataset_kind='ptt')
+        current, fitted, model_path, threshold, threshold_sha256, metrics = _fit_oof_cell(
+            train_examples, held_out, context, row_schema=MOTION_PTT_TRAINING_OOF_SCHEMA,
+            role_field='activity', fit_model=fit_model, predictor=predict_probability, output_root=root)
+        oof_rows.extend(current)
+        cell_metrics.append({'repeat_index': 0, 'fold_index': fold_index, **metrics})
+        cell_evidence.append({
+            'repeat_index': 0, 'fold_index': fold_index, 'split_seed': 42, 'training_seed': MOTION_TRAINING_SEED, 'training_participant_ids': list(train_ids),
+            'oof_participant_ids': list(oof_ids), 'model_artifact_path': str(model_path), 'model_artifact_sha256': fitted.artifact_sha256,
+            'parameter_count': fitted.parameter_count, 'inference_cost': dict(fitted.inference_cost), 'threshold': threshold, 'threshold_artifact_sha256': threshold_sha256,
+            'oof_window_count': len(current)
+        })
+    deployment_threshold, deployment_threshold_sha256 = _deployment_threshold_from_oof(oof_rows)
+    _notify_progress(progress_callback, 5, 6, 'fit final all-22 PTT motion model')
+    final_dir = root / 'final_all_ptt'
+    final_context = MotionFitContext(execution_mode='formal_ptt_training', repeat_index=-1, fold_index=-1, split_seed=42, training_seed=MOTION_TRAINING_SEED, final_fit=True,
+                                     training_participant_ids=participants, held_out_participant_ids=(), model_input_schema_sha256=semantic_schema_sha256,
+                                     artifact_directory=final_dir, training_dataset_kind='ptt')
+    final_fitted = fit_model(records, final_context)
+    final_path = _validate_fitted_artifact(final_fitted, context=final_context, output_root=root)
+    overall = participant_macro_motion_metrics(oof_rows)
+    major_metrics = _major_metrics(overall, cell_metrics, parameter_count=final_fitted.parameter_count, inference_cost=final_fitted.inference_cost)
+    validate_motion_major_metrics(major_metrics)
+    evidence: dict[str, Any] = {
+        'schema_version': MOTION_PTT_TRAINING_EVIDENCE_SCHEMA, 'execution_status': 'completed_ptt_repeat0_sgkf5_training_ablation',
+        'scientific_scope': 'ptt22_repeat0_grouped_activity_balanced_oof', 'model_id': FORMAL_MOTION_MODEL_ID, 'training_dataset': 'ptt_ppg_1_1_0_local',
+        'evaluation_dataset_for_this_stage': 'ptt_outer_oof_only', 'split_registry_id': PTT_FORMAL_REGISTRY_ID, 'split_registry_csv_path': str(split_path),
+        'split_registry_csv_sha256': PTT_SPLIT_CSV_SHA256, 'repeat_indices': [0], 'split_seeds': [42], 'participant_count': 22, 'model_input_schema_path': str(schema_path),
+        'model_input_schema_file_sha256': expected_model_input_schema_sha256, 'model_input_schema_sha256': semantic_schema_sha256, 'major_metrics': major_metrics,
+        'cell_metrics': cell_metrics, 'cell_evidence': cell_evidence, 'window_oof_row_count': len(oof_rows), 'deployment_threshold': deployment_threshold,
+        'deployment_threshold_artifact_sha256': deployment_threshold_sha256, 'final_model': {
+            'artifact_path': str(final_path), 'artifact_sha256': final_fitted.artifact_sha256, 'training_participant_ids': list(participants),
+            'parameter_count': final_fitted.parameter_count, 'inference_cost': dict(final_fitted.inference_cost), 'model_input_schema_sha256': semantic_schema_sha256
+        }, 'formal_source_evidence': dict(formal_source_evidence), 'fit_or_recalibration_on_frailty29': False, 'ablation_executed': True
+    }
+    oof_path = root / 'motion_ptt_training_oof.parquet'
+    oof_sha256 = _write_parquet(oof_path, oof_rows)
+    evidence['window_oof_parquet_path'] = str(oof_path)
+    evidence['window_oof_parquet_sha256'] = oof_sha256
+    evidence_path = root / 'motion_ptt_training_evidence.json'
+    evidence_sha256 = _write_strict_json(evidence_path, evidence)
+    _notify_progress(progress_callback, 6, 6, 'completed PTT motion training')
+    return MotionPttTrainingRunResult(evidence=evidence, oof_rows=tuple(oof_rows), evidence_path=str(evidence_path), evidence_sha256=evidence_sha256, oof_path=str(oof_path),
+                                      oof_sha256=oof_sha256)
+
+def _load_ptt_training_evidence(path: str | Path, expected_sha256: str) -> dict[str, Any]:
+    source = Path(path).resolve()
+    _require(_is_sha256(expected_sha256) and _sha256_file(source) == expected_sha256,
+             'PTT training evidence SHA-256 mismatch')
+    payload = json.loads(source.read_text(encoding='utf-8'))
+    if not isinstance(payload, dict) or payload.get('schema_version') != MOTION_PTT_TRAINING_EVIDENCE_SCHEMA or payload.get('participant_count') != 22 or (
+            payload.get('repeat_indices') != [0]) or (payload.get('split_seeds') != [42]) or (payload.get('split_registry_id') != PTT_FORMAL_REGISTRY_ID) or (
+                payload.get('split_registry_csv_sha256') != PTT_SPLIT_CSV_SHA256):
+        raise ValueError('PTT training evidence identity drift')
+    source_evidence = payload.get('formal_source_evidence')
+    _require(isinstance(source_evidence, Mapping), 'PTT training source evidence is missing')
+    from .motion_reference import verify_formal_ptt_source_evidence
+    source_reasons = verify_formal_ptt_source_evidence(source_evidence)
+    _require(not source_reasons, 'PTT training source evidence rejected: ' + ';'.join(source_reasons))
+    split_path = Path(str(payload.get('split_registry_csv_path', ''))).resolve()
+    _require(_sha256_file(split_path) == PTT_SPLIT_CSV_SHA256,
+             'PTT training split registry path/hash drift')
+    split_rows = load_formal_ptt_repeated_folds(split_path)
+    jobs = {fold_index: resolve_formal_ptt_split(split_rows, repeat_index=0, fold_index=fold_index) for fold_index in range(5)}
+    cell_evidence = payload.get('cell_evidence')
+    _require(isinstance(cell_evidence, list) and len(cell_evidence) == 5,
+             'PTT training evidence requires exactly five fold cells')
+    observed_folds: set[int] = set()
+    cells_by_fold: dict[int, Mapping[str, Any]] = {}
+    for cell in cell_evidence:
+        _require(isinstance(cell, Mapping), 'PTT training cell evidence must be a mapping')
+        fold_index = int(cell.get('fold_index', -1))
+        _require(fold_index in jobs and fold_index not in observed_folds,
+                 'PTT training cell roster has duplicate/invalid fold')
+        observed_folds.add(fold_index)
+        cells_by_fold[fold_index] = cell
+        job = jobs[fold_index]
+        if cell.get('repeat_index') != 0 or cell.get('split_seed') != 42 or cell.get('training_seed') != MOTION_TRAINING_SEED or (tuple(cell.get(
+                'training_participant_ids',
+            ())) != tuple(job['train_subject_ids'])) or (tuple(cell.get('oof_participant_ids', ())) != tuple(job['oof_subject_ids'])) or (not _frozen_file_matches(
+                cell.get('model_artifact_path'), cell.get('model_artifact_sha256'))) or (_payload_sha256(cell.get('threshold')) != cell.get('threshold_artifact_sha256')) or (
+                    not _threshold_payload_is_bound_to_participants(cell.get('threshold'), job['train_subject_ids'])):
+            raise ValueError('PTT training fold evidence binding drift')
+    oof_path = Path(str(payload.get('window_oof_parquet_path', ''))).resolve()
+    if _sha256_file(oof_path) != payload.get('window_oof_parquet_sha256') or len(
+        (oof_rows := _read_motion_parquet(oof_path, MOTION_PTT_TRAINING_OOF_SCHEMA))) != payload.get('window_oof_row_count'):
+        raise ValueError('PTT training OOF artifact binding drift')
+    observed_participants = {str(row['participant_id']) for row in oof_rows}
+    expected_participants = {str(row['subject_id']) for row in split_rows if int(row['repeat_index']) == 0}
+    _require(observed_participants == expected_participants, 'PTT training OOF participant coverage drift')
+    for row in oof_rows:
+        probability = float(row['p_active'])
+        threshold_value = float(row['threshold'])
+        fold_index = int(row['fold_index'])
+        job = jobs[fold_index]
+        cell = cells_by_fold[fold_index]
+        expected_label = _ptt_activity_label(row['activity'])
+        if row.get('repeat_index') != 0 or row.get('split_seed') != 42 or row.get('training_seed') != MOTION_TRAINING_SEED or (
+                row.get('participant_id') not in job['oof_subject_ids']) or (row.get('score_origin') != 'strict_outer_oof_model_prediction') or (
+                    row.get('threshold_score_origin') != MOTION_THRESHOLD_SCORE_ORIGIN) or (expected_label is None) or (row.get('activity_label') != expected_label) or (
+                        row.get('model_artifact_sha256') != cell.get('model_artifact_sha256')) or (not math.isclose(threshold_value, float(
+                            cell['threshold']['threshold']), rel_tol=0.0, abs_tol=1e-15)) or (not np.isfinite(probability)) or (not 0.0 <= probability <= 1.0) or (int(
+                                row['predicted_activity']) != int(probability >= threshold_value)):
+            raise ValueError('PTT training OOF row semantic drift')
+    major_metrics = payload.get('major_metrics')
+    cell_metrics = payload.get('cell_metrics')
+    if not isinstance(major_metrics, Mapping) or not isinstance(
+            cell_metrics, list) or len(cell_metrics) != 5 or ({int(row.get('fold_index', -1))
+                                                               for row in cell_metrics if isinstance(row, Mapping)} != set(range(5))):
+        raise ValueError('PTT training metric evidence is missing')
+    for cell_metric in cell_metrics:
+        fold_index = int(cell_metric['fold_index'])
+        observed = participant_macro_motion_metrics([row for row in oof_rows if int(row['fold_index']) == fold_index])
+        if any((not math.isclose(float(cell_metric[name]), observed[name], rel_tol=0.0, abs_tol=1e-12)
+                for name in ('balanced_accuracy', 'macro_f1', 'sensitivity', 'specificity', 'roc_auc', 'pr_auc', 'ece'))):
+            raise ValueError('PTT training fold metrics differ from OOF evidence')
+    validate_motion_major_metrics(major_metrics)
+    recomputed = participant_macro_motion_metrics(oof_rows)
+    metric_pairs = {
+        'participant_macro_balanced_accuracy': recomputed['balanced_accuracy'], 'participant_macro_f1': recomputed['macro_f1'],
+        'participant_macro_sensitivity': recomputed['sensitivity'], 'participant_macro_specificity': recomputed['specificity'], 'participant_macro_roc_auc': recomputed['roc_auc'],
+        'participant_macro_pr_auc': recomputed['pr_auc'], 'worst_fold_balanced_accuracy': min((float(row['balanced_accuracy']) for row in cell_metrics))
+    }
+    major_drift = any(not math.isclose(float(major_metrics[name]), value, rel_tol=0.0, abs_tol=1e-12)
+                      for name, value in metric_pairs.items())
+    _require(not major_drift, 'PTT training major metrics differ from persisted OOF evidence')
+    final_model = payload.get('final_model')
+    threshold = payload.get('deployment_threshold')
+    _require(isinstance(final_model, Mapping) and isinstance(threshold, Mapping),
+             'PTT training evidence lacks final model or threshold')
+    if not _frozen_file_matches(final_model.get('artifact_path'),
+                                final_model.get('artifact_sha256')) or _payload_sha256(threshold) != payload.get('deployment_threshold_artifact_sha256') or (
+                                    not _threshold_payload_is_bound_to_participants(threshold, final_model.get('training_participant_ids', ()))):
+        raise ValueError('PTT final model/OOF threshold binding drift')
+    return payload
+
+def _run_internal_reverse_evaluation_impl(examples: Sequence[MotionWindowExample], *, ptt_training_evidence_path: str | Path, expected_ptt_training_evidence_sha256: str,
+                                          internal_fold_jobs: Sequence[MotionFoldJob], load_frozen_model: LoadFrozenModel, predict_probability: PredictProbability,
+                                          output_dir: str | Path, formal_source_evidence: Mapping[str, Any],
+                                          progress_callback: ProgressCallback | None = None) -> MotionExternalRunResult:
+    from .motion_reference import verify_formal_internal_source_evidence
+    reasons = verify_formal_internal_source_evidence(formal_source_evidence)
+    _require(not reasons, 'reverse internal source evidence rejected: ' + ';'.join(reasons))
+    records = tuple(examples)
+    _validate_examples(records, internal=True)
+    evidence = _load_ptt_training_evidence(ptt_training_evidence_path, expected_ptt_training_evidence_sha256)
+    final_model = evidence['final_model']
+    runtime = load_frozen_model(Path(final_model['artifact_path']), final_model)
+    _notify_progress(progress_callback, 0, 2, 'apply frozen PTT-trained model to Frailty29')
+    probabilities = _probabilities(predict_probability, runtime, records)
+    threshold_payload = evidence['deployment_threshold']
+    threshold = float(threshold_payload['threshold'])
+    rows = _frozen_evaluation_rows(records, probabilities, schema_version=MOTION_INTERNAL_REVERSE_REPORT_SCHEMA, role_field='role_family', threshold=threshold,
+                                   model_sha256=final_model['artifact_sha256'], threshold_sha256=evidence['deployment_threshold_artifact_sha256'])
+    overall = participant_macro_motion_metrics(rows)
+    fold_metrics = []
+    for job in sorted(internal_fold_jobs, key=lambda item: item.fold_index):
+        selected = [row for row in rows if row['participant_id'] in job.oof_participant_ids]
+        fold_metrics.append({'repeat_index': job.repeat_index, 'fold_index': job.fold_index, 'split_seed': job.split_seed, **participant_macro_motion_metrics(selected)})
+    major_metrics = _major_metrics(overall, fold_metrics, parameter_count=int(final_model['parameter_count']), inference_cost=final_model['inference_cost'])
+    validate_motion_major_metrics(major_metrics)
+    root = Path(output_dir).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    prediction_path = root / 'motion_internal_reverse_predictions.parquet'
+    prediction_sha256 = _write_parquet(prediction_path, rows)
+    report = {
+        'schema_version': MOTION_INTERNAL_REVERSE_REPORT_SCHEMA, 'execution_status': 'completed_frozen_ptt_model_on_frailty29', 'training_dataset': 'ptt_ppg_1_1_0_local',
+        'evaluation_dataset': 'frailty29', 'ptt_training_evidence_path': str(Path(ptt_training_evidence_path).resolve()),
+        'ptt_training_evidence_sha256': expected_ptt_training_evidence_sha256, 'model_artifact_sha256': final_model['artifact_sha256'],
+        'threshold_artifact_sha256': evidence['deployment_threshold_artifact_sha256'], 'threshold_fit_scope': threshold_payload['fit_scope'],
+        'threshold_score_origin': threshold_payload['score_origin'], 'fit_or_recalibration_performed': False, 'prediction_row_count': len(rows), 'major_metrics': major_metrics,
+        'fold_metrics': fold_metrics, 'prediction_parquet_path': str(prediction_path), 'prediction_parquet_sha256': prediction_sha256,
+        'formal_source_evidence': dict(formal_source_evidence), 'ablation_executed': True
+    }
+    report_path = root / 'motion_internal_reverse_evaluation_report.json'
+    report_sha256 = _write_strict_json(report_path, report)
+    _notify_progress(progress_callback, 2, 2, 'completed reverse Frailty29 evaluation')
+    return MotionExternalRunResult(report=report, prediction_rows=tuple(rows), report_path=str(report_path), report_sha256=report_sha256, prediction_path=str(prediction_path),
+                                   prediction_sha256=prediction_sha256)
+
+def _run_ptt_external_evaluation_impl(examples: Sequence[MotionWindowExample], *, internal_evidence_path: str | Path, expected_internal_evidence_sha256: str,
+                                      ptt_split_csv: str | Path, load_frozen_model: LoadFrozenModel, predict_probability: PredictProbability, output_dir: str | Path,
+                                      formal_source_evidence: Mapping[str, Any], progress_callback: ProgressCallback | None = None) -> MotionExternalRunResult:
+    if formal_source_evidence.get('formal_entry_id') != 'formal_ptt_motion_reference_source_bound_v2' or formal_source_evidence.get(
+            'source_manifest_sha256') != M2_EXTERNAL_MANIFEST_SHA256 or formal_source_evidence.get('record_count') != 66 or (
+                formal_source_evidence.get('participant_count') != 22) or (formal_source_evidence.get('tensor_schema_sha256') != MOTION_NETWORK_SCHEMA_SHA256):
+        raise ValueError('formal PTT source evidence identity/roster drift')
+    from .motion_reference import verify_formal_ptt_source_evidence
+    ptt_source_reasons = verify_formal_ptt_source_evidence(formal_source_evidence)
+    _require(not ptt_source_reasons, 'formal PTT source evidence rejected: ' + ';'.join(ptt_source_reasons))
+    _notify_progress(progress_callback, 0, 2, 'validate and load frozen internal motion model')
+    evidence, evidence_sha256 = load_motion_internal_evidence(internal_evidence_path, expected_sha256=expected_internal_evidence_sha256)
+    integrity_reasons = _verify_frozen_internal_assets(evidence, archive_root=Path(internal_evidence_path).resolve().parent, require_complete_oof_archive=False)
+    _require(not integrity_reasons,
+             'PTT frozen input authenticity/integrity rejected: ' + ';'.join(integrity_reasons))
+    ptt_csv = Path(ptt_split_csv).resolve()
+    _require(_sha256_file(ptt_csv) == PTT_SPLIT_CSV_SHA256, 'PTT formal split CSV SHA-256 drift')
+    split_rows = load_formal_ptt_repeated_folds(ptt_csv)
+    records = tuple(examples)
+    _validate_examples(records, internal=False)
+    expected_participants = {str(row['subject_id']) for row in split_rows}
+    observed_participants = {row.participant_id for row in records}
+    _require(observed_participants == expected_participants,
+             'PTT window participant roster differs from the frozen registry')
+    final_model = evidence['final_model']
+    model_path = Path(str(final_model['artifact_path']))
+    runtime_model = load_frozen_model(model_path, final_model)
+    probabilities = _probabilities(predict_probability, runtime_model, records)
+    threshold = float(evidence['final_threshold']['threshold'])
+    prediction_rows = _frozen_evaluation_rows(records, probabilities, schema_version=MOTION_EXTERNAL_REPORT_SCHEMA, role_field='activity', threshold=threshold,
+                                              model_sha256=final_model['artifact_sha256'], threshold_sha256=evidence['final_threshold_artifact_sha256'])
+    _validate_external_prediction_rows(prediction_rows, expected_participant_ids=expected_participants)
+    _notify_progress(progress_callback, 1, 2, 'aggregate PTT grouped-fold metrics')
+    fold_metrics: list[dict[str, Any]] = []
+    for repeat_index, seed in enumerate(PTT_FORMAL_REPEAT_SEEDS):
+        repeat_rows = [row for row in split_rows if int(row['repeat_index']) == repeat_index]
+        for fold_index in range(len(PTT_FORMAL_FOLD_SIZES)):
+            participants = {str(row['subject_id']) for row in repeat_rows if int(row['fold_index']) == fold_index}
+            selected = [row for row in prediction_rows if str(row['participant_id']) in participants]
+            fold_metrics.append({'repeat_index': repeat_index, 'fold_index': fold_index, 'split_seed': seed, **participant_macro_motion_metrics(selected)})
+    overall = participant_macro_motion_metrics(prediction_rows)
+    major_metrics = _major_metrics(overall, fold_metrics, parameter_count=int(final_model['parameter_count']), inference_cost=final_model['inference_cost'])
+    validate_motion_major_metrics(major_metrics)
+    report = {
+        'schema_version': MOTION_EXTERNAL_REPORT_SCHEMA, 'execution_status': 'completed_external_evaluation_only',
+        'internal_evidence_path': str(Path(internal_evidence_path).resolve()), 'internal_evidence_sha256': evidence_sha256, 'model_artifact_sha256': final_model['artifact_sha256'],
+        'threshold_artifact_sha256': evidence['final_threshold_artifact_sha256'], 'threshold_fit_scope': evidence['final_threshold']['fit_scope'],
+        'threshold_score_origin': evidence['final_threshold']['score_origin'], 'ptt_registry_id': PTT_FORMAL_REGISTRY_ID, 'ptt_registry_csv_sha256': PTT_SPLIT_CSV_SHA256,
+        'ptt_repeat_seeds': list(PTT_FORMAL_REPEAT_SEEDS), 'ptt_fold_sizes': list(PTT_FORMAL_FOLD_SIZES), 'independence_claim': 'none_not_an_independent_external_test',
+        'fit_or_recalibration_performed': False, 'prediction_row_count': len(prediction_rows), 'major_metrics': major_metrics, 'fold_metrics': fold_metrics,
+        'ablation_executed': False, 'formal_entry_id': formal_source_evidence['formal_entry_id'], 'formal_source_evidence': dict(formal_source_evidence)
+    }
+    root = Path(output_dir).resolve()
+    prediction_path = root / 'motion_ptt_window_predictions.parquet'
+    prediction_sha256 = _write_parquet(prediction_path, prediction_rows)
+    report['prediction_parquet_path'] = str(prediction_path)
+    report['prediction_parquet_sha256'] = prediction_sha256
+    report_path = root / 'motion_ptt_external_report.json'
+    report_sha256 = _write_strict_json(report_path, report)
+    _notify_progress(progress_callback, 2, 2, 'completed PTT frozen-model evaluation')
+    return MotionExternalRunResult(report=report, prediction_rows=tuple(prediction_rows), report_path=str(report_path), report_sha256=report_sha256,
+                                   prediction_path=str(prediction_path), prediction_sha256=prediction_sha256)
+
+def run_internal_motion_oof(examples: Sequence[MotionWindowExample], fold_jobs: Sequence[MotionFoldJob], *, fit_model: FitModel, predict_probability: PredictProbability,
+                            model_input_schema_path: str | Path, expected_model_input_schema_sha256: str, output_dir: str | Path, motion_split_csv_path: str | Path | None = None,
+                            execution_mode: str = 'smoke', write_artifacts: bool = True) -> MotionInternalRunResult:
+    if execution_mode == 'formal':
+        raise FormalMotionEntryRequiredError('injected examples/callbacks cannot enter formal motion; use run_formal_internal_motion_reference')
+    _require(execution_mode in {'smoke', 'internal'}, 'injected motion execution_mode must be smoke or internal')
+    return _run_internal_motion_oof_impl(examples, fold_jobs, fit_model=fit_model, predict_probability=predict_probability, model_input_schema_path=model_input_schema_path,
+                                         expected_model_input_schema_sha256=expected_model_input_schema_sha256, output_dir=output_dir, motion_split_csv_path=motion_split_csv_path,
+                                         execution_mode=execution_mode, write_artifacts=write_artifacts)
+
+def run_ptt_external_evaluation(examples: Sequence[MotionWindowExample], *, internal_evidence_path: str | Path, expected_internal_evidence_sha256: str, ptt_split_csv: str | Path,
+                                load_frozen_model: LoadFrozenModel, predict_probability: PredictProbability, output_dir: str | Path) -> MotionExternalRunResult:
+    del (examples, internal_evidence_path, expected_internal_evidence_sha256, ptt_split_csv, load_frozen_model, predict_probability, output_dir)
+    raise FormalMotionEntryRequiredError('injected PTT examples/callbacks are forbidden; use run_formal_ptt_motion_reference')
+
+__all__ = [
+    'FitModel', 'FormalMotionEntryRequiredError', 'LoadFrozenModel', 'MOTION_EXTERNAL_REPORT_SCHEMA', 'MOTION_INPUT_SCHEMA_STATUS', 'MOTION_WINDOW_OOF_SCHEMA',
+    'MotionExternalRunResult', 'MotionFitContext', 'MotionFittedArtifact', 'MotionInternalRunResult', 'MotionPttTrainingRunResult', 'MotionPredictionInput', 'MotionWindowExample',
+    'PredictProbability', 'audit_ptt_external_readiness', 'load_motion_internal_evidence', 'participant_macro_motion_metrics', 'run_internal_motion_oof',
+    'run_ptt_external_evaluation'
+]

@@ -1,0 +1,100 @@
+schema_version: ppg_frailty.stage_ablation_01_static_peaks.v3
+study_type: stage_ablation_01_static_peak_detectors
+study_id: stage-ablation-01-static-peak-detectors-v3
+purpose: >-
+  Compare the default MSPTDfast v2 detector with the authoritative seven-step
+  Aboy project detector on only the static PTT sit recordings before any
+  motion-denoised dynamic comparison. The historical aboy_project_v1 fallback
+  is deliberately excluded.
+
+ptt_dataset:
+  dataset_id: ptt_ppg_1_1_0_local
+  root: physionet.org/files/pulse-transit-time-ppg/1.1.0
+  participant_count: 22
+  record_count: 66
+  selected_record_count: 22
+  activities: [sit, walk, run]
+  selected_activity: sit
+  distal_channels: {RED: pleth_1, IR: pleth_2}
+  ecg_peak_annotation_column: peaks
+
+activities: [sit]
+motion_denoiser: not_used_pure_static_experiment
+detector_input: repaired_native_ppg_each_registered_module_owns_preprocessing
+algorithms:
+  - algorithm_id: msptdfast_v2_3_python_port
+    module_id: msptdfast_v2_3_python_port
+    display_name: MSPTDfast (v.2)
+    implementation: ppg_frailty.peaks.msptdfast_v2.detect_msptdfast_v2
+    role: default_reference
+    parity_status: equation_level_port_not_bitwise_matlab_validated
+    parameters:
+      target_downsample_hz: 20.0
+      minimum_heart_rate_bpm: 30.0
+      window_s: 6.0
+      overlap_fraction: 0.2
+  - algorithm_id: aboy_project
+    module_id: aboy_project_v2
+    display_name: aboy_project
+    implementation: ppg_frailty.peaks.aboy_project_v2.detect_pulses_per_wavelength_aboy_project_v2
+    role: explicit_authoritative_seven_step_ablation
+
+paper_source:
+  title: "The MSPTDfast photoplethysmography beat detection algorithm: design, benchmarking, and open-source distribution"
+  doi: 10.1088/1361-6579/adb89e
+  official_code_release: ppg-beats-v.2.3
+  official_code_url: https://github.com/peterhcharlton/ppg-beats/releases/tag/v.2.3
+  msptdfast_source_sha256: 39f5010f1d485f2dc180bffbbe662dc9bd16e8116bd1ae630761f1e2b58bcabd
+
+validation:
+  reference: synchronized_manually_verified_ecg_peak_annotations
+  framework: ppg_beats_assessment_inspired_by_kotzen_2021
+  alignment: variable_lag_search_in_consecutive_300s_recording_windows
+  lag_window_s: 300.0
+  max_lag_s: 10.0
+  lag_step_s: 0.02
+  lag_tie_break: maximum_ncorrect_then_smallest_absolute_lag_then_positive_lag
+  beat_tolerance_s: 0.15
+  matching: closest_ppg_beat_to_each_reference_one_to_one_without_reuse
+  primary_metrics: [recording_f1_percent, sensitivity_percent, positive_predictive_value_percent]
+  formulas:
+    sensitivity_percent: 100 * ncorrect / nref
+    positive_predictive_value_percent: 100 * ncorrect / nppg
+    f1_percent: 2 * sensitivity * positive_predictive_value / (sensitivity + positive_predictive_value)
+  efficiency_metric: execution_time_percent_of_ppg_signal_duration
+  secondary_delay_invariant_metrics: [recording_ibi_ppi_rmse_ms, recording_ibi_ppi_mae_ms]
+  evaluation_unit: subject_recording_and_wavelength
+  aggregation: median_and_interquartile_range_across_subject_recordings
+  boxplot_whisker_percentiles: [10, 90]
+  statistical_comparison:
+    reference_algorithm_id: msptdfast_v2_3_python_port
+    metrics:
+      - recording_f1_percent
+      - recording_sensitivity_percent
+      - recording_positive_predictive_value_percent
+      - recording_ibi_ppi_rmse_ms
+      - execution_time_percent_of_ppg_signal_duration
+    test: wilcoxon_rank_sum_two_sided
+    multiple_comparison_correction: holm_sidak_step_down
+    family_definition: all_selected_metrics_channels_and_reference_comparators
+    alpha: 0.05
+    literature_sources:
+      benchmark_precedent_doi: 10.1088/1361-6579/adb89e
+      wilcoxon_rank_test_doi: 10.2307/3001968
+      holm_step_down_doi: 10.2307/4615733
+      sidak_adjustment_doi: 10.1080/01621459.1967.10482935
+  execution_parallelization: none_sequential_detector_calls
+
+report:
+  formats: [markdown, html, json, csv, xlsx, png]
+  required_figures:
+    - static_peak_detector_f1
+    - static_peak_detector_sensitivity
+    - static_peak_detector_ppv
+    - static_peak_detector_interval_rmse
+    - static_peak_detector_runtime
+
+result_backup:
+  enabled: true
+  include: [resolved_plan, study_manifest, reports, tables, figures, outputs_index]
+  exclude: [source_dataset]

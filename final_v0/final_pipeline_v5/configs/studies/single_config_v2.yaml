@@ -1,0 +1,27 @@
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: compactcnn_role_aware_single_v2
+  kind: single
+  purpose: Manual end-to-end verification of the canonical role-aware single model.
+  flow_position: Single-config evidence before manual final-use-case confirmation.
+  decision_role: single_run
+  reference_case_id: null
+  thesis_sections: []
+base_config: configs/reference_static_role_aware_v2.yaml
+axes: []
+execution:
+  repeats: [0, 1, 2, 3, 4]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 1
+  device: cuda
+  parallel_level: cases
+  continue_on_error: true
+  allow_parallel_deep: false
+  measure_operational_costs: true
+output:
+  root: artifacts/studies
+report:
+  top_k: 10
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10
