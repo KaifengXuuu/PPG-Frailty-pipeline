@@ -501,6 +501,10 @@ def test_index_excel_and_model_export_commands_round_trip_public_parsers(
         report_output="report_output/run_a",
         replace=True,
     )
+    execution_audit = service.build_execution_audit_request(
+        pipeline_output="pipeline_output/run_a",
+        output_name="run_a_failure",
+    )
     model_export = service.build_model_export_request(
         pipeline_output="pipeline_output/run_a"
     )
@@ -508,6 +512,10 @@ def test_index_excel_and_model_export_commands_round_trip_public_parsers(
     assert build_pipeline_parser().parse_args(list(index.arguments)).hash_predictions
     assert build_sweep_parser().parse_args(list(pipeline_excel.arguments)).replace
     assert build_report_parser().parse_args(list(report_excel.arguments)).replace
+    parsed_audit = build_report_parser().parse_args(list(execution_audit.arguments))
+    assert parsed_audit.command == "execution-audit"
+    assert parsed_audit.input == "pipeline_output/run_a"
+    assert parsed_audit.output_name == "run_a_failure"
     assert build_model_export_parser().parse_args(
         list(model_export.arguments)
     ).pipeline_output == "pipeline_output/run_a"
@@ -1964,6 +1972,7 @@ def test_dash_layout_smoke_and_button_labels() -> None:
         "model_export",
         "pipeline_excel",
         "report_excel",
+        "execution_audit",
         "specialized_validate",
         "specialized_run",
         "specialized_report",

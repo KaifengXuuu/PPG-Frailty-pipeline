@@ -239,6 +239,3 @@ def run_historical_major_report(
             for value in (early_source, shapeformer_source, fixed_epoch_source, extension_source)),
         output_dir,
     )
-
-
-__all__ = ["run_historical_analysis", "run_historical_major_report"]

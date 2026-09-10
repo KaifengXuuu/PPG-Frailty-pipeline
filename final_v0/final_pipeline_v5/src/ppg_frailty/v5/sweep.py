@@ -112,6 +112,3 @@ def main(argv: list[str] | None = None) -> int:
     except (FileNotFoundError, OSError, RuntimeError, TypeError, ValueError) as error:
         print(json.dumps({"status": "error", "error": f"{type(error).__name__}: {error}"}))
         return 2
-
-
-__all__ = ["build_parser", "main", "run_prepared_study"]

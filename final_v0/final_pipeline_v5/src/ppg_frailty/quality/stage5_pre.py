@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 import numpy as np
 import yaml
-from ..artifact import get_reducer
+from ..artifacts import get_reducer
 from ..data.external_manifest import M2_EXTERNAL_RELATIVE_PATH, PTT_DATASET_ID, ExternalRecord, adapt_ptt_synchronized_channels, load_m2_external_manifest
 from ..peaks.pairing import match_events
 from ..peaks.aboy_project_v2 import DETECTOR_ID as ABOY_V2_ID, IMPLEMENTATION_PATH as ABOY_V2_IMPLEMENTATION_PATH
@@ -1045,8 +1045,3 @@ def generate_motion_peak_report(study_dir: str | Path) -> dict[str, Any]:
     """Compatibility entry point; presentation lives in the reporting package."""
     from ..reporting.specialized import generate_motion_peak_report as generate
     return generate(study_dir)
-
-__all__ = [
-    'MSPTDFAST_V2_ID', 'StudyPlan', 'align_and_score_beats', 'generate_motion_peak_report', 'load_motion_peak_plan', 'run_motion_peak_study', 'run_ptt_denoiser_benchmark',
-    'run_static_peak_ablation'
-]

@@ -223,6 +223,3 @@ def _detect_pulses_dual_polarity_ablation(
     )
     result.validate_identity()
     return result
-
-
-__all__: tuple[str, ...] = ()

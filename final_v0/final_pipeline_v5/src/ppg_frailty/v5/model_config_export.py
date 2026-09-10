@@ -255,6 +255,3 @@ def main(argv: list[str] | None = None, *, pipeline_root: str | Path | None = No
     result = export_model_config(args.pipeline_output, pipeline_root=root, replace_existing=args.replace)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
-
-
-__all__ = ["_derived_module_defaults", "build_parser", "export_model_config", "main"]

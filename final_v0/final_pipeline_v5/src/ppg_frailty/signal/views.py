@@ -7,7 +7,6 @@ from typing import Any
 import numpy as np
 
 from ..contracts import ArtifactReductionResult, SignalRoute, SignalViews
-from ..data.windows import WindowPlan, WindowSlice, extract_window
 
 CANONICAL_FS_HZ = 400.0
 
@@ -156,5 +155,3 @@ class CanonicalSignalViews:
         updated = replace(self, x_ar=artifact.copy(), route=route, metadata=metadata)
         updated.validate()
         return updated
-
-__all__ = ["CANONICAL_FS_HZ", "CanonicalSignalViews", "WindowPlan", "WindowSlice", "extract_window"]

@@ -1,0 +1,57 @@
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: finalcase
+  kind: single
+  purpose: V5 data-only manual run.
+  flow_position: V5 configurable workflow
+  decision_role: single_run
+  reference_case_id: tuned_all_roles__inception_small_no_gravity
+  thesis_sections:
+  - Methods 3.1-3.6
+  - Appendix E
+base_config: /home/trinker/Code/github/PPG-Frailty-pipeline/final_v0/final_pipeline_v5/cache/resolved_cli_configs/c3a4cc8b9c927f208d0f8476c9b3081dd9bfdbe058ae1b153c3d9024f77e3a79.yaml
+axes: []
+execution:
+  repeats:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  folds:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  jobs: 1
+  parallel_level: cases
+  continue_on_error: false
+  allow_parallel_deep: false
+  measure_operational_costs: false
+  preprocessing_cache:
+    mode: read_write
+    root: cache/preprocessing
+    namespaces:
+    - imu_calibration
+    - canonical_signal_views
+    - raw_windows
+    verify_source_sha256: true
+  device: cuda
+output:
+  root: /home/trinker/Code/github/PPG-Frailty-pipeline/final_v0/final_pipeline_v5/pipeline_output
+report:
+  top_k: 10
+  detailed_configuration_top_k: 0
+  write_html: false
+  write_static_figures: false
+  calibration_bins: 10
+  figure_modules:
+  - all
+  compact_mean_sd: true
+  write_excel_workbook: false
+  classification_tsne_random_state: 42
+  classification_tsne_perplexity: 30.0
+  classification_tsne_max_samples: 5000
+  classification_roc_macro_grid_points: 201
+  classification_score_histogram_bins: 40

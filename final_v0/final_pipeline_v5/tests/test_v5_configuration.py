@@ -5,10 +5,12 @@ from pathlib import Path
 import re
 import shutil
 import shlex
+from types import SimpleNamespace
 
 import pytest
 import ppg_frailty.v5.cli as v5_cli
 
+from ppg_frailty.data.preprocessing_cache import PreprocessingCacheSession
 from ppg_frailty.v5.configuration import (
     PRESETS,
     manual_cli_tokens,
@@ -422,6 +424,25 @@ def test_paths_resolve_relative_to_the_v5_root(
     assert v5_cli._path("pipeline_output/evidence") == (
         tmp_path / "pipeline_output/evidence"
     ).resolve()
+
+
+def test_preprocessing_cache_accepts_configured_v5_paths_only(tmp_path: Path) -> None:
+    paths = SimpleNamespace(pipeline_root=tmp_path, repository_root=tmp_path)
+    payload = {
+        "mode": "off",
+        "namespaces": ["raw_windows"],
+        "verify_source_sha256": True,
+    }
+    for relative in ("cache/preprocessing", "artifacts/studies/cache"):
+        session = PreprocessingCacheSession.from_mapping(
+            {**payload, "root": relative}, paths
+        )
+        assert session.root == (tmp_path / relative).resolve()
+
+    with pytest.raises(ValueError):
+        PreprocessingCacheSession.from_mapping(
+            {**payload, "root": "../outside"}, paths
+        )
 
 
 def test_existing_path_resolution_is_shared_by_maintenance_commands(

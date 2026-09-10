@@ -19,7 +19,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 import yaml
-from ..module_registry import list_modules, model_factory_contract, registry_sha256
+from ..module_registry import list_modules, model_factory_contract
 from ..v5.configuration import resolve_configuration
 
 PIPELINE_OUTPUT = 'pipeline_output'
@@ -1469,6 +1469,17 @@ class V5ControlService:
             arguments.append('--replace')
         return self._command_request('analyse_report.py', arguments)
 
+    def build_execution_audit_request(self, *, pipeline_output: str | Path,
+                                      output_name: str | None = None) -> CommandRequest:
+        source = self._named_output_input(
+            pipeline_output, root_name=PIPELINE_OUTPUT, label='execution audit source')
+        if not source.is_dir():
+            raise NotADirectoryError(source)
+        arguments = ['execution-audit', '--input', self.relative(source)]
+        if output_name:
+            arguments.extend(['--output-name', self.output_directory(REPORT_OUTPUT, output_name).name])
+        return self._command_request('analyse_report.py', arguments)
+
     def build_sweep_validate_request(self,
                                      *,
                                      plan_path: str | Path,
@@ -1873,12 +1884,3 @@ class V5ControlService:
         if hasattr(result, 'to_dict'):
             return dict(result.to_dict())
         raise TypeError('V5 inference service must return a mapping')
-
-
-__all__ = [
-    'COMPARISON_SEQUENCE_SCHEMA', 'CommandRequest', 'INFERENCE_SOURCE_CONFIRMATION', 'INFERENCE_SOURCE_CONTRACT', 'InferenceInput',
-    'INHERIT_MODULE', 'MISSING_B_TODO', 'MODEL_CONFIG', 'ModelDefaults', 'PIPELINE_OUTPUT', 'REPORT_OUTPUT',
-    'SINGLE_PARTICIPANT_NOTICE', 'V5ControlService', 'WORKFLOW_STAGES', 'changed_assignments', 'comparison_sequence_cli',
-    'comparison_sequence_export_yaml', 'comparison_sequence_yaml', 'flatten_parameters', 'registry_sha256',
-    'validate_comparison_sequence_payload'
-]

@@ -587,17 +587,3 @@ def motion_contract_payload() -> dict[str, Any]:
         'major_metrics': list(MOTION_REPORT_METRIC_FIELDS),
         'historical_light_cnn': asdict(HISTORICAL_LIGHT_CNN_EVIDENCE)
     }
-
-__all__ = [
-    'FORMAL_NETWORK_TENSOR_STATUS', 'FORMAL_MOTION_TRAINING_CONFIG', 'FORMAL_RAW_INPUT_SOURCES',
-    'HISTORICAL_LIGHT_CNN_EVIDENCE', 'MOTION_COMPLETED_CELL_COUNT', 'MOTION_CONTRACT_SCHEMA',
-    'MOTION_INFERENCE_COST_FIELDS', 'MOTION_INTERNAL_EVIDENCE_SCHEMA', 'MOTION_MAJOR_METRIC_FIELDS',
-    'MOTION_MIDPOINT_THRESHOLD_SCHEMA', 'MOTION_OOF_PARTICIPANT_REPEAT_ROWS', 'MOTION_REPORT_METRIC_FIELDS',
-    'MOTION_OPTIONS', 'MOTION_SPLIT_CSV_SHA256', 'MOTION_SPLIT_REGISTRY_ID', 'MOTION_SOURCE_SPLIT_REGISTRY_ID',
-    'MOTION_SPLIT_SEED', 'MOTION_TRAINING_SEED', 'MOTION_THRESHOLD_FIT_SCOPE', 'MOTION_DEPLOYMENT_THRESHOLD_FIT_SCOPE',
-    'MOTION_DEPLOYMENT_THRESHOLD_SCHEMA', 'MOTION_DEPLOYMENT_THRESHOLD_SCORE_ORIGIN', 'MOTION_THRESHOLD_RULE_ID',
-    'MOTION_THRESHOLD_SCORE_ORIGIN', 'PTT_SPLIT_CSV_SHA256', 'HistoricalLightCnnEvidence', 'MidpointThresholdArtifact',
-    'MotionFoldJob', 'MotionOptionDescriptor', 'MotionOptionId', 'PttExternalReadinessAudit',
-    'fit_train_only_midpoint_threshold', 'load_motion_fold_jobs', 'motion_activity_label', 'motion_contract_payload',
-    'resolve_motion_option', 'validate_motion_major_metrics'
-]

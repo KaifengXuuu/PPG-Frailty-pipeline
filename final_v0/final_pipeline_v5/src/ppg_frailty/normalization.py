@@ -218,17 +218,3 @@ class RawNormalizationConfig:
             "standard_ddof":
             int(self.standard_ddof),
         }
-
-
-__all__ = [
-    "FALLBACK_MAD",
-    "FALLBACK_ONE",
-    "FALLBACK_STANDARD_DEVIATION",
-    "IMU_MEAN_STD",
-    "IMU_NONE",
-    "IMU_ROBUST",
-    "PPG_NONE",
-    "PPG_ROBUST",
-    "PPG_STANDARD_ZSCORE",
-    "RawNormalizationConfig",
-]

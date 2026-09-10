@@ -314,7 +314,6 @@ def test_stage5_motion_export_copies_all_fold_and_final_models(
     pipeline_output = tmp_path / "pipeline_output"
     model_config = tmp_path / "model_config"
     monkeypatch.setattr(specialized_outputs, "V5_ROOT", tmp_path)
-    monkeypatch.setattr(specialized_outputs, "PIPELINE_OUTPUT_ROOT", pipeline_output)
     monkeypatch.setattr(specialized_outputs, "MODEL_CONFIG_ROOT", model_config)
     output = _motion_export_fixture(tmp_path)
     result = specialized_outputs.export_motion_model_config(output)
@@ -335,9 +334,6 @@ def test_motion_export_rejects_changed_learned_weights(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(specialized_outputs, "V5_ROOT", tmp_path)
-    monkeypatch.setattr(
-        specialized_outputs, "PIPELINE_OUTPUT_ROOT", tmp_path / "pipeline_output"
-    )
     monkeypatch.setattr(
         specialized_outputs, "MODEL_CONFIG_ROOT", tmp_path / "model_config"
     )
@@ -589,7 +585,6 @@ def test_specialized_data_excel_contains_inventory_and_csv_only(
     output.mkdir(parents=True)
     (output / "values.csv").write_text("record,value\na,1\nb,2\n", encoding="utf-8")
     _write_json(output / "metadata.json", {"status": "passed"})
-    monkeypatch.setattr(specialized_outputs, "PIPELINE_OUTPUT_ROOT", pipeline_output)
     result = specialized_outputs.export_specialized_data_excel(output)
     workbook = output / str(result["workbook"])
     assert result["status"] == "complete"

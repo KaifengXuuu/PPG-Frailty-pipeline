@@ -29,7 +29,8 @@ TOOL_OPTIONS: tuple[tuple[str, str], ...] = (
     ('Pipeline validate', 'pipeline_validate'), ('Show config', 'show_config'),
     ('Sweep validate', 'sweep_validate'), ('Rebuild index', 'pipeline_index'),
     ('Export model config', 'model_export'), ('Pipeline Excel', 'pipeline_excel'),
-    ('Report Excel', 'report_excel'), ('Special validate', 'specialized_validate'),
+    ('Report Excel', 'report_excel'), ('Execution audit', 'execution_audit'),
+    ('Special validate', 'specialized_validate'),
     ('Special analyse', 'specialized_run'), ('Special report', 'specialized_report'),
     ('Special pipe check', 'specialized_pipeline_validate'),
     ('Special pipe run', 'specialized_pipeline_run'),
@@ -44,7 +45,10 @@ EQUIVALENT_SURFACE_NOTICE = (
 _TOOL_SUBCOMMANDS = {
     'pipeline.py': frozenset({'validate', 'show-config', 'index'}),
     'sweep.py': frozenset({'validate', 'export-excel'}),
-    'analyse_report.py': frozenset({'export-excel', 'specialized-validate', 'specialized-run', 'specialized-report'}),
+    'analyse_report.py': frozenset({
+        'export-excel', 'execution-audit', 'specialized-validate',
+        'specialized-run', 'specialized-report'
+    }),
     'specialized_pipeline.py': frozenset({'validate', 'run', 'complete'})
 }
 
@@ -1919,6 +1923,10 @@ def create_app(pipeline_root: str | Path | None = None,
             elif operation == 'report_excel':
                 request = control.build_report_excel_request(report_output=required(report_path, 'report output'),
                                                              replace='replace' in flags)
+            elif operation == 'execution_audit':
+                request = control.build_execution_audit_request(
+                    pipeline_output=required(pipeline_path, 'pipeline output'),
+                    output_name=specialized_output or None)
             elif operation in {'specialized_pipeline_validate', 'specialized_pipeline_run', 'specialized_pipeline_complete'}:
                 pipeline_operation = {
                     'specialized_pipeline_validate': 'validate',
@@ -2114,6 +2122,3 @@ def create_app(pipeline_root: str | Path | None = None,
             return html.Pre(_error(error))
 
     return app
-
-
-__all__ = ['create_app']

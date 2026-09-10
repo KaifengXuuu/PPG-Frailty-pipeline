@@ -232,9 +232,3 @@ def collect_preprocessing_cache_rows(
         str(row["layer"]),
     ))
     return tuple(rows), tuple(dict.fromkeys(limitations))
-
-
-__all__ = [
-    "PREPROCESSING_CACHE_AUDIT_SCHEMA",
-    "collect_preprocessing_cache_rows",
-]

@@ -121,6 +121,3 @@ def generate_selected_figures(
                 status["path"] = ""
         output.append(status)
     return tuple(output)
-
-
-__all__ = ["generate_selected_figures"]

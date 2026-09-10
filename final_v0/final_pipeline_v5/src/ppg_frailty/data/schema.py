@@ -291,7 +291,6 @@ def manifest_row_from_csv(raw: Mapping[str, str]) -> ManifestRow:
     )
     validate_manifest_row(row)
     return row
-
 def fold_assignment_to_csv(row: FoldAssignment) -> dict[str, str]:
     """编码一个物化 fold 行 / Encode one materialized fold assignment."""
 
@@ -338,23 +337,3 @@ def fold_assignment_from_csv(raw: Mapping[str, str]) -> FoldAssignment:
     # English: Reuse encoder validation so read/write rules cannot diverge.
     fold_assignment_to_csv(row)
     return row
-
-
-__all__ = [
-    "CANONICAL_CHANNEL_SCHEMA",
-    "CANONICAL_CLASS_NAMES",
-    "CLASS_NAME_PROVENANCE_ALIASES",
-    "CLASS_SOURCE_BY_ID",
-    "FOLD_COLUMNS",
-    "FoldAssignment",
-    "MANIFEST_COLUMNS",
-    "MANIFEST_VERSION",
-    "QCReason",
-    "QCStatus",
-    "REGISTERED_ROLES",
-    "fold_assignment_from_csv",
-    "fold_assignment_to_csv",
-    "manifest_row_from_csv",
-    "manifest_row_to_csv",
-    "validate_manifest_row",
-]

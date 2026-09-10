@@ -377,17 +377,3 @@ def matrix_row_route(timeline: RoutingTimeline, start_sample: int, stop_sample: 
     if any(cell.final_tier == QualityTier.ACCEPTABLE.value for cell in cells):
         return QualityTier.ACCEPTABLE.value, True
     return QualityTier.EXCLUDED.value, False
-
-
-__all__ = [
-    "ROUTING_FS_HZ",
-    "ROUTING_HOP_SECONDS",
-    "ROUTING_TIMELINE_SCHEMA",
-    "ROUTING_WINDOW_SECONDS",
-    "RoutingEvidence",
-    "build_routing_timeline",
-    "build_routing_windows",
-    "matrix_row_route",
-    "overlapping_cells",
-    "resolve_routing_evidence",
-]

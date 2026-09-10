@@ -296,16 +296,3 @@ def write_test_component_markdown(root: str | Path, rows: Sequence[Mapping[str, 
         encoding="utf-8",
     )
     return target
-
-
-__all__ = [
-    "TEST_COMPONENT_COLUMNS",
-    "TEST_COMPONENT_VIEW_SCHEMAS",
-    "TOP_MODEL_CONFIGURATION_COLUMNS",
-    "build_motion_peak_test_component_rows",
-    "build_pipeline_test_component_rows",
-    "build_top_model_configuration_rows",
-    "markdown_test_component_table",
-    "without_hashes",
-    "write_test_component_markdown",
-]

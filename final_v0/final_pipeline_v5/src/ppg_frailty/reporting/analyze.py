@@ -406,4 +406,3 @@ def analyze_study(collected: CollectedStudy) -> StudyAnalysis:
                 (row for row in stage_absolute if 'cnn' in str(row).lower())), stage3_star_model_comparison=tuple(stage_absolute),
         classification_prediction_scores=tuple(scores), classification_roc_curves=tuple(roc), classification_prediction_tsne=tuple(tsne),
         classification_diagnostic_status=tuple(diagnostics), classifier_per_class_results=tuple(classifier_classes))
-__all__ = ['StudyAnalysis', 'analyze_study']

@@ -756,6 +756,3 @@ def infer_from_manifest(
             "V5 TODO; not implemented",
         },
     }
-
-
-__all__ = ["infer_from_manifest"]

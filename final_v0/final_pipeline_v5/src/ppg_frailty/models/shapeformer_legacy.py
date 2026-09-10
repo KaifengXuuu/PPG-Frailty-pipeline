@@ -743,12 +743,3 @@ class LegacyEffectSizeShapeFormer(nn.Module):
             "fitted_participant_ids": self.fitted_participant_ids,
             "shapelet_candidate_records": self.shapelet_candidate_records,
         }
-
-
-__all__ = [
-    "LEGACY_DISCOVERY_BALANCE",
-    "LEGACY_EFFECT_SIZE_DISCOVERY_METHOD",
-    "LegacyEffectSizeShapeFormer",
-    "LegacyEffectSizeShapelets",
-    "discover_legacy_effect_size_shapelets",
-]

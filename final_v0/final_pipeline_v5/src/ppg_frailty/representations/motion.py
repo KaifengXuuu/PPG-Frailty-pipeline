@@ -366,30 +366,3 @@ def apply_motion_fold_imu_transform(
     if not np.isfinite(output).all():
         raise ValueError("motion fold IMU transform produced nonfinite output")
     return output
-
-
-__all__ = [
-    "MOTION_HOP_SAMPLES",
-    "MOTION_HOP_SECONDS",
-    "MOTION_AUGMENTED_CHANNEL_SCHEMA",
-    "MOTION_AUGMENTED_CHANNEL_UNITS",
-    "MOTION_AUGMENTED_SCHEMA_SHA256",
-    "MOTION_AUGMENTED_SCALER_SCHEMA",
-    "MOTION_DERIVED_AUGMENTATION_PROFILE_ID",
-    "MOTION_NETWORK_CHANNEL_SCHEMA",
-    "MOTION_NETWORK_CHANNEL_UNITS",
-    "MOTION_NETWORK_SCHEMA_SHA256",
-    "MOTION_SCALER_SCHEMA",
-    "MOTION_REFERENCE_IMU_CHANNEL_SCHEMA",
-    "MOTION_REFERENCE_IMU_CHANNEL_UNITS",
-    "MOTION_REFERENCE_PROFILE_ID",
-    "MOTION_REFERENCE_SCALER_SCHEMA",
-    "MOTION_WINDOW_SAMPLES",
-    "MOTION_WINDOW_SECONDS",
-    "MotionFoldImuTransform",
-    "MotionWindowTensors",
-    "apply_motion_fold_imu_transform",
-    "build_motion_window_tensors",
-    "fit_motion_fold_imu_transform",
-    "motion_network_schema_payload",
-]

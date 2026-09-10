@@ -243,17 +243,3 @@ def write_reporter_methods(root: str | Path, component_rows: Sequence[Mapping[st
     target = Path(root) / "REPORT_METHODS.md"
     target.write_text(reporter_methods_markdown(component_rows), encoding="utf-8")
     return target
-
-
-__all__ = [
-    "REPORTER_PROFILES",
-    "REPORTER_PROFILE_VIEW_SCHEMAS",
-    "ReporterProfile",
-    "annotate_component_row",
-    "annotate_component_rows",
-    "markdown_reporter_profile_tables",
-    "reporter_methods_markdown",
-    "reporter_profile_rows",
-    "required_figure_modules",
-    "write_reporter_methods",
-]

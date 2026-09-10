@@ -17,10 +17,10 @@
 README、`_agent`、独立 `src/ppg_frailty/dashboard/` 与 `dashboard.py`、历史输出、cache、
 三个输出根、`__pycache__` 和第三方源码；`tools/*.py` 计入，Dash 另报自身行数。
 
-当前 V5 核心生产代码最终值：**69,796 行**。同一命令在本轮开始时保存的只读会话
+当前 V5 核心生产代码值：**66,564 行**。同一命令在本轮开始时保存的只读会话
 快照（临时路径 `/tmp/v5-global-refactor-before-EEAX7K/final_pipeline_v5`）上得到
 **131,179 行**，净减
-**61,383 行（46.79%）**，距离 70,000 行上限留有 204 行。此前人工库存记录为
+**64,615 行（49.26%）**，距离 70,000 行上限留有 3,436 行。此前人工库存记录为
 131,213 行，比可复算快照多 34 行；本文的比例与净变化只使用可复算的同口径快照，
 不混用两个基线。
 
@@ -51,30 +51,34 @@ ShapeFormer PISD 的外部实现约 **636 行**，不属于此仓库的本地 Py
 
 | 顺序 | 文件 | 重构前 | 当前 | 净变化 | 主要精简 |
 |---:|---|---:|---:|---:|---|
-| 1 | `quality/stage5_pre.py` | 7,454 | 1,052 | −6,402 | 删除训练路径中的展示模板与重复 artifact 包装，保留 Stage5 数值 runner |
-| 2 | `experiment.py` | 10,054 | 4,115 | −5,939 | 合并 workflow 分支、fold 产物与 refit 调度样板 |
-| 3 | `reporting/analyze.py` | 5,442 | 409 | −5,033 | 用共享 registry/spec 取代逐图逐表重复分派 |
-| 4 | `reporting/report.py` | 4,397 | 168 | −4,229 | 通用报告统一为 manifest 驱动的薄编排层 |
-| 5 | `study/hyperparameter.py` | 3,422 | 778 | −2,644 | 复用 phase runner、统计与 artifact writer |
-| 6 | `reporting/incomplete.py` | 2,724 | 188 | −2,536 | 合并 incomplete/N/A 分支与重复序列化 |
-| 7 | `reporting/historical_suite.py` | 2,218 | 23 | −2,195 | 历史报告入口改为共享 specialized suite 适配器 |
-| 8 | `reporting/historical.py` | 2,080 | 244 | −1,836 | 历史 comparison 使用同一收集与渲染协议 |
+| 1 | `quality/stage5_pre.py` | 7,454 | 1,047 | −6,407 | 删除训练路径中的展示模板与重复 artifact 包装，保留 Stage5 数值 runner |
+| 2 | `experiment.py` | 10,054 | 4,109 | −5,945 | 合并 workflow 分支、fold 产物与 refit 调度样板 |
+| 3 | `reporting/analyze.py` | 5,442 | 408 | −5,034 | 用共享 registry/spec 取代逐图逐表重复分派 |
+| 4 | `reporting/report.py` | 4,397 | 0 | −4,397 | 删除无调用的 V2/HTML 兼容入口，保留独立 analyse report |
+| 5 | `reporting/incomplete.py` | 2,724 | 0 | −2,724 | 删除复制式失败报告，改用紧凑 execution audit |
+| 6 | `study/hyperparameter.py` | 3,422 | 768 | −2,654 | 复用 phase runner、统计与 artifact writer |
+| 7 | `reporting/historical_suite.py` | 2,218 | 0 | −2,218 | 删除无调用的旧 suite 包装，保留 specialized suite 实现 |
+| 8 | `reporting/historical.py` | 2,080 | 241 | −1,839 | 历史 comparison 使用同一收集与渲染协议 |
 | 9 | `models/factory.py` | 4,148 | 2,406 | −1,742 | 表驱动模型构造，保留架构和初始化方程 |
-| 10 | `config.py` | 2,465 | 1,060 | −1,405 | 合并配置解析、默认值与验证路径 |
+| 10 | `config.py` | 2,465 | 1,057 | −1,408 | 合并配置解析、默认值与验证路径 |
 | 11 | `study/schema.py` | 2,186 | 799 | −1,387 | 用声明式 schema 复用 plan/case 字段处理 |
-| 12 | `module_registry.py` | 2,698 | 1,371 | −1,327 | 模块目录、默认值与 CLI metadata 共用一份定义 |
-| 13 | `quality/motion_runner.py` | 2,363 | 1,227 | −1,136 | 统一 internal/PTT、OOF、evidence 与 bundle plumbing |
-| 14 | `v5/specialized.py` | 1,497 | 404 | −1,093 | 专项执行入口共享 plan、report 与 provenance 调度 |
-| 15 | `v5/model_config_export.py` | 1,291 | 260 | −1,031 | 合并 model selection、manifest 和复用参数导出 |
-| 16 | `reporting/tabular.py` | 1,322 | 333 | −989 | 统一表格 spec、N/A 行和序列化 |
-| 17 | `pipeline.py` | 1,715 | 749 | −966 | 顶层执行入口改为共享 workflow 编排 |
+| 12 | `module_registry.py` | 2,698 | 1,355 | −1,343 | 模块目录、默认值与 CLI metadata 共用一份定义 |
+| 13 | `pipeline.py` | 1,715 | 400 | −1,315 | 保留共享 preflight/record loader，删除无人调用的旧 smoke writer |
+| 14 | `quality/motion_runner.py` | 2,363 | 1,220 | −1,143 | 统一 internal/PTT、OOF、evidence 与 bundle plumbing |
+| 15 | `v5/specialized.py` | 1,497 | 390 | −1,107 | 专项执行入口共享 plan、report 与 provenance 调度 |
+| 16 | `v5/model_config_export.py` | 1,291 | 257 | −1,034 | 合并 model selection、manifest 和复用参数导出 |
+| 17 | `reporting/tabular.py` | 1,322 | 314 | −1,008 | 统一表格 spec、N/A 行和序列化 |
 | 18 | `training/trainer.py` | 2,758 | 1,847 | −911 | 合并等价 epoch、checkpoint 与 prediction plumbing |
-| 19 | `reporting/conclusions.py` | 1,585 | 705 | −880 | 共享结论表、统计投影和缺失处理 |
+| 19 | `reporting/conclusions.py` | 1,585 | 699 | −886 | 共享结论表、统计投影和缺失处理 |
 | 20 | `study/runner.py` | 1,774 | 911 | −863 | 统一 serial/thread/process、resume 与 fail-fast 生命周期 |
 
 “模块保留”不等于逐字保留冗余代码。上述范围保留公开入口、数学公式、模型结构、
 threshold、采样、split、workflow 顺序、统计搜索、表格字段和图表种类；删掉的是同一
 逻辑的重复实现、嵌入式 presentation 和一次性历史包装。
+
+新增的 `v5_reporting/execution_audit.py` 为 352 行，用统一 writer 恢复旧
+`reporting/incomplete.py` 的失败/中断执行审计能力；它只读 metadata，不读取 OOF 或
+weights，也不产生科学结论。与原 2,724 行复制式实现相比，该能力本身净减 2,372 行。
 
 ## 按删减量排序的大改动
 
@@ -90,6 +94,13 @@ threshold、采样、split、workflow 顺序、统计搜索、表格字段和图
    analysis 重复 CSV/Markdown/HTML 代码。
 6. **配置目录动态生成。** module/default/range/path 使用一份映射，CLI、Dash 和 help
    不再各维护长表。
+
+本轮又从上一工作树的 69,796 行净减 3,232 行核心生产代码：删除重复的
+report/evaluate 兼容入口与 singular/plural 算法转发层，把内部调用直接绑定到唯一实现，
+精简无逻辑 package re-export 和实现文件内 101 份重复符号清单，并移除仅检查源码 SHA
+白名单的旧 parity 门禁；继续移除不可达的旧 smoke writer、已被 recording cache 取代
+的缓存类和无消费者的 Dash 下载 helper，同时以 352 行共享实现保留失败运行审计。真正按
+fold、row identity 和 `atol=1e-6` 比较结果的 `tools/compare_v2_v5_outputs.py` 保留。
 
 ## V5 新增而合理保留的代码
 
@@ -117,8 +128,8 @@ find final_v0/final_pipeline_v5 -type f -name '*.py' \
   | xargs -0 wc -l | tail -1
 ```
 
-当前输出为 `69796 total`。独立 Dash 包为 4,968 行，入口 `dashboard.py` 为 30 行；
-二者按既定目标口径另计。tests 为 7,939 行，同样不混入生产核心。
+当前输出为 `66564 total`。独立 Dash 包为 4,942 行，入口 `dashboard.py` 为 30 行；
+二者按既定目标口径另计。tests 为 8,116 行，同样不混入生产核心。
 
 ## 等价验证边界
 

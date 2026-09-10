@@ -195,4 +195,3 @@ class DashboardJobManager:
 
 
 StudyJobManager = DashboardJobManager
-__all__ = ['DashboardJobManager', 'StudyJobManager']

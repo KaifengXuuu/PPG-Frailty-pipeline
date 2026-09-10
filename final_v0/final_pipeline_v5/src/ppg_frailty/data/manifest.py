@@ -230,7 +230,6 @@ def load_internal_manifest(path: str | Path) -> list[ManifestRow]:
         raise ManifestImportError(issues)
     _validate_manifest_set(rows)
     return rows
-
 def manifest_summary(rows: Iterable[ManifestRow]) -> dict[str, object]:
     """生成无预测字段的审计摘要 / Summarize identity/QC without predictors."""
 
@@ -330,19 +329,3 @@ def build_internal_manifest(
     rows = load_m2_internal_manifest(repository_root, verify_sources=True)
     write_manifest_csv(output_csv, rows, output_root=pipeline_root)
     return rows
-
-
-__all__ = [
-    "M2_DATASET_VERSION_ID",
-    "M2_FILE_MANIFEST",
-    "M2_FILE_MANIFEST_SHA256",
-    "ManifestImportError",
-    "audit_manifest",
-    "build_internal_manifest",
-    "convert_m2_row",
-    "load_internal_manifest",
-    "load_manifest",
-    "load_m2_internal_manifest",
-    "manifest_summary",
-    "write_manifest_csv",
-]

@@ -330,7 +330,6 @@ def extract_dual_optical(
     aggregate_validity.update(
         {name: bool(support_valid and np.isfinite(value)) for name, value in derived_ratios.items()}
     )
-
     max_lag_samples = int(round(XCORR_MAX_LAG_SECONDS * fs_hz))
     zero_corr, max_corr, lag = _standardized_waveform_agreement(
         filtered[:, 0],
@@ -378,14 +377,3 @@ def extract_dual_optical(
         diagnostics=diagnostics,
         reasons=reasons,
     )
-
-
-__all__ = [
-    "OPTICAL_MINIMUM_PAIRED_BEATS",
-    "OPTICAL_RATIO_EPSILON",
-    "OPTICAL_SCHEMA_VERSION",
-    "OpticalBeatAudit",
-    "OpticalFeatureResult",
-    "XCORR_MAX_LAG_SECONDS",
-    "extract_dual_optical",
-]

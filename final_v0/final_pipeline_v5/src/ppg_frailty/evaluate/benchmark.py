@@ -60,6 +60,3 @@ def paired_metric_delta(reference: Mapping[str, float], candidate: Mapping[str, 
         float(summary["sd"]),
         tuple(float(value) for value in summary["ci95"]),
     )
-
-
-__all__ = ["PairedMetricDelta", "paired_metric_delta", "summarize_repeats"]

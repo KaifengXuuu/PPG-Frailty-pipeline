@@ -126,7 +126,6 @@ def resolve_output_path(raw: Path) -> Path:
         raise ReportContractError(f"report output already exists; choose a new directory: {target}")
     return target
 
-
 def _existing_report_output(raw: str | Path) -> Path:
     value = Path(raw)
     if value.is_absolute():
@@ -413,11 +412,3 @@ def write_report(
             shutil.rmtree(staging)
         raise
     return target
-
-
-__all__ = [
-    "V5_ROOT",
-    "export_report_excel",
-    "resolve_output_path",
-    "write_report",
-]

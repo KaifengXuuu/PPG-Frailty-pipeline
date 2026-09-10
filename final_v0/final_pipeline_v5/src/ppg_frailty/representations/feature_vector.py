@@ -32,6 +32,3 @@ def validate_feature_vector(vector: FeatureVectorV1) -> FeatureVectorV1:
             or vector.provenance.get("registry_sha256") != registry.sha256):
         raise ValueError("FeatureVectorV1 uses a stale or non-formal registry/schema identity")
     return vector
-
-
-__all__ = ["validate_feature_vector"]

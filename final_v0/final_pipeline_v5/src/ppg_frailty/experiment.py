@@ -240,7 +240,7 @@ def _runtime_imports() -> dict[str, Any]:
     import numpy as np
 
     imports = {
-        ".artifact": "run_artifact_route", ".contracts": "QualityState SignalRoute",
+        ".artifacts": "run_artifact_route", ".contracts": "QualityState SignalRoute",
         ".data.schema": "canonicalize_role_family", ".data.windows": "WindowPlan",
         ".features.engineering": "extract_engineering_features", ".features.window_matrix": (
             "build_ordered_window_matrix build_route_eligible_rate_pulse extract_window_features "
@@ -263,7 +263,8 @@ def _runtime_imports() -> dict[str, Any]:
         "load_reused_motion_detector motion_recording_from_signal_views resolve_reused_motion_detector_config",
         ".quality.routing_timeline": "RoutingEvidence build_routing_timeline build_routing_windows overlapping_cells "
         "resolve_routing_evidence",
-        ".representations": "build_raw_windows fit_fold_imu_channel_transform transform_raw_windows_imu",
+        ".representations.raw": "build_raw_windows",
+        ".representations.imu_transform": "fit_fold_imu_channel_transform transform_raw_windows_imu",
         ".training": "FeatureMatrixDataset FeatureVectorDataset FileBagDataset FrozenOuterSplit OofPredictionRow "
         "OofWriter RawWindowDataset SampleIdentity TrainingConfig UnifiedTrainer aggregate_hierarchy "
         "build_inner_grouped_split build_config_metrics_from_predictions_and_fold_summaries "
@@ -4106,10 +4107,3 @@ def final_refit_policy(config: Any) -> dict[str, Any]:
         "performance_claim": "none_full_refit_uses_oof_as_only_internal_performance_evidence", "refit": refit,
         "training_executed": False,
     }
-
-__all__ = [
-    "build_comparison_archive_from_run_directories", "ExperimentResult", "DEFAULT_ENSEMBLE_MEMBER_SEEDS",
-    "FINAL_ENSEMBLE_MEMBER_SEEDS", "execute_final_refit", "final_refit_preflight", "final_refit_policy",
-    "run_full_experiment",
-    "run_legacy_bridge_outer_cell", "run_outer_cell", "run_reduced_fold_experiment",
-]

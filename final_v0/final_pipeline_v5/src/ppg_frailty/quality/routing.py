@@ -18,7 +18,7 @@ from ..contracts import (
     QualityState,
     SignalRoute,
 )
-from .endpoint_sqi import SqiDiagnostics, evaluate_quality_diagnostics
+from ..signal.sqi import SqiDiagnostics, evaluate_quality_diagnostics
 
 class QualityMode(str, Enum):
     OFF = "off"
@@ -292,18 +292,3 @@ def assert_quality_route(result: QualityResult, route: SignalRoute | str) -> Non
 
     resolved = route if isinstance(route, SignalRoute) else SignalRoute(route)
     result.validate_for_route(resolved)
-
-
-__all__ = [
-    "QualityMode",
-    "QualityModeOutcome",
-    "QualityTier",
-    "QualityTierDecision",
-    "RouteModuleSwitches",
-    "assert_quality_route",
-    "quality_mode_from_config",
-    "resolve_quality_mode",
-    "route_module_switches_from_config",
-    "route_quality_tier",
-    "run_quality_mode",
-]

@@ -226,6 +226,3 @@ def run_study(
         }
     finally:
         sink.close()
-
-
-__all__ = ["data_only_plan", "run_study"]

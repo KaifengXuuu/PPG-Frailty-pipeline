@@ -388,17 +388,3 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, RuntimeError, TypeError, ValueError) as error:
         print(json.dumps({"status": "error", "error": str(error)}, ensure_ascii=False))
         return 2
-
-
-__all__ = [
-    "ANALYSIS_SCHEMAS",
-    "COMPUTATION_SCHEMAS",
-    "SUPPORTED_SCHEMAS",
-    "build_parser",
-    "complete_specialized_halving",
-    "main",
-    "rebuild_specialized_report",
-    "run_specialized_analysis",
-    "run_specialized_computation",
-    "validate_specialized_plan",
-]

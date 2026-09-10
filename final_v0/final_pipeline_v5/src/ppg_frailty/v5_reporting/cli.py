@@ -12,6 +12,7 @@ from typing import Any, Iterable, Mapping
 from .analysis import build_analysis
 from .collect import load_report_data
 from .contracts import REPORT_MODES, ReportContractError, ReportRequest, RunSpec
+from .execution_audit import write_execution_audit
 from .registry import (
     KNOWN_FIGURES,
     KNOWN_TABLES,
@@ -134,6 +135,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     excel.add_argument("--report-output", required=True)
     excel.add_argument("--replace", action="store_true")
+    execution = subcommands.add_parser(
+        "execution-audit",
+        help="Report a failed/interrupted pipeline run without reading predictions.",
+    )
+    execution.add_argument("--input", required=True)
+    execution.add_argument("--output-name")
     specialized_validate = subcommands.add_parser(
         "specialized-validate",
         help="Validate any preserved non-canonical study YAML.",
@@ -280,6 +287,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             _print(status)
             return 0
+        if namespace.command == "execution-audit":
+            _print(write_execution_audit(namespace.input, output_name=namespace.output_name))
+            return 0
         request = _request(namespace)
         selection = resolve_selection(
             mode=request.mode,
@@ -318,6 +328,3 @@ def main(argv: list[str] | None = None) -> int:
             stream=sys.stderr,
         )
         return 2
-
-
-__all__ = ["build_parser", "main"]

@@ -753,7 +753,6 @@ def _provisional_fold_by_subject(
     """Archived V1 name retained for import compatibility."""
     del rows
     _reject_historical_v1_provisional_split()
-
 def _validate_provisional_rows(rows: Iterable[Mapping[str, str]]) -> None:
     """Archived V1 name retained for import compatibility."""
     del rows
@@ -785,36 +784,3 @@ def load_provisional_external_split(*args: object, **kwargs: object) -> None:
     """Reject loading provisional V1 fold identities through the active V2 API."""
     del args, kwargs
     _reject_historical_v1_provisional_split()
-
-
-__all__ = [
-    "EXTERNAL_MANIFEST_COLUMNS",
-    "EXTERNAL_MANIFEST_VERSION",
-    "ExternalManifestError",
-    "ExternalRecord",
-    "PttSynchronizedSignals",
-    "INDEPENDENCE_CLAIM",
-    "M2_EXTERNAL_MANIFEST_SHA256",
-    "M2_EXTERNAL_RELATIVE_PATH",
-    "PTT_ADOPTED_ACCELERATION_CONVERSION",
-    "PTT_ADOPTED_ACCELERATION_UNIT",
-    "PTT_ADOPTED_GYROSCOPE_CONVERSION",
-    "PTT_ADOPTED_GYROSCOPE_UNIT",
-    "PTT_CHANNEL_MAPPING_PROVENANCE",
-    "PTT_DATASET_ID",
-    "PTT_DISTAL_CHANNEL_MAPPING",
-    "PTT_IMU_UNIT_CONFLICT_PROVENANCE",
-    "PTT_IMU_UNIT_EVIDENCE_RELATIVE_PATH",
-    "PTT_IMU_UNIT_EVIDENCE_SHA256",
-    "PTT_SOURCE_PAGE_URL",
-    "PTT_SOURCE_WAVELENGTH_STATUS",
-    "PTT_WAVELENGTH_STATUS",
-    "SIM_DATASET_ID",
-    "audit_external_manifest",
-    "adapt_ptt_synchronized_channels",
-    "build_external_manifest",
-    "load_external_manifest",
-    "load_m2_external_manifest",
-    "select_ptt_distal_red_ir",
-    "write_external_manifest_csv",
-]

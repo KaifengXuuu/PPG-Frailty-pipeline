@@ -41,6 +41,3 @@ def validate_feature_matrix(matrix: OrderedFeatureMatrixV1) -> OrderedFeatureMat
             or provenance.get("unavailable_after_transform") != "outer_train_center_zero"):
         raise ValueError("OrderedFeatureMatrixV1 uses a stale or inconsistent formal schema")
     return matrix
-
-
-__all__ = ["validate_feature_matrix"]

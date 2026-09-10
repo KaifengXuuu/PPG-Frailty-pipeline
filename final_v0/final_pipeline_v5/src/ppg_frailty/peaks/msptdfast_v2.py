@@ -280,16 +280,3 @@ def detect_pulses_per_wavelength_msptdfast_v2(
         result.validate_identity()
         output[label] = result
     return output
-
-
-__all__ = [
-    "AUTHOR_SOURCE_SHA256",
-    "DEFAULT_PARAMETERS",
-    "DETECTOR_ID",
-    "DETECTOR_NAME",
-    "DETECTOR_VERSION",
-    "IMPLEMENTATION_PATH",
-    "detect_msptdfast_v2",
-    "detect_pulses_per_wavelength_msptdfast_v2",
-    "resolve_parameters",
-]

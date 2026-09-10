@@ -205,20 +205,3 @@ def detect_pulses(
             row.wavelength == "RED",
         ),
     )
-
-
-__all__ = [
-    "ABLATION_DETECTOR_ID",
-    "ABOY_PROJECT_V1_DETECTOR_ID",
-    "ABOY_PROJECT_V2_DETECTOR_ID",
-    "CANONICAL_DETECTOR_ID",
-    "DEFAULT_MIN_OBSERVATION_SEC",
-    "DEFAULT_MIN_PEAKS",
-    "REGISTERED_DETECTOR_IDS",
-    "MSPTDFAST_V2_DETECTOR_ID",
-    "detect_pulses",
-    "detect_pulses_per_wavelength",
-    "resolve_detector_id",
-    "resolve_detector_parameters",
-    "validate_peak_detection_parameters",
-]

@@ -46,11 +46,6 @@ def automatic_run_name(source_yaml: str | Path) -> str:
 def _inside(root: Path, value: str | Path, *, label: str) -> Path:
     return resolve_path(value, base=V5_ROOT, within=root, label=label)
 
-def pipeline_run_path(*, source_yaml: str | Path, run_name: str | None = None) -> Path:
-    """Resolve a new run path without creating it."""
-    name = automatic_run_name(source_yaml) if run_name is None else safe_output_name(run_name)
-    return PIPELINE_OUTPUT_ROOT / name
-
 def existing_pipeline_run(value: str | Path) -> Path:
     """Resolve an existing canonical V5 run below ``pipeline_output``."""
     target = _inside(PIPELINE_OUTPUT_ROOT, value, label="pipeline run")
@@ -59,12 +54,6 @@ def existing_pipeline_run(value: str | Path) -> Path:
     if not (target / "study_manifest.json").is_file():
         raise FileNotFoundError(f"pipeline run lacks study_manifest.json: {target}")
     return target
-
-def report_path_for_run(pipeline_run: str | Path, *, output_name: str | None = None) -> Path:
-    """Resolve the immutable report target paired with one pipeline run."""
-    run = existing_pipeline_run(pipeline_run)
-    name = run.name if output_name is None else safe_output_name(output_name)
-    return REPORT_OUTPUT_ROOT / name
 
 def _excel_value(value: Any) -> Any:
     if value is None or isinstance(value, (str, bool, int)):
@@ -215,10 +204,3 @@ def try_export_pipeline_excel(pipeline_run: str | Path, *, allow_legacy_location
         if root.is_dir():
             atomic_json(root / "pipeline_excel_status.json", status)
         return status
-
-
-__all__ = [
-    "MODEL_CONFIG_ROOT", "PIPELINE_OUTPUT_ROOT", "REPORT_OUTPUT_ROOT", "V5_ROOT",
-    "automatic_run_name", "existing_pipeline_run", "export_pipeline_excel", "pipeline_run_path",
-    "report_path_for_run", "safe_output_name", "try_export_pipeline_excel", "utc_stamp",
-]

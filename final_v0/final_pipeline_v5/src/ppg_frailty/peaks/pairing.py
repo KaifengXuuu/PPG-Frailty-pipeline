@@ -340,14 +340,3 @@ def match_events(reference_s: np.ndarray, predicted_s: np.ndarray, *, tolerance_
     f1 = 2.0 * precision * recall / max(precision + recall, 1e-15)
     return EventMatchMetrics(tp, fp, fn, float(precision), float(recall), float(f1),
                              float(np.mean(errors)) if errors else None)
-
-
-__all__ = [
-    "BeatPairAudit",
-    "BeatPairingResult",
-    "DUAL_WAVELENGTH_PAIRING_SCHEMA_VERSION",
-    "EventMatchMetrics",
-    "match_events",
-    "pair_dual_wavelength_beats",
-    "select_reference_wavelength",
-]

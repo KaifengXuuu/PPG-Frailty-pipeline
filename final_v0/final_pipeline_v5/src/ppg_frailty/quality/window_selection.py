@@ -241,7 +241,6 @@ def score_raw_windows(
         "score_vector_sha256": score_hash,
     }
 
-
 def select_raw_windows(raw_windows: Any, config: WindowSelectionConfig) -> tuple[Any, dict[str, Any]]:
     """Apply one file-local retention strategy to a scored ``RawWindows``."""
 
@@ -341,16 +340,3 @@ def mark_raw_windows_for_aggregation(
         "score_vector_sha256": score_summary["score_vector_sha256"],
         "aggregation_mask_sha256": mask_hash,
     }
-
-
-__all__ = [
-    "LEGACY_WINDOW_SCORE_ALGORITHM",
-    "WINDOW_SELECTION_POLICIES",
-    "WINDOW_SELECTION_APPLICATION_SCOPES",
-    "WindowSelectionConfig",
-    "legacy_per_file_top_fraction_mask",
-    "legacy_window_sqi_scores",
-    "mark_raw_windows_for_aggregation",
-    "score_raw_windows",
-    "select_raw_windows",
-]

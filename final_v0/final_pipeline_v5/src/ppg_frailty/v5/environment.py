@@ -171,6 +171,10 @@ def prepare_deterministic_runtime(lock_path: str | Path | None = DEFAULT_LOCK) -
     """Apply the same backend switches as the V2 trainer without touching RNG state."""
 
     expected = load_environment_lock(lock_path or DEFAULT_LOCK)["determinism"]
+    os.environ.setdefault(
+        "CUBLAS_WORKSPACE_CONFIG",
+        str(expected["cublas_workspace_config"]),
+    )
     try:
         import torch
     except ImportError:
@@ -194,15 +198,3 @@ def evaluate_environment(
     if policy == "record":
         return check_environment(**kwargs)
     raise ValueError("environment policy must be exact or record")
-
-
-__all__ = [
-    "DEFAULT_LOCK",
-    "EnvironmentCheck",
-    "check_environment",
-    "evaluate_environment",
-    "load_environment_lock",
-    "observe_environment",
-    "prepare_deterministic_runtime",
-    "require_environment",
-]

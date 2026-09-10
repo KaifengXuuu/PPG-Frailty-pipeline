@@ -1169,6 +1169,3 @@ def run_legacy_v2_phase0(
             artifacts,
         )
     return result
-
-
-__all__ = ["PHASE0_RESULT_SCHEMA_VERSION", "Phase0Result", "run_legacy_v2_phase0"]

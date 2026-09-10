@@ -677,8 +677,3 @@ def preset_rows(pipeline_root: str | Path) -> list[dict[str, Any]]:
             'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'registry_semantics': str(entry.get('semantics', ''))
         })
     return rows
-
-__all__ = [
-    'PRESETS', 'Preset', 'parse_assignment', 'parse_module_assignment', 'parse_yaml_value', 'manual_cli_command', 'manual_cli_tokens', 'parameter_rows', 'preset_rows',
-    'resolve_configuration', 'set_dotted', 'unset_dotted'
-]

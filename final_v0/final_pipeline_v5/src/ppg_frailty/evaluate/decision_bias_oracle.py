@@ -562,8 +562,3 @@ def run_decision_bias_oracle(plan_path: str | Path, *, pipeline_root: str | Path
     }
     _write_reports(output_dir, plan, dataset, result, summary)
     return output_dir
-__all__ = [
-    'BiasOracleResult', 'DecisionBiasOraclePlan', 'LEAKAGE_STATUS', 'ParticipantOracleDataset', 'SCHEMA_VERSION',
-    'SCIENTIFIC_ROLE', 'enumerate_simplex_biases', 'load_decision_bias_oracle_plan', 'load_participant_oracle_dataset',
-    'run_decision_bias_oracle', 'search_decision_bias_oracle'
-]

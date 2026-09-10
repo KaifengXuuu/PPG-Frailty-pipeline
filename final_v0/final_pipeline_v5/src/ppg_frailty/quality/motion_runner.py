@@ -1218,10 +1218,3 @@ def run_ptt_external_evaluation(examples: Sequence[MotionWindowExample], *, inte
                                 load_frozen_model: LoadFrozenModel, predict_probability: PredictProbability, output_dir: str | Path) -> MotionExternalRunResult:
     del (examples, internal_evidence_path, expected_internal_evidence_sha256, ptt_split_csv, load_frozen_model, predict_probability, output_dir)
     raise FormalMotionEntryRequiredError('injected PTT examples/callbacks are forbidden; use run_formal_ptt_motion_reference')
-
-__all__ = [
-    'FitModel', 'FormalMotionEntryRequiredError', 'LoadFrozenModel', 'MOTION_EXTERNAL_REPORT_SCHEMA', 'MOTION_INPUT_SCHEMA_STATUS', 'MOTION_WINDOW_OOF_SCHEMA',
-    'MotionExternalRunResult', 'MotionFitContext', 'MotionFittedArtifact', 'MotionInternalRunResult', 'MotionPttTrainingRunResult', 'MotionPredictionInput', 'MotionWindowExample',
-    'PredictProbability', 'audit_ptt_external_readiness', 'load_motion_internal_evidence', 'participant_macro_motion_metrics', 'run_internal_motion_oof',
-    'run_ptt_external_evaluation'
-]

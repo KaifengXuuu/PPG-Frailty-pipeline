@@ -1099,13 +1099,3 @@ def write_comparison_archive(archive: ComparisonArchive, root: str | Path) -> Pa
 def _write_formal_comparison_archive(archive: ComparisonArchive, root: str | Path) -> Path:
     """Private writer bound to reference config and source-run identities."""
     return _write_comparison_archive_impl(archive, root, formal=True)
-
-
-__all__ = (
-    "CLUSTER_BOOTSTRAP_IMPLEMENTATION_VERSION CLUSTER_BOOTSTRAP_RNG_CONTRACT ClusterBootstrapResult ComparisonArchive "
-    "ConfigMetrics DEFAULT_BOOTSTRAP_RESAMPLES DEFAULT_PERMUTATION_RESAMPLES HolmResult ManualFinalSelection "
-    "PairedClusterBootstrapResult PairedPermutationResult ParticipantPrediction "
-    "build_config_metrics_from_predictions_and_fold_summaries holm_adjust holm_adjust_by_family_metric "
-    "paired_participant_cluster_bootstrap paired_participant_permutation participant_cluster_bootstrap rank_top10 "
-    "read_verified_manual_selections verify_comparison_archive write_comparison_archive"
-).split()

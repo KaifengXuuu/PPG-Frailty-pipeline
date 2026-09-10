@@ -86,7 +86,6 @@ def _block_parameters(
         "hrwin_samples": hrwin_samples,
         "final_distance_samples": final_distance,
     }
-
 def _bandpass_block(
     values: np.ndarray,
     *,
@@ -559,18 +558,3 @@ def detect_pulses_per_wavelength_aboy_project(
         )
         for channel, label in enumerate(labels)
     }
-
-
-__all__ = [
-    "BLOCK_SECONDS",
-    "DETECTOR_ID",
-    "DETECTOR_NAME",
-    "DETECTOR_VERSION",
-    "INITIAL_HRI",
-    "INITIAL_HRI_RULE",
-    "IMPLEMENTATION_PATH",
-    "MAX_BPM",
-    "MIN_BASIC_RATE_PEAKS",
-    "MIN_BPM",
-    "detect_pulses_per_wavelength_aboy_project",
-]

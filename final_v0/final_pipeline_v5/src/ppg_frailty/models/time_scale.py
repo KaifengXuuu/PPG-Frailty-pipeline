@@ -77,7 +77,6 @@ def _condition_name(dl_fs_hz: float, raw_window_seconds: float, dilation: int) -
         "V2-019 permits only reference plus one-factor fs/window/dilation conditions; "
         "factor interactions are not registered"
     )
-
 def build_fixed_kernel_resampling_cases() -> tuple[FixedKernelResamplingCase, ...]:
     """Materialise the fixed 12-case registry / 生成固定 12 条注册条件，不运行测试。"""
 
@@ -293,19 +292,3 @@ def create_time_scaled_model(*args, **kwargs):
     raise RuntimeError(
         "V1 physical-time model construction is disabled in V2; use " "create_fixed_kernel_resampling_model"
     )
-
-
-__all__ = [
-    "ABLATION_ID",
-    "COMPACT_KERNEL_SAMPLES",
-    "FixedKernelResamplingCase",
-    "INCEPTION_KERNEL_SAMPLES",
-    "REFERENCE_FS_HZ",
-    "REFERENCE_WINDOW_SECONDS",
-    "SUPPORTED_MODEL_NAMES",
-    "build_fixed_kernel_resampling_cases",
-    "create_fixed_kernel_resampling_model",
-    "fixed_kernel_case",
-    "materialize_fixed_kernel_case_config",
-    "prepare_fixed_kernel_dl_input",
-]

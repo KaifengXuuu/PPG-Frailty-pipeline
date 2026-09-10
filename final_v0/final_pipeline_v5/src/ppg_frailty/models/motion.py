@@ -29,12 +29,7 @@ from ..representations.motion import (
     MOTION_WINDOW_SAMPLES,
 )
 
-from ..motion_ids import (
-    FORMAL_MOTION_MODEL_ID,
-    HISTORICAL_LIGHT_CNN_MODEL_ID,
-    MOTION_DERIVED_AUGMENTATION_MODEL_ID,
-    PARAMETERIZED_LIGHT_CNN_ID,
-)
+from ..motion_ids import MOTION_DERIVED_AUGMENTATION_MODEL_ID
 
 HISTORICAL_LIGHT_CNN_CHANNELS = (
     "ppg_single_historical_loader_pleth_2_first",
@@ -222,19 +217,3 @@ def count_trainable_parameters(model: Any) -> int:
     if not hasattr(model, "parameters"):
         raise TypeError("model does not expose PyTorch parameters")
     return int(sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad))
-
-
-__all__ = [
-    "FORMAL_MOTION_MODEL_ID",
-    "HISTORICAL_LIGHT_CNN_CHANNELS",
-    "HISTORICAL_LIGHT_CNN_MODEL_ID",
-    "MOTION_DERIVED_AUGMENTATION_MODEL_ID",
-    "LightCnnArchitecture",
-    "LightCnnMotionDetector",
-    "PARAMETERIZED_LIGHT_CNN_ID",
-    "build_historical_light_cnn_backup",
-    "build_formal_motion_cnn",
-    "build_motion_derived_augmentation_cnn",
-    "build_parameterized_light_cnn",
-    "count_trainable_parameters",
-]

@@ -63,7 +63,6 @@ def preflight_refit_request(
         "outer_cells": len(repeats) * len(folds),
         "refit_scope": "complete eligible participant cohort for each resolved case",
     }
-
 def _adopt_refit_bundle(bundle: Path, *, config_hash: str | None = None) -> Path:
     """Reuse an interrupted/resumed refit only after reload and golden parity."""
 
@@ -149,6 +148,3 @@ def post_run_finalize(
         "refit": refit_cases or None,
         "model_config_export": export,
     }
-
-
-__all__ = ["RefitOptions", "post_run_finalize", "preflight_refit_request"]

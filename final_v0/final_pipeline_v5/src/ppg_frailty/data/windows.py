@@ -219,11 +219,3 @@ def extract_window(
         widths = [(0, pad_rows)] + [(0, 0)] * (segment.ndim - 1)
         segment = np.pad(segment, widths, mode="constant", constant_values=pad_value)
     return segment
-
-
-__all__ = [
-    "ShortRecordError",
-    "WindowPlan",
-    "WindowSlice",
-    "extract_window",
-]

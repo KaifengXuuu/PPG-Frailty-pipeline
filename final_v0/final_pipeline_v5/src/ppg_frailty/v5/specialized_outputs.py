@@ -13,9 +13,8 @@ import yaml
 
 from ppg_frailty.reporting.tabular import ReportTable, write_excel_workbook
 
-# Kept as a module-level compatibility seam for callers/tests that isolate the
-# canonical pipeline root by monkeypatching this historical name.
-from .output_contract import MODEL_CONFIG_ROOT, PIPELINE_OUTPUT_ROOT, V5_ROOT  # noqa: F401
+# Module-level roots let callers/tests isolate model export locations.
+from .output_contract import MODEL_CONFIG_ROOT, V5_ROOT
 
 _MOTION_EXPORT_SCHEMA = "ppg_frailty.v5_motion_model_config_export.v1"
 _SPECIALIZED_EXCEL_SCHEMA = "ppg_frailty.v5_specialized_pipeline_workbook.v1"
@@ -274,11 +273,3 @@ def export_motion_model_config(
     } | {
         "output_directory": target.relative_to(V5_ROOT).as_posix()
     }
-
-
-__all__ = [
-    "PIPELINE_OUTPUT_ROOT",
-    "export_motion_model_config",
-    "export_specialized_data_excel",
-    "motion_model_sources",
-]

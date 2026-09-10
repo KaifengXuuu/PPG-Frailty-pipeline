@@ -99,8 +99,9 @@ class PipelinePreviewService:
         import hashlib
         from ppg_frailty.data.manifest import load_internal_manifest
         from ppg_frailty.pipeline import PipelinePaths, _load_record
-        from ppg_frailty.signal import fit_motion_imu_calibration, roll_pitch_ekf_config_from_resolved
+        from ppg_frailty.signal.motion_imu import fit_motion_imu_calibration
         from ppg_frailty.signal.preprocess import build_signal_views
+        from ppg_frailty.signal.preprocess import roll_pitch_ekf_config_from_resolved
         if config_payload is not None:
             if config_path is not None:
                 raise ValueError('preview accepts config_path or config_payload, not both')
@@ -304,8 +305,10 @@ class PipelinePreviewService:
         from ppg_frailty.features.engineering import extract_engineering_features
         from ppg_frailty.module_registry import resolve_peak_detector_config, resolve_window_config
         from ppg_frailty.peaks import select_reference_wavelength
-        from ppg_frailty.signal.prv import PrvConfig
-        from ppg_frailty.signal import compute_prv, detect_pulses_per_wavelength, extract_dual_optical, extract_morphology
+        from ppg_frailty.peaks.resolver import detect_pulses_per_wavelength
+        from ppg_frailty.signal.morphology import extract_morphology
+        from ppg_frailty.signal.optical import extract_dual_optical
+        from ppg_frailty.signal.prv import PrvConfig, compute_prv
         output: list[dict[str, Any]] = []
 
         def add(stage: str, metric: str, value: Any, status: str = 'available') -> None:

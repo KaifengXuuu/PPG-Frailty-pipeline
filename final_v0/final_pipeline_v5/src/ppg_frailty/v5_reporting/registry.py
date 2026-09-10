@@ -228,18 +228,3 @@ def resolve_selection(
     if unknown := set(chosen_figures) - allowed_figures:
         raise ReportContractError(f"figure(s) unavailable in {mode!r} mode: {sorted(unknown)}")
     return ResolvedSelection(tuple(resolved), chosen_tables, chosen_figures)
-
-
-def validate_registry() -> None:
-    """Compatibility hook; the registry is constructed from one typed source."""
-
-
-__all__ = [
-    "KNOWN_FIGURES",
-    "KNOWN_TABLES",
-    "MODULES",
-    "MODULE_BY_NAME",
-    "PRESETS",
-    "resolve_selection",
-    "validate_registry",
-]

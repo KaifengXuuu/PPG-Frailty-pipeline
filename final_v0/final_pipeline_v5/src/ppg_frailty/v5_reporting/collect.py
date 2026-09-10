@@ -554,6 +554,3 @@ def load_report_data(request: ReportRequest) -> LoadedReportData:
     else:
         data = _merge_direct(_direct_case(run.case_id, run.path) for run in request.runs)
     return _filter_cases(data, request)
-
-
-__all__ = ["load_report_data"]

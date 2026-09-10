@@ -99,10 +99,16 @@ def _validate_common_payload(data: dict[str, Any]) -> None:
     for section in expected_keys - {'schema_version', 'config_id', 'representation_mode', 'roles'}:
         _strict_mapping(data[section], section)
     training = _strict_mapping(data['training'], 'training')
-    if training.get('epoch_rule') not in {'fixed_epoch', 'inner_grouped_selection'}:
+    epoch_rule = training.get('epoch_rule')
+    if epoch_rule not in {'fixed_epoch', 'inner_grouped_selection'}:
         raise ValueError('training.epoch_rule must be explicit')
     if training.get('outer_labels_visible_to_trainer') is not False:
         raise ValueError('outer labels must be unavailable to the trainer')
+    if epoch_rule == 'fixed_epoch':
+        if int(training.get('fixed_epochs', 0)) <= 0 or int(training.get('inner_grouped_folds', -1)) != 0:
+            raise ValueError('fixed_epoch requires positive fixed_epochs and zero inner folds')
+    elif int(training.get('inner_grouped_folds', 0)) < 2 or training.get('refit_on_all_outer_training') is not True:
+        raise ValueError('inner selection requires grouped folds and outer-train refit')
     artifact = _strict_mapping(data['artifact'], 'artifact')
     if artifact.get('selection_scope') != 'run_before_evaluation':
         raise ValueError('artifact route must be selected before evaluation')
@@ -1049,12 +1055,3 @@ def require_runtime_dependencies(config: PipelineConfig) -> dict[str, Any]:
     if report['missing_modules']:
         raise RuntimeError('missing runtime dependencies: ' + ', '.join(report['missing_modules']))
     return report
-
-
-__all__ = [
-    'LEGACY_SCHEMA_VERSION', 'PipelineConfig', 'TOP_LEVEL_KEYS', 'V2_DECISION_PROFILE_SCHEMA',
-    'V2_FORMAL_CATALOG_SCHEMA', 'V2_FORMAL_ABLATION_PROFILES_SCHEMA', 'V2_SCHEMA_VERSION',
-    'dependency_availability_report', 'load_config', 'load_formal_experiment_catalog',
-    'materialize_formal_ablation_config', 'load_formal_ablation_profiles', 'load_v2_decision_profile',
-    'require_runtime_dependencies', 'required_runtime_modules', 'validate_config_payload'
-]

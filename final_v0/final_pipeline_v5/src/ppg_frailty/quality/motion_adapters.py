@@ -477,10 +477,3 @@ def load_formal_motion_model(artifact_path: Path, metadata: Mapping[str, Any], *
     model.eval()
     return FormalMotionRuntime(model=model, imu_transform=transform, device=selected_device,
                                batch_size=config.batch_size)
-
-__all__ = [
-    'FORMAL_MOTION_ARTIFACT_SCHEMA', 'FORMAL_MOTION_TRAINER_SCHEMA', 'FormalMotionRuntime', 'FormalMotionTrainerConfig',
-    'MotionRecordingInput', 'fit_formal_motion_model', 'load_formal_motion_model', 'materialize_motion_window_examples',
-    'predict_formal_motion_probability', 'require_formal_motion_cuda', 'validate_formal_motion_cuda_device',
-    'write_formal_motion_input_schema'
-]

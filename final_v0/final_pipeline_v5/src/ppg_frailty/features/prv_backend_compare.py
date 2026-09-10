@@ -71,7 +71,6 @@ def fixed_ppi_fixtures() -> dict[str, np.ndarray]:
         "slow_trend": np.linspace(740.0, 880.0, 512, dtype=np.float64),
         "single_outlier_unmodified": np.where(index == 256, 1400.0, 800.0),
     }
-
 def _numeric_values(payload: Mapping[object, object]) -> dict[str, float | None]:
     result: dict[str, float | None] = {}
     for key, raw_value in payload.items():
@@ -248,13 +247,3 @@ def run_prv_backend_comparison(
         "optional_comparison_backends": ["aura_hrv_analysis", "rhenan_hrv"],
         "fixtures": rows,
     }
-
-
-__all__ = [
-    "PRV_BACKEND_COMPARISON_SCHEMA",
-    "PrvBackendResult",
-    "SUPPORTED_PRV_BACKENDS",
-    "evaluate_prv_backend",
-    "fixed_ppi_fixtures",
-    "run_prv_backend_comparison",
-]

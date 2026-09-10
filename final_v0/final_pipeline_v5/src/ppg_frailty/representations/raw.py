@@ -7,6 +7,7 @@ from typing import Mapping, Any
 
 import numpy as np
 
+from ..data.windows import WindowPlan
 from ..normalization import (
     FALLBACK_MAD,
     FALLBACK_ONE,
@@ -16,7 +17,7 @@ from ..normalization import (
     PPG_STANDARD_ZSCORE,
     RawNormalizationConfig,
 )
-from ..signal.views import CANONICAL_FS_HZ, CanonicalSignalViews, WindowPlan
+from ..signal.views import CANONICAL_FS_HZ, CanonicalSignalViews
 
 
 @dataclass(frozen=True)
@@ -241,6 +242,3 @@ def build_raw_windows(
             float(plan.min_valid_fraction),
         },
     )
-
-
-__all__ = ["RawWindows", "build_raw_windows"]

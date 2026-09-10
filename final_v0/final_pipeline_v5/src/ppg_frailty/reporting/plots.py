@@ -1834,13 +1834,3 @@ def generate_static_figures(
         *STAGE3_STAR_FIGURE_NAMES,
     }
     return tuple(_save(target, name, plots[name], pyplot, render_na_png=name in na_png_names) for name in applicable)
-
-
-__all__ = [
-    "FIGURE_TABLE_SOURCES",
-    "LEGACY_BRIDGE_FIGURE_NAMES",
-    "STAGE3_STAR_FIGURE_NAMES",
-    "STATIC_FIGURE_NAMES",
-    "clear_static_figure_artifacts",
-    "generate_static_figures",
-]

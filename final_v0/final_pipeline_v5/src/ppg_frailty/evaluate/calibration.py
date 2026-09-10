@@ -48,6 +48,3 @@ def fit_temperature(
     if not result.success:
         raise RuntimeError("temperature optimization failed")
     return TemperatureCalibrator(float(np.exp(result.x)), fitted)
-
-
-__all__ = ["TemperatureCalibrator", "fit_temperature"]

@@ -95,6 +95,3 @@ def validate_report_data(data: LoadedReportData, request: ReportRequest) -> Vali
     status = "passed_with_warnings" if issues else "passed"
     return ValidationReport(status, tuple(issues), cases, len(data.artifact_records),
                             sum(len(rows) for rows in data.layer_rows.values()))
-
-
-__all__ = ["changed_config_paths", "validate_report_data"]

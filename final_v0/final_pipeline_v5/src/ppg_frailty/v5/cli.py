@@ -458,6 +458,3 @@ def main(argv: list[str] | None = None) -> int:
     except (FileNotFoundError, OSError, RuntimeError, TypeError, ValueError) as error:
         parser.error(f"{type(error).__name__}: {error}")
     return 2
-
-
-__all__ = ["PIPELINE_ROOT", "_execution", "build_parser", "main"]

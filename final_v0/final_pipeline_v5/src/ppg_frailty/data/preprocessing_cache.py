@@ -219,13 +219,12 @@ class PreprocessingCacheSession:
             )
 
         pipeline_root = Path(paths.pipeline_root).resolve()
-        canonical_lexical_root = pipeline_root / "artifacts/studies/cache"
         requested = Path(payload.get("root", "artifacts/studies/cache"))
         lexical_root = Path(os.path.abspath(requested if requested.is_absolute() else pipeline_root / requested))
-        lexical_root.relative_to(canonical_lexical_root)
+        lexical_root.relative_to(pipeline_root)
         current = lexical_root
         while True:
-            if current.exists() and current.is_symlink():
+            if current.is_symlink():
                 raise ValueError("preprocessing cache root may not traverse symlinks")
             if current == pipeline_root:
                 break
@@ -841,6 +840,3 @@ def _validate_raw_windows(value: RawWindows) -> None:
         raise ValueError("cached raw start samples are not strictly increasing")
     if value.candidate_count < values.shape[0] or value.dropped_invalid_count < 0:
         raise ValueError("cached raw window counts are invalid")
-
-
-__all__ = ["PreprocessingCacheSession", "SUPPORTED_NAMESPACES"]

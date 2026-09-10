@@ -279,7 +279,6 @@ class EmdSiftingRateOnlyReducer(ArtifactReducer):
                 parameters=parameters_dict(self.config),
                 diagnostics={"historical_source": HISTORICAL_EMD_SOURCE, "rate_only": True},
             )
-
 class CeemdLiteNlmsLegacyReducer(ArtifactReducer):
     """Frozen CEEMD-lite plus NLMS / 冻结 CEEMD-lite+NLMS。"""
 
@@ -399,16 +398,3 @@ class DwtA2LegacyReducer(ArtifactReducer):
                 parameters=parameters_dict(self.config),
                 diagnostics={"historical_source": HISTORICAL_DWT_SOURCE, "rate_only": True},
             )
-
-
-__all__ = [
-    "CeemdLiteNlmsLegacyConfig",
-    "CeemdLiteNlmsLegacyReducer",
-    "DwtA2LegacyConfig",
-    "DwtA2LegacyReducer",
-    "EmdSiftingConfig",
-    "EmdSiftingRateOnlyReducer",
-    "HISTORICAL_CEEMD_NLMS_SOURCE",
-    "HISTORICAL_DWT_SOURCE",
-    "HISTORICAL_EMD_SOURCE",
-]

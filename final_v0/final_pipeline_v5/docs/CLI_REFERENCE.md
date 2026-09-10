@@ -6,18 +6,23 @@
 
 ## 运行前
 
-finalcase 数值运行使用冻结环境：
+finalcase 数值运行使用冻结环境；`exact` 会在 Torch/CUDA 初始化前按 lock 自动补齐
+缺失的 `CUBLAS_WORKSPACE_CONFIG`：
 
 ```bash
-export CUBLAS_WORKSPACE_CONFIG=:4096:8
 python pipeline.py validate \
   --preset finalcase \
   --mode full \
   --environment-policy exact
 ```
 
-`exact` 是默认 policy。`record` 或 CPU 可用于检查接口，但不能支持数值等价结论。
+显式设置的冲突值不会被覆盖，而会导致 mismatch。`exact` 是默认 policy；`record`
+或 CPU 可用于检查接口，但不能支持数值等价结论。
 V2/V5 正式浮点比较使用 `atol=1e-6, rtol=0`。
+
+finalcase 的默认 `cache/preprocessing` 和历史配置的 `artifacts/studies/cache` 均受支持，
+但 cache 必须留在 V5 根目录内且不得穿过 symlink。无需在 shell 中手工设置缺失的
+cuBLAS 变量。
 
 ## 命令地图
 
@@ -36,6 +41,7 @@ V2/V5 正式浮点比较使用 `atol=1e-6, rtol=0`。
 |  | `export-excel` | 重建 pipeline Excel |
 | `analyse_report.py` | `list`, `validate`, `run` | 列目录、只读校验、生成报告 |
 |  | `export-excel` | 从已有通用 report CSV 重建 report Excel |
+|  | `execution-audit` | 从失败/中断 run 生成只读执行审计，不读预测或 weights |
 |  | `specialized-*` | 历史专项分析/报告适配入口 |
 | `export_model_config.py` | — | 从一个完成的 run 独立导出模型配置 |
 | `dashboard.py` | — | 启动本地可视化面板 |
@@ -107,6 +113,11 @@ python pipeline.py manual-cli \
 less /tmp/finalcase_cli.sh
 bash /tmp/finalcase_cli.sh
 ```
+
+run 目录不会被覆盖；已有失败的 `finalcase_cli_01` 时，用新的 run 名（例如
+`finalcase_cli_02`）重新生成命令，并保留旧的 incomplete 目录作为审计证据。
+失败时生成的 `model_config/finalcase_cli_01` 仅保存配置证据，没有 learned weights，
+不得作为 Dash 或 `pipeline.py infer` 的模型输入。
 
 生成文件包含完整 `--set`/`--unset`，还显式带出 finalcase study YAML 的 5×5、CUDA、
 `--no-continue-on-error`、cache root/namespaces、output、study ID 和 comparison case ID；
@@ -323,6 +334,22 @@ python analyse_report.py export-excel \
 `specialized-report` 按各自注册的完整图表套件生成 workbook；decision-oracle 与
 role-scope 使用 `specialized-run`。详细路由见
 [PLAN_COMPATIBILITY.md](PLAN_COMPATIBILITY.md)。
+
+### 失败/中断 run 的执行审计
+
+失败 run 不满足普通报告的数据合同，也不能产生性能、排名、显著性或模型选择结论。
+使用独立的 execution-only 入口检查执行范围和失败原因：
+
+```bash
+python analyse_report.py execution-audit \
+  --input pipeline_output/finalcase_cli_01 \
+  --output-name finalcase_cli_01_failure
+```
+
+它只读取 plan、manifest、run result 和 progress metadata；不读取 OOF prediction 或
+模型权重，不修改输入。输出在 `report_output`，含 CSV、JSON、Excel、Markdown、HTML
+和完整输入哈希，不生成 figures。完成成功的 run 会被拒绝，应改用普通
+`analyse_report.py validate/run`。Dash 的 Tools 页提供同一 parser-backed 命令。
 
 ## no-fit inference
 

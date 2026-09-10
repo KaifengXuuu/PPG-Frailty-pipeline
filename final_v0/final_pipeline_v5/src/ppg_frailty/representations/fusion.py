@@ -12,6 +12,3 @@ def masked_file_mean(embeddings: np.ndarray, window_mask: np.ndarray) -> np.ndar
     if not np.isfinite(values[mask]).all():
         raise ValueError("valid window embeddings must be finite")
     return np.mean(values[mask], axis=0)
-
-
-__all__ = ["masked_file_mean"]

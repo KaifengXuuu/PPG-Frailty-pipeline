@@ -331,6 +331,3 @@ def build_study_data_index(study_directory: str | Path, *, hash_prediction_files
     }
     atomic_json(root / "v5_data_manifest.json", manifest)
     return manifest
-
-
-__all__ = ["build_study_data_index"]

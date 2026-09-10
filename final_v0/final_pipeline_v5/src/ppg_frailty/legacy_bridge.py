@@ -397,7 +397,6 @@ def resolve_legacy_bridge_profile(
         expected_aggregation_rule=(LINE_B_EQUAL_ROLE_FAMILIES if level >= 6 else LINE_A_EQUAL_FILES),
     )
 
-
 def bridge_profile_from_case(
     case_id: str,
     profiles: tuple[Mapping[str, Any], ...] | list[Mapping[str, Any]],
@@ -665,12 +664,3 @@ def build_v2_window_scaled_bridge_raw_windows(
                                    == "cumulative_chain_v1" else "not_applied_per_window_all_eight_profile"),
         },
     )
-
-
-__all__ = [
-    "LegacyBridgeProfile",
-    "bridge_profile_from_case",
-    "build_legacy_bridge_raw_windows",
-    "build_v2_window_scaled_bridge_raw_windows",
-    "resolve_legacy_bridge_profile",
-]

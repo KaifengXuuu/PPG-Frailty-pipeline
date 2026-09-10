@@ -34,7 +34,6 @@ from .trainer import (
     UnifiedTrainer,
     configured_class_weight_vector,
     dataset_identities,
-    outer_train_window_inverse_frequency_weights,
     participant_file_window_sampling_weights,
 )
 
@@ -311,13 +310,3 @@ class LegacyBridgeTrainer(UnifiedTrainer):
                 }
             )
         return history
-
-
-__all__ = [
-    "BRIDGE_CLASS_WEIGHTING",
-    "BRIDGE_SAMPLERS",
-    "LegacyBridgeTrainer",
-    "LegacyBridgeTrainingConfig",
-    "outer_train_window_inverse_frequency_weights",
-    "sampling_diagnostics",
-]

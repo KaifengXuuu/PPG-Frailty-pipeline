@@ -1018,7 +1018,3 @@ def run_role_scope_decomposition(plan_path: str | Path, *, pipeline_root: str | 
         _backup(output_dir)
     _outputs_index(output_dir)
     return output_dir
-__all__ = [
-    'LoadedSource', 'RoleScopePlan', 'SCHEMA_VERSION', 'SCIENTIFIC_ROLE', 'SourceSpec', 'load_role_scope_plan',
-    'run_role_scope_decomposition'
-]

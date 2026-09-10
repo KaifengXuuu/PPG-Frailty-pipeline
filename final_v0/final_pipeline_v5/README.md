@@ -13,8 +13,8 @@ PPG Frailty Pipeline V5 用 PPG 与同步 IMU recording 完成三分类 frailty
 > 输出已经核验一致。正式判据是在相同输入、split、GPU、CUDA、PyTorch 和依赖
 > 下比较，浮点容差为 `atol=1e-6, rtol=0`。
 
-当前核心生产代码按项目统一口径为 **69,796 行**，比可复算的重构前快照减少
-61,383 行（46.79%）；统计范围、旧 sweep 的 7,824 行递归引用闭包及逐文件删减见
+当前核心生产代码按项目统一口径为 **66,564 行**，比可复算的重构前快照减少
+64,615 行（49.26%）；统计范围、旧 sweep 的 7,824 行递归引用闭包及逐文件删减见
 [代码量与精简审计](docs/V2_V5_CODE_REDUCTION.md)。Dash 与 tests 独立统计，不用测试
 代码“冲抵”生产代码目标。
 
@@ -50,6 +50,9 @@ python pipeline.py parameters --source-preset all --format markdown
 python pipeline.py run --help
 ```
 
+面向使用者的稳定 workflow 接口是这些 CLI、Dash、YAML schema 与 module registry；
+内部实现统一从定义模块直接导入，不再把多层子包 re-export 当作第二套接口维护。
+
 ## 安装
 
 从仓库根目录进入 V5：
@@ -65,16 +68,15 @@ python -m pip check
 ```
 
 finalcase 的 exact 环境锁见
-`requirements/environment-finalcase-lock.yaml`。每个新 shell 在 exact validate/run 前
-设置：
-
-```bash
-export CUBLAS_WORKSPACE_CONFIG=:4096:8
-```
-
-默认 `--environment-policy exact` 检查冻结的软件和硬件环境。CPU 或
+`requirements/environment-finalcase-lock.yaml`。默认 `--environment-policy exact`
+会在 Torch/CUDA 初始化前按 lock 补齐缺失的 `CUBLAS_WORKSPACE_CONFIG`，然后检查冻结的
+软件和硬件环境；shell 中显式设置的冲突值不会被覆盖，而会报告 mismatch。CPU 或
 `--environment-policy record` 只用于诊断，不能作为 V2/V5 数值等价证据。内部数据
 不复制到 V5；manifest 中的仓库相对只读数据路径必须存在。
+
+finalcase 使用的 `cache/preprocessing` 与历史 `artifacts/studies/cache` 都是合法的 V5
+内部 cache 位置；路径不得越出 V5 或穿过 symlink。无需为 exact 手工 `export`
+cuBLAS 变量。
 
 ## 运行 finalcase：两条并行路径
 
@@ -91,6 +93,11 @@ python pipeline.py manual-cli \
 less /tmp/finalcase_cli.sh
 bash /tmp/finalcase_cli.sh
 ```
+
+run 目录不可覆盖。若之前的 `finalcase_cli_01` 已失败并留下 incomplete 目录，请把上面
+两处 run 名改成新的名称（例如 `finalcase_cli_02`）；保留旧目录便于审计。
+该失败 run 自动导出的 `model_config/finalcase_cli_01` 没有 learned weights，不能用于
+推理；只有新 run 完成后生成的 model_config 才是首个可复用模型。
 
 生成器本身用完整 `--set`/`--unset` 表达每个叶值。若在审阅后的完整命令中加入
 同值的 module selectors，使模块身份也直接可见，其中一段会是以下结构（省略号仅
@@ -213,6 +220,18 @@ comparison/ablation 可从同一 run 选择 cases；跨 run 时重复传
 `specialized-report` 生成各自完整套件；decision-oracle/role-scope 使用
 `specialized-run`。详见 [CLI 参考](docs/CLI_REFERENCE.md)。
 
+失败或中断的 run 没有可解释的模型性能，但可只读生成执行审计；它不读取预测和
+weights，也不会把失败结果混入正式统计：
+
+```bash
+python analyse_report.py execution-audit \
+  --input pipeline_output/finalcase_cli_01 \
+  --output-name finalcase_cli_01_failure
+```
+
+结果位于 `report_output/finalcase_cli_01_failure/`，包含执行完整性、失败事件、输入证据
+的 CSV/JSON/Excel 与简短 HTML/Markdown，不生成科学 figures。
+
 ## 模型导出与推理
 
 每次 pipeline finalize 会自动更新 `model_config/<run>`。也可从一个已完成 run
@@ -248,6 +267,7 @@ python dashboard.py --host 127.0.0.1 --port 8050
 - comparison 临时队列，可多次添加配置后训练；
 - signal、window、quality、feature、model、prediction、aggregation 等阶段预览；
 - pipeline 表、report 图表与表格预览；
+- Tools 中可从失败的 pipeline run 构建并运行同一 `execution-audit` CLI；
 - 当前请求及整个 comparison 序列的等价 CLI、resolved YAML 下载。
 
 训练前必须选择 YAML；推理不执行 fit。单 participant 只能展示 QC、概率与分类；

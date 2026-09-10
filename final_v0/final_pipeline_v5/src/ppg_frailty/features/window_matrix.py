@@ -279,7 +279,6 @@ def route_eligible_morphology_aggregates(
          for name, value in zip(names, validity)},
     )
 
-
 def _pulse_intervals(
     pulse: PulseResult,
     timeline: RoutingTimeline,
@@ -605,24 +604,3 @@ def build_ordered_window_matrix(
         schema_version=ORDERED_WINDOW_MATRIX_SCHEMA_VERSION,
         provenance=metadata,
     )
-
-
-__all__ = [
-    "FoldWindowFeatureTransform",
-    "INTERVAL_WINDOW_NAMES",
-    "LOCAL_PRV_WINDOW_NAMES",
-    "MORPHOLOGY_WINDOW_NAMES",
-    "ORDERED_WINDOW_MATRIX_SCHEMA_VERSION",
-    "RATE_WINDOW_NAMES",
-    "SUCCESSIVE_WINDOW_NAMES",
-    "WINDOW_FEATURE_SCHEMA_VERSION",
-    "WindowFeatureExtraction",
-    "build_ordered_window_matrix",
-    "build_route_eligible_rate_pulse",
-    "extract_window_features",
-    "fit_fold_window_feature_transform",
-    "transform_window_features",
-    "validate_window_feature_extraction",
-    "route_eligible_morphology_aggregates",
-    "window_feature_names",
-]

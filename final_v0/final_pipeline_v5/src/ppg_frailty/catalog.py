@@ -110,6 +110,3 @@ def resolved_catalog_payloads(
     if len(output) != expected or len({row["config_id"] for row in output}) != expected:
         raise RuntimeError("formal catalog did not resolve to unique active configs")
     return tuple(output)
-
-
-__all__ = ["BASE_CONFIG_FILENAMES", "resolved_catalog_payloads"]

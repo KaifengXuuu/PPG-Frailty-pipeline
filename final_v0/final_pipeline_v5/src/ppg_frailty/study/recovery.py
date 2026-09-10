@@ -985,10 +985,3 @@ def validate_published_recovered_experiment(
     folds: Iterable[int],
 ) -> dict[str, Any] | None:
     return _validate_published(config_path, output_dir, repeats, folds, layout="flat", recovered=True)
-
-
-__all__ = [
-    "recover_completed_full_experiment_staging",
-    "validate_published_complete_experiment",
-    "validate_published_recovered_experiment",
-]

@@ -277,6 +277,3 @@ def main(argv: Sequence[str] | None = None) -> int:
                                 dry_run=args.dry_run,
                                 environment_policy=args.environment_policy,
                                 environment_lock=args.environment_lock)
-
-
-__all__ = ['INITIAL_REQUEST_SCHEMA', 'build_parser', 'load_sequence_request', 'main', 'prepare_sequence_study', 'run_sequence_request']

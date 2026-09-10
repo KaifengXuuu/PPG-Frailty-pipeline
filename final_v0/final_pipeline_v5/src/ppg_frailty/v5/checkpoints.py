@@ -198,7 +198,6 @@ def _bundle_metadata(payload: FoldCheckpointPayload) -> dict[str, Any]:
             "expected_output": "three_class_probability",
         },
     }
-
 def save_fold_checkpoint(directory: str | Path, payload: FoldCheckpointPayload) -> dict[str, Any]:
     """Save, reload, and parity-check one model-ready outer-fold bundle."""
 
@@ -289,12 +288,3 @@ def select_median_fold(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any] | No
         "config_hash": str(row.get("config_hash", "")),
         "model_id": str(row.get("model_id", "")),
     }
-
-
-__all__ = [
-    "FOLD_CHECKPOINT_SCHEMA",
-    "FoldCheckpointPayload",
-    "MEDIAN_SELECTION_SCHEMA",
-    "save_fold_checkpoint",
-    "select_median_fold",
-]

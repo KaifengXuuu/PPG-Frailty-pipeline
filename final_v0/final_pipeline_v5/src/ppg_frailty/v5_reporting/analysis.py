@@ -121,7 +121,6 @@ def _prepared_collected(
         }
         for case_id in data.case_ids
     )
-
     def requested(name: str) -> bool:
         spec = MODULE_BY_NAME[name]
         return (
@@ -496,6 +495,3 @@ def build_analysis(
         tables=tables,
         notes=tuple(analysis.notes),
     )
-
-
-__all__ = ["build_analysis"]

@@ -527,9 +527,3 @@ class LiteratureShapeFormerChannelSpecificOSD(nn.Module):
             "outer_train_participant_hash": self.outer_train_participant_hash,
             "fitted_participant_ids": self.fitted_participant_ids,
         }
-
-
-__all__ = [
-    "ChannelSpecificShapeBlock",
-    "LiteratureShapeFormerChannelSpecificOSD",
-]

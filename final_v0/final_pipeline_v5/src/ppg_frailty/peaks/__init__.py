@@ -1,7 +1,7 @@
 """脉搏事件、间期和匹配门面 / Pulse event, interval, and matching facade."""
 
 from .msptdfast_v2 import DETECTOR_NAME
-from .intervals import PrvResult, compute_prv
+from ..signal.prv import PrvResult, compute_prv
 from .pairing import (
     BeatPairAudit,
     BeatPairingResult,

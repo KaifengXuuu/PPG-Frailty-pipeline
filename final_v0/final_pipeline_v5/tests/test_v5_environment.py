@@ -6,7 +6,12 @@ import tomllib
 import torch
 
 from ppg_frailty.v5 import environment
-from ppg_frailty.v5.environment import check_environment, load_environment_lock
+from ppg_frailty.v5.environment import (
+    EnvironmentCheck,
+    check_environment,
+    load_environment_lock,
+    prepare_deterministic_runtime,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -73,6 +78,25 @@ def test_environment_observes_the_requested_cuda_index(monkeypatch) -> None:
     assert requested == [2, 2]
     assert observed["accelerator"]["selected_device_index"] == 2
     assert observed["accelerator"]["selected_device_available"] is True
+
+
+def test_exact_runtime_fills_only_a_missing_cublas_setting(monkeypatch) -> None:
+    lock = ROOT / "requirements/environment-finalcase-lock.yaml"
+    monkeypatch.delenv("CUBLAS_WORKSPACE_CONFIG", raising=False)
+    prepare_deterministic_runtime(lock)
+    assert environment.os.environ["CUBLAS_WORKSPACE_CONFIG"] == ":4096:8"
+
+    monkeypatch.setenv("CUBLAS_WORKSPACE_CONFIG", "conflicting-value")
+    prepare_deterministic_runtime(lock)
+    assert environment.os.environ["CUBLAS_WORKSPACE_CONFIG"] == "conflicting-value"
+
+
+def test_record_environment_check_does_not_mutate_cublas(monkeypatch) -> None:
+    monkeypatch.delenv("CUBLAS_WORKSPACE_CONFIG", raising=False)
+    recorded = EnvironmentCheck("failed", "test", {}, ())
+    monkeypatch.setattr(environment, "check_environment", lambda **_kwargs: recorded)
+    assert environment.evaluate_environment("record", device="cpu") is recorded
+    assert "CUBLAS_WORKSPACE_CONFIG" not in environment.os.environ
 
 
 def test_request_lock_dependency_is_a_core_runtime_pin() -> None:

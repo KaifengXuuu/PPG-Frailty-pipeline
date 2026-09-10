@@ -408,18 +408,3 @@ def detect_pulses_per_wavelength_aboy_project_v2(
         )
         for channel, label in enumerate(labels)
     }
-
-
-__all__ = [
-    "BLOCK_SECONDS",
-    "DETECTOR_ID",
-    "DETECTOR_NAME",
-    "DETECTOR_VERSION",
-    "HIGHPASS_HZ",
-    "HIGHPASS_ORDER",
-    "IMPLEMENTATION_PATH",
-    "MAX_BPM",
-    "MIN_BASIC_RATE_PEAKS",
-    "MIN_BPM",
-    "detect_pulses_per_wavelength_aboy_project_v2",
-]

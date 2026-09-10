@@ -544,21 +544,3 @@ class RecordingPreprocessingCache:
             if isinstance(exc, OSError):
                 raise RecordingCacheAccessError(f"cannot publish recording-cache entry: {identity.key}") from exc
             raise
-
-
-__all__ = [
-    "ImmutableCacheConflictError",
-    "NamedSourceDependency",
-    "OrderedModuleSpec",
-    "RECORDING_CACHE_COMMIT_VERSION",
-    "RECORDING_CACHE_SCHEMA_VERSION",
-    "RecordingCacheAccessError",
-    "RecordingCacheBuild",
-    "RecordingCacheCorruptionError",
-    "RecordingCacheEntry",
-    "RecordingCacheError",
-    "RecordingCacheIdentity",
-    "RecordingCacheResult",
-    "RecordingCacheSourceError",
-    "RecordingPreprocessingCache",
-]
