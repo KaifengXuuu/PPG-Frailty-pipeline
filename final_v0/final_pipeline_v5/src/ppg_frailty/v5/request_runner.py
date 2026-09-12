@@ -11,11 +11,8 @@ from typing import Any, Iterator, Mapping
 from filelock import FileLock, Timeout
 
 from ..study import StudyRunner
-from .io import atomic_json, file_sha256, payload_sha256
+from .io import atomic_json, payload_sha256
 
-
-REQUEST_ANCHOR_SCHEMA = "ppg_frailty.v5_request_anchor.v1"
-REQUEST_BINDING_ENV = "PPG_FRAILTY_V5_TRAINING_REQUEST_BINDING"
 
 def execution_binding(plan: Any, expansion: Any) -> dict[str, Any]:
     core = {
@@ -34,11 +31,11 @@ def execution_binding(plan: Any, expansion: Any) -> dict[str, Any]:
     }
     return {"schema_version": "ppg_frailty.v5_execution_binding.v1", **core, "binding_sha256": payload_sha256(core)}
 
-def read_anchored_request(
+def read_request(
     output: str | Path,
     relative_path: str | Path,
-) -> tuple[dict[str, Any], str, dict[str, Any]]:
-    """Read a request and digest; old anchors remain readable."""
+) -> tuple[dict[str, Any], str]:
+    """Read a study-relative request and its content digest."""
 
     root, relative = Path(output).resolve(), Path(relative_path)
     if relative.is_absolute() or not relative.parts or ".." in relative.parts:
@@ -49,14 +46,7 @@ def read_anchored_request(
     payload = json.loads(raw)
     if not isinstance(payload, Mapping):
         raise TypeError(f"request must contain a mapping: {path}")
-    digest = hashlib.sha256(raw).hexdigest()
-    anchor_path = path.with_suffix(".anchor.json")
-    if not anchor_path.exists():
-        return dict(payload), digest, {}
-    anchor = json.loads(anchor_path.read_text(encoding="utf-8"))
-    if not isinstance(anchor, Mapping) or anchor.get("request_sha256") != digest:
-        raise ValueError(f"request anchor mismatch: {path}")
-    return dict(payload), digest, dict(anchor)
+    return dict(payload), hashlib.sha256(raw).hexdigest()
 
 def write_request_status(
     output: str | Path,
@@ -66,14 +56,12 @@ def write_request_status(
     error: BaseException | None = None,
 ) -> None:
     root = Path(output).resolve()
-    payload, digest, _ = read_anchored_request(root, relative_path)
+    payload, digest = read_request(root, relative_path)
     target = root / ("v5_resume_request.json" if payload.get("resumed") else "v5_run_status.json")
     record: dict[str, Any] = {
         **payload,
         "latest_request": Path(relative_path).as_posix(),
         "latest_request_sha256": digest,
-        "latest_immutable_request": Path(relative_path).as_posix(),
-        "latest_immutable_request_sha256": digest,
         "attempt_status": status,
     }
     if error is not None:
@@ -98,14 +86,6 @@ def exclusive_resume_lock(output: str | Path | None) -> Iterator[None]:
         yield
     finally:
         lock.release()
-
-def validate_resume_environment(
-    output: str | Path,
-    current_request: Mapping[str, Any],
-) -> None:
-    """Deprecated compatibility hook; the entry service checks environment once."""
-
-    del output, current_request
 
 class RequestRecordingStudyRunner(StudyRunner):
     """Publish a plain request before delegating to ``StudyRunner``."""
@@ -171,6 +151,3 @@ class RequestRecordingStudyRunner(StudyRunner):
             if output.is_dir():
                 write_request_status(output, next(iter(self._requests)), status="runner_failed", error=error)
             raise
-
-
-sha256_file = file_sha256

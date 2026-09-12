@@ -3,13 +3,11 @@
 The dashboard is intentionally a thin presentation adapter.  Configuration is
 resolved by :mod:`ppg_frailty.v5.configuration`, training and reporting are
 launched through the same root CLI scripts, and inference is delegated to the
-optional V5 inference service.  No numerical pipeline algorithm lives here.
+V5 inference service.  No numerical pipeline algorithm lives here.
 """
 from __future__ import annotations
 import copy
 import hashlib
-import importlib
-import inspect
 import json
 import math
 import re
@@ -295,7 +293,7 @@ def _argument_map(arguments: Sequence[str]) -> tuple[dict[str, list[str]], set[s
     value_options = {
         '--config', '--module', '--set', '--unset', '--config-id', '--study-id', '--purpose', '--repeats', '--folds', '--jobs',
         '--device', '--preprocessing-cache-mode', '--preprocessing-cache-root', '--preprocessing-cache-namespaces', '--output-root',
-        '--run-name', '--resume', '--environment-lock', '--environment-policy'
+        '--run-name', '--resume'
     }
     switch_options = {
         '--continue-on-error', '--no-continue-on-error', '--measure-operational-costs', '--no-measure-operational-costs',
@@ -399,13 +397,12 @@ def _effective_config_for_device(config: Mapping[str, Any], requested_device: st
 
 
 _SEQUENCE_VALUE_OPTIONS = ('--study-id', '--purpose', '--repeats', '--folds', '--jobs', '--device', '--preprocessing-cache-mode',
-                           '--preprocessing-cache-root', '--preprocessing-cache-namespaces', '--output-root', '--run-name',
-                           '--environment-lock', '--environment-policy')
+                           '--preprocessing-cache-root', '--preprocessing-cache-namespaces', '--output-root', '--run-name')
 _SEQUENCE_SWITCH_OPTIONS = ('--continue-on-error', '--no-continue-on-error', '--measure-operational-costs',
                             '--no-measure-operational-costs', '--hash-predictions', '--dry-run', '--refit')
 
 
-def _sequence_global_contract(normalized: Sequence[Mapping[str, Any]], *, pipeline_root: Path) -> dict[str, Any]:
+def _sequence_global_contract(normalized: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Resolve controls shared by every queued training request."""
     parsed = [_argument_map(row['arguments']) for row in normalized]
     signatures = [
@@ -414,14 +411,13 @@ def _sequence_global_contract(normalized: Sequence[Mapping[str, Any]], *, pipeli
         for values, switches in parsed
     ]
     if len(set(signatures)) != 1:
-        raise ValueError('comparison cases must share execution, output, environment, and refit controls')
+        raise ValueError('comparison cases must share execution, output, and refit controls')
     values, switches = parsed[0]
     if _one(values, '--output-root', PIPELINE_OUTPUT) != PIPELINE_OUTPUT:
         raise ValueError('comparison output root must be pipeline_output')
     device = _one(values, '--device')
-    policy = str(_one(values, '--environment-policy', 'exact'))
-    if device not in {None, 'cpu', 'cuda'} or policy not in {'exact', 'record'}:
-        raise ValueError('comparison device/policy is invalid')
+    if device not in {None, 'cpu', 'cuda'}:
+        raise ValueError('comparison device is invalid')
     run_name = _one(values, '--run-name')
     study_id = _one(values, '--study-id', 'dashboard_comparison')
     if run_name is not None and (not _SAFE_NAME.fullmatch(run_name)):
@@ -454,13 +450,6 @@ def _sequence_global_contract(normalized: Sequence[Mapping[str, Any]], *, pipeli
             namespaces=namespaces, verify_source_sha256=True,
         ),
     )
-    lock_value = str(_one(values, '--environment-lock', 'requirements/environment-finalcase-lock.yaml'))
-    lock = Path(lock_value)
-    lock = lock.resolve() if lock.is_absolute() else (pipeline_root / lock).resolve()
-    try:
-        lock = lock.relative_to(pipeline_root)
-    except ValueError as error:
-        raise ValueError('comparison environment lock must remain inside V5') from error
     return {
         'study': {
             'study_id': study_id,
@@ -476,8 +465,6 @@ def _sequence_global_contract(normalized: Sequence[Mapping[str, Any]], *, pipeli
             'run_name': run_name,
             'hash_predictions': '--hash-predictions' in switches,
             'dry_run': '--dry-run' in switches,
-            'environment_policy': policy,
-            'environment_lock': lock.as_posix(),
             'refit': '--refit' in switches
         },
         'output': {
@@ -508,7 +495,7 @@ def comparison_sequence_export_yaml(cases: Sequence[Mapping[str, Any]], *, pipel
     payload = {
         'schema_version':
         COMPARISON_SEQUENCE_SCHEMA,
-        **_sequence_global_contract(normalized, pipeline_root=root), 'study_plan_v2':
+        **_sequence_global_contract(normalized), 'study_plan_v2':
         False,
         'study_plan_v2_unavailable_reason':
         'ordered queue uses the comparison-sequence executor',
@@ -576,7 +563,7 @@ def validate_comparison_sequence_payload(payload: Mapping[str, Any],
             'resolved_yaml': yaml.safe_dump(case['resolved_config'], sort_keys=False, allow_unicode=True)
         })
     normalized = _normalized_comparison_cases(reconstructed)
-    expected = _sequence_global_contract(normalized, pipeline_root=root)
+    expected = _sequence_global_contract(normalized)
     for key in ('study', 'execution', 'launch', 'output', 'report'):
         if _value_key(data[key]) != _value_key(expected[key]):
             raise ValueError(f'comparison sequence {key} differs from its exact CLI')
@@ -776,35 +763,6 @@ class V5ControlService:
                                display=shlex.join(['python', 'comparison_sequence.py', *arguments]),
                                resolved_yaml=encoded,
                                config_sha256=digest), target)
-
-    @staticmethod
-    def _command_options(parser: Any, command: str) -> frozenset[str]:
-        """Return one argparse subcommand's flags for forward-compatible gates."""
-        for action in getattr(parser, '_actions', ()):
-            choices = getattr(action, 'choices', None)
-            if isinstance(choices, Mapping) and command in choices:
-                selected = choices[command]
-                return frozenset(
-                    (option for item in getattr(selected, '_actions', ()) for option in getattr(item, 'option_strings', ())))
-        return frozenset()
-
-    def sweep_capabilities(self) -> dict[str, Any]:
-        """Probe the installed sweep CLI instead of assuming future refit flags."""
-        script = self.pipeline_root / 'sweep.py'
-        if not script.is_file():
-            return {'available': False, 'run_options': (), 'reason': 'sweep.py missing'}
-        try:
-            from ..v5.sweep import build_parser
-            options = self._command_options(build_parser(), 'run')
-        except Exception as error:
-            return {'available': False, 'run_options': (), 'reason': f'{type(error).__name__}: {error}'}
-        required = {'--plan'}
-        return {
-            'available': required <= options,
-            'run_options': tuple(sorted(options)),
-            'refit': '--refit' in options,
-            'reason': '' if required <= options else 'sweep run --plan unavailable'
-        }
 
     def load_study_plan(self, plan_path: str | Path) -> tuple[Any, str]:
         """Parse and fully expand a sweep plan without fitting or writing."""
@@ -1106,27 +1064,13 @@ class V5ControlService:
             raise ValueError('training YAML must be an existing .yaml/.yml file')
         return resolve_configuration(pipeline_root=self.pipeline_root, config_path=target)
 
-    def _refit_arguments(self, *, enabled: bool, supported_options: Iterable[str]) -> list[str]:
-        """Expose refit as the same optional, default-off CLI module."""
-        if not enabled:
-            return []
-        supported = set(supported_options)
-        if '--refit' not in supported:
-            raise RuntimeError('the selected training CLI does not support --refit')
-        return ['--refit']
-
     def _build_sweep_request(self, *, plan_path: str | Path | None, selected_modules: Mapping[str, Any] | None,
                              default_modules: Mapping[str, Any] | None, feature_groups: Sequence[str],
                              default_feature_groups: Sequence[str], parameter_rows: Sequence[Mapping[str, Any]], run_name: str | None,
-                             hash_predictions: bool, dry_run: bool, resume: str | Path | None, environment_lock: str | Path | None,
-                             environment_policy: str, refit: bool) -> CommandRequest:
+                             hash_predictions: bool, dry_run: bool, resume: str | Path | None, refit: bool) -> CommandRequest:
         """Create exactly ``sweep.py run --plan``; the plan owns its cases."""
         if not plan_path:
             raise ValueError('Train sweep requires an explicitly selected study-plan YAML')
-        capabilities = self.sweep_capabilities()
-        if not capabilities.get('available'):
-            raise RuntimeError(f"sweep unavailable: {capabilities.get('reason', 'unknown')}")
-        options = set(capabilities.get('run_options', ()))
         selected = dict(selected_modules or {})
         defaults = dict(default_modules or {})
         module_edits = {
@@ -1144,39 +1088,19 @@ class V5ControlService:
             name = str(run_name).strip()
             if not _SAFE_NAME.fullmatch(name):
                 raise ValueError('run name is not filesystem-safe')
-            if '--run-name' not in options:
-                raise RuntimeError('the installed sweep CLI does not support --run-name')
             arguments.extend(['--run-name', name])
         if resume:
-            if '--resume' not in options:
-                raise RuntimeError('the installed sweep CLI does not support --resume')
             resume_path = self.safe_pipeline_input(resume, label='resume directory')
             resume_path.relative_to((self.pipeline_root / PIPELINE_OUTPUT).resolve())
             if not resume_path.is_dir():
                 raise NotADirectoryError(resume_path)
             arguments.extend(['--resume', self.relative(resume_path)])
         if hash_predictions:
-            if '--hash-predictions' not in options:
-                raise RuntimeError('the installed sweep CLI does not support prediction hashing')
             arguments.append('--hash-predictions')
         if dry_run:
-            if '--dry-run' not in options:
-                raise RuntimeError('the installed sweep CLI does not support --dry-run')
             arguments.append('--dry-run')
-        if environment_lock:
-            if '--environment-lock' not in options:
-                raise RuntimeError('the installed sweep CLI does not support --environment-lock')
-            lock = self.safe_pipeline_input(environment_lock, label='environment lock')
-            if lock.suffix.lower() not in {'.yaml', '.yml'} or not lock.is_file():
-                raise ValueError('environment lock must be an existing YAML file')
-            arguments.extend(['--environment-lock', self.relative(lock)])
-        if environment_policy not in {'exact', 'record'}:
-            raise ValueError('environment policy must be exact or record')
-        if environment_policy != 'exact':
-            if '--environment-policy' not in options:
-                raise RuntimeError('the installed sweep CLI does not support environment policy')
-            arguments.extend(['--environment-policy', environment_policy])
-        arguments.extend(self._refit_arguments(enabled=refit, supported_options=options))
+        if refit:
+            arguments.append('--refit')
         encoded_plan = yaml.safe_dump(plan.to_dict(), sort_keys=True, allow_unicode=True)
         plan_sha256 = hashlib.sha256(encoded_plan.encode('utf-8')).hexdigest()
         return CommandRequest(script='sweep.py',
@@ -1212,8 +1136,6 @@ class V5ControlService:
                             dry_run: bool = False,
                             resume: str | Path | None = None,
                             run_name: str | None = None,
-                            environment_lock: str | Path | None = None,
-                            environment_policy: str = 'exact',
                             refit: bool = False) -> CommandRequest:
         if operation not in {'run', 'sweep'}:
             raise ValueError('training operation must be run or sweep')
@@ -1235,8 +1157,6 @@ class V5ControlService:
                                              hash_predictions=hash_predictions,
                                              dry_run=dry_run,
                                              resume=resume,
-                                             environment_lock=environment_lock,
-                                             environment_policy=environment_policy,
                                              refit=refit)
         if not config_path:
             raise ValueError('Train requires an explicitly selected YAML')
@@ -1249,10 +1169,6 @@ class V5ControlService:
             raise ValueError('device must be cpu or cuda')
         if cache_mode not in {'off', 'read_only', 'read_write'}:
             raise ValueError('invalid preprocessing cache mode')
-        if environment_policy not in {'exact', 'record'}:
-            raise ValueError('environment policy must be exact or record')
-        if environment_policy == 'exact' and device != 'cuda':
-            raise ValueError('exact environment policy requires the locked CUDA device')
         repeat_expression = _index_expression(repeats, label='repeats')
         fold_expression = _index_expression(folds, label='folds')
         config_relative = self.relative(config)
@@ -1307,12 +1223,6 @@ class V5ControlService:
             arguments.append('--hash-predictions')
         if dry_run:
             arguments.append('--dry-run')
-        if environment_lock:
-            lock = self.safe_pipeline_input(environment_lock, label='environment lock')
-            if lock.suffix.lower() not in {'.yaml', '.yml'} or not lock.is_file():
-                raise ValueError('environment lock must be an existing YAML file')
-            arguments.extend(['--environment-lock', self.relative(lock)])
-        arguments.extend(['--environment-policy', environment_policy])
         if resume:
             resume_path = self.safe_pipeline_input(resume, label='resume directory')
             resume_path.relative_to((self.pipeline_root / PIPELINE_OUTPUT).resolve())
@@ -1324,28 +1234,19 @@ class V5ControlService:
             if not _SAFE_NAME.fullmatch(name):
                 raise ValueError('run name is not filesystem-safe')
             arguments.extend(['--run-name', name])
-        from ..v5.cli import build_parser as build_pipeline_parser
-        arguments.extend(self._refit_arguments(enabled=refit, supported_options=self._command_options(build_pipeline_parser(), 'run')))
+        if refit:
+            arguments.append('--refit')
+        modules = [f'{family}={module_id}' for family, module_id in sorted(selected.items())
+                   if module_id not in (None, '', INHERIT_MODULE) and module_id != defaults.get(family)]
+        if features_changed:
+            modules.extend(f'feature_group={value}' for value in feature_groups)
         resolved, _ = resolve_configuration(
             pipeline_root=self.pipeline_root,
             config_path=config,
             assignments=tuple(assignments),
             unsets=unsets,
-            modules=(f'{family}={module_id}' for family, module_id in sorted(selected.items())
-                     if module_id not in (None, '', INHERIT_MODULE) and module_id != defaults.get(family)),
+            modules=modules,
             config_id=config_id)
-        if tuple(feature_groups) != tuple(default_feature_groups):
-            resolved, _ = resolve_configuration(
-                pipeline_root=self.pipeline_root,
-                config_path=config,
-                assignments=tuple(assignments),
-                unsets=unsets,
-                modules=[
-                    *(f'{family}={module_id}' for family, module_id in sorted(selected.items())
-                      if module_id not in (None, '', INHERIT_MODULE) and module_id != defaults.get(family)),
-                    *(f'feature_group={value}' for value in feature_groups)
-                ],
-                config_id=config_id)
         resolved, effective_sha256 = _effective_config_for_device(resolved, device)
         resolved_yaml = yaml.safe_dump(resolved, sort_keys=False, allow_unicode=True)
         display = shlex.join(['python', 'pipeline.py', *arguments])
@@ -1400,9 +1301,7 @@ class V5ControlService:
                                            *,
                                            operation: str,
                                            run_request: CommandRequest | Mapping[str, Any] | None,
-                                           validation_mode: str = 'smoke',
-                                           environment_policy: str = 'exact',
-                                           environment_lock: str | Path | None = None) -> CommandRequest:
+                                           validation_mode: str = 'smoke') -> CommandRequest:
         """Build ``pipeline.py validate`` or ``show-config`` from Configure state."""
         if operation not in {'validate', 'show-config'}:
             raise ValueError('pipeline config tool must be validate or show-config')
@@ -1417,14 +1316,7 @@ class V5ControlService:
         if operation == 'validate':
             if validation_mode not in {'config', 'smoke', 'full'}:
                 raise ValueError('validation mode must be config, smoke, or full')
-            if environment_policy not in {'exact', 'record'}:
-                raise ValueError('environment policy must be exact or record')
-            arguments.extend(['--mode', validation_mode, '--environment-policy', environment_policy])
-            if environment_lock:
-                lock = self.safe_pipeline_input(environment_lock, label='environment lock')
-                if lock.suffix.lower() not in {'.yaml', '.yml'} or not lock.is_file():
-                    raise ValueError('environment lock must be an existing YAML file')
-                arguments.extend(['--environment-lock', self.relative(lock)])
+            arguments.extend(['--mode', validation_mode])
         return self._command_request('pipeline.py', arguments)
 
     def build_pipeline_index_request(self, *, study_directory: str | Path, hash_predictions: bool = False) -> CommandRequest:
@@ -1480,23 +1372,12 @@ class V5ControlService:
             arguments.extend(['--output-name', self.output_directory(REPORT_OUTPUT, output_name).name])
         return self._command_request('analyse_report.py', arguments)
 
-    def build_sweep_validate_request(self,
-                                     *,
-                                     plan_path: str | Path,
-                                     environment_policy: str = 'exact',
-                                     environment_lock: str | Path | None = None) -> CommandRequest:
+    def build_sweep_validate_request(self, *, plan_path: str | Path) -> CommandRequest:
         plan = self.safe_pipeline_input(plan_path, label='study plan')
         if plan.suffix.lower() not in {'.yaml', '.yml'} or not plan.is_file():
             raise ValueError('study plan must be an existing YAML file')
         self.load_study_plan(plan)
-        if environment_policy not in {'exact', 'record'}:
-            raise ValueError('environment policy must be exact or record')
-        arguments = ['validate', '--plan', self.relative(plan), '--environment-policy', environment_policy]
-        if environment_lock:
-            lock = self.safe_pipeline_input(environment_lock, label='environment lock')
-            if lock.suffix.lower() not in {'.yaml', '.yml'} or not lock.is_file():
-                raise ValueError('environment lock must be an existing YAML file')
-            arguments.extend(['--environment-lock', self.relative(lock)])
+        arguments = ['validate', '--plan', self.relative(plan)]
         return self._command_request('sweep.py', arguments)
 
     def build_specialized_pipeline_request(self,
@@ -1511,9 +1392,7 @@ class V5ControlService:
                                            device: str | None = None,
                                            jobs: int | None = None,
                                            include_denoiser: bool = True,
-                                           dry_run: bool = False,
-                                           environment_policy: str = 'exact',
-                                           environment_lock: str | Path | None = None) -> CommandRequest:
+                                           dry_run: bool = False) -> CommandRequest:
         """Build a stop-safe request for the preserved computation CLI."""
         if operation not in {'validate', 'run', 'complete'}:
             raise ValueError('specialized pipeline operation is unsupported')
@@ -1853,34 +1732,14 @@ class V5ControlService:
                               resolved_yaml=yaml.safe_dump(evidence, sort_keys=False, allow_unicode=True))
 
     def infer(self, *, model_export: str | Path, case_id: str | None, input_manifest: str | Path) -> Mapping[str, Any]:
-        validated_input = self.read_inference_manifest(input_manifest)
         defaults = self.load_model_defaults(model_export, case_id)
         if not defaults.inference_capability.get('available'):
             raise RuntimeError(
                 'selected model_config has no deployable learned-weight bundle; configuration provenance alone cannot run Infer')
-        try:
-            module = importlib.import_module('ppg_frailty.v5.inference_service')
-        except ModuleNotFoundError as error:
-            raise RuntimeError('V5 inference service is unavailable; raw-device preprocessing remains fail-closed') from error
-        function = next(
-            (getattr(module, name)
-             for name in ('infer_from_manifest', 'run_inference', 'infer_participant') if callable(getattr(module, name, None))), None)
-        if function is None:
-            raise RuntimeError('V5 inference service exposes no supported inference API')
-        available = {
-            'model_config_directory': self.safe_pipeline_input(model_export, label='model config export'),
-            'model_export': self.safe_pipeline_input(model_export, label='model config export'),
-            'case_id': defaults.case_id,
-            'input_manifest': self.safe_input(input_manifest, label='inference manifest'),
-            'validated_input': validated_input,
-            'pipeline_root': self.pipeline_root
-        }
-        signature = inspect.signature(function)
-        accepts_kwargs = any((value.kind == inspect.Parameter.VAR_KEYWORD for value in signature.parameters.values()))
-        kwargs = available if accepts_kwargs else {name: value for name, value in available.items() if name in signature.parameters}
-        result = function(**kwargs)
-        if isinstance(result, Mapping):
-            return dict(result)
-        if hasattr(result, 'to_dict'):
-            return dict(result.to_dict())
-        raise TypeError('V5 inference service must return a mapping')
+        from ..v5.inference_service import infer_from_manifest
+        return dict(infer_from_manifest(
+            model_config_directory=self.safe_pipeline_input(model_export, label='model config export'),
+            case_id=defaults.case_id,
+            input_manifest=self.safe_input(input_manifest, label='inference manifest'),
+            pipeline_root=self.pipeline_root,
+        ))

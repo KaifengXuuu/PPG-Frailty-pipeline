@@ -13,7 +13,7 @@ import yaml
 
 from ..config import canonical_json_bytes
 from ..module_registry import list_modules
-from ..pipeline import PipelinePaths, preflight_pipeline, validate_installation
+from ..pipeline import PipelinePaths, preflight_pipeline
 from ..study import (
     AxisSpec,
     ExecutionSpec,
@@ -33,7 +33,7 @@ from .configuration import (
     preset_rows,
     resolve_configuration,
 )
-from .environment import DEFAULT_LOCK, evaluate_environment
+from .environment import observe_environment
 from .model_config_export import export_model_config
 from .output_contract import (
     PIPELINE_OUTPUT_ROOT,
@@ -133,8 +133,6 @@ def _execution_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--resume")
     parser.add_argument("--hash-predictions", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--environment-policy", choices=("exact", "record"), default="exact")
-    parser.add_argument("--environment-lock", default=str(DEFAULT_LOCK))
     parser.add_argument("--refit", action="store_true")
 
 def build_parser() -> argparse.ArgumentParser:
@@ -165,11 +163,9 @@ def build_parser() -> argparse.ArgumentParser:
     plan = commands.add_parser("run-plan", help="Run a reusable study-plan YAML.")
     plan.add_argument("--plan", required=True)
     _execution_arguments(plan)
-    validate = commands.add_parser("validate", help="Validate a resolved configuration and installation.")
+    validate = commands.add_parser("validate", help="Validate a resolved configuration and data inputs.")
     _config_arguments(validate)
     validate.add_argument("--mode", choices=("config", "smoke", "full"), default="smoke")
-    validate.add_argument("--environment-policy", choices=("exact", "record"), default="exact")
-    validate.add_argument("--environment-lock", default=str(DEFAULT_LOCK))
     show = commands.add_parser("show-config", help="Print the fully resolved configuration.")
     _config_arguments(show)
     modules = commands.add_parser(
@@ -322,8 +318,6 @@ def _run_config(args: argparse.Namespace) -> int:
         output_root=_path(args.output_root),
         run_name=None if resume is not None else args.run_name or automatic_run_name(naming_source),
         resume=resume,
-        environment_policy=args.environment_policy,
-        environment_lock=_path(args.environment_lock, must_exist=True),
         hash_predictions=args.hash_predictions,
         dry_run=args.dry_run,
         refit=RefitOptions(enabled=args.refit),
@@ -362,8 +356,6 @@ def _dispatch(args: argparse.Namespace) -> int:
             output_root=_path(args.output_root),
             run_name=args.run_name,
             resume=None if args.resume is None else _path(args.resume, must_exist=True),
-            environment_policy=args.environment_policy,
-            environment_lock=_path(args.environment_lock, must_exist=True),
             hash_predictions=args.hash_predictions,
             dry_run=args.dry_run,
             refit=RefitOptions(enabled=args.refit),
@@ -396,8 +388,7 @@ def _dispatch(args: argparse.Namespace) -> int:
             + " --no-measure-operational-costs --preprocessing-cache-mode read_write"
             + " --preprocessing-cache-root cache/preprocessing"
             + " --preprocessing-cache-namespaces imu_calibration,canonical_signal_views,raw_windows"
-            + " --output-root pipeline_output --environment-policy exact"
-            + " --environment-lock requirements/environment-finalcase-lock.yaml"
+            + " --output-root pipeline_output"
             + identity
             + suffix
         )
@@ -406,12 +397,7 @@ def _dispatch(args: argparse.Namespace) -> int:
         config, provenance = _resolved(args)
         result: dict[str, Any] = {"status": "passed", "configuration_resolution": provenance, "config": config}
         if args.command == "validate":
-            environment = evaluate_environment(
-                args.environment_policy,
-                device=str(config["training"]["device"]),
-                lock_path=_path(args.environment_lock, must_exist=True),
-            )
-            result["environment_check"] = environment.to_dict()
+            result["environment"] = observe_environment()
             if args.mode != "config":
                 source = _resolved_file(config, provenance)
                 report, loaded, rows, folds = preflight_pipeline(source, mode=args.mode, paths=PipelinePaths.discover())
@@ -420,7 +406,6 @@ def _dispatch(args: argparse.Namespace) -> int:
                     config_sha256=loaded.sha256,
                     manifest_rows=len(rows),
                     fold_rows=len(folds.assignments),
-                    installation=validate_installation(),
                 )
         print(
             yaml.safe_dump(result, sort_keys=False, allow_unicode=True)

@@ -34,7 +34,7 @@ from .motion_reference import (
     load_ptt_imu_unit_evidence, run_formal_internal_motion_reference, run_formal_internal_reverse_evaluation,
     run_formal_ptt_motion_training_ablation, run_formal_ptt_motion_reference,
 )
-from .motion_adapters import FormalMotionTrainerConfig, validate_formal_motion_cuda_device
+from .motion_adapters import FormalMotionTrainerConfig
 from .motion import MOTION_DEPLOYMENT_THRESHOLD_FIT_SCOPE, MOTION_DEPLOYMENT_THRESHOLD_SCORE_ORIGIN
 from .motion_runner import _deployment_threshold_from_oof
 
@@ -108,10 +108,9 @@ def load_motion_peak_plan(path: str | Path) -> StudyPlan:
             raise ValueError('Stage5-pre requires motion_detector settings')
         training_device = motion_detector.get('training_device')
         if training_device is None:
-            raise ValueError('Stage5-pre motion_detector.training_device is required and must be CUDA')
+            raise ValueError('Stage5-pre motion_detector.training_device is required')
         trainer_config = FormalMotionTrainerConfig(device=str(training_device))
         trainer_config.validate()
-        validate_formal_motion_cuda_device(trainer_config.device)
         reverse = motion_detector.get('reverse_ablation')
         if not isinstance(reverse, Mapping):
             raise ValueError('Stage5-pre requires motion_detector.reverse_ablation')
@@ -853,7 +852,6 @@ def run_motion_peak_study(plan_path: str | Path, *, pipeline_root: str | Path, o
         requested = str(device)
         trainer_config = FormalMotionTrainerConfig(device=requested)
         trainer_config.validate()
-        validate_formal_motion_cuda_device(trainer_config.device)
         payload = copy.deepcopy(dict(plan.payload))
         payload['motion_detector']['training_device'] = requested
         plan = StudyPlan(path=plan.path, payload=payload, schema_version=plan.schema_version, study_type=plan.study_type, study_id=plan.study_id)
@@ -872,8 +870,7 @@ def run_motion_peak_study(plan_path: str | Path, *, pipeline_root: str | Path, o
         try:
             existing = load_motion_peak_plan(resolved_plan)
         except ValueError as exc:
-            contract = 'Stage5 CUDA contract' if plan.schema_version == STAGE5_SCHEMA else 'current study contract'
-            raise ValueError(f'resume resolved plan is incompatible with the current {contract}: {exc}') from exc
+            raise ValueError(f'resume resolved plan is incompatible with the current study contract: {exc}') from exc
         if existing.payload != plan.payload:
             raise ValueError('resume plan differs from the persisted resolved plan')
     else:

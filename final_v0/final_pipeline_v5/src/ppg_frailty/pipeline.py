@@ -11,7 +11,7 @@ import csv
 import hashlib
 import io
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +31,6 @@ from .data.manifest import (
     load_internal_manifest,
 )
 from .module_registry import (
-    list_modules,
     registry_sha256,
     resolve_artifact_config,
     resolve_peak_detector_config,
@@ -69,26 +68,6 @@ class PipelinePaths:
         candidate = Path(path)
         candidate = candidate.resolve() if candidate.is_absolute() else (self.pipeline_root / candidate).resolve()
         candidate.relative_to(self.pipeline_root)
-        return candidate
-
-    def new_artifact_path(self, path: str | Path) -> Path:
-        """Resolve one immutable output below artifacts and reject symlink parents."""
-
-        candidate = self.output_path(path)
-        artifacts = (self.pipeline_root / "artifacts").resolve()
-        try:
-            candidate.relative_to(artifacts)
-        except ValueError as exc:
-            raise ValueError("new V2 artifacts must remain below the artifacts directory") from exc
-        if candidate.exists() or candidate.is_symlink():
-            raise FileExistsError(f"artifact overwrite forbidden: {candidate}")
-        cursor = candidate.parent
-        while cursor != artifacts.parent:
-            if cursor.is_symlink():
-                raise ValueError(f"artifact parent symlink forbidden: {cursor}")
-            if cursor == artifacts:
-                break
-            cursor = cursor.parent
         return candidate
 
 @dataclass(frozen=True)
@@ -371,30 +350,3 @@ def physical_recording_qc_profile_v2() -> dict[str, Any]:
     from .data.qc import physical_recording_qc_profile_v2 as canonical
 
     return canonical()
-
-
-def validate_installation(*, config_path: str | Path | None = None) -> dict[str, Any]:
-    """Validate the specification lock, module registry, and optional config."""
-
-    paths = PipelinePaths.discover()
-    lock_path = paths.pipeline_root / "docs/spec/SPEC_LOCK.json"
-    lock = json.loads(lock_path.read_text(encoding="utf-8"))
-    source = paths.repository_root / lock["source_path"]
-    if sha256_file(source) != lock["source_sha256"]:
-        raise ValueError("implementation specification hash drift")
-    result: dict[str, Any] = {
-        "schema_version": "ppg_frailty.installation_validation.v2",
-        "status": "passed",
-        "spec_sha256": lock["source_sha256"],
-        "module_count": len(list_modules()),
-        "module_registry_hash": registry_sha256(),
-    }
-    if config_path is not None:
-        report, _, _, _ = preflight_pipeline(config_path, mode="smoke", paths=paths)
-        result["preflight"] = asdict(report)
-    return result
-
-
-# Synthetic model/artifact fixtures lived here in V2. They were test harnesses,
-# not production workflow modules; V5 keeps executable comparisons in study
-# plans and report modules, leaving this file as the data/training facade.

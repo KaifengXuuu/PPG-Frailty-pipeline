@@ -3,7 +3,6 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
-import os
 from pathlib import Path
 
 import numpy as np
@@ -13,59 +12,21 @@ import yaml
 from ppg_frailty.bundle import build_model_input_adapter
 from ppg_frailty.config import load_config
 from ppg_frailty.models import ModelInputSpec, create_model, normalize_model_config
-from ppg_frailty.provenance import stable_payload_sha256
 from ppg_frailty.training.bundle import (
     FrozenRepresentationTransformArchive,
     current_runtime_environment,
     input_spec_sha256,
     save_bundle,
 )
-from ppg_frailty.v5.environment import DEFAULT_LOCK, load_environment_lock
 from ppg_frailty.v5.model_config_export import export_model_config
 from ppg_frailty.v5.request_runner import (
-    REQUEST_BINDING_ENV,
     RequestRecordingStudyRunner,
-    read_anchored_request,
-    sha256_file,
+    read_request,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
 STUDY_PATH = "pipeline_output/example_run"
-
-
-def _exact_environment_check() -> dict[str, object]:
-    lock = load_environment_lock()
-    return {
-        "schema_version": "ppg_frailty.environment_check.v1",
-        "status": "passed",
-        "lock_id": lock["lock_id"],
-        "observed": {
-            "python": str(lock["runtime"]["python"]),
-            "packages": {
-                name: str(version)
-                for name, version in lock["runtime"]["packages"].items()
-            },
-            "accelerator": {
-                "cuda_available": True,
-                "device_count": 1,
-                "selected_device_index": 0,
-                "selected_device_available": True,
-                **{
-                    name: lock["accelerator"][name]
-                    for name in (
-                        "gpu_name",
-                        "compute_capability",
-                        "driver_version",
-                        "torch_cuda",
-                        "cudnn",
-                    )
-                },
-            },
-            "determinism": dict(lock["determinism"]),
-        },
-        "mismatches": [],
-    }
 
 
 def _publish_request(
@@ -75,7 +36,7 @@ def _publish_request(
         pipeline_root=study,
         pre_run_artifacts={relative: payload},
     )._publish_pre_run_artifacts(study)
-    _, digest, _ = read_anchored_request(study, relative)
+    _, digest = read_request(study, relative)
     return relative, digest
 
 
@@ -159,9 +120,7 @@ def _write_study(
         {
             "schema_version": "ppg_frailty.v5_run_request.v1",
             "command": "run",
-            "environment_policy": "exact",
-            "environment_lock_sha256": sha256_file(DEFAULT_LOCK),
-            "environment_check": _exact_environment_check(),
+            "environment": {"python": "test", "packages": {}},
             "resumed": False,
             "refit_requested": False,
             "execution_binding": {"binding_sha256": "8" * 64},
@@ -181,8 +140,6 @@ def _write_study(
 def _write_real_raw_bundle(
     study: Path,
     config: dict[str, object],
-    *,
-    training_request: str = "v5_run_request.json",
 ) -> Path:
     config_path = study / "cases/reference/resolved_config.yaml"
     config_hash = load_config(config_path).sha256
@@ -276,33 +233,16 @@ def _write_real_raw_bundle(
         "mask": np.ones((1, 64), dtype=bool),
     }
     bundle = study / "cases/reference/checkpoint"
-    request_payload, request_hash, _ = read_anchored_request(
-        study, training_request
+    save_bundle(
+        model,
+        bundle,
+        model_config=resolved_model,
+        input_spec=spec,
+        metadata=metadata,
+        golden_inputs=golden,
+        transforms=transform,
+        pipeline_adapter=adapter,
     )
-    binding = {
-        "schema_version": "ppg_frailty.v5_checkpoint_request_binding.v1",
-        "request_path": training_request,
-        "request_sha256": request_hash,
-        "environment_lock_sha256": request_payload["environment_lock_sha256"],
-    }
-    previous = os.environ.get(REQUEST_BINDING_ENV)
-    os.environ[REQUEST_BINDING_ENV] = json.dumps(binding, sort_keys=True)
-    try:
-        save_bundle(
-            model,
-            bundle,
-            model_config=resolved_model,
-            input_spec=spec,
-            metadata=metadata,
-            golden_inputs=golden,
-            transforms=transform,
-            pipeline_adapter=adapter,
-        )
-    finally:
-        if previous is None:
-            os.environ.pop(REQUEST_BINDING_ENV, None)
-        else:
-            os.environ[REQUEST_BINDING_ENV] = previous
     manifest_hash = hashlib.sha256((bundle / "manifest.json").read_bytes()).hexdigest()
     data_manifest = json.loads(
         (study / "v5_data_manifest.json").read_text(encoding="utf-8")
@@ -369,8 +309,6 @@ def _write_resume_refit_request(study: Path) -> tuple[str, str]:
     original.update(
         {
             "schema_version": "ppg_frailty.v5_resume_request.v1",
-            "environment_policy": "exact",
-            "environment_check": _exact_environment_check(),
             "resumed": True,
             "refit_requested": True,
         }
@@ -661,9 +599,7 @@ def test_refit_bundle_is_preferred_without_revalidating_request_history(
     )
     study, config = _write_study(tmp_path, resolved_config=config)
     training_request, training_request_hash = _write_resume_refit_request(study)
-    bundle = _write_real_raw_bundle(
-        study, config, training_request=training_request
-    )
+    bundle = _write_real_raw_bundle(study, config)
     _promote_test_bundle_to_trusted_refit(bundle)
     bundle_hash = hashlib.sha256((bundle / "manifest.json").read_bytes()).hexdigest()
     bundle_payload = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
@@ -699,13 +635,7 @@ def test_refit_bundle_is_preferred_without_revalidating_request_history(
                         "confirmed_config_sha256": bundle_payload["config_hash"],
                         "training_request": training_request,
                         "training_request_sha256": training_request_hash,
-                        "environment_lock_sha256": sha256_file(DEFAULT_LOCK),
-                        "environment_check_sha256": (
-                            stable_payload_sha256(_exact_environment_check())
-                        ),
-                        "driver_version": load_environment_lock()["accelerator"][
-                            "driver_version"
-                        ],
+                        "environment": {"python": "test", "packages": {}},
                         "dataset_hash": bundle_payload["metadata"][
                             "final_refit_identity"
                         ]["dataset_hash"],
@@ -750,10 +680,8 @@ def test_median_fold_bundle_does_not_depend_on_request_history(
         (ROOT / "configs/presets/finalcase.yaml").read_text(encoding="utf-8")
     )
     study, config = _write_study(tmp_path, resolved_config=config)
-    training_request, training_request_hash = _write_resume_training_request(study)
-    _write_real_raw_bundle(
-        study, config, training_request=training_request
-    )
+    _write_resume_training_request(study)
+    _write_real_raw_bundle(study, config)
 
     result = export_model_config(STUDY_PATH, pipeline_root=tmp_path)
 

@@ -8,8 +8,8 @@
 `schema_version: ppg_frailty.study_plan.v2`：
 
 ```bash
-python sweep.py validate --plan configs/studies/PLAN.yaml --environment-policy exact
-python sweep.py run --plan configs/studies/PLAN.yaml --environment-policy exact
+python sweep.py validate --plan configs/studies/PLAN.yaml
+python sweep.py run --plan configs/studies/PLAN.yaml
 ```
 
 也可用 `python pipeline.py run-plan --plan ...`。两者调用同一 V5 data-only service；
@@ -20,13 +20,11 @@ python sweep.py run --plan configs/studies/PLAN.yaml --environment-policy exact
 
 ```bash
 python sweep.py validate \
-  --plan configs/studies/finalcase.yaml \
-  --environment-policy exact
+  --plan configs/studies/finalcase.yaml
 
 python sweep.py run \
   --plan configs/studies/finalcase.yaml \
-  --run-name finalcase_v5_01 \
-  --environment-policy exact
+  --run-name finalcase_v5_01
 ```
 
 ## Specialized study plan

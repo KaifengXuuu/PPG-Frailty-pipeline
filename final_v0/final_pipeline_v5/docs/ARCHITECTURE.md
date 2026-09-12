@@ -68,6 +68,11 @@ pipeline_output/<run>/<comparison>/repeat_<RR>/fold_<FF>/
 V5 execution service。runner 提供 case 并发、进度、失败处理和 resume，但不重排
 fold、不重算冻结 split，也不改变单 cell 内部调用顺序。
 
+运行请求的 `environment` 保存启动时的依赖和后端观测，仅用于溯源，不做版本、
+驱动或 GPU 型号的准入检查。通用依赖范围由 `pyproject.toml` 声明；复现参考版本
+集中在 `requirements/requirements-finalcase.txt`。数值后端由训练配置设置，
+不是由依赖清单设置。并发文件锁只避免多个进程同时写入同一 run。
+
 ## 3. 科学 workflow
 
 数值 workflow 的阶段为：

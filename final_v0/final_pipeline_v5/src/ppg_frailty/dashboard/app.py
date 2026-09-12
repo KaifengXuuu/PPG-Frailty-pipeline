@@ -230,7 +230,6 @@ def create_app(pipeline_root: str | Path | None = None,
     from ..v5_reporting.registry import KNOWN_FIGURES, KNOWN_TABLES, MODULES as REPORT_MODULES, PRESETS as REPORT_PRESETS
     yaml_paths = list(control.yaml_paths())
     study_plan_paths = list(control.study_plan_paths())
-    sweep_capabilities = control.sweep_capabilities()
     model_exports = list(control.model_exports())
     study_outputs = list(control.study_outputs())
     report_outputs = list(control.report_outputs())
@@ -598,13 +597,6 @@ def create_app(pipeline_root: str | Path | None = None,
                                             dcc.Textarea(
                                                 id='unset-paths', value='', placeholder='Optional --unset dotted paths, one per line'),
                                             dcc.Input(id='resume-directory', value='', placeholder='Resume path'),
-                                            dcc.Input(id='environment-lock',
-                                                      value='requirements/environment-finalcase-lock.yaml',
-                                                      placeholder='Environment lock'),
-                                            dcc.Dropdown(id='environment-policy',
-                                                         options=_options(['exact', 'record']),
-                                                         value='exact',
-                                                         clearable=False),
                                             dcc.Checklist(id='execution-flags',
                                                           options=[{
                                                               'label': 'Continue on error',
@@ -633,8 +625,7 @@ def create_app(pipeline_root: str | Path | None = None,
                                             'gap': '8px',
                                             'marginTop': '8px'
                                         }),
-                                    html.Div('Refit is available and defaults to off.'
-                                             if sweep_capabilities.get('refit') else 'Current sweep CLI has no --refit flag.',
+                                    html.Div('Refit is available and defaults to off.',
                                              style={
                                                  'color': COLORS['muted'],
                                                  'fontSize': '12px',
@@ -1340,8 +1331,8 @@ def create_app(pipeline_root: str | Path | None = None,
                   Input('run-name', 'value'), Input('study-id', 'value'), Input('study-purpose', 'value'), Input('config-id', 'value'),
                   Input('unset-paths', 'value'), Input('repeats', 'value'), Input('folds', 'value'), Input('jobs', 'value'),
                   Input('device', 'value'), Input('cache-mode', 'value'), Input('cache-root', 'value'),
-                  Input('cache-namespaces', 'value'), Input('resume-directory', 'value'), Input('environment-lock', 'value'),
-                  Input('environment-policy', 'value'), Input('execution-flags', 'value'), Input('refit-enabled', 'value'),
+                  Input('cache-namespaces', 'value'), Input('resume-directory', 'value'),
+                  Input('execution-flags', 'value'), Input('refit-enabled', 'value'),
                   State({
                       'type': 'module-select',
                       'family': ALL
@@ -1350,8 +1341,8 @@ def create_app(pipeline_root: str | Path | None = None,
                       operation: str, sweep_plan: str | None, run_name: str | None, study_id: str | None, purpose: str | None,
                       config_id: str | None, unset_text: str | None, repeats: str | Sequence[int | str],
                       folds: str | Sequence[int | str], job_count: int, device: str, cache_mode: str, cache_root: str | None,
-                      cache_namespaces: str | None, resume_directory: str | None, environment_lock: str | None,
-                      environment_policy: str, execution_flags: Sequence[str], refit_enabled: Sequence[str],
+                      cache_namespaces: str | None, resume_directory: str | None,
+                      execution_flags: Sequence[str], refit_enabled: Sequence[str],
                       module_ids: Sequence[Mapping[str, Any]]) -> tuple[Any, str, str, str, bool]:
         if not state and operation == 'run':
             return (None, 'Select and load a YAML first.', '', 'Not ready', True)
@@ -1391,8 +1382,6 @@ def create_app(pipeline_root: str | Path | None = None,
                 dry_run='dry' in (execution_flags or []),
                 resume=resume_directory or None,
                 run_name=run_name or None,
-                environment_lock=environment_lock or None,
-                environment_policy=environment_policy,
                 refit='refit' in (refit_enabled or []))
             identity = 'plan' if operation == 'sweep' else 'config'
             return (request.to_dict(), request.display, request.resolved_yaml,
@@ -1863,8 +1852,6 @@ def create_app(pipeline_root: str | Path | None = None,
                   Input('build-tool', 'n_clicks'),
                   State('tool-operation', 'value'),
                   State('train-request', 'data'),
-                  State('environment-policy', 'value'),
-                  State('environment-lock', 'value'),
                   State('device', 'value'),
                   State('jobs', 'value'),
                   State('tool-validation-mode', 'value'),
@@ -1885,8 +1872,8 @@ def create_app(pipeline_root: str | Path | None = None,
                   State('tool-special-report-input', 'value'),
                   State('tool-special-flags', 'value'),
                   prevent_initial_call=True)
-    def build_tool_request(_: int, operation: str, train_request: Mapping[str, Any] | None, environment_policy: str,
-                           environment_lock: str | None, device: str | None, job_count: int | None, validation_mode: str,
+    def build_tool_request(_: int, operation: str, train_request: Mapping[str, Any] | None,
+                           device: str | None, job_count: int | None, validation_mode: str,
                            pipeline_path: str | None, report_path: str | None, plan_path: str | None, tool_flags: Sequence[str] | None,
                            specialized_plan: str | None, source_root: str | None, specialized_output: str | None,
                            specialized_study: str | None, specialized_run_name: str | None, specialized_resume: str | None,
@@ -1905,13 +1892,9 @@ def create_app(pipeline_root: str | Path | None = None,
                 request = control.build_pipeline_config_tool_request(
                     operation='validate' if operation == 'pipeline_validate' else 'show-config',
                     run_request=train_request,
-                    validation_mode=validation_mode,
-                    environment_policy=environment_policy,
-                    environment_lock=environment_lock)
+                    validation_mode=validation_mode)
             elif operation == 'sweep_validate':
-                request = control.build_sweep_validate_request(plan_path=required(plan_path, 'study-plan YAML'),
-                                                               environment_policy=environment_policy,
-                                                               environment_lock=environment_lock)
+                request = control.build_sweep_validate_request(plan_path=required(plan_path, 'study-plan YAML'))
             elif operation == 'pipeline_index':
                 request = control.build_pipeline_index_request(study_directory=required(pipeline_path, 'pipeline output'),
                                                                hash_predictions='hash' in flags)
@@ -1946,9 +1929,7 @@ def create_app(pipeline_root: str | Path | None = None,
                     device=device,
                     jobs=job_count,
                     include_denoiser='no_denoiser' not in special_flags,
-                    dry_run='dry' in special_flags,
-                    environment_policy=environment_policy,
-                    environment_lock=environment_lock)
+                    dry_run='dry' in special_flags)
             elif operation in {'specialized_validate', 'specialized_run'}:
                 request = control.build_specialized_request(
                     operation='specialized-validate' if operation == 'specialized_validate' else 'specialized-run',

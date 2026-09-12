@@ -249,6 +249,63 @@ def test_training_entry_points_default_to_data_only() -> None:
     )
 
 
+def test_motion_runtime_and_real_model_benchmark_support_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    import numpy as np
+    import torch
+    from ppg_frailty.quality.motion_adapters import (
+        FormalMotionTrainerConfig, _benchmark_inference, prepare_formal_motion_runtime,
+    )
+    from ppg_frailty.models.motion import build_formal_motion_cnn
+    from ppg_frailty.representations.motion import MOTION_NETWORK_CHANNEL_SCHEMA, MOTION_WINDOW_SAMPLES
+
+    assert FormalMotionTrainerConfig().device == "cuda"
+    config = FormalMotionTrainerConfig(device="cpu")
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda *_: pytest.fail("CPU benchmark must not call CUDA"))
+    assert prepare_formal_motion_runtime(config) is torch
+    sample = np.zeros((1, len(MOTION_NETWORK_CHANNEL_SCHEMA), MOTION_WINDOW_SAMPLES), dtype=np.float32)
+    previous_threads = torch.get_num_threads()
+    try:
+        torch.set_num_threads(1)
+        with torch.random.fork_rng(devices=[]), torch.no_grad():
+            model = build_formal_motion_cnn().eval()
+            logits = model(torch.as_tensor(sample))
+            assert logits.shape == (1,) and torch.isfinite(logits).all()
+            result = _benchmark_inference(model, sample, config)
+        assert result["device"] == "cpu"
+        assert result["timed_iterations"] == config.inference_timed_iterations
+        assert result["latency_ms_per_window_p50"] > 0
+    finally:
+        torch.set_num_threads(previous_threads)
+
+
+def test_motion_cuda_setup_reuses_resolver_without_changing_rng_or_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    import torch
+    import ppg_frailty.training.trainer as trainer
+    from ppg_frailty.quality.motion_adapters import FormalMotionTrainerConfig, prepare_formal_motion_runtime
+
+    calls = []
+    monkeypatch.setattr(trainer, "resolve_torch_training_device",
+                        lambda requested, **kwargs: calls.append((requested, kwargs)))
+    state = torch.random.get_rng_state()
+    backend = (torch.are_deterministic_algorithms_enabled(), torch.backends.cudnn.deterministic, torch.backends.cudnn.benchmark)
+    assert prepare_formal_motion_runtime(FormalMotionTrainerConfig()) is torch
+    assert calls == [("cuda", {"deterministic_algorithms": True})]
+    assert torch.equal(state, torch.random.get_rng_state())
+    assert backend == (torch.are_deterministic_algorithms_enabled(), torch.backends.cudnn.deterministic, torch.backends.cudnn.benchmark)
+
+
+@pytest.mark.parametrize("schema", [specialized.STAGE5_SCHEMA, specialized.HYPERPARAMETER_SCHEMA])
+def test_specialized_plan_loaders_accept_explicit_cpu(tmp_path: Path, schema: str) -> None:
+    payload = next(yaml.safe_load(path.read_text()) for path in SPECIALIZED_PLANS
+                   if yaml.safe_load(path.read_text())["schema_version"] == schema)
+    section, key = ("motion_detector", "training_device") if schema == specialized.STAGE5_SCHEMA else ("execution", "device")
+    assert payload[section][key].startswith("cuda")
+    payload[section][key] = "cpu"
+    target = tmp_path / "cpu.yaml"
+    target.write_text(yaml.safe_dump(payload), encoding="utf-8")
+    assert specialized.validate_specialized_plan(target)["schema_version"] == schema
+
+
 def test_motion_adapter_calls_native_runner_without_report_arguments(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -277,8 +334,9 @@ def test_motion_adapter_calls_native_runner_without_report_arguments(
     assert calls["include_denoiser"] is True
 
 
+@pytest.mark.parametrize("device", ["cpu", "cuda:0"])
 def test_stage5_dispatch_forwards_scientific_options_once(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, device: str
 ) -> None:
     pipeline_output = tmp_path / "pipeline_output"
     pipeline_output.mkdir()
@@ -300,10 +358,10 @@ def test_stage5_dispatch_forwards_scientific_options_once(
         if yaml.safe_load(path.read_text())["schema_version"] == specialized.STAGE5_SCHEMA
     )
     output = specialized.run_specialized_computation(
-        plan, run_name="stage5", device="cuda:0", include_denoiser=False
+        plan, run_name="stage5", device=device, include_denoiser=False
     )
     assert output == pipeline_output / "stage5"
-    assert observed["device"] == "cuda:0"
+    assert observed["device"] == device
     assert observed["include_denoiser"] is False
     assert observed["final"] == (output, specialized.STAGE5_SCHEMA)
 
@@ -311,7 +369,6 @@ def test_stage5_dispatch_forwards_scientific_options_once(
 def test_stage5_motion_export_copies_all_fold_and_final_models(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    pipeline_output = tmp_path / "pipeline_output"
     model_config = tmp_path / "model_config"
     monkeypatch.setattr(specialized_outputs, "V5_ROOT", tmp_path)
     monkeypatch.setattr(specialized_outputs, "MODEL_CONFIG_ROOT", model_config)
@@ -629,7 +686,6 @@ def test_hyperparameter_adapter_disables_nested_and_root_reports(
     output = specialized.run_specialized_computation(
         plan,
         run_name="halving",
-        environment_evidence={"status": "passed"},
     )
     assert output == pipeline_output / "halving"
     assert "generate_reports" not in calls
@@ -671,7 +727,7 @@ def test_hyperparameter_adapter_uses_yaml_stem_utc_default_name(
         if path.name == "stage6_batch_LR_search.yaml"
     )
     result = specialized.run_specialized_computation(
-        plan, environment_evidence={"status": "passed"}
+        plan
     )
     assert captured["run_name"] == "stage6_batch_LR_search_20990101_000000Z"
     assert result.name == captured["run_name"]
@@ -705,7 +761,6 @@ def test_hyperparameter_adapter_forwards_resume_to_native_orchestrator(
     output = specialized.run_specialized_computation(
         plan,
         resume=resume,
-        environment_evidence={"status": "passed"},
     )
     assert output == resume
     assert calls["resume"] == resume
@@ -733,6 +788,7 @@ def test_hyperparameter_meta_run_resumes_each_existing_v5_phase_without_training
     calls = []
 
     def fake_phase(plan, **kwargs):
+        assert kwargs["device"] == "cpu"
         phase = (
             Path(kwargs["resume_directory"])
             if kwargs["resume_directory"] is not None
@@ -788,6 +844,7 @@ def test_hyperparameter_meta_run_resumes_each_existing_v5_phase_without_training
         pipeline_root=ROOT,
         output_root=tmp_path,
         run_name="resume-contract",
+        device="cpu",
         phase_runner_factory=factory,
     )
     assert all(row["resume"] is None for row in calls)
@@ -797,6 +854,7 @@ def test_hyperparameter_meta_run_resumes_each_existing_v5_phase_without_training
         pipeline_root=ROOT,
         output_root=tmp_path,
         resume=output,
+        device="cpu",
         phase_runner_factory=factory,
     )
     assert resumed == output
@@ -831,7 +889,6 @@ def test_completed_halving_command_only_recovers_public_products(
     )
     result = specialized.complete_specialized_halving(
         output,
-        environment_evidence={"status": "passed"},
     )
     assert result == output
     assert published == [(output, specialized.HYPERPARAMETER_SCHEMA)]

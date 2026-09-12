@@ -10,8 +10,7 @@ from ppg_frailty.v5.request_runner import (
     RequestRecordingStudyRunner,
     execution_binding,
     exclusive_resume_lock,
-    read_anchored_request,
-    validate_resume_environment,
+    read_request,
     write_request_status,
 )
 
@@ -48,8 +47,7 @@ def test_pre_run_artifact_is_published_once_as_plain_json(
     assert json.loads(
         (output / "request_history/request.json").read_text(encoding="utf-8")
     ) == {"ready": True}
-    assert not (output / "request_history/request.anchor.json").exists()
-    assert read_anchored_request(output, "request_history/request.json")[0] == {
+    assert read_request(output, "request_history/request.json")[0] == {
         "ready": True
     }
     with pytest.raises(FileExistsError, match="already exists"):
@@ -66,38 +64,19 @@ def test_pre_run_artifact_path_cannot_escape(tmp_path: Path, name: str) -> None:
         runner._publish_pre_run_artifacts(tmp_path)
 
 
-def test_resume_environment_compatibility_hook_adds_no_second_gate(
-    tmp_path: Path,
-) -> None:
-    initial = {
-        "environment_policy": "exact",
-        "environment_lock_sha256": "a" * 64,
-        "environment_check": {"status": "passed", "lock_id": "locked"},
-        "execution_binding": {"binding_sha256": "b" * 64},
-    }
-    runner = RequestRecordingStudyRunner(
-        pipeline_root=tmp_path,
-        pre_run_artifacts={"v5_run_request.json": initial},
-    )
-    runner._publish_pre_run_artifacts(tmp_path)
-    validate_resume_environment(tmp_path, initial)
-    validate_resume_environment(tmp_path, {**initial, "environment_policy": "record"})
-
-
 def test_plain_request_reader_reports_current_payload_and_digest(tmp_path: Path) -> None:
     runner = RequestRecordingStudyRunner(
         pipeline_root=tmp_path,
         pre_run_artifacts={"v5_run_request.json": {"ready": True}},
     )
     runner._publish_pre_run_artifacts(tmp_path)
-    before = read_anchored_request(tmp_path, "v5_run_request.json")[1]
+    before = read_request(tmp_path, "v5_run_request.json")[1]
     (tmp_path / "v5_run_request.json").write_text(
         json.dumps({"ready": False}), encoding="utf-8"
     )
-    payload, after, anchor = read_anchored_request(tmp_path, "v5_run_request.json")
+    payload, after = read_request(tmp_path, "v5_run_request.json")
     assert payload == {"ready": False}
     assert after != before
-    assert anchor == {}
 
 
 def test_run_scoped_lock_rejects_concurrent_owner(tmp_path: Path) -> None:
@@ -113,7 +92,7 @@ def test_failed_resume_status_points_to_immutable_attempt(tmp_path: Path) -> Non
     payload = {
         "schema_version": "ppg_frailty.v5_resume_request.v1",
         "resumed": True,
-        "environment_lock_sha256": "a" * 64,
+        "environment": {"python": "test", "packages": {}},
     }
     runner = RequestRecordingStudyRunner(
         pipeline_root=tmp_path,
@@ -130,7 +109,7 @@ def test_failed_resume_status_points_to_immutable_attempt(tmp_path: Path) -> Non
     )
 
     status = json.loads((tmp_path / "v5_resume_request.json").read_text())
-    assert status["latest_immutable_request"] == relative
+    assert status["latest_request"] == relative
     assert status["attempt_status"] == "runner_failed"
     assert status["attempt_error"] == {
         "type": "ValueError",
@@ -145,7 +124,7 @@ def test_request_exists_before_materialization(
     plan = load_study_plan(ROOT / "configs/studies/finalcase.yaml")
     expansion = StudyRunner(pipeline_root=ROOT, output_layout="v5").expand(plan)
     request = {
-        "environment_lock_sha256": "a" * 64,
+        "environment": {"python": "test", "packages": {}},
         "resumed": False,
         "refit_requested": False,
     }
@@ -154,7 +133,7 @@ def test_request_exists_before_materialization(
         _runner: object, _expansion: object, output: Path, *, resumed: bool
     ) -> None:
         assert resumed is False
-        assert read_anchored_request(output, "v5_run_request.json")[0] == request
+        assert read_request(output, "v5_run_request.json")[0] == request
         raise RuntimeError("stop before scientific execution")
 
     monkeypatch.setattr(StudyRunner, "_materialize", stop_before_science)
@@ -166,6 +145,6 @@ def test_request_exists_before_materialization(
     )
 
     with pytest.raises(RuntimeError, match="stop before scientific execution"):
-        runner.run(plan, output_root=tmp_path, run_name="anchored")
-    status = json.loads((tmp_path / "anchored/v5_run_status.json").read_text())
+        runner.run(plan, output_root=tmp_path, run_name="recorded")
+    status = json.loads((tmp_path / "recorded/v5_run_status.json").read_text())
     assert status["attempt_status"] == "runner_failed"

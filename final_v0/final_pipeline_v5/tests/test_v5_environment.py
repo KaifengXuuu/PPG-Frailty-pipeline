@@ -1,65 +1,44 @@
 from __future__ import annotations
 
-from pathlib import Path
-import tomllib
+from types import SimpleNamespace
 
 import torch
 
 from ppg_frailty.v5 import environment
-from ppg_frailty.v5.environment import (
-    EnvironmentCheck,
-    check_environment,
-    load_environment_lock,
-    prepare_deterministic_runtime,
-)
+from ppg_frailty.training.trainer import configure_torch_determinism
 
 
-ROOT = Path(__file__).resolve().parents[1]
+def test_motion_sets_configured_backend_before_loading_weights(monkeypatch) -> None:
+    from ppg_frailty import experiment
+    from ppg_frailty.training import trainer
 
-
-def test_finalcase_environment_lock_declares_numeric_contract() -> None:
-    lock = load_environment_lock(ROOT / "requirements/environment-finalcase-lock.yaml")
-    assert lock["numeric_equivalence"] == {
-        "atol": 1.0e-6,
-        "rtol": 0.0,
-        "require_equal_row_identity": True,
-        "require_equal_split_assignment": True,
+    events = []
+    monkeypatch.setattr(trainer, "configure_torch_determinism", lambda enabled: events.append(("backend", enabled)))
+    monkeypatch.setattr(experiment, "_runtime_imports", lambda: {
+        "resolve_reused_motion_detector_config": lambda payload: payload,
+        "load_reused_motion_detector": lambda *_args, **_kwargs: events.append(("load", None)),
+    })
+    sections = {
+        "artifact": {"motion_detector_enabled": True, "motion_detector": {"evidence_path": "model.json"}},
+        "training": {},
     }
-    assert lock["runtime"]["packages"]["torch"] == "2.9.1+cu126"
-    assert lock["runtime"]["packages"]["nvidia-cublas-cu12"] == "12.6.4.1"
-    assert lock["runtime"]["packages"]["nvidia-cudnn-cu12"] == "9.10.2.21"
-    assert lock["runtime"]["packages"]["triton"] == "3.5.1"
-    for name, version in {
-        "python-dateutil": "2.9.0.post0",
-        "pytz": "2025.2",
-        "tzdata": "2025.3",
-        "six": "1.17.0",
-        "threadpoolctl": "3.6.0",
-        "typing_extensions": "4.15.0",
-        "packaging": "25.0",
-        "setuptools": "80.9.0",
-    }.items():
-        assert str(lock["runtime"]["packages"][name]) == version
-    assert lock["accelerator"]["required_for_numeric_equivalence"] is True
-    assert lock["accelerator"]["torch_cuda"] == "12.6"
-    assert lock["accelerator"]["cudnn"] == 91002
-    assert lock["accelerator"]["driver_version"] == "560.81"
-
-
-def test_environment_check_is_structured_without_requiring_a_gpu() -> None:
-    result = check_environment(
-        lock_path=ROOT / "requirements/environment-finalcase-lock.yaml",
-        device="cpu",
-    )
-    assert result.status in {"passed", "failed"}
-    payload = result.to_dict()
-    assert payload["lock_id"] == "finalcase_v2_numeric_20260824"
-    assert isinstance(payload["mismatches"], list)
+    config = SimpleNamespace(section=sections.__getitem__)
+    paths = SimpleNamespace(input_path=lambda value: value)
+    # Default and explicit choices must precede all motion prediction on every invocation.
+    for setting in ({}, {"deterministic_algorithms": False}, {"deterministic_algorithms": True}):
+        sections["training"] = setting
+        experiment._load_reused_motion_detector_for_config(config, paths)
+        assert events[-2:] == [("backend", setting.get("deterministic_algorithms", True)), ("load", None)]
+    sections["artifact"]["motion_detector_enabled"] = False
+    events.clear()
+    assert experiment._load_reused_motion_detector_for_config(config, paths) is None
+    assert not events
 
 
 def test_environment_observes_the_requested_cuda_index(monkeypatch) -> None:
     requested: list[int] = []
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "is_initialized", lambda: True)
     monkeypatch.setattr(torch.cuda, "device_count", lambda: 3)
     monkeypatch.setattr(
         torch.cuda,
@@ -80,25 +59,65 @@ def test_environment_observes_the_requested_cuda_index(monkeypatch) -> None:
     assert observed["accelerator"]["selected_device_available"] is True
 
 
-def test_exact_runtime_fills_only_a_missing_cublas_setting(monkeypatch) -> None:
-    lock = ROOT / "requirements/environment-finalcase-lock.yaml"
+def test_environment_observation_does_not_initialize_cuda(monkeypatch) -> None:
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "is_initialized", lambda: False)
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
+    monkeypatch.setattr(environment, "_nvidia_driver_version", lambda: None)
+
+    def unexpected_initialization(*_args):
+        raise AssertionError("observation must not initialize CUDA before deterministic setup")
+
+    monkeypatch.setattr(torch.cuda, "get_device_properties", unexpected_initialization)
+    observed = environment.observe_environment(package_names=())
+    assert observed["accelerator"]["cuda_initialized"] is False
+    assert "gpu_name" not in observed["accelerator"]
+
+
+def test_environment_records_unlisted_versions_without_mutating_runtime(monkeypatch) -> None:
     monkeypatch.delenv("CUBLAS_WORKSPACE_CONFIG", raising=False)
-    prepare_deterministic_runtime(lock)
-    assert environment.os.environ["CUBLAS_WORKSPACE_CONFIG"] == ":4096:8"
-
-    monkeypatch.setenv("CUBLAS_WORKSPACE_CONFIG", "conflicting-value")
-    prepare_deterministic_runtime(lock)
-    assert environment.os.environ["CUBLAS_WORKSPACE_CONFIG"] == "conflicting-value"
-
-
-def test_record_environment_check_does_not_mutate_cublas(monkeypatch) -> None:
-    monkeypatch.delenv("CUBLAS_WORKSPACE_CONFIG", raising=False)
-    recorded = EnvironmentCheck("failed", "test", {}, ())
-    monkeypatch.setattr(environment, "check_environment", lambda **_kwargs: recorded)
-    assert environment.evaluate_environment("record", device="cpu") is recorded
+    monkeypatch.setattr(environment, "_version", lambda name: "future-version" if name == "torch" else None)
+    flags = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.backends.cudnn.deterministic,
+        torch.backends.cudnn.benchmark,
+    )
+    observed = environment.observe_environment(
+        include_accelerator=False, package_names=("torch", "missing-optional-package"),
+    )
+    assert observed["packages"] == {"torch": "future-version", "missing-optional-package": None}
+    assert "accelerator" not in observed
     assert "CUBLAS_WORKSPACE_CONFIG" not in environment.os.environ
+    assert flags == (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.backends.cudnn.deterministic,
+        torch.backends.cudnn.benchmark,
+    )
 
 
-def test_request_lock_dependency_is_a_core_runtime_pin() -> None:
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert "filelock==3.20.0" in project["project"]["dependencies"]
+def test_environment_records_cpu_without_requiring_a_gpu(monkeypatch) -> None:
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(environment, "_nvidia_driver_version", lambda: None)
+    observed = environment.observe_environment(package_names=())
+    assert observed["accelerator"]["cuda_available"] is False
+    assert observed["accelerator"]["selected_device_available"] is False
+
+
+def test_shared_backend_configuration_preserves_flags_and_rng() -> None:
+    original = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.backends.cudnn.deterministic,
+        torch.backends.cudnn.benchmark,
+    )
+    rng = torch.get_rng_state().clone()
+    try:
+        for enabled in (True, False):
+            configure_torch_determinism(enabled)
+            assert torch.are_deterministic_algorithms_enabled() is enabled
+            assert torch.backends.cudnn.deterministic is enabled
+            assert torch.backends.cudnn.benchmark is not enabled
+            assert torch.equal(rng, torch.get_rng_state())
+    finally:
+        torch.use_deterministic_algorithms(original[0])
+        torch.backends.cudnn.deterministic = original[1]
+        torch.backends.cudnn.benchmark = original[2]

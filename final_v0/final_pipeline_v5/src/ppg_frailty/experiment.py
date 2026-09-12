@@ -793,6 +793,9 @@ def _load_reused_motion_detector_for_config(
     artifact = config.section("artifact")
     if not bool(artifact["motion_detector_enabled"]):
         return None
+    # Motion prediction precedes classifier fitting, so set its numerical backend here.
+    from .training.trainer import configure_torch_determinism
+    configure_torch_determinism(bool(config.section("training").get("deterministic_algorithms", True)))
     payload = dict(artifact["motion_detector"])
     declared_path = payload.get("evidence_path")
     if declared_path is None:

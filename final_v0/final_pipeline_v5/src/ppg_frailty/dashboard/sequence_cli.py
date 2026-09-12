@@ -194,9 +194,7 @@ def run_sequence_request(value: str | Path,
                          run_name: str | None = None,
                          resume: str | None = None,
                          hash_predictions: bool | None = None,
-                         dry_run: bool | None = None,
-                         environment_policy: str | None = None,
-                         environment_lock: str | None = None) -> int:
+                         dry_run: bool | None = None) -> int:
     """Run all exact cases inside one canonical V5 output root."""
     root = Path(pipeline_root).resolve()
     path, payload, _, request_sha256 = load_sequence_request(value, pipeline_root=root)
@@ -210,8 +208,6 @@ def run_sequence_request(value: str | Path,
                               run_name=selected_run_name,
                               hash_predictions=launch['hash_predictions'] if hash_predictions is None else bool(hash_predictions),
                               dry_run=launch['dry_run'] if dry_run is None else bool(dry_run),
-                              environment_policy=environment_policy or launch['environment_policy'],
-                              environment_lock=environment_lock or launch['environment_lock'],
                               refit=bool(launch['refit']))
     bindings = [{
         'order': int(case['order']),
@@ -248,8 +244,6 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument('--resume')
     run.add_argument('--hash-predictions', action=argparse.BooleanOptionalAction, default=None)
     run.add_argument('--dry-run', action=argparse.BooleanOptionalAction, default=None)
-    run.add_argument('--environment-policy', choices=('exact', 'record'))
-    run.add_argument('--environment-lock')
     return parser
 
 
@@ -274,6 +268,4 @@ def main(argv: Sequence[str] | None = None) -> int:
                                 run_name=args.run_name,
                                 resume=args.resume,
                                 hash_predictions=args.hash_predictions,
-                                dry_run=args.dry_run,
-                                environment_policy=args.environment_policy,
-                                environment_lock=args.environment_lock)
+                                dry_run=args.dry_run)

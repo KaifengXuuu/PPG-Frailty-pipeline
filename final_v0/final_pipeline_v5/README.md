@@ -1,90 +1,150 @@
 # PPG Frailty Pipeline V5
 
-PPG Frailty Pipeline V5 用 PPG 与同步 IMU recording 完成三分类 frailty
-研究。它保留 V2 的数值算法、模型架构、数据划分与 workflow，同时把训练数据、
-可重建报告、模型复用和现场演示拆成独立入口。
+Frailty（衰弱）是多个生理系统累积衰退所形成的状态，表现为生理储备减少、
+稳态恢复能力下降，以及对外界压力源的易感性增加。较小的应激也可能引起明显的
+健康变化。衰弱状态可以随时间改善或恶化，因此，低成本、可重复的测量对于研究
+衰弱及前衰弱具有现实意义。
 
-论文最终方案以可选预设 `finalcase` 提供：Rank 2
-`tuned_all_roles_small_no_gravity`，运行 case ID 为
-`tuned_all_roles__inception_small_no_gravity`。它不是隐式默认配置。
+光电容积描记（photoplethysmography，PPG）通过光学传感器无创记录外周血容量
+的脉动变化，脉搏的时序和形态可提供心血管及自主神经调节相关信息。惯性测量单元
+（inertial measurement unit，IMU）通过三轴加速度和三轴角速度描述平移与旋转
+运动。本项目使用同步采集的红光 PPG、红外 PPG 和六轴 IMU 共八通道信号，
+将同一时段的生理变化与运动情境联系起来，并利用运动信息辅助识别和处理 PPG
+运动伪影。
 
-> 当前状态：CLI、输出合同、独立报告和 Dash 已实现；V5 尚未完成一次正式的
-> 5 repeats × 5 folds finalcase 全量运行，因此现在不能声称 V2/V5 的 25-fold
-> 输出已经核验一致。正式判据是在相同输入、split、GPU、CUDA、PyTorch 和依赖
-> 下比较，浮点容差为 `atol=1e-6, rtol=0`。
-
-当前核心生产代码按项目统一口径为 **66,564 行**，比可复算的重构前快照减少
-64,615 行（49.26%）；统计范围、旧 sweep 的 7,824 行递归引用闭包及逐文件删减见
-[代码量与精简审计](docs/V2_V5_CODE_REDUCTION.md)。Dash 与 tests 独立统计，不用测试
-代码“冲抵”生产代码目标。
+传统衰弱评估主要依赖问卷、体能测试和临床判断，通常按次进行。可穿戴 PPG 与
+IMU 为重复测量提供了补充途径，但接触条件、运动干扰和同一受试者的重复记录会
+影响信号解释与分类评价。本项目据此构建透明、模块化的 Python 分析流程，研究
+同步信号能否支持可复现的受试者级分组辨别，并为后续远程监测研究提供基础。
+研究背景和三个目标依据[论文草稿](../../Kaifeng_Masterarbeit_draft_v1_0.docx)
+的 Introduction 与 Conclusion。
 
 ## 项目目的
 
-- 复用 V2 的 signal、quality、artifact、feature、representation、model、training、
-  aggregation 和 participant-grouped outer-CV 数值路径。
-- 让每个算法模块及其参数可以由 YAML、纯 CLI 或 Dash 选择。
-- 每 fold 保存 recording/file、role、participant、window 与 ensemble-member 预测，
-  便于之后更换聚合单位和显著性计算单位而不重训。
-- 训练阶段只生成数据、Excel 和 learned weights；所有图、统计展示和 HTML 由
-  `analyse_report.py` 从已有结果重建。
-- 每次成功 run 自动导出可复用 `model_config`；Dash 和 `pipeline.py infer` 可加载
-  模型进行 no-fit participant inference。
+1. 建立透明、可复现的同步 PPG/IMU 信号处理流程，涵盖预处理、脉搏峰检测、
+   运动检测与运动伪影抑制。
+2. 通过 PPG 衍生特征和受试者级分类，探索记录中的生理与运动相关信息，比较
+   前衰弱老年组、非衰弱老年组和青年参考组。
+3. 通过受试者独立的数据划分、与已有参考实现的比较，以及不同模型和信号处理
+   配置的评估，检验整个 workflow 的可靠性。
 
-## 功能概览
+本项目定位为工程方法研究和探索性分类。Young 是年龄参考组，并非衰弱等级；
+三组分类结果本身不能证明衰弱特异性生物标志物或临床诊断效度。
 
-- 单配置、单因素 ablation、Cartesian grid、catalog/study sweep。
-- 5×5 participant-grouped outer OOF、可恢复执行、并发和无泄漏预处理 cache。
-- raw、feature-vector、feature-matrix、fusion 表征，以及经典、深度和 ensemble 模型。
-- SQI、motion、artifact、peak、PRV 及论文历史 comparison 模块。
-- 独立 single/comparison/ablation/test 分析；通用报告的 ROC/AUC、confusion、learning
-  curves、calibration、box/distribution、paired inference 等图表和表格可组合。
-- Stage5、static-peak、hyperparameter、decision-oracle 与 role-scope 通过同一报告入口
-  的 specialized 子命令生成各自注册的完整套件。
-- Dash 的训练、停止、no-fit 推理、comparison queue、逐阶段预览以及 CLI/YAML 下载。
+## 数据与功能概览
 
-模块和参数目录由运行时代码生成，不在 README 复制一份易漂移的长表：
+论文数据包含 29 名受试者：9 名 Pre-Frail、12 名 Robust/Non-Frail 和 8 名 Young。
+每人提供 9 条同步记录，共 261 条，包括静态基线 B、运动后恢复 R1–R4，以及
+运动任务 S1/S2/W1/W2。manifest 保存原始数据路径、受试者、标签和 recording
+角色；原始数据独立存放，使用时需要相应数据访问权限。
 
-```bash
-python pipeline.py modules --help
-python pipeline.py parameters --source-preset all --format markdown
-python pipeline.py run --help
+训练和评价采用以下 workflow。YAML、纯 CLI 和 Dash 共同配置同一套算法：
+
+```text
+manifest / 标签 / participant-grouped splits
+    → PPG 与 IMU 预处理、校准和重采样
+    → 分窗、质量评估、可选运动检测与伪影抑制
+    → 特征提取或原始信号表征
+    → fold 内训练与 held-out 预测
+    → window → recording → role → participant 概率聚合
+    → 每 fold 数据与权重 → pipeline_output
+         ├─ fold 模型 / 可选全 cohort refit → model_config → 新 participant 推理
+         └─ 统计分析与图表生成 → report_output
 ```
 
-面向使用者的稳定 workflow 接口是这些 CLI、Dash、YAML schema 与 module registry；
-内部实现统一从定义模块直接导入，不再把多层子包 re-export 当作第二套接口维护。
+| 流程阶段 | 模块与功能 | 主要入口或实现位置 |
+|---|---|---|
+| 数据和实验计划 | 读取 manifest、标签与受试者分组 split；single、comparison、ablation、grid 和重复交叉验证 | `pipeline.py`、`sweep.py`；`data/`、`study/` |
+| 信号预处理 | 缺失片段处理、PPG/IMU 滤波、静态校准、重采样、分窗与归一化；复用确定性预处理 cache | `signal/`、`data/windows.py`、`data/preprocessing_cache.py` |
+| 质量与运动处理 | SQI、窗口选择、运动检测、artifact reducer 和 denoiser 等可选分支 | `quality/`、`artifacts/` |
+| 特征和表征 | peak/PPI/PRV、脉搏形态与其他特征；raw、feature-vector、feature-matrix 和 fusion | `features/`、`representations/` |
+| 模型与评价 | 经典模型、深度模型及 ensemble；fold 内训练、OOF 预测、分层聚合和指标 | `models/`、`training/` |
+| 数据和模型输出 | 每 fold 预测与 learned weights、数据 Excel、模型选择、可选 refit 和模型复用参数 | `pipeline.py`、`export_model_config.py` |
+| 分析与报告 | ROC/AUC、confusion matrix、learning curves、calibration、box plots、配对检验及专项比较 | `analyse_report.py`；`reporting/`、`v5_reporting/` |
+| 交互操作 | 配置、训练与停止、预训练推理、comparison 队列、逐阶段预览和图表展示 | `dashboard.py` |
 
-## 安装
+表中的模块目录均位于 `src/ppg_frailty/`。训练所需的拟合步骤仅使用当前训练
+受试者；预处理 cache 不跨 fold 共享由训练数据拟合得到的状态。预测在每 fold
+保存，后续可从同一批结果选择不同聚合方式、分析单位和图表，无需重新训练。
+
+## 安装与环境复现
 
 从仓库根目录进入 V5：
 
 ```bash
 cd final_v0/final_pipeline_v5
-conda create -n ppg-v5 python=3.11.14
+```
+
+一般安装使用 [pyproject.toml](pyproject.toml) 中的依赖范围，要求 Python 3.11
+或以上；按所需功能安装 deep、reporting 和 dashboard：
+
+```bash
+conda create -n ppg-v5 python=3.11
 conda activate ppg-v5
-python -m pip install --extra-index-url https://download.pytorch.org/whl/cu126 \
-  -r requirements/requirements-finalcase-lock.txt
+python -m pip install -e '.[deep,reporting,dashboard]'
+python -m pip check
+```
+
+pipeline 模块测试及模型预测数值复现所用的参考版本清单位于
+[requirements/requirements-finalcase.txt](requirements/requirements-finalcase.txt)。
+参考环境为 Python 3.11.14、NVIDIA GeForce RTX 4080（驱动 560.81）、CUDA 12.6 和
+PyTorch 2.9.1+cu126。需要同步该环境时，新建独立环境并安装清单中的精确版本：
+
+```bash
+conda create -n ppg-v5-finalcase python=3.11.14
+conda activate ppg-v5-finalcase
+python -m pip install -r requirements/requirements-finalcase.txt
 python -m pip install --no-deps -e .
 python -m pip check
 ```
 
-finalcase 的 exact 环境锁见
-`requirements/environment-finalcase-lock.yaml`。默认 `--environment-policy exact`
-会在 Torch/CUDA 初始化前按 lock 补齐缺失的 `CUBLAS_WORKSPACE_CONFIG`，然后检查冻结的
-软件和硬件环境；shell 中显式设置的冲突值不会被覆盖，而会报告 mismatch。CPU 或
-`--environment-policy record` 只用于诊断，不能作为 V2/V5 数值等价证据。内部数据
-不复制到 V5；manifest 中的仓库相对只读数据路径必须存在。
+清单已包含 CUDA 12.6 PyTorch wheel 的下载源。GPU 和驱动需在运行机器上单独
+准备；pip 安装 CUDA 依赖不能替代 NVIDIA 驱动。
+上述精确版本是测试和结果复现的参考，运行时不要求软件版本或 GPU 型号与清单
+逐项匹配。依赖升级可通过修改安装清单进行，升级后应运行模块测试和所需的输出
+数值对比。训练命令可用 `--device cpu` 选择 CPU（sweep 在 YAML 中配置设备）；
+设备及数值库变化可能影响浮点结果。确定性 CUDA 训练会自动补齐缺失的
+`CUBLAS_WORKSPACE_CONFIG=:4096:8`；已显式选择的后端设置不会被环境清单覆盖。
 
-finalcase 使用的 `cache/preprocessing` 与历史 `artifacts/studies/cache` 都是合法的 V5
-内部 cache 位置；路径不得越出 V5 或穿过 symlink。无需为 exact 手工 `export`
-cuBLAS 变量。
+测试依赖与测试入口：
 
-## 运行 finalcase：两条并行路径
+```bash
+python -m pip install -e '.[test]'
+python -m pytest
+```
 
-### 路径一：真正纯 CLI
+## 配置模块与参数
 
-真正的训练命令使用 `--manual`、完整的 `--module`/`--set`/`--unset` 和执行参数，
-不在训练时读取 preset、config 或 plan。完整 finalcase 有数百个叶参数，不应从文档
-手抄。下面的命令只生成一条 shell-safe、可人工审阅的展开命令，本身不训练：
+每个模块有默认参数，可通过 YAML、CLI 或 Dash 选择。CLI 接受重复的
+`--module FAMILY=MODULE_ID`、`--set PATH=YAML_VALUE` 和 `--unset PATH`；模块
+默认值先应用，显式叶参数随后覆盖。布尔值、列表、数值和字符串采用 YAML
+输入形式，含空格或列表的值在 shell 中加引号。
+
+完整模块名称、可调参数、类型、范围和默认值由代码中的 registry 生成：
+
+```bash
+python pipeline.py modules --help
+python pipeline.py modules
+python pipeline.py parameters --help
+python pipeline.py parameters --source-preset all --format markdown
+python pipeline.py run --help
+python sweep.py --help
+python analyse_report.py --help
+```
+
+## 运行 finalcase
+
+论文最终方案作为可选预设 `finalcase` 提供，对应 Rank 2
+`tuned_all_roles_small_no_gravity`，case ID 为
+`tuned_all_roles__inception_small_no_gravity`。它使用全部 B/R/S/W 角色、64 Hz
+八通道 raw 输入、5 秒窗口、InceptionTimeSmall 和固定 10 epochs，以
+5 repeats × 5 participant-grouped folds 生成 OOF 预测。其他实验可独立选择
+模块和参数。
+
+### 纯 CLI
+
+`pipeline.py run --manual` 接受完整的模块与参数定义，训练时不读取预设 YAML。
+finalcase 的完整参数较多，可先展开成 shell 命令，再人工修改和执行：
 
 ```bash
 python pipeline.py manual-cli \
@@ -94,83 +154,53 @@ less /tmp/finalcase_cli.sh
 bash /tmp/finalcase_cli.sh
 ```
 
-run 目录不可覆盖。若之前的 `finalcase_cli_01` 已失败并留下 incomplete 目录，请把上面
-两处 run 名改成新的名称（例如 `finalcase_cli_02`）；保留旧目录便于审计。
-该失败 run 自动导出的 `model_config/finalcase_cli_01` 没有 learned weights，不能用于
-推理；只有新 run 完成后生成的 model_config 才是首个可复用模型。
-
-生成器本身用完整 `--set`/`--unset` 表达每个叶值。若在审阅后的完整命令中加入
-同值的 module selectors，使模块身份也直接可见，其中一段会是以下结构（省略号仅
-用于展示，不能原样执行）：
+`manual-cli` 只生成命令；`--source-preset` 用于生成阶段。生成结果包含每个叶值的
+`--set`/`--unset`、repeat/fold、cache 和输出参数，可脱离原 YAML 使用。也可直接
+手写完整 `--manual` 命令。下例仅展示其中的可编辑参数片段：
 
 ```text
-python pipeline.py run --manual \
-  --config-id formal_inception_small_line_b_v2__tuned_all_roles_inception_small_no_gravity_fixed10 \
-  --module representation=raw \
-  --module model=InceptionTimeSmall \
-  --module imu_gravity=sensor_filter_only_no_gravity_removal \
-  --set signal.dl_resampling.target_fs_hz=64.0 \
-  --set training.batch_size=16 \
-  --set training.learning_rate=0.0003 \
-  ...全部其余 --set/--unset... \
-  --repeats all --folds all --jobs 1 --device cuda --no-continue-on-error \
-  --no-measure-operational-costs --preprocessing-cache-mode read_write \
-  --preprocessing-cache-root cache/preprocessing \
-  --preprocessing-cache-namespaces imu_calibration,canonical_signal_views,raw_windows \
-  --output-root pipeline_output \
-  --environment-policy exact \
-  --environment-lock requirements/environment-finalcase-lock.yaml \
-  --study-id finalcase \
-  --case-id tuned_all_roles__inception_small_no_gravity \
-  --run-name finalcase_cli_01
+--module representation=raw
+--module model=InceptionTimeSmall
+--module imu_gravity=sensor_filter_only_no_gravity_removal
+--set signal.dl_resampling.target_fs_hz=64.0
+--set training.batch_size=16
+--set training.learning_rate=0.0003
+--set 'training.classifier_role_families=[B,R,S,W]'
 ```
 
-`manual-cli` 当前把每个叶值展开为 `--set`/`--unset`，并把 finalcase study YAML 的
-5×5、失败策略、cache 和 comparison 名显式拼入命令；训练进程不再读取任何 YAML。
-需要修改 workflow 时，可在
-审阅后的命令中使用 `--module FAMILY=MODULE_ID` 选择模块，并用
-`--set PATH=YAML_VALUE` 调参数。模块先应用，显式 `--set` 后应用。参数名、类型、
-范围和 YAML 输入形式以 live catalog 为准：
+### 预制 YAML
+
+[configs/studies/finalcase.yaml](configs/studies/finalcase.yaml) 保存完整的 finalcase
+study 计划，可先验证，再运行：
 
 ```bash
-python pipeline.py parameters --source-preset all --format markdown
-python pipeline.py modules --help
-python pipeline.py run --help
-```
-
-### 路径二：预制 study YAML
-
-正式 one-case 5×5 计划已写入 `configs/studies/finalcase.yaml`：
-
-```bash
-python sweep.py validate \
-  --plan configs/studies/finalcase.yaml \
-  --environment-policy exact
-
+python sweep.py validate --plan configs/studies/finalcase.yaml
 python sweep.py run \
   --plan configs/studies/finalcase.yaml \
-  --run-name finalcase_v5_01 \
-  --environment-policy exact
+  --run-name finalcase_v5_01
 ```
 
-`refit` 是默认关闭的末端模块。需要全 cohort 权重时，仅在相同 run 命令上增加
-`--refit`；它会在 outer-fold 训练完成后，对该 run 的每个 case 分别运行 all-29
-refit。refit 模型没有内部无偏性能估计，性能证据仍来自 outer OOF。
+comparison 和 ablation 在同一 study 中定义多个 case，仍按统一 repeat/fold 流程
+运行。更多计划及命令见 [CLI 参考](docs/CLI_REFERENCE.md) 和
+[计划兼容性说明](docs/PLAN_COMPATIBILITY.md)。
+
+`refit` 默认关闭。需要全 cohort 训练权重时增加 `--refit`，它会在 outer-fold
+训练完成后为每个 case 执行 refit：
 
 ```bash
 python sweep.py run \
   --plan configs/studies/finalcase.yaml \
-  --run-name finalcase_v5_refit_01 \
-  --environment-policy exact \
+  --run-name finalcase_refit_01 \
   --refit
 ```
 
-不加 `--refit` 时，每个使用模型的 case 仍保存全部 fold weights，并自动发布按 OOF
-`(balanced_accuracy, repeat, fold)` 排序的中位 fold bundle，供复跑和 Dash 试运行。
+关闭 refit 时仍保存全部 fold weights，并按 OOF
+`(balanced_accuracy, repeat, fold)` 排序发布中位 fold 模型。refit 权重用于模型
+复用，性能评价仍采用 held-out OOF 预测。
 
 ## 输出结构
 
-三个根目录与 README 同级：
+三个输出根目录与 README 同级：
 
 ```text
 final_pipeline_v5/
@@ -179,104 +209,88 @@ final_pipeline_v5/
 └── model_config/<run>/cases/<comparison>/
 ```
 
-- `pipeline_output`：权威 per-fold Parquet、指标/审计表、learned weights 和
-  `tables/pipeline_data.xlsx`；不写 plots 或 HTML。
-- `report_output`：`analyse_report.py` 生成的 figures（或显式 N/A）、CSV/JSON、
-  HTML/Markdown 和报告 workbook。
-- `model_config`：每 case 的 resolved config、模块/参数默认值和已选择模型包。
+| 目录 | 内容 |
+|---|---|
+| `pipeline_output` | 每 fold 的 window、recording/file、role、participant 和适用的 ensemble-member 预测；指标、learned weights、CSV 索引和 `tables/pipeline_data.xlsx` |
+| `report_output` | 分析生成的 figures、CSV/JSON 派生统计表、HTML/Markdown 和报告 Excel |
+| `model_config` | 每 case 的 resolved config、模块开关和默认参数、模型复用参数及所选 learned bundle |
 
-run 名可用 `--run-name` 指定；否则 pipeline 和 sweep 都用来源 YAML 的 stem 加 UTC
-时间自动命名。已存在的 run 不会被静默覆盖，
-继续执行使用 `--resume pipeline_output/<run>`。report 对同一个
-顶层 run 默认写到同名子目录，所以 sweep 内多个 comparison 仍归入一个 report。
-完整字段见 [输出合同](docs/OUTPUT_CONTRACT.md)。
+Parquet 保存权威预测数据，pipeline Excel 提供数据与索引的便捷视图；report Excel
+保存所选分析产生的派生统计。pipeline 不生成 plots 或 HTML，已有训练结果可用于
+多次独立报告生成。目录和字段详见 [输出合同](docs/OUTPUT_CONTRACT.md)。
+
+使用 `--run-name NAME` 命名 run；省略时从配置或计划名称加 UTC 时间生成名称。
+已有运行可通过 `--resume pipeline_output/<run>` 继续。报告默认使用顶层 run 名，
+同一 sweep 内的多个 comparison 共用该报告目录；另一次分析可用 `--output-name`
+指定新的目录名。
 
 ## 分析与报告
 
-先列出通用报告当前可组合的 mode、7 个 preset、18 个 module、36 个 figure 和
-74 个 table：
+`analyse_report.py` 从 pipeline 产物生成报告，支持 `single`、`comparison`、
+`ablation` 和 `test`。先查看可组合的 preset、module、figure 和 table：
 
 ```bash
 python analyse_report.py list
+python analyse_report.py run --help
 ```
 
-验证并生成一个 run 的 classification 报告：
+生成一个 run 的 classification 报告：
 
 ```bash
 python analyse_report.py validate \
-  --mode single \
-  --input pipeline_output/finalcase_v5_01 \
-  --preset classification
-
+  --mode single --input pipeline_output/finalcase_v5_01 --preset classification
 python analyse_report.py run \
-  --mode single \
-  --input pipeline_output/finalcase_v5_01 \
-  --preset classification
+  --mode single --input pipeline_output/finalcase_v5_01 --preset classification
 ```
 
-comparison/ablation 可从同一 run 选择 cases；跨 run 时重复传
-`--run NAME=PATH`。显式 `--figure` 或 `--table` 会精确替换 preset 的对应默认集合，
-传 `none` 表示不生成该类产物。Stage5/static-peak/hyperparameter 使用
-`specialized-report` 生成各自完整套件；decision-oracle/role-scope 使用
-`specialized-run`。详见 [CLI 参考](docs/CLI_REFERENCE.md)。
+comparison/ablation 可选择同一 run 内的 cases；跨 run 时重复传
+`--run NAME=PATH`。显式 `--figure` 或 `--table` 替换 preset 的对应默认集合，
+`none` 表示不生成该类产物。Stage5/static-peak/hyperparameter 使用
+`specialized-report`；decision-oracle/role-scope 使用 `specialized-run`。
 
-失败或中断的 run 没有可解释的模型性能，但可只读生成执行审计；它不读取预测和
-weights，也不会把失败结果混入正式统计：
+中断或失败运行可通过 `execution-audit --input pipeline_output/<run>` 生成执行
+完整性和失败事件的表格、Excel、HTML/Markdown，便于检查已完成阶段与失败原因。
+其产物位于 `report_output`，与模型性能报告分开。
 
-```bash
-python analyse_report.py execution-audit \
-  --input pipeline_output/finalcase_cli_01 \
-  --output-name finalcase_cli_01_failure
-```
+## 模型复用与推理
 
-结果位于 `report_output/finalcase_cli_01_failure/`，包含执行完整性、失败事件、输入证据
-的 CSV/JSON/Excel 与简短 HTML/Markdown，不生成科学 figures。
-
-## 模型导出与推理
-
-每次 pipeline finalize 会自动更新 `model_config/<run>`。也可从一个已完成 run
-独立重建：
+pipeline 自动导出 `model_config/<run>`，也可独立导出：
 
 ```bash
-python export_model_config.py \
-  --pipeline-output pipeline_output/finalcase_v5_01
-```
-
-使用导出的 bundle 对输入 manifest 做 no-fit 推理：
-
-```bash
+python export_model_config.py --pipeline-output pipeline_output/finalcase_v5_01
 python pipeline.py infer \
   --model-config model_config/finalcase_v5_01 \
   --case-id tuned_all_roles__inception_small_no_gravity \
   --input-manifest path/to/participant.yaml
 ```
 
-动态 R/S/W 输入当前必须同时提供同 participant 的静态 B recording 完成校准。
-缺少 B 的静默校准是 **V5 TODO**，尚未实现；当前会明确拒绝该输入。
+推理加载模型和对应预处理参数，不重新训练。输入 manifest 提供 participant 的
+一条静态记录或多条静态、动态记录。可用推理能力记录在导出的
+`export_manifest.json`；动态 R/S/W 当前使用同 participant 的静态 B recording
+进行校准。无 B 静态记录的静默校准 ablation 为 V5 待实现功能。
 
-## Dash 本地操作面板
+## Dash 操作面板
 
 ```bash
 python dashboard.py --host 127.0.0.1 --port 8050
 ```
 
-打开 `http://127.0.0.1:8050`。Dash 提供与 CLI 同源的配置与执行面板：
+打开 `http://127.0.0.1:8050`。Dash 使用同一模块 registry 与执行服务，可以加载
+YAML 或 model_config，选择输入数据、模块和参数，查看各阶段的 signal、window、
+quality、feature、prediction 与 aggregation 输出，并预览报告图表。
 
-- YAML/model_config 加载、模块下拉、参数表和有限范围滑条；
-- `Train`、随时生效的 `Stop`、以及加载预训练 bundle 的 `Infer`；
-- comparison 临时队列，可多次添加配置后训练；
-- signal、window、quality、feature、model、prediction、aggregation 等阶段预览；
-- pipeline 表、report 图表与表格预览；
-- Tools 中可从失败的 pipeline run 构建并运行同一 `execution-audit` CLI；
-- 当前请求及整个 comparison 序列的等价 CLI、resolved YAML 下载。
+`Train` 启动训练前需要选择 YAML，旁边的 `Stop` 终止后台训练；`Infer` 加载
+预训练 bundle 执行分类。comparison 临时队列可以逐次添加参数组合，形成批量
+实验序列。界面支持显示和下载当前操作或整个队列的等价 CLI 与 resolved YAML；
+Tools 提供执行审计、导出与专项报告入口。
 
-训练前必须选择 YAML；推理不执行 fit。单 participant 只能展示 QC、概率与分类；
-ROC/AUC、cohort confusion matrix 和显著性检验需要多 participant、足够类别覆盖的
-标注数据。
+单 participant 输入可查看质量、概率与分类；ROC/AUC、cohort confusion matrix
+和显著性检验需要有标注、满足相应类别和样本要求的多 participant 数据。
 
-## 数值等价检查
+## 数值复现
 
-完整 finalcase 运行后，使用相同 V2 case 做 25-fold 对比：
+比较版本时应使用相同输入、受试者划分和配置，并同步参考环境。下面的命令比较
+同一 case 的 25 个 fold 输出，浮点容差为 `atol=1e-6, rtol=0`：
 
 ```bash
 python tools/compare_v2_v5_outputs.py \
@@ -287,13 +301,12 @@ python tools/compare_v2_v5_outputs.py \
   --write pipeline_output/finalcase_v5_01/v2_v5_numeric_equivalence.json
 ```
 
-配置解析或源码静态对齐不能替代完整输出比较。
+环境清单与模块测试提供复现依据，实际数值是否一致以完整输出比较为准。
 
 ## 文档
 
-- [CLI_REFERENCE.md](docs/CLI_REFERENCE.md)：所有入口、纯 CLI 和 study/sweep 用法。
-- [OUTPUT_CONTRACT.md](docs/OUTPUT_CONTRACT.md)：三根目录及数据、Excel、权重合同。
-- [ARCHITECTURE.md](docs/ARCHITECTURE.md)：运行层、科学层、报告层和 Dash 的关系。
-- [THESIS_CODE_CONFLICTS.md](docs/THESIS_CODE_CONFLICTS.md)：论文与实现冲突，按影响排序。
-- [V2_V5_CODE_REDUCTION.md](docs/V2_V5_CODE_REDUCTION.md)：统一口径的代码量与删减审计。
-- [PLAN_COMPATIBILITY.md](docs/PLAN_COMPATIBILITY.md)：canonical 与历史专项 plan 的入口。
+- [CLI_REFERENCE.md](docs/CLI_REFERENCE.md)：完整命令、参数与 study/sweep 用法。
+- [OUTPUT_CONTRACT.md](docs/OUTPUT_CONTRACT.md)：目录、数据格式、Excel 与模型权重。
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md)：配置、科学流程、执行、报告和 Dash 的关系。
+- [THESIS_CODE_CONFLICTS.md](docs/THESIS_CODE_CONFLICTS.md)：论文描述与实现的差异及影响。
+- [PLAN_COMPATIBILITY.md](docs/PLAN_COMPATIBILITY.md)：通用与专项研究计划入口。

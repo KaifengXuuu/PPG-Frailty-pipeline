@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 import time
-from typing import Any, Callable, Mapping
+from typing import Any, Mapping
 
 from ..module_registry import model_factory_contract
 from ..study import (
@@ -17,7 +17,7 @@ from ..study import (
     TerminalProgressSink,
     validate_canonical_expansion,
 )
-from .environment import DEFAULT_LOCK, EnvironmentCheck, evaluate_environment
+from .environment import observe_environment
 from .io import file_sha256
 from .output_contract import automatic_run_name, try_export_pipeline_excel
 from .request_runner import (
@@ -29,7 +29,6 @@ from .request_runner import (
 from .service import RefitOptions, post_run_finalize, preflight_refit_request
 
 
-EnvironmentHook = Callable[[StudyPlan], EnvironmentCheck | Mapping[str, Any]]
 
 def data_only_plan(plan: StudyPlan, output_root: str | Path | None = None) -> StudyPlan:
     """Return the same study with presentation disabled and no scientific edits."""
@@ -79,19 +78,6 @@ def _expanded(
         raise ValueError("execution device differs from resolved training.device")
     return plan, expansion
 
-def _environment_payload(
-    plan: StudyPlan,
-    policy: str,
-    lock: Path,
-    hook: EnvironmentHook | None,
-) -> dict[str, Any]:
-    checked = (
-        hook(plan)
-        if hook is not None
-        else evaluate_environment(policy, device=str(plan.execution.device), lock_path=lock)
-    )
-    return checked.to_dict() if isinstance(checked, EnvironmentCheck) else dict(checked)
-
 def run_study(
     plan: StudyPlan,
     *,
@@ -100,8 +86,6 @@ def run_study(
     output_root: str | Path | None = None,
     run_name: str | None = None,
     resume: str | Path | None = None,
-    environment_policy: str = "exact",
-    environment_lock: str | Path = DEFAULT_LOCK,
     hash_predictions: bool = False,
     refit: RefitOptions | None = None,
     dry_run: bool = False,
@@ -109,7 +93,6 @@ def run_study(
     request_metadata: Mapping[str, Any] | None = None,
     prepared_expansion: Any | None = None,
     runner_executor: Any | None = None,
-    environment_hook: EnvironmentHook | None = None,
     progress_sink: Any | None = None,
 ) -> dict[str, Any]:
     """Expand, check, train, index, export, and write Excel exactly once."""
@@ -125,8 +108,10 @@ def run_study(
     )
     try:
         plan, expansion = _expanded(plan, base_runner, prepared_expansion)
-        lock = Path(environment_lock).resolve()
-        environment = _environment_payload(plan, environment_policy, lock, environment_hook)
+        device = str(plan.execution.device)
+        environment = observe_environment(
+            accelerator_index=int(device.partition(":")[2] or 0) if device.startswith("cuda") else 0,
+        )
         resumed = None if resume is None else Path(resume).resolve()
         if resumed is not None and run_name is not None:
             raise ValueError("--run-name cannot be combined with --resume")
@@ -141,7 +126,7 @@ def run_study(
         )
         preview = {
             "data_only": True,
-            "environment_check": environment,
+            "environment": environment,
             "refit_preflight": refit_preflight,
             "study": plan.to_dict(),
             "reference_case_id": expansion.reference_case_id,
@@ -164,10 +149,7 @@ def run_study(
             "plots_generated": False,
             "resumed": resumed is not None,
             "refit_requested": options.enabled,
-            "environment_policy": environment_policy,
-            "environment_lock": str(lock),
-            "environment_lock_sha256": file_sha256(lock),
-            "environment_check": environment,
+            "environment": environment,
             "execution_binding": execution_binding(plan, expansion),
             "refit_preflight": refit_preflight,
         }

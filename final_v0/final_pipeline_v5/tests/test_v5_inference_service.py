@@ -257,15 +257,6 @@ def test_unlabelled_calibration_b_is_not_a_classifier_row(tmp_path: Path) -> Non
     assert observed["loader"] is loader
 
 
-def test_inference_module_has_no_exported_environment_revalidation_chain() -> None:
-    """Environment checking belongs to the inference entry point, not artifacts."""
-
-    import ppg_frailty.v5.inference_service as service
-
-    assert not hasattr(service, "_assert_exact_environment_evidence")
-    assert not hasattr(service, "_assert_exported_training_environment")
-
-
 def test_live_contract_is_independent_of_training_request_metadata() -> None:
     payload = {"source_contract": _source_contract(), "training_request": {"ignored": True}}
     assert _assert_source_contract(payload) == _source_contract()

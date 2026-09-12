@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
-import os
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
@@ -338,8 +337,6 @@ def test_train_request_uses_same_resolver_and_fixed_output_root() -> None:
     )[0]
     output_index = request.arguments.index("--output-root")
     assert request.arguments[output_index + 1] == "pipeline_output"
-    policy_index = request.arguments.index("--environment-policy")
-    assert request.arguments[policy_index + 1] == "exact"
     assert yaml.safe_load(request.resolved_yaml)["training"]["device"] == "cuda"
 
 
@@ -381,36 +378,20 @@ def test_sweep_rejects_unset_instead_of_approximating_study_plan() -> None:
         )
 
 
-def test_train_request_environment_and_device_round_trip() -> None:
+def test_train_request_device_round_trip_without_environment_gate() -> None:
     service = V5ControlService(PIPELINE_ROOT)
-    lock = "requirements/environment-finalcase-lock.yaml"
     request = service.build_train_request(
         config_path="configs/presets/finalcase.yaml",
         device="cpu",
-        environment_policy="record",
-        environment_lock=lock,
     )
 
     parsed = build_pipeline_parser().parse_args(list(request.arguments))
     resolved = yaml.safe_load(request.resolved_yaml)
     assert parsed.device == resolved["training"]["device"] == "cpu"
-    assert parsed.environment_policy == "record"
-    assert parsed.environment_lock == lock
+    assert not {"--environment-policy", "--environment-lock"} & set(request.arguments)
     assert request.config_sha256 == hashlib.sha256(
         canonical_json_bytes(resolved)
     ).hexdigest()
-
-    with pytest.raises(ValueError, match="environment policy"):
-        service.build_train_request(
-            config_path="configs/presets/finalcase.yaml",
-            environment_policy="approximate",
-        )
-    with pytest.raises(ValueError, match="exact environment policy"):
-        service.build_train_request(
-            config_path="configs/presets/finalcase.yaml",
-            device="cpu",
-            environment_policy="exact",
-        )
 
 
 def test_train_request_rejects_resume_with_run_name_before_path_resolution() -> None:
@@ -448,8 +429,6 @@ def test_config_tools_reuse_exact_configure_selectors_and_public_parser() -> Non
         operation="validate",
         run_request=run_request.to_dict(),
         validation_mode="config",
-        environment_policy="exact",
-        environment_lock="requirements/environment-finalcase-lock.yaml",
     )
     parsed_show = build_pipeline_parser().parse_args(list(show.arguments))
     parsed_validate = build_pipeline_parser().parse_args(list(validate.arguments))
@@ -462,10 +441,6 @@ def test_config_tools_reuse_exact_configure_selectors_and_public_parser() -> Non
     assert "--jobs" not in show.arguments
     assert parsed_validate.command == "validate"
     assert parsed_validate.mode == "config"
-    assert parsed_validate.environment_policy == "exact"
-    assert parsed_validate.environment_lock == (
-        "requirements/environment-finalcase-lock.yaml"
-    )
 
     sweep = CommandRequest(
         script="sweep.py",
@@ -609,7 +584,6 @@ def test_tools_callback_builds_the_same_index_cli(tmp_path: Path) -> None:
             "specialized_run_name": "preserved_run",
             "device": "cuda",
             "job_count": 1,
-            "environment_policy": "record",
             "specialized_flags": ["no_denoiser"],
         }
     )
@@ -671,7 +645,6 @@ def test_sweep_and_specialized_maintenance_commands_use_public_wrappers(
 
     sweep = service.build_sweep_validate_request(
         plan_path="configs/study.yaml",
-        environment_policy="record",
     )
     validate = service.build_specialized_request(
         operation="specialized-validate",
@@ -707,7 +680,6 @@ def test_sweep_and_specialized_maintenance_commands_use_public_wrappers(
         device="cuda",
         jobs=2,
         include_denoiser=False,
-        environment_policy="record",
     )
     computation_complete = service.build_specialized_pipeline_request(
         operation="complete",
@@ -715,7 +687,6 @@ def test_sweep_and_specialized_maintenance_commands_use_public_wrappers(
         device="cuda:0",
         jobs=1,
         dry_run=True,
-        environment_policy="record",
     )
 
     assert build_sweep_parser().parse_args(list(sweep.arguments)).command == "validate"
@@ -754,7 +725,7 @@ def test_sweep_and_specialized_maintenance_commands_use_public_wrappers(
         )
 
 
-def test_dash_run_callback_forwards_environment_lock() -> None:
+def test_dash_run_callback_forwards_execution_controls() -> None:
     pytest.importorskip("dash")
     from ppg_frailty.dashboard import create_app
 
@@ -764,7 +735,6 @@ def test_dash_run_callback_forwards_environment_lock() -> None:
         for key, value in app.callback_map.items()
         if "train-request.data" in key
     )
-    lock = "requirements/environment-finalcase-lock.yaml"
     supplied = {name: None for name in inspect.signature(callback).parameters}
     supplied.update(
         state={
@@ -783,8 +753,6 @@ def test_dash_run_callback_forwards_environment_lock() -> None:
         job_count=1,
         device="cuda",
         cache_mode="off",
-        environment_lock=lock,
-        environment_policy="exact",
         execution_flags=[],
         refit_enabled=["refit"],
         module_ids=[],
@@ -793,8 +761,7 @@ def test_dash_run_callback_forwards_environment_lock() -> None:
 
     assert status.startswith("Ready")
     assert train_disabled is False
-    lock_index = request["arguments"].index("--environment-lock")
-    assert request["arguments"][lock_index + 1] == lock
+    assert not {"--environment-policy", "--environment-lock"} & set(request["arguments"])
     assert request["arguments"][request["arguments"].index("--repeats") + 1] == "0,2,4"
     assert request["arguments"][request["arguments"].index("--folds") + 1] == "1,3"
     assert ("--unset", "training.gradient_clip_norm") == tuple(
@@ -1005,6 +972,7 @@ def test_comparison_queue_exports_ordered_cli_and_yaml() -> None:
     assert cli.splitlines()[1].endswith("training.batch_size=32")
     assert payload["schema_version"] == "ppg_frailty.dashboard_comparison_sequence.v2"
     assert payload["study"]["kind"] == "comparison_sequence"
+    assert set(payload["launch"]) == {"run_name", "hash_predictions", "dry_run", "refit"}
     assert payload["study_plan_v2"] is False
     assert [row["order"] for row in payload["cases"]] == [1, 2]
     assert [row["pipeline_request"]["command"] for row in payload["cases"]] == cli.splitlines()
@@ -1289,11 +1257,6 @@ def test_correlated_sequence_runs_under_one_anchored_output_root(
 
     root = tmp_path / "repo" / "final_v0" / "final_pipeline_v5"
     shutil.copytree(PIPELINE_ROOT / "configs", root / "configs")
-    (root / "requirements").mkdir()
-    shutil.copy2(
-        PIPELINE_ROOT / "requirements" / "environment-finalcase-lock.yaml",
-        root / "requirements" / "environment-finalcase-lock.yaml",
-    )
     service = V5ControlService(root)
     config, _ = service.load_yaml("configs/presets/finalcase.yaml")
     queue: list[dict[str, object]] = []
@@ -1318,7 +1281,6 @@ def test_correlated_sequence_runs_under_one_anchored_output_root(
                     folds="0",
                     device="cuda",
                     run_name="correlated_run",
-                    environment_policy="record",
                 ),
             )
         )
@@ -1327,15 +1289,6 @@ def test_correlated_sequence_runs_under_one_anchored_output_root(
     monkeypatch.setattr(sequence_module, "PIPELINE_ROOT", root)
     monkeypatch.setattr(sweep_module, "V5_ROOT", root)
     monkeypatch.setattr(sweep_module, "PIPELINE_OUTPUT_ROOT", root / "pipeline_output")
-    monkeypatch.setattr(
-        sweep_module,
-        "_environment_check",
-        lambda args, plan: {
-            "schema_version": "test_environment_check.v1",
-            "policy": args.environment_policy,
-            "device": plan.execution.device,
-        },
-    )
     observed: list[tuple[str, str]] = []
 
     def fake_executor(case: object, config_path: Path, case_directory: Path, *_: object) -> dict[str, object]:
@@ -1486,10 +1439,6 @@ def test_comparison_yaml_preserves_representable_global_controls() -> None:
         "--device",
         "cuda",
         "--no-continue-on-error",
-        "--environment-policy",
-        "exact",
-        "--environment-lock",
-        "requirements/environment-finalcase-lock.yaml",
     ]
     cases = [
         {"name": "case_a", "arguments": [*base, "--set", "training.batch_size=16"]},

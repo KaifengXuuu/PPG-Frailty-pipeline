@@ -181,7 +181,6 @@ def _bundle_metadata(payload: FoldCheckpointPayload) -> dict[str, Any]:
         "environment": current_runtime_environment(),
         "dependency_status": {
             "status": "captured_at_checkpoint_write",
-            "exact_environment_gate": "recorded_separately_by_v5_entrypoint",
         },
         "serialization_trust": {
             "trusted_local_only": True,

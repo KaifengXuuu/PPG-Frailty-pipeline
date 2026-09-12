@@ -116,7 +116,7 @@ def validate_specialized_plan(path: str | Path, *, source_root: str | Path = V5_
         **details,
     }
 
-def _specialized_phase_runner_factory(*, source_yaml: Path, sink: TerminalProgressSink, **_: Any) -> Any:
+def _specialized_phase_runner_factory(*, source_yaml: Path, sink: TerminalProgressSink) -> Any:
     """Use the ordinary V5 layout for every hyperparameter phase."""
 
     del source_yaml
@@ -138,7 +138,7 @@ def _hyperparameter_phases(output: Path) -> list[tuple[str, Path]]:
         raise TypeError("hyperparameter manifest lacks phase directories")
     return [(str(name), output / str(relative)) for name, relative in phases.items()]
 
-def _publish_specialized_artifact_contract(output: Path, schema: str, **_: Any) -> Mapping[str, Any]:
+def _publish_specialized_artifact_contract(output: Path, schema: str) -> Mapping[str, Any]:
     """Create the common data/Excel/model handoff for a specialized run."""
 
     excel = export_specialized_data_excel(output, replace=(output / "tables/pipeline_data.xlsx").exists())
@@ -199,7 +199,6 @@ def run_specialized_computation(
     device: str | None = None,
     jobs: int | None = None,
     include_denoiser: bool = True,
-    **_: Any,
 ) -> Path:
     """Run one specialized computation without creating presentation files."""
 
@@ -247,7 +246,7 @@ def run_specialized_computation(
     return Path(output)
 
 def complete_specialized_halving(
-    study_dir: str | Path, *, device: str | None = None, jobs: int | None = None, **_: Any
+    study_dir: str | Path, *, device: str | None = None, jobs: int | None = None
 ) -> Path:
     """Train only the declared unpromoted full-CV candidates."""
 

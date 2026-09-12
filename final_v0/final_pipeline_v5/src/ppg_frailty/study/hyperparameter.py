@@ -125,8 +125,6 @@ def load_hyperparameter_plan(path: str | Path) -> dict[str, Any]:
     _positive_int(execution["jobs"], "execution.jobs")
     if execution["parallel_level"] != "cases":
         raise ValueError("execution.parallel_level must be cases")
-    if not str(execution["device"]).startswith("cuda"):
-        raise ValueError("deep hyperparameter studies require a CUDA device")
     search = _strict(raw["search"], "search", {"selection_seed"})
     selection_seed = search["selection_seed"]
     if isinstance(selection_seed, bool) or not isinstance(selection_seed, int) or selection_seed < 0:
@@ -590,8 +588,6 @@ def run_hyperparameter_study(
             yaml.safe_dump(normalized_plan, stream, sort_keys=False, allow_unicode=True)
     sink = progress_sink or NullProgressSink()
     resolved_device = str(device or plan["execution"]["device"])
-    if not resolved_device.startswith("cuda"):
-        raise ValueError("hyperparameter training must use CUDA")
     resolved_jobs = _positive_int(jobs if jobs is not None else plan["execution"]["jobs"], "jobs")
     study_type = str(plan["study"]["study_type"])
     inherited: dict[str, Any] = {}
@@ -695,8 +691,6 @@ def complete_successive_halving_study(
     if not remaining:
         raise RuntimeError("no unpromoted candidates remain")
     resolved_device = str(device or manifest.get("device") or plan["execution"]["device"])
-    if not resolved_device.startswith("cuda"):
-        raise ValueError("hyperparameter training must use CUDA")
     job_value = jobs if jobs is not None else manifest.get("jobs", plan["execution"]["jobs"])
     resolved_jobs = _positive_int(job_value, "jobs")
     resource = plan["resource"]

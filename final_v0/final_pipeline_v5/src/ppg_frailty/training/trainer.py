@@ -41,6 +41,15 @@ def _require_torch() -> None:
 _DETERMINISTIC_CUBLAS_WORKSPACE_CONFIGS = {":16:8", ":4096:8"}
 
 
+def configure_torch_determinism(enabled: bool) -> None:
+    """Apply the configured numerical backend policy without changing RNG state."""
+    _require_torch()
+    torch.use_deterministic_algorithms(enabled)
+    if hasattr(torch.backends, "cudnn"):
+        torch.backends.cudnn.deterministic = enabled
+        torch.backends.cudnn.benchmark = not enabled
+
+
 def resolve_torch_training_device(requested: str, *, deterministic_algorithms: bool) -> Any:
     """Resolve the requested device and configure deterministic CUDA before allocation."""
     _require_torch()
@@ -1298,10 +1307,7 @@ class UnifiedTrainer:
         np.random.seed(seed % (1 << 32))
         _require_torch()
         torch.manual_seed(seed)
-        torch.use_deterministic_algorithms(self.config.deterministic_algorithms)
-        if hasattr(torch.backends, "cudnn"):
-            torch.backends.cudnn.deterministic = self.config.deterministic_algorithms
-            torch.backends.cudnn.benchmark = not self.config.deterministic_algorithms
+        configure_torch_determinism(self.config.deterministic_algorithms)
 
     def _criterion(self, dataset: Dataset) -> nn.Module:
         """Build the declared loss entirely from train-only class statistics."""

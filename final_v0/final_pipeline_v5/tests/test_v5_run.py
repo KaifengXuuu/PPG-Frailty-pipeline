@@ -77,9 +77,6 @@ def test_shared_run_service_keeps_multi_case_layout_and_resumes(
         "pipeline_root": ROOT,
         "source": source,
         "output_root": tmp_path / "pipeline_output",
-        "environment_policy": "record",
-        "environment_lock": ROOT / "requirements/environment-finalcase-lock.yaml",
-        "environment_hook": lambda _plan: {"status": "recorded"},
         "runner_executor": _executor,
         "refit": RefitOptions(),
     }
@@ -96,6 +93,8 @@ def test_shared_run_service_keeps_multi_case_layout_and_resumes(
     assert request["data_only"] is True
     assert request["plots_generated"] is False
     assert request["refit_requested"] is False
+    assert isinstance(request["environment"]["packages"], dict)
+    assert "environment_lock" not in request
 
     resumed = run_module.run_study(plan, resume=run, **common)
 

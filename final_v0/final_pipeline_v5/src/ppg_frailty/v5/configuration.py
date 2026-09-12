@@ -500,7 +500,7 @@ def _parameter_rows_for_config(config: Mapping[str, Any]) -> list[dict[str, Any]
         if path == 'config_id':
             return (known_ranges[path], '--config-id ID', 'application_id')
         if path == 'training.device':
-            return ('cpu | cuda (numeric-equivalence lock requires cuda)', '--device DEVICE', 'execution')
+            return ('cpu | cuda | cuda:INDEX', '--device DEVICE', 'execution')
         if path == 'output.root':
             return ('application-owned: a directory below pipeline_output', '--output-root PATH', 'execution')
         if path in _PARAMETER_MODULE_PATHS:

@@ -118,24 +118,19 @@ def test_pipeline_excel_is_recoverable_postprocessing(tmp_path: Path) -> None:
     assert second["status"] == "complete"
 
 
-def test_sweep_uses_the_shared_environment_evaluator(
+def test_sweep_validation_records_environment_without_a_version_gate(
     monkeypatch: Any,
     capsys: Any,
 ) -> None:
-    events: list[str] = []
-
-    def _reject_environment(*_: Any, **__: Any) -> Any:
-        events.append("environment_checked")
-        raise RuntimeError("locked environment mismatch")
-
-    monkeypatch.setattr(sweep_module, "evaluate_environment", _reject_environment)
-    args = sweep_module.build_parser().parse_args(
+    observed = {"python": "future-version", "accelerator": {"cuda_available": False}}
+    monkeypatch.setattr(sweep_module, "observe_environment", lambda: observed)
+    code = sweep_module.main(
         ["validate", "--plan", str(ROOT / "configs/studies/single_config_v2.yaml")]
     )
-    plan = load_study_plan(ROOT / "configs/studies/single_config_v2.yaml")
-    with pytest.raises(RuntimeError, match="locked environment mismatch"):
-        sweep_module._environment_check(args, plan)
-    assert events == ["environment_checked"]
+    result = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert result["status"] == "valid"
+    assert result["environment"] == observed
 
 
 def test_v5_phase0_runner_binds_data_only_outputs_to_the_run(tmp_path: Path) -> None:

@@ -6,23 +6,21 @@
 
 ## 运行前
 
-finalcase 数值运行使用冻结环境；`exact` 会在 Torch/CUDA 初始化前按 lock 自动补齐
-缺失的 `CUBLAS_WORKSPACE_CONFIG`：
+数值复现所用版本与安装步骤见 [README](../README.md#安装与环境复现)，精确依赖
+集中在 [requirements-finalcase.txt](../requirements/requirements-finalcase.txt)。
+CLI 只记录实际环境，不根据依赖版本、GPU 型号或驱动版本拒绝运行。
 
 ```bash
-python pipeline.py validate \
-  --preset finalcase \
-  --mode full \
-  --environment-policy exact
+python pipeline.py validate --preset finalcase --mode full
 ```
 
-显式设置的冲突值不会被覆盖，而会导致 mismatch。`exact` 是默认 policy；`record`
-或 CPU 可用于检查接口，但不能支持数值等价结论。
-V2/V5 正式浮点比较使用 `atol=1e-6, rtol=0`。
+训练器按 `training.deterministic_algorithms` 配置数值后端；选择确定性 CUDA
+计算时会在设备分配前补齐缺失的 `CUBLAS_WORKSPACE_CONFIG=:4096:8`，无需手工 export。
+V2/V5 正式浮点比较使用相同数据、划分、配置与参考环境，判据为
+`atol=1e-6, rtol=0`。可选择 CPU 或其他兼容依赖版本，但应重新验证输出数值。
 
-finalcase 的默认 `cache/preprocessing` 和历史配置的 `artifacts/studies/cache` 均受支持，
-但 cache 必须留在 V5 根目录内且不得穿过 symlink。无需在 shell 中手工设置缺失的
-cuBLAS 变量。
+finalcase 默认使用 `cache/preprocessing`，历史配置的 `artifacts/studies/cache`
+也受支持。预处理 cache 留在 V5 根目录内，不跨 fold 共享训练拟合状态。
 
 ## 命令地图
 
@@ -121,8 +119,7 @@ run 目录不会被覆盖；已有失败的 `finalcase_cli_01` 时，用新的 r
 
 生成文件包含完整 `--set`/`--unset`，还显式带出 finalcase study YAML 的 5×5、CUDA、
 `--no-continue-on-error`、cache root/namespaces、output、study ID 和 comparison case ID；
-它还显式记录 exact environment policy 和 lock 路径。训练进程不再读取配置或 plan
-YAML（environment lock 仍是冻结依赖证据）。refit 默认关闭，因此无需写一个反向开关。
+训练进程不再读取配置或 plan YAML。refit 默认关闭，因此无需写一个反向开关。
 若希望以模块名审阅或改造它，可加入例如：
 
 ```text
@@ -147,8 +144,7 @@ python pipeline.py run \
   --config configs/presets/finalcase.yaml \
   --run-name finalcase_config_01 \
   --repeats all --folds all --jobs 1 --device cuda \
-  --preprocessing-cache-mode read_write \
-  --environment-policy exact
+  --preprocessing-cache-mode read_write
 ```
 
 在 preset/config 上仍可追加 `--module`、`--set` 和 `--unset`，用于建立清楚的派生
@@ -174,9 +170,7 @@ python pipeline.py run \
 | `--case-id` | 安全单目录名 | 仅 single `run`；指定 comparison 子目录名 |
 | `--resume` | 已有 run path | 从已有 run 恢复 |
 | `--hash-predictions` | flag | 索引预测文件哈希 |
-| `--dry-run` | flag | materialize/检查而不训练 |
-| `--environment-policy` | `exact/record` | 环境检查方式 |
-| `--environment-lock` | YAML path | 环境锁 |
+| `--dry-run` | flag | 展开/检查而不写运行产物或训练 |
 | `--refit` | flag | 缺省不 refit；显式加入后执行末端 all-cohort refit |
 
 新 run 不覆盖同名目录；恢复时使用 `--resume pipeline_output/<run>`。不指定
@@ -221,13 +215,11 @@ cases 的实验轴。
 
 ```bash
 python sweep.py validate \
-  --plan configs/studies/finalcase.yaml \
-  --environment-policy exact
+  --plan configs/studies/finalcase.yaml
 
 python sweep.py run \
   --plan configs/studies/finalcase.yaml \
-  --run-name finalcase_v5_01 \
-  --environment-policy exact
+  --run-name finalcase_v5_01
 ```
 
 `pipeline.py run-plan --plan ...` 使用同一执行服务；`sweep.py` 是 study 用户的精简
@@ -241,7 +233,6 @@ python sweep.py run \
 python sweep.py run \
   --plan configs/studies/finalcase.yaml \
   --run-name finalcase_v5_refit_01 \
-  --environment-policy exact \
   --refit
 ```
 
@@ -254,8 +245,7 @@ bundle 不做内部 self-evaluation；报告性能仍取 outer OOF。
 ```bash
 python sweep.py run \
   --plan configs/studies/finalcase.yaml \
-  --resume pipeline_output/finalcase_v5_01 \
-  --environment-policy exact
+  --resume pipeline_output/finalcase_v5_01
 
 python pipeline.py index \
   --study-dir pipeline_output/finalcase_v5_01 \

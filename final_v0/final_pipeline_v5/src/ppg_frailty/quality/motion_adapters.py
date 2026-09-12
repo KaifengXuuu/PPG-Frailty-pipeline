@@ -7,7 +7,6 @@ frozen split authority in that runner.
 from __future__ import annotations
 import gc
 import json
-import os
 import random
 import re
 import time
@@ -190,38 +189,13 @@ def _require_torch() -> Any:
         raise RuntimeError('formal motion adapters require the deep PyTorch profile') from exc
     return torch
 
-def validate_formal_motion_cuda_device(device: str) -> str:
-    if not isinstance(device, str) or not _CUDA_DEVICE.fullmatch(device):
-        raise ValueError('formal motion training requires explicit CUDA (cuda or cuda:N); CPU fallback is forbidden')
-    return device
+def prepare_formal_motion_runtime(config: FormalMotionTrainerConfig = FormalMotionTrainerConfig()) -> Any:
+    """Resolve an explicitly selected device with the shared numerical backend setup."""
+    from ..training.trainer import resolve_torch_training_device
 
-def require_formal_motion_cuda(config: FormalMotionTrainerConfig = FormalMotionTrainerConfig()) -> Any:
     config.validate()
-    validate_formal_motion_cuda_device(config.device)
-    expected_workspace = ':4096:8'
-    deterministic_workspaces = {':16:8', expected_workspace}
-    observed_workspace = os.environ.get('CUBLAS_WORKSPACE_CONFIG')
-    if observed_workspace is not None and observed_workspace not in deterministic_workspaces:
-        raise RuntimeError(
-            'Stage5 deterministic CUDA requires CUBLAS_WORKSPACE_CONFIG to be :4096:8 or :16:8; observed '
-            f'{observed_workspace!r} before CUDA initialization')
-    if observed_workspace is None:
-        os.environ['CUBLAS_WORKSPACE_CONFIG'] = expected_workspace
-    torch = _require_torch()
-    if not torch.cuda.is_available():
-        raise RuntimeError('Stage5 formal motion runtime requires CUDA, but torch.cuda.is_available() is false')
-    requested_index = torch.device(config.device).index
-    if requested_index is not None and requested_index >= torch.cuda.device_count():
-        raise RuntimeError(
-            f'Stage5 motion training requested {config.device}, but only {torch.cuda.device_count()} CUDA '
-            'device(s) are visible')
-    try:
-        probe = torch.empty(1, dtype=torch.float32, device=config.device)
-        torch.cuda.synchronize(config.device)
-        del probe
-    except Exception as exc:
-        raise RuntimeError(f'Stage5 motion training cannot initialize requested device {config.device}') from exc
-    return torch
+    resolve_torch_training_device(config.device, deterministic_algorithms=True)
+    return _require_torch()
 
 def _benchmark_inference(model: Any, sample: np.ndarray, config: FormalMotionTrainerConfig) -> dict[str, Any]:
     torch = _require_torch()
@@ -230,13 +204,16 @@ def _benchmark_inference(model: Any, sample: np.ndarray, config: FormalMotionTra
     with torch.no_grad():
         for _ in range(config.inference_warmup_iterations):
             model(tensor)
-        torch.cuda.synchronize(config.device)
+        if tensor.is_cuda:
+            torch.cuda.synchronize(config.device)
         durations_ms: list[float] = []
         for _ in range(config.inference_timed_iterations):
-            torch.cuda.synchronize(config.device)
+            if tensor.is_cuda:
+                torch.cuda.synchronize(config.device)
             started = time.perf_counter()
             model(tensor)
-            torch.cuda.synchronize(config.device)
+            if tensor.is_cuda:
+                torch.cuda.synchronize(config.device)
             durations_ms.append((time.perf_counter() - started) * 1000.0)
     p50 = float(np.percentile(durations_ms, 50.0))
     p95 = float(np.percentile(durations_ms, 95.0))
@@ -254,8 +231,7 @@ def _benchmark_inference(model: Any, sample: np.ndarray, config: FormalMotionTra
 # Training order, sampler weights, architecture, optimizer, and seeds remain frozen.
 def fit_formal_motion_model(examples: Sequence[MotionWindowExample], context: MotionFitContext, *,
                             config: FormalMotionTrainerConfig = FormalMotionTrainerConfig()) -> MotionFittedArtifact:
-    config.validate()
-    torch = require_formal_motion_cuda(config)
+    torch = prepare_formal_motion_runtime(config)
     if context.training_seed != config.seed:
         raise ValueError('formal motion fit context training seed must remain 42')
     if context.model_input_schema_sha256 != MOTION_NETWORK_SCHEMA_SHA256:
@@ -439,8 +415,7 @@ def load_formal_motion_model(artifact_path: Path, metadata: Mapping[str, Any], *
     config = FormalMotionTrainerConfig(**dict(payload['trainer_config']))
     config.validate()
     selected_device = config.device if runtime_device is None else str(runtime_device)
-    if selected_device != 'cpu':
-        require_formal_motion_cuda(FormalMotionTrainerConfig(**{**asdict(config), 'device': selected_device}))
+    prepare_formal_motion_runtime(FormalMotionTrainerConfig(**{**asdict(config), 'device': selected_device}))
     expected_roster = tuple(sorted((str(value) for value in metadata['training_participant_ids'])))
     payload_roster = tuple(sorted((str(value) for value in payload['training_participant_ids'])))
     if len(payload_roster) != len(set(payload_roster)) or payload_roster != expected_roster or (not np.isfinite(

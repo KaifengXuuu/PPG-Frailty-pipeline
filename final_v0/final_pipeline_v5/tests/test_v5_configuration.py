@@ -375,8 +375,6 @@ def test_direct_cli_device_is_part_of_the_resolved_numerical_config() -> None:
             "finalcase",
             "--device",
             "cpu",
-            "--environment-policy",
-            "record",
         ]
     )
     config, provenance = v5_cli._resolved_config(args)

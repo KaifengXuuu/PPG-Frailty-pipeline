@@ -64,7 +64,7 @@ from .motion_adapters import (
     load_formal_motion_model,
     materialize_motion_window_examples,
     predict_formal_motion_probability,
-    require_formal_motion_cuda,
+    prepare_formal_motion_runtime,
     write_formal_motion_input_schema,
 )
 from .motion_runner import (
@@ -570,7 +570,7 @@ def run_formal_internal_motion_reference(repository_root: str | Path, *, output_
                                          training_device: str = 'cuda') -> MotionInternalRunResult:
     repository = Path(repository_root).resolve()
     trainer_config = FormalMotionTrainerConfig(device=str(training_device))
-    require_formal_motion_cuda(trainer_config)
+    prepare_formal_motion_runtime(trainer_config)
     config = RollPitchEkfConfig()
     examples, source_evidence = _build_internal_materialization(repository, config, progress_callback)
     root = Path(output_dir).resolve()
@@ -954,7 +954,7 @@ def run_formal_ptt_motion_training_ablation(repository_root: str | Path, *, outp
                                             training_device: str = 'cuda') -> MotionPttTrainingRunResult:
     repository = Path(repository_root).resolve()
     trainer_config = FormalMotionTrainerConfig(device=str(training_device))
-    require_formal_motion_cuda(trainer_config)
+    prepare_formal_motion_runtime(trainer_config)
     examples, source_evidence = _materialize_formal_ptt_source(
         repository, unit_evidence_path=unit_evidence_path, expected_unit_evidence_sha256=expected_unit_evidence_sha256,
         progress_callback=progress_callback)
@@ -973,7 +973,7 @@ def run_formal_internal_reverse_evaluation(repository_root: str | Path, *, ptt_t
                                            runtime_device: str = 'cuda') -> MotionExternalRunResult:
     repository = Path(repository_root).resolve()
     runtime_config = FormalMotionTrainerConfig(device=str(runtime_device))
-    require_formal_motion_cuda(runtime_config)
+    prepare_formal_motion_runtime(runtime_config)
     examples, source_evidence = _build_internal_materialization(repository, RollPitchEkfConfig(), progress_callback)
     jobs = load_motion_fold_jobs((repository / MOTION_SPLIT_RELATIVE_PATH).resolve())
     load_model = partial(load_formal_motion_model, runtime_device=runtime_config.device)

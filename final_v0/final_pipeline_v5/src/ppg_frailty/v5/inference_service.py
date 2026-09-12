@@ -29,7 +29,7 @@ from ..models import ModelInputSpec, normalize_model_id
 from ..pipeline import PipelinePaths, _load_record, preflight_pipeline
 from ..provenance import stable_payload_sha256
 from ..training.bundle import FrozenRepresentationTransformArchive, load_bundle
-from .environment import prepare_deterministic_runtime, require_environment
+from .environment import observe_environment
 
 _SCHEMA = "ppg_frailty.v5_participant_inference.v1"
 _MODEL_EXPORT_SCHEMA = "ppg_frailty.v5_model_config_export.v1"
@@ -515,12 +515,15 @@ def infer_from_manifest(
         resolved_config_payload,
         config_hash=config.sha256,
     )
-    device = str(config.section("training").get("device", "cuda"))
-    prepare_deterministic_runtime()
-    environment = require_environment(
-        device=device,
-        require_determinism_env=True,
-    ).to_dict()
+    from ..training.trainer import TrainingConfig, UnifiedTrainer, configure_torch_determinism
+
+    training = TrainingConfig.from_mapping(dict(config.section("training")))
+    prediction = UnifiedTrainer(training)
+    if prediction.device is not None:
+        configure_torch_determinism(training.deterministic_algorithms)
+    environment = observe_environment(
+        accelerator_index=(prediction.device.index or 0) if prediction.device is not None else 0,
+    )
 
     payload, input_hash = _load_input_manifest(manifest_path)
     class_names = tuple(str(value) for value in config.section("manifest")["class_name_order"])
@@ -604,9 +607,6 @@ def infer_from_manifest(
     # Use the same V2 prediction entry points and configured batch size as the
     # outer-CV path.  This avoids a second whole-array inference implementation
     # and preserves its row-alignment and probability validation contracts.
-    from ..training.trainer import TrainingConfig, UnifiedTrainer
-
-    prediction = UnifiedTrainer(TrainingConfig.from_mapping(dict(config.section("training"))))
     if loaded.manifest.get("kind") == "estimator":
         probabilities, _, prediction_identities = prediction.predict_estimator_probabilities(loaded.model, dataset)
         classes = tuple(int(value) for value in loaded.model.classes_)
@@ -660,7 +660,7 @@ def infer_from_manifest(
         "feature_schema_id": "raw_red_ir_imu_axes_8ch_live_v1",
         "model_version": str(config.section("model").get("variant", "")),
         "aggregation_rule": str(config.section("aggregation")["balance_line"]),
-        "environment_hash": stable_payload_sha256(environment["observed"]),
+        "environment_hash": stable_payload_sha256(environment),
         "manifest_version": "v5_live_inference_user_declared_v1",
         "fold_registry_version": "not_applicable_live_inference",
         "source_snapshot_hash": str(metadata.get("source_snapshot_hash", config.sha256)),
@@ -701,7 +701,7 @@ def infer_from_manifest(
             "model_id": model_id,
             "model_state_sha256": loaded.manifest["file_hashes"][loaded.manifest["state_file"]],
         },
-        "environment_check": environment,
+        "environment": environment,
         "stage_preview": {
             "input": {
                 "file_count": len(calibration_rows),

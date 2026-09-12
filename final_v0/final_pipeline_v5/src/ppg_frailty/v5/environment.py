@@ -2,43 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import importlib.metadata
 import os
-from pathlib import Path
 import platform
 import subprocess
-from typing import Any, Mapping
+from typing import Any
 
-import yaml
-
-
-DEFAULT_LOCK = Path(__file__).resolve().parents[3] / "requirements/environment-finalcase-lock.yaml"
-
-@dataclass(frozen=True)
-class EnvironmentCheck:
-    status: str
-    lock_id: str
-    observed: Mapping[str, Any]
-    mismatches: tuple[Mapping[str, Any], ...]
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "schema_version": "ppg_frailty.environment_check.v1",
-            "status": self.status,
-            "lock_id": self.lock_id,
-            "observed": dict(self.observed),
-            "mismatches": [dict(row) for row in self.mismatches],
-        }
-
-def load_environment_lock(path: str | Path = DEFAULT_LOCK) -> Mapping[str, Any]:
-    source = Path(path).resolve()
-    value = yaml.safe_load(source.read_text(encoding="utf-8"))
-    if not isinstance(value, Mapping):
-        raise TypeError(f"environment lock root must be a mapping: {source}")
-    if value.get("schema_version") != "ppg_frailty.environment_lock.v1":
-        raise ValueError(f"unsupported environment lock schema: {source}")
-    return value
 
 def _version(name: str) -> str | None:
     try:
@@ -66,13 +35,16 @@ def observe_environment(
     accelerator_index: int = 0,
     package_names: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
-    """Return the fields used by the checked-in numerical lock."""
+    """Record installed versions and backend state; never approve or reject a runtime."""
 
-    if package_names is None:
-        package_names = tuple(load_environment_lock()["runtime"]["packages"])
+    packages = (
+        {dist.metadata["Name"]: dist.version for dist in importlib.metadata.distributions() if dist.metadata["Name"]}
+        if package_names is None
+        else {name: _version(name) for name in package_names}
+    )
     observed: dict[str, Any] = {
         "python": platform.python_version(),
-        "packages": {name: _version(name) for name in package_names},
+        "packages": dict(sorted(packages.items())),
         "determinism": {"cublas_workspace_config": os.environ.get("CUBLAS_WORKSPACE_CONFIG")},
     }
     try:
@@ -95,6 +67,7 @@ def observe_environment(
     selected = available and 0 <= accelerator_index < count
     accelerator: dict[str, Any] = {
         "cuda_available": available,
+        "cuda_initialized": bool(torch.cuda.is_initialized()),
         "device_count": count,
         "selected_device_index": accelerator_index,
         "selected_device_available": selected,
@@ -102,7 +75,8 @@ def observe_environment(
         "torch_cuda": torch.version.cuda,
         "cudnn": torch.backends.cudnn.version(),
     }
-    if selected:
+    # Reading properties initializes CUDA; observation must not preempt the trainer's setup.
+    if selected and accelerator["cuda_initialized"]:
         accelerator.update(
             {
                 "gpu_name": torch.cuda.get_device_name(accelerator_index),
@@ -111,90 +85,3 @@ def observe_environment(
         )
     observed["accelerator"] = accelerator
     return observed
-
-def check_environment(
-    *,
-    lock_path: str | Path = DEFAULT_LOCK,
-    device: str = "cuda",
-    require_determinism_env: bool = False,
-) -> EnvironmentCheck:
-    """Compare the active runtime with one numerical environment lock."""
-
-    lock = load_environment_lock(lock_path)
-    base, separator, suffix = str(device).strip().lower().partition(":")
-    if base == "cuda" and separator and not suffix.isdigit():
-        raise ValueError("CUDA device must be cuda or cuda:<non-negative-index>")
-    wants_cuda = base == "cuda"
-    index = int(suffix) if wants_cuda and separator else 0
-    required_cuda = bool(lock.get("accelerator", {}).get("required_for_numeric_equivalence"))
-    observed = observe_environment(
-        include_accelerator=wants_cuda or required_cuda,
-        accelerator_index=index,
-        package_names=tuple(lock["runtime"]["packages"]),
-    )
-    mismatches: list[Mapping[str, Any]] = []
-
-    def compare(field: str, expected: Any, actual: Any) -> None:
-        if actual != expected:
-            mismatches.append({"field": field, "expected": expected, "observed": actual})
-
-    if required_cuda:
-        compare("execution.device", "cuda", base)
-    compare("runtime.python", str(lock["runtime"]["python"]), observed["python"])
-    for name, expected in lock["runtime"]["packages"].items():
-        compare(f"runtime.packages.{name}", str(expected), observed["packages"].get(name))
-    if wants_cuda or required_cuda:
-        actual = observed.get("accelerator", {})
-        compare("accelerator.selected_device_available", True, actual.get("selected_device_available"))
-        for field in ("gpu_name", "compute_capability", "driver_version", "torch_cuda", "cudnn"):
-            compare(f"accelerator.{field}", lock["accelerator"][field], actual.get(field))
-    if require_determinism_env:
-        for field, expected in lock["determinism"].items():
-            compare(f"determinism.{field}", expected, observed["determinism"].get(field))
-    return EnvironmentCheck(
-        "passed" if not mismatches else "failed",
-        str(lock["lock_id"]),
-        observed,
-        tuple(mismatches),
-    )
-
-def require_environment(**kwargs: Any) -> EnvironmentCheck:
-    result = check_environment(**kwargs)
-    if result.mismatches:
-        detail = "; ".join(
-            f"{row['field']}: expected={row['expected']!r}, observed={row['observed']!r}" for row in result.mismatches
-        )
-        raise RuntimeError(f"finalcase environment lock mismatch: {detail}")
-    return result
-
-def prepare_deterministic_runtime(lock_path: str | Path | None = DEFAULT_LOCK) -> None:
-    """Apply the same backend switches as the V2 trainer without touching RNG state."""
-
-    expected = load_environment_lock(lock_path or DEFAULT_LOCK)["determinism"]
-    os.environ.setdefault(
-        "CUBLAS_WORKSPACE_CONFIG",
-        str(expected["cublas_workspace_config"]),
-    )
-    try:
-        import torch
-    except ImportError:
-        return
-    torch.use_deterministic_algorithms(bool(expected["deterministic_algorithms"]))
-    torch.backends.cudnn.deterministic = bool(expected["cudnn_deterministic"])
-    torch.backends.cudnn.benchmark = bool(expected["cudnn_benchmark"])
-
-def evaluate_environment(
-    policy: str,
-    *,
-    device: str,
-    lock_path: str | Path = DEFAULT_LOCK,
-) -> EnvironmentCheck:
-    """Single entry check used by CLI, sweep, and Dashboard training."""
-
-    kwargs = {"lock_path": lock_path, "device": device, "require_determinism_env": True}
-    if policy == "exact":
-        prepare_deterministic_runtime(lock_path)
-        return require_environment(**kwargs)
-    if policy == "record":
-        return check_environment(**kwargs)
-    raise ValueError("environment policy must be exact or record")

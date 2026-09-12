@@ -59,14 +59,9 @@ def test_checkpoint_side_effect_restores_python_and_numpy_rng(
     assert observed == expected
 
 
-def test_bundle_verification_ignores_request_env_and_does_not_touch_rng(
+def test_bundle_verification_does_not_touch_rng(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(
-        "PPG_FRAILTY_V5_TRAINING_REQUEST_BINDING",
-        "not part of the model bundle contract",
-    )
     random.seed(913)
     np.random.seed(913)
     torch.manual_seed(913)
