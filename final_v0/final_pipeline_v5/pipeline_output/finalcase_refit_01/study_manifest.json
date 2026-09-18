@@ -1,0 +1,130 @@
+{
+  "base_config": "/home/trinker/Code/github/PPG-Frailty-pipeline/final_v0/final_pipeline_v5/configs/formal_experiment_catalog_v2.yaml",
+  "cases": [
+    {
+      "case_directory": "tuned_all_roles__inception_small_no_gravity",
+      "case_id": "tuned_all_roles__inception_small_no_gravity",
+      "catalog_entry": "inception_small",
+      "changed_values": {
+        "aggregation.balance_line": "line_b_equal_role_families",
+        "artifact.degraded_policy": "drop",
+        "artifact.denoiser_enabled": false,
+        "artifact.motion_detector_enabled": false,
+        "artifact.parameters": {},
+        "artifact.reducer": "identity",
+        "artifact.reducer_version": "identity_v1",
+        "model.dropout": 0.5,
+        "quality.mode": "off",
+        "roles": [
+          "B",
+          "R1",
+          "R2",
+          "R3",
+          "R4",
+          "S1",
+          "S2",
+          "W1",
+          "W2"
+        ],
+        "signal.dl_resampling.enabled": true,
+        "signal.dl_resampling.target_fs_hz": 64.0,
+        "signal.imu.comparison_method": "profile_a_lowpass_0p3hz",
+        "signal.imu.gravity_method": "sensor_filter_only_no_gravity_removal",
+        "signal.normalization.raw_imu": "none",
+        "signal.normalization.raw_ppg": "per_window_robust",
+        "study.catalog_entry": "inception_small",
+        "study.screen_profile_id": "tuned_all_roles_inception_small_no_gravity_fixed10",
+        "training.batch_size": 16,
+        "training.class_count_basis": "row",
+        "training.class_weighting": "inverse_frequency",
+        "training.classifier_role_families": [
+          "B",
+          "R",
+          "S",
+          "W"
+        ],
+        "training.fixed_epochs": 10,
+        "training.label_smoothing": 0.2,
+        "training.learning_rate": 0.0003,
+        "training.optimizer": "adamw",
+        "training.sampler": "exhaustive_shuffle_without_replacement",
+        "training.weight_decay": 0.001,
+        "windows.raw_dl.cap_fraction_per_file": null,
+        "windows.raw_dl.cap_per_file": 128,
+        "windows.raw_dl.end_alignment": "include_right_aligned_if_distinct",
+        "windows.raw_dl.hop_s": 2.5,
+        "windows.raw_dl.length_s": 5.0,
+        "windows.raw_dl.min_valid_fraction": 1.0,
+        "windows.raw_dl.padding": "none_complete_windows_only"
+      },
+      "config_id": "formal_inception_small_line_b_v2__tuned_all_roles_inception_small_no_gravity_fixed10",
+      "config_sha256": "c3a4cc8b9c927f208d0f8476c9b3081dd9bfdbe058ae1b153c3d9024f77e3a79",
+      "is_reference": true,
+      "output_group": null,
+      "rationale": "User-selected Rank-2 thesis finalcase.",
+      "resolved_config_path": "configs/tuned_all_roles__inception_small_no_gravity.yaml",
+      "screen_profile_id": "tuned_all_roles_inception_small_no_gravity_fixed10"
+    }
+  ],
+  "created_or_resumed_utc": "2026-09-13T20:40:29+00:00",
+  "effective_jobs": 1,
+  "execution": {
+    "allow_parallel_deep": false,
+    "continue_on_error": false,
+    "device": "cuda",
+    "folds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "jobs": 1,
+    "measure_operational_costs": false,
+    "parallel_level": "cases",
+    "preprocessing_cache": {
+      "mode": "read_write",
+      "namespaces": [
+        "imu_calibration",
+        "canonical_signal_views",
+        "raw_windows"
+      ],
+      "root": "cache/preprocessing",
+      "verify_source_sha256": true
+    },
+    "repeats": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ]
+  },
+  "failed_case_count": 0,
+  "failed_cell_count": 0,
+  "not_run_case_count": 0,
+  "not_run_cell_count": 0,
+  "output_layout": "comparison/repeat/fold",
+  "passed_case_count": 1,
+  "passed_cell_count": 25,
+  "planned_case_count": 1,
+  "planned_cell_count": 25,
+  "reference_case_id": "tuned_all_roles__inception_small_no_gravity",
+  "reported_cell_count": 25,
+  "resumed_case_count": 0,
+  "schema_version": "ppg_frailty.study_manifest.v2",
+  "status": "passed",
+  "study": {
+    "decision_role": "single_run",
+    "flow_position": "Final thesis case; 5x5 participant-grouped outer OOF before optional deployment refit.",
+    "kind": "catalog_sweep",
+    "purpose": "Reproduce the user-selected Rank-2 finalcase without changing V2 numerical semantics.",
+    "reference_case_id": "tuned_all_roles__inception_small_no_gravity",
+    "study_id": "finalcase",
+    "thesis_sections": [
+      "Methods 3.1-3.6",
+      "Frailty classification 4.2",
+      "Appendix E"
+    ]
+  }
+}

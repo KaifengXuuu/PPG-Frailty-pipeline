@@ -198,6 +198,54 @@ python sweep.py run \
 `(balanced_accuracy, repeat, fold)` 排序发布中位 fold 模型。refit 权重用于模型
 复用，性能评价仍采用 held-out OOF 预测。
 
+## 预处理 cache 开关
+
+cache 复用不依赖标签、未经过 fold 内拟合的预处理结果，减少重复滤波、校准和
+分窗的计算。它不是预测正确性的必要条件；关闭后会重新计算，不会删除已有 cache。
+finalcase 的 study YAML 和 `manual-cli` 生成命令使用 `read_write`，目录为 V5 下的
+`cache/preprocessing`。直接 `pipeline.py run` 未指定 cache 参数时，执行层默认
+为 `off`，默认目录为 `artifacts/studies/cache`；缓存参数不属于 pipeline 预设本身。
+
+| 模式 | 行为 |
+|---|---|
+| `off` | 不读写预处理 cache，每次重新计算。 |
+| `read_only` | 命中时读取；未命中时计算但不新增 cache。 |
+| `read_write` | 命中时读取；未命中时计算并保存。 |
+
+直接运行 pipeline 时，通过 CLI 选择模式；下面是关闭 cache 的完整示例：
+
+```bash
+python pipeline.py run --preset finalcase \
+  --run-name finalcase_no_cache_01 \
+  --preprocessing-cache-mode off \
+  --preprocessing-cache-root cache/preprocessing
+```
+
+将 `off` 换成 `read_only` 或 `read_write` 即可切换。使用 `--manual` 时也接受同一
+参数；`manual-cli` 生成的命令中已有该参数，直接修改其值即可。
+`--preprocessing-cache-root cache/preprocessing` 可指定 V5 内的缓存目录，
+`--preprocessing-cache-namespaces imu_calibration,canonical_signal_views,raw_windows`
+可选择缓存层；可选层另有 `motion_windows`，仅在对应运动分支运行时使用。
+减少缓存层不会关闭相应算法，只会让未缓存的阶段重新计算。
+
+使用 `sweep.py` 时，在所选 study YAML 的现有 `execution` 下修改
+`preprocessing_cache`，保留其他 execution 配置，再照常运行计划：
+
+```yaml
+execution:
+  # 保留原有 repeats、folds、device 等字段。
+  preprocessing_cache:
+    mode: off  # 或 read_only、read_write
+    root: cache/preprocessing
+    namespaces: [imu_calibration, canonical_signal_views, raw_windows]
+    verify_source_sha256: true
+```
+
+Dash 的 Run 页可用 cache 模式下拉框控制普通训练；sweep 使用所选 study YAML
+中的 cache 配置。已有 pipeline 结果的报告生成及已导出模型的推理不需要这些
+预处理 cache。清理磁盘前应确认没有训练任务正在使用缓存目录；关闭开关本身
+不会释放已有文件占用的空间。
+
 ## 输出结构
 
 三个输出根目录与 README 同级：
@@ -286,22 +334,6 @@ Tools 提供执行审计、导出与专项报告入口。
 
 单 participant 输入可查看质量、概率与分类；ROC/AUC、cohort confusion matrix
 和显著性检验需要有标注、满足相应类别和样本要求的多 participant 数据。
-
-## 数值复现
-
-比较版本时应使用相同输入、受试者划分和配置，并同步参考环境。下面的命令比较
-同一 case 的 25 个 fold 输出，浮点容差为 `atol=1e-6, rtol=0`：
-
-```bash
-python tools/compare_v2_v5_outputs.py \
-  --v2-output <V2-case-directory> \
-  --v5-output pipeline_output/finalcase_v5_01/tuned_all_roles__inception_small_no_gravity \
-  --expected-folds 25 \
-  --atol 1e-6 \
-  --write pipeline_output/finalcase_v5_01/v2_v5_numeric_equivalence.json
-```
-
-环境清单与模块测试提供复现依据，实际数值是否一致以完整输出比较为准。
 
 ## 文档
 
