@@ -1,2105 +1,997 @@
-"""Dash presentation adapter for the complete V5 control surface."""
+"""Notebook-style control panel. Widgets own the current configuration."""
 from __future__ import annotations
+
+import copy
+from dataclasses import replace
+import hashlib
 import json
-import re
 from pathlib import Path
-from typing import Any, Mapping, Sequence
-import numpy as np
+import shlex
+from typing import Any, Mapping
+import uuid
 import yaml
-from .control_service import (
-    CommandRequest, INFERENCE_SOURCE_CONFIRMATION, INHERIT_MODULE, MISSING_B_TODO,
-    SINGLE_PARTICIPANT_NOTICE, V5ControlService, WORKFLOW_STAGES,
-    comparison_sequence_cli, comparison_sequence_export_yaml, flatten_parameters,
-)
+
+from .control_service import (CommandRequest, V5ControlService,
+                              comparison_sequence_cli, comparison_sequence_export_yaml)
 from .job_manager import DashboardJobManager
 from .preview_service import PipelinePreviewService
 
-COLORS = {
-    'background': '#f3f6f8',
-    'panel': '#ffffff',
-    'ink': '#17212b',
-    'muted': '#65717f',
-    'accent': '#176b68',
-    'accent_soft': '#e4f2f0',
-    'border': '#d8e0e5',
-    'warning': '#9a5b00',
-    'danger': '#a33a32'
-}
-TOOL_OPTIONS: tuple[tuple[str, str], ...] = (
-    ('Pipeline validate', 'pipeline_validate'), ('Show config', 'show_config'),
-    ('Sweep validate', 'sweep_validate'), ('Rebuild index', 'pipeline_index'),
-    ('Export model config', 'model_export'), ('Pipeline Excel', 'pipeline_excel'),
-    ('Report Excel', 'report_excel'), ('Execution audit', 'execution_audit'),
-    ('Special validate', 'specialized_validate'),
-    ('Special analyse', 'specialized_run'), ('Special report', 'specialized_report'),
-    ('Special pipe check', 'specialized_pipeline_validate'),
-    ('Special pipe run', 'specialized_pipeline_run'),
-    ('Special CV complete', 'specialized_pipeline_complete'),
+STAGES = (
+    ('input', 'Input recordings'), ('ppg', 'PPG preprocessing'),
+    ('imu', 'IMU preprocessing'), ('motion', 'Motion detector'),
+    ('quality', 'Signal quality'), ('denoiser', 'Motion denoiser'),
+    ('features', 'Feature engineering'), ('representation', 'Representation'),
+    ('model', 'Machine learning model'), ('aggregation', 'Aggregation'),
 )
-EQUIVALENT_SURFACE_NOTICE = (
-    'Every displayed execution request uses a public parser-backed CLI, although '
-    'not every CLI subcommand has a same-named button. Ablation/grid use the '
-    'comparison queue and run-plan uses Sweep. Read-only catalogs use '
-    'Configure/Analyse; Preview and Stop are local UI controls.'
-)
-_TOOL_SUBCOMMANDS = {
-    'pipeline.py': frozenset({'validate', 'show-config', 'index'}),
-    'sweep.py': frozenset({'validate', 'export-excel'}),
-    'analyse_report.py': frozenset({
-        'export-excel', 'execution-audit', 'specialized-validate',
-        'specialized-run', 'specialized-report'
-    }),
-    'specialized_pipeline.py': frozenset({'validate', 'run', 'complete'})
+GRID = {'display': 'grid', 'gridTemplateColumns': 'repeat(auto-fit,minmax(min(100%,280px),1fr))', 'gap': '16px'}
+TOOLS = {
+    'pipeline_validate': ('Pipeline validate', 'pipeline.py', 'validate', False),
+    'show_config': ('Show config', 'pipeline.py', 'show-config', False),
+    'sweep_validate': ('Sweep validate', 'sweep.py', 'validate', False),
+    'pipeline_index': ('Rebuild index', 'pipeline.py', 'index', False),
+    'model_export': ('Export model config', 'pipeline.py', 'export-model-config', False),
+    'pipeline_excel': ('Pipeline Excel', 'sweep.py', 'export-excel', False),
+    'report_excel': ('Report Excel', 'analyse_report.py', 'export-excel', False),
+    'execution_audit': ('Execution audit', 'analyse_report.py', 'execution-audit', False),
+    'specialized_validate': ('Special validate', 'analyse_report.py', 'specialized-validate', False),
+    'specialized_run': ('Special analyse', 'analyse_report.py', 'specialized-run', False),
+    'specialized_report': ('Special report', 'analyse_report.py', 'specialized-report', False),
+    'specialized_pipeline_validate': ('Special pipe check', 'specialized_pipeline.py', 'validate', False),
+    'specialized_pipeline_run': ('Special pipe train', 'specialized_pipeline.py', 'run', True),
+    'specialized_pipeline_complete': ('Special CV complete', 'specialized_pipeline.py', 'complete', True),
 }
 
 
-def _options(values: Sequence[str]) -> list[dict[str, str]]:
-    return [{'label': value, 'value': value} for value in values]
+def _tool_parser(script: str) -> Any:
+    from ..v5 import cli, sweep, specialized
+    from ..v5_reporting import cli as reporting
+    return {'pipeline.py': cli, 'sweep.py': sweep, 'specialized_pipeline.py': specialized,
+            'analyse_report.py': reporting}[script].build_parser()
 
 
-def _panel(children: Any, *, style: Mapping[str, Any] | None = None) -> Any:
+def _tool_request(operation: str, arguments: str) -> CommandRequest:
+    """Use the actual public parser, not another dashboard option validator."""
+    import contextlib
+    import io
+    _, script, command, _ = TOOLS[operation]
+    argv = [command, *shlex.split(arguments or '')]
+    stream = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(stream), contextlib.redirect_stdout(stream):
+            _tool_parser(script).parse_args(argv)
+    except SystemExit as error:
+        raise ValueError(stream.getvalue().strip()) from error
+    return V5ControlService._command_request(script, argv)
+
+
+def _json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, indent=2, default=str)
+
+
+def _options(values: Any) -> list:
+    return [{'label': str(v), 'value': v} for v in values]
+
+
+def _button(label: str, identity: Any, **kwargs: Any) -> Any:
     from dash import html
-    merged = {'background': COLORS['panel'], 'border': f"1px solid {COLORS['border']}", 'borderRadius': '10px', 'padding': '14px'}
-    merged.update(dict(style or {}))
-    return html.Div(children, style=merged)
+    return html.Button(label, id=identity, n_clicks=0, **kwargs)
 
 
-def _button(label: str, component_id: str, *, danger: bool = False, disabled: bool = False) -> Any:
+def _field(label: str, component: Any) -> Any:
     from dash import html
-    if len(label) > 20:
-        raise ValueError('dashboard button labels must not exceed 20 characters')
-    return html.Button(label,
-                       id=component_id,
-                       n_clicks=0,
-                       disabled=disabled,
-                       style={
-                           'border': 0,
-                           'borderRadius': '7px',
-                           'padding': '9px 15px',
-                           'fontWeight': 700,
-                           'cursor': 'pointer',
-                           'background': COLORS['danger'] if danger else COLORS['accent'],
-                           'color': 'white'
-                       })
+    return html.Div([html.Label(label), component], className='field')
 
 
-def _error(error: BaseException) -> str:
-    return f'{type(error).__name__}: {error}'
+def _table(rows: list[dict]) -> Any:
+    from dash import dash_table
+    keys = list(dict.fromkeys(k for r in rows for k in r))
+    rows = [{k: _json(v) if isinstance(v, (dict, list, tuple)) else v for k, v in r.items()} for r in rows]
+    return dash_table.DataTable(
+        data=rows, columns=[{'name': k, 'id': k} for k in keys],
+        page_size=12, sort_action='native', filter_action='native',
+        style_table={'overflowX': 'auto'},
+        style_cell={'textAlign': 'left', 'padding': '7px', 'maxWidth': '450px',
+                    'whiteSpace': 'normal', 'fontFamily': 'inherit', 'fontSize': 12})
 
 
-def _module_controls(catalog: Mapping[str, Sequence[Mapping[str, Any]]], defaults: Mapping[str, Any],
-                     features: Sequence[str]) -> list[Any]:
+def _parameter_control(spec: Mapping[str, Any], namespace: str = 'param') -> Any:
     from dash import dcc, html
-    controls = []
-    for family, rows in catalog.items():
-        values = [str(row['module_id']) for row in rows]
-        is_feature = family == 'feature_group'
-        value: Any = list(features) if is_feature else defaults.get(family, INHERIT_MODULE)
-        choices = [{'label': value_id, 'value': value_id, 'title': str(row.get('notes', ''))} for value_id, row in zip(values, rows)]
-        if not is_feature:
-            choices.insert(
-                0, {
-                    'label': 'YAML value / inactive',
-                    'value': INHERIT_MODULE,
-                    'title': 'Keep the complete resolved YAML value; no module override.'
-                })
-        controls.append(
-            html.Div([
-                html.Label(family.replace('_', ' '),
-                           title='Feature groups are composable; other families are mutually exclusive.',
-                           style={
-                               'fontSize': '12px',
-                               'fontWeight': 700
-                           }),
-                dcc.Dropdown(id={
-                    'type': 'module-select',
-                    'family': family
-                },
-                             options=choices,
-                             value=value,
-                             multi=is_feature,
-                             clearable=True,
-                             placeholder='Select modules' if is_feature else 'Use YAML value')
-            ],
-                     style={'minWidth': '230px'}))
-    return controls
+    path, value, kind = spec['path'], spec['value'], spec['kind']
+    identity = {'type': namespace, 'path': path}
+    if kind in {'number', 'integer'}:
+        component = html.Div([
+            dcc.Slider(id={'type': namespace+'-slide', 'path': path}, value=value,
+                       min=spec['min'], max=spec['max'], step=spec['step'], marks=None,
+                       tooltip={'placement': 'bottom', 'always_visible': False}),
+            dcc.Input(id={'type': namespace+'-number', 'path': path}, value=value, type='number', step=spec['step'], debounce=True),
+        ], className='numeric-control')
+    elif kind == 'boolean':
+        component = dcc.Checklist(id=identity, options=[{'label': 'Enabled', 'value': True}], value=[True] if value else [])
+    elif kind in {'select', 'multi'}:
+        choices = [{'label': 'Inherit / unset' if item is None else str(item),
+                    'value': '__inherit__' if item is None else item} for item in spec['choices']]
+        component = (dcc.Checklist(id=identity, options=choices, value=value or []) if kind == 'multi'
+                     else dcc.Dropdown(id=identity, options=choices,
+                         value='__inherit__' if value is None and None in spec['choices'] else value,
+                         clearable=bool(spec.get('nullable'))))
+    else:
+        text = value if isinstance(value, str) else yaml.safe_dump(value, default_flow_style=True).strip().removesuffix('...').strip()
+        component = dcc.Input(id=identity, value=text, type='text', debounce=True)
+    label = path.replace('~1', '.').replace('~0', '~') if namespace == 'plan-param' else path
+    return html.Div([html.Label(label.rsplit('.', 1)[-1], title=label), component,
+                     html.Small(label, title=str(spec.get('range', '')))], className='parameter')
 
 
-def _as_json(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True, default=str)
+def _widget_values(specifications: list, identities: list | None, values: list | None) -> dict:
+    specs = {row['path']: row for row in specifications}
+    output = {}
+    for identity, value in zip(identities or [], values or []):
+        path = identity['path']
+        if path not in specs:
+            continue  # A replaced algorithm's widgets can still be in flight.
+        kind = specs[path]['kind']
+        if value == '__inherit__' and None in specs[path]['choices']:
+            value = None
+        elif kind == 'boolean':
+            value = bool(value)
+        elif kind == 'text' and 'action' in specs[path]:
+            if specs[path]['value'] is None and (value is None or str(value).strip() in {'', 'null'}):
+                value = None
+        elif kind == 'list' or (kind == 'text' and not isinstance(specs[path]['value'], str)):
+            value = yaml.safe_load(value) if isinstance(value, str) else value
+        output[path] = value
+    return output
 
 
-def _lines(value: str | None) -> list[str]:
-    """Parse repeatable CLI values without comma/path ambiguity."""
-    return [line.strip() for line in str(value or '').splitlines() if line.strip()]
+def _control_values(config: Mapping, identities: list, values: list, root: Path) -> dict:
+    from .workflow_controls import grouped_parameter_specs
+    return _widget_values(grouped_parameter_specs(config, pipeline_root=root), identities, values)
 
 
-_CLOSED_NUMERIC_RANGE = re.compile(
-    '^(?:finite )?(?:float|integer) in \\[\\s*(-?(?:\\d+(?:\\.\\d*)?|\\.\\d+))\\s*,\\s*(-?(?:\\d+(?:\\.\\d*)?|\\.\\d+))\\s*\\](?:;.*)?$'
-)
+def _tool_download_command(request: Mapping) -> str:
+    """A downloaded plan command recreates its snapshot, without a UI-side write."""
+    prefix = ''
+    if request.get('config_sha256'):
+        path = f"pipeline_output/.dashboard_requests/plans/{request['config_sha256']}.yaml"
+        code = (f'from pathlib import Path; p=Path({path!r}); p.parent.mkdir(parents=True, exist_ok=True); '
+                f"p.write_text({request['resolved_yaml']!r}, encoding='utf-8')")
+        prefix = shlex.join(['python', '-c', code])+'\n'
+    return prefix+request['display']+'\n'
 
 
-def _slider_bounds(row: Mapping[str, Any], value: int | float) -> tuple[int | float, int | float] | None:
-    """Read only closed finite bounds declared by the live parameter catalog."""
-    if str(row.get('control', '')) != 'parameter':
-        return None
-    description = str(row.get('range', '')).strip()
-    if description == 'integer 0 or 1':
-        return (0, 1)
-    match = _CLOSED_NUMERIC_RANGE.fullmatch(description)
-    if match is None:
-        return None
-    lower, upper = (float(match.group(index)) for index in (1, 2))
-    if not np.isfinite(lower) or not np.isfinite(upper) or lower >= upper:
-        return None
-    if float(value) < lower or float(value) > upper:
-        return None
-    if isinstance(value, int):
-        if not lower.is_integer() or not upper.is_integer():
-            return None
-        if upper - lower > 10000:
-            return None
-        return (int(lower), int(upper))
-    return (lower, upper)
-
-
-def _numeric_sliders(rows: Sequence[Mapping[str, Any]]) -> list[Any]:
-    """Build catalog-bound quick picks; never infer a validation range."""
+def _render_preview(preview: Mapping | None) -> list:
     from dash import dcc, html
-    controls = []
-    for row in rows:
-        try:
-            value = yaml.safe_load(str(row['value_yaml']))
-        except yaml.YAMLError:
-            continue
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            continue
-        numeric = float(value)
-        if not np.isfinite(numeric):
-            continue
-        bounds = _slider_bounds(row, value)
-        if bounds is None:
-            continue
-        minimum, maximum = bounds
-        marks = {choice: f'{choice:g}' if isinstance(choice, float) else str(choice) for choice in sorted({minimum, value, maximum})}
-        controls.append(
-            html.Div([
-                html.Label(
-                    f"{row['path']} · {row['range']}",
-                    title=
-                    'Quick picks use only closed bounds from the live pipeline.py parameters catalog. Edit the table for other valid values.',
-                    style={
-                        'fontSize': '11px',
-                        'fontFamily': 'monospace'
-                    }),
-                dcc.Slider(id={
-                    'type': 'parameter-slider',
-                    'path': str(row['path'])
-                },
-                           min=minimum,
-                           max=maximum,
-                           step=None,
-                           marks=marks,
-                           value=value,
-                           tooltip={
-                               'placement': 'bottom',
-                               'always_visible': False
-                           })
-            ],
-                     style={'padding': '4px 6px'}))
-    return controls
-
-
-def create_app(pipeline_root: str | Path | None = None,
-               *,
-               control_service: V5ControlService | None = None,
-               preview_service: PipelinePreviewService | None = None,
-               job_manager: DashboardJobManager | None = None) -> Any:
-    """Create, but do not start, the local V5 control panel."""
-    from dash import ALL, Dash, Input, Output, State, callback_context, dash_table, dcc, html, no_update
     import plotly.graph_objects as go
+    if not preview:
+        return [html.Div('Analyse computes missing upstream stages automatically.', className='empty-preview')]
+    output = []
+    if preview.get('traces'):
+        from plotly.subplots import make_subplots
+        def group(name):
+            name = name.removeprefix('first_window_')
+            if name.startswith('native_') or name in {'RED', 'IR'}:
+                return 'PPG windows' if preview.get('metadata', {}).get('stage') == 'representation' else 'Native PPG'
+            if name.startswith(('filtered_', 'direct_', 'reduced_')) or name.endswith('_peaks'):
+                return 'Filtered / recovered PPG'
+            if name in {'AX', 'AY', 'AZ'} or name.startswith(('acc_', 'gravity_', 'dynamic_')):
+                return 'Acceleration'
+            if name in {'GX', 'GY', 'GZ'} or name.startswith('gyro_'):
+                return 'Angular velocity'
+            if name.startswith('jerk_'):
+                return 'Acceleration change'
+            if name in {'roll_rad', 'pitch_rad'}:
+                return 'Orientation'
+            return 'Scores / state'
+        groups = list(dict.fromkeys(group(name) for name in preview['traces']))
+        figure = make_subplots(rows=len(groups), cols=1, shared_xaxes=True, subplot_titles=groups,
+                               vertical_spacing=min(.1, .3 / len(groups)))
+        for name, points in preview['traces'].items():
+            figure.add_trace(go.Scattergl(x=points['x'], y=points['y'],
+                                         mode='markers' if name.endswith('_peaks') else 'lines', name=name),
+                             row=groups.index(group(name)) + 1, col=1)
+        figure.update_layout(template='plotly_white', height=max(350, 220 * len(groups)),
+                             margin=dict(l=50, r=20, t=35, b=40), legend=dict(orientation='h'), uirevision='signal')
+        figure.update_xaxes(title_text='Time / s', row=len(groups), col=1)
+        output.append(dcc.Graph(figure=figure, config={'displaylogo': False}))
+    for title, rows in preview.get('tables', {}).items():
+        if rows:
+            output.extend([html.H4(title.replace('_', ' ')), _table(list(rows))])
+            if title in {'recordings', 'participants'} and any(row.get('probabilities') for row in rows):
+                chart = go.Figure()
+                for row in rows:
+                    if row.get('probabilities'):
+                        names = preview.get('metadata', {}).get('class_names') or [f'class {i}' for i in range(len(row['probabilities']))]
+                        chart.add_bar(x=names, y=row['probabilities'],
+                                      name=str(row.get('participant_id') if title == 'participants' else row.get('file_id')))
+                chart.update_layout(template='plotly_white', height=300, yaxis_title='Probability', yaxis_range=[0, 1])
+                output.append(dcc.Graph(figure=chart, config={'displaylogo': False}))
+    if preview.get('metadata'):
+        output.append(html.Details([html.Summary('Stage details'), html.Pre(_json(preview['metadata']))]))
+    return output
+
+
+def _asset_choices(root: Path) -> dict:
+    found = {'sqi': [], 'motion': [], 'model': []}
+    patterns = {'sqi': ('*sqi*calibration*.json', '*component*calibration*.json'),
+                'motion': ('*motion*evidence*.json', '*internal*evidence*.json'),
+                'model': ('manifest.json',)}
+    for directory in ('pipeline_output', 'model_config', 'artifacts'):
+        base = root / directory
+        if not base.is_dir():
+            continue
+        for family, globs in patterns.items():
+            for pattern in globs:
+                for path in base.rglob(pattern):
+                    if family == 'model' and not ('model' in str(path.parent) or 'bundle' in str(path.parent)):
+                        continue
+                    found[family].append(str((path.parent if family == 'model' else path).relative_to(root)))
+    return {k: sorted(set(v)) for k, v in found.items()}
+
+
+def _training_request(control: V5ControlService, config: Mapping, options: Mapping,
+                      source_yaml: str | None = None) -> CommandRequest:
+    """Replace entire sections, avoiding stale fields after algorithm switches."""
+    source = source_yaml if source_yaml in control.yaml_paths() else 'configs/presets/baseline.yaml'
+    rows = [{'path': key, 'value_yaml': yaml.safe_dump(value, default_flow_style=True).strip(),
+             'original_yaml': '__dashboard_snapshot__'}
+            for key, value in config.items() if key not in {'schema_version', 'config_id'}]
+    return control.build_train_request(
+        config_path=source, parameter_rows=rows, config_id=str(config['config_id']),
+        repeats=options.get('repeats') or 'all', folds=options.get('folds') or 'all',
+        jobs=int(options.get('jobs') or 1), device=str(config['training'].get('device', 'cpu')),
+        cache_mode=options.get('cache_mode') or 'off', cache_root=options.get('cache_root') or 'cache/preprocessing',
+        run_name=options.get('run_name') or None, refit=bool(options.get('refit')),
+        dry_run=bool(options.get('dry_run')), resume=options.get('resume') or None)
+
+
+def create_app(pipeline_root: str | Path | None = None, *, control_service=None,
+               preview_service=None, job_manager=None, workflow_service=None) -> Any:
+    from dash import ALL, MATCH, Dash, Input, Output, State, ctx, dcc, html, dash_table, no_update
+    from .workflow_controls import default_configuration, grouped_parameter_specs, apply_control_values
+    from .tool_controls import (command_parameter_specs, arguments_from_values,
+                                plan_parameter_specs, apply_plan_values)
+    from .workflow_service import WorkflowService
+    from ..v5_reporting.registry import KNOWN_FIGURES, KNOWN_TABLES, MODULES, PRESETS
+    from ..v5_reporting.contracts import REPORT_MODES
+
     control = control_service or V5ControlService(pipeline_root)
-    preview = preview_service or PipelinePreviewService(control.pipeline_root)
-    jobs = job_manager or DashboardJobManager(control.pipeline_root)
+    root = control.pipeline_root
+    browser = preview_service or PipelinePreviewService(root)
+    jobs = job_manager or DashboardJobManager(root)
+    workflow = workflow_service or WorkflowService(root)
+    defaults = default_configuration(root)
     try:
-        records = preview.records()
-    except Exception:
+        records = browser.records()
+    except (OSError, ValueError):
         records = ()
-    participants = sorted({row.participant_id for row in records})
-    roles = sorted({row.role for row in records})
-    from ..v5_reporting.registry import KNOWN_FIGURES, KNOWN_TABLES, MODULES as REPORT_MODULES, PRESETS as REPORT_PRESETS
-    yaml_paths = list(control.yaml_paths())
-    study_plan_paths = list(control.study_plan_paths())
-    model_exports = list(control.model_exports())
-    study_outputs = list(control.study_outputs())
-    report_outputs = list(control.report_outputs())
-    report_module_ids = sorted((module.name for module in REPORT_MODULES))
-    try:
-        parameter_contract = control.parameter_contract()
-        parameter_contract_notice = 'Only closed finite ranges from the live parameter catalog appear here. The YAML table and canonical resolver remain authoritative.'
-    except (FileNotFoundError, KeyError, RuntimeError, TypeError, ValueError) as error:
-        parameter_contract = {}
-        parameter_contract_notice = f'Live parameter guidance is unavailable; edit the YAML table and rely on the canonical resolver. {_error(error)}'
-    app = Dash(__name__, title='PPG Frailty V5', suppress_callback_exceptions=True)
-    app.layout = html.Div(
-        [
-            dcc.Store(id='config-state'),
-            dcc.Store(id='train-request'),
-            dcc.Store(id='inference-request'),
-            dcc.Store(id='analysis-request'),
-            dcc.Store(id='active-train-job'),
-            dcc.Store(id='active-report-job'),
-            dcc.Store(id='tool-request'),
-            dcc.Store(id='active-tool-job'),
-            dcc.Store(id='preview-store'),
-            dcc.Store(id='comparison-store', data=[]),
-            dcc.Store(id='comparison-execution-request'),
-            dcc.Download(id='download-cli'),
-            dcc.Download(id='download-yaml'),
-            dcc.Download(id='download-sequence-cli'),
-            dcc.Download(id='download-sequence-yaml'),
-            dcc.Download(id='download-comparison-run-cli'),
-            dcc.Download(id='download-comparison-run-yaml'),
-            dcc.Download(id='download-inference-cli'),
-            dcc.Download(id='download-inference-yaml'),
-            dcc.Download(id='download-analysis-cli'),
-            dcc.Download(id='download-analysis-yaml'),
-            dcc.Download(id='download-tool-cli'),
-            dcc.Download(id='download-tool-yaml'),
-            dcc.Interval(id='job-poll', interval=1500, n_intervals=0),
-            html.Div(
-                [
-                    html.Div([
-                        html.H1('PPG Frailty V5', style={'margin': 0}),
-                        html.Div('One validated control plane for CLI and Dash', style={'color': COLORS['muted']})
-                    ]),
-                    html.Div('LOCAL · HASH-BOUND · FAIL-CLOSED', style={
-                        'fontWeight': 700,
-                        'color': COLORS['accent']
-                    })
-                ],
-                style={
-                    'display': 'flex',
-                    'flexWrap': 'wrap',
-                    'gap': '10px',
-                    'justifyContent': 'space-between',
-                    'alignItems': 'center',
-                    'marginBottom': '14px'
-                }),
-            html.Div(
-                [html.Div(SINGLE_PARTICIPANT_NOTICE),
-                 html.Div(MISSING_B_TODO, style={'marginTop': '5px'})],
-                style={
-                    'background': '#fff6e6',
-                    'border': '1px solid #eed29c',
-                    'color': COLORS['warning'],
-                    'padding': '10px 13px',
-                    'borderRadius': '8px',
-                    'fontSize': '13px',
-                    'marginBottom': '14px'
-                }),
-            dcc.Tabs(
-                value='configure',
-                children=[
-                    dcc.Tab(label='Configure',
-                            value='configure',
-                            children=html.Div([
-                                _panel([
-                                    html.H3('Configuration source', style={'marginTop': 0}),
-                                    dcc.RadioItems(id='config-source',
-                                                   options=[{
-                                                       'label': 'Selected YAML',
-                                                       'value': 'yaml'
-                                                   }, {
-                                                       'label': 'model_config defaults',
-                                                       'value': 'model_config'
-                                                   }],
-                                                   value='yaml',
-                                                   inline=True),
-                                    html.Div(
-                                        [
-                                            html.Div([
-                                                html.Label('Training YAML'),
-                                                dcc.Dropdown(id='training-yaml',
-                                                             options=_options(yaml_paths),
-                                                             value=None,
-                                                             placeholder='Required before Train')
-                                            ]),
-                                            html.Div([
-                                                html.Label('model_config export'),
-                                                dcc.Dropdown(id='model-export',
-                                                             options=_options(model_exports),
-                                                             value=model_exports[0] if model_exports else None,
-                                                             placeholder='No export available')
-                                            ]),
-                                            html.Div([
-                                                html.Label('Export case'),
-                                                dcc.Dropdown(id='model-case', placeholder='Select case')
-                                            ])
-                                        ],
-                                        style={
-                                            'display': 'grid',
-                                            'gridTemplateColumns': 'repeat(auto-fit,minmax(min(100%,230px),1fr))',
-                                            'gap': '12px',
-                                            'marginTop': '12px'
-                                        }),
-                                    html.Div([
-                                        _button('Load', 'load-config'),
-                                        _button('Refresh', 'refresh-configs'),
-                                        html.Span(id='config-status')
-                                    ],
-                                             style={
-                                                 'display': 'flex',
-                                                 'gap': '12px',
-                                                 'alignItems': 'center',
-                                                 'marginTop': '12px'
-                                             })
-                                ]),
-                                _panel([
-                                    html.H3('Modules', style={'marginTop': 0}),
-                                    html.Div('Each family is a mutually exclusive dropdown; feature_group is composable.',
-                                             style={
-                                                 'color': COLORS['muted'],
-                                                 'fontSize': '13px'
-                                             }),
-                                    html.Div(id='module-controls',
-                                             style={
-                                                 'display': 'grid',
-                                                 'gridTemplateColumns': 'repeat(auto-fit,minmax(min(100%,230px),1fr))',
-                                                 'gap': '10px',
-                                                 'marginTop': '12px'
-                                             })
-                                ],
-                                       style={'marginTop': '12px'}),
-                                _panel([
-                                    html.H3('All parameters', style={'marginTop': 0}),
-                                    html.Details([
-                                        html.Summary('Contract-bound numeric shortcuts'),
-                                        html.Div(parameter_contract_notice,
-                                                 style={
-                                                     'color': COLORS['muted'],
-                                                     'fontSize': '12px',
-                                                     'marginTop': '6px'
-                                                 }),
-                                        html.Div(id='parameter-sliders',
-                                                 style={
-                                                     'display': 'grid',
-                                                     'gridTemplateColumns': 'repeat(auto-fit,minmax(min(100%,260px),1fr))',
-                                                     'gap': '5px',
-                                                     'margin': '10px 0'
-                                                 })
-                                    ]),
-                                    dash_table.DataTable(id='parameter-table',
-                                                         columns=[{
-                                                             'name': 'path',
-                                                             'id': 'path',
-                                                             'editable': False
-                                                         }, {
-                                                             'name': 'value (YAML)',
-                                                             'id': 'value_yaml',
-                                                             'editable': True
-                                                         }, {
-                                                             'name': 'type',
-                                                             'id': 'type',
-                                                             'editable': False
-                                                         }, {
-                                                             'name': 'control',
-                                                             'id': 'control',
-                                                             'editable': False
-                                                         }, {
-                                                             'name': 'accepted range',
-                                                             'id': 'range',
-                                                             'editable': False
-                                                         }, {
-                                                             'name': 'CLI input',
-                                                             'id': 'input',
-                                                             'editable': False
-                                                         }, {
-                                                             'name': 'original',
-                                                             'id': 'original_yaml'
-                                                         }],
-                                                         hidden_columns=['original_yaml'],
-                                                         data=[],
-                                                         editable=True,
-                                                         filter_action='native',
-                                                         sort_action='native',
-                                                         page_size=18,
-                                                         style_table={'overflowX': 'auto'},
-                                                         style_cell={
-                                                             'fontFamily': 'monospace',
-                                                             'fontSize': 11,
-                                                             'padding': '6px'
-                                                         },
-                                                         style_header={
-                                                             'fontWeight': 700,
-                                                             'background': '#edf3f4'
-                                                         })
-                                ],
-                                       style={'marginTop': '12px'})
-                            ],
-                                              style={'paddingTop': '14px'})),
-                    dcc.Tab(label='Workflow',
-                            value='workflow',
-                            children=html.Div([
-                                _panel([
-                                    html.H3('Executable workflow', style={'marginTop': 0}),
-                                    dash_table.DataTable(data=list(WORKFLOW_STAGES),
-                                                         columns=[{
-                                                             'name': key,
-                                                             'id': key
-                                                         } for key in ('stage', 'families', 'preview')],
-                                                         style_cell={
-                                                             'textAlign': 'left',
-                                                             'whiteSpace': 'normal',
-                                                             'height': 'auto',
-                                                             'padding': '8px'
-                                                         },
-                                                         style_header={
-                                                             'fontWeight': 700,
-                                                             'background': '#edf3f4'
-                                                         })
-                                ]),
-                                html.Div(
-                                    [
-                                        _panel([
-                                            html.H3('Stage preview', style={'marginTop': 0}),
-                                            html.Label('Participant'),
-                                            dcc.Dropdown(id='preview-participant',
-                                                         options=_options(participants),
-                                                         value=participants[0] if participants else None),
-                                            html.Label('Role', style={
-                                                'display': 'block',
-                                                'marginTop': '9px'
-                                            }),
-                                            dcc.Dropdown(
-                                                id='preview-role', options=_options(roles), value=None, placeholder='All roles'),
-                                            html.Label('Recording', style={
-                                                'display': 'block',
-                                                'marginTop': '9px'
-                                            }),
-                                            dcc.Dropdown(id='preview-record'),
-                                            html.Div([
-                                                dcc.Input(
-                                                    id='preview-start', type='number', value=0, min=0, step=1, placeholder='Start s'),
-                                                dcc.Input(id='preview-duration',
-                                                          type='number',
-                                                          value=20,
-                                                          min=1,
-                                                          max=120,
-                                                          step=1,
-                                                          placeholder='Duration s')
-                                            ],
-                                                     style={
-                                                         'display': 'flex',
-                                                         'flexWrap': 'wrap',
-                                                         'gap': '8px',
-                                                         'marginTop': '9px'
-                                                     }),
-                                            dcc.Checklist(id='preview-traces',
-                                                          options=_options(list(preview.DEFAULT_TRACES)),
-                                                          value=list(preview.DEFAULT_TRACES),
-                                                          style={'marginTop': '9px'}),
-                                            dcc.Dropdown(id='preview-stages',
-                                                         options=_options([
-                                                             'source', 'preprocess', 'quality_route', 'pulse_ppi', 'dual_optical',
-                                                             'morphology', 'engineering', 'representation_model', 'aggregation'
-                                                         ]),
-                                                         value=[
-                                                             'source', 'preprocess', 'quality_route', 'pulse_ppi', 'dual_optical',
-                                                             'morphology', 'engineering', 'representation_model', 'aggregation'
-                                                         ],
-                                                         multi=True),
-                                            html.Label('Completed training artifact', style={
-                                                'display': 'block',
-                                                'marginTop': '9px'
-                                            }),
-                                            dcc.Dropdown(id='preview-artifact-run',
-                                                         options=_options(study_outputs),
-                                                         value=study_outputs[0] if study_outputs else None,
-                                                         placeholder='N/A until a completed pipeline run is selected'),
-                                            html.Div([_button('Preview', 'preview')], style={'marginTop': '10px'}),
-                                            html.Div(id='preview-status', style={'marginTop': '8px'})
-                                        ]),
-                                        _panel([
-                                            dcc.Graph(id='time-graph', figure=go.Figure(), config={'displaylogo': False}),
-                                            dcc.Graph(id='spectrum-graph', figure=go.Figure(), config={'displaylogo': False}),
-                                            dash_table.DataTable(id='stage-table',
-                                                                 page_size=20,
-                                                                 filter_action='native',
-                                                                 style_cell={
-                                                                     'fontFamily': 'monospace',
-                                                                     'fontSize': 11,
-                                                                     'whiteSpace': 'normal',
-                                                                     'height': 'auto'
-                                                                 })
-                                        ])
-                                    ],
-                                    style={
-                                        'display': 'grid',
-                                        'gridTemplateColumns': 'repeat(auto-fit,minmax(min(100%,320px),1fr))',
-                                        'gap': '12px',
-                                        'marginTop': '12px'
-                                    })
-                            ],
-                                              style={'paddingTop': '14px'})),
-                    dcc.Tab(
-                        label='Run',
-                        value='run',
-                        children=html.Div([
-                            _panel([
-                                html.H3('Execution', style={'marginTop': 0}),
-                                html.Div([
-                                    dcc.Dropdown(
-                                        id='train-operation',
-                                        options=_options(['run', 'sweep']), value='run', clearable=False),
-                                    dcc.Dropdown(
-                                        id='sweep-plan', options=_options(study_plan_paths), value=None,
-                                        placeholder='Study-plan YAML'),
-                                    dcc.Input(id='run-name', value='', placeholder='Optional run name'),
-                                    dcc.Input(id='study-id', value='v5_dashboard', placeholder='Study ID'),
-                                    dcc.Input(id='study-purpose', value='V5 dashboard run', placeholder='Purpose'),
-                                    dcc.Input(id='config-id', value='', placeholder='Optional config ID'),
-                                    dcc.Dropdown(id='repeats',
-                                                 options=_options(['0', '1', '2', '3', '4']),
-                                                 value=['0', '1', '2', '3', '4'],
-                                                 multi=True,
-                                                 placeholder='Repeat subset 0..4'),
-                                    dcc.Dropdown(id='folds',
-                                                 options=_options(['0', '1', '2', '3', '4']),
-                                                 value=['0', '1', '2', '3', '4'],
-                                                 multi=True,
-                                                 placeholder='Fold subset 0..4'),
-                                    dcc.Input(id='jobs', type='number', value=1, min=1, step=1),
-                                    dcc.Dropdown(id='device', options=_options(['cuda', 'cpu']), value='cuda', clearable=False),
-                                    dcc.Dropdown(id='cache-mode',
-                                                 options=_options(['read_write', 'read_only', 'off']),
-                                                 value='read_write',
-                                                 clearable=False)
-                                ],
-                                         style={
-                                             'display': 'grid',
-                                             'gridTemplateColumns': 'repeat(auto-fit,minmax(min(100%,140px),1fr))',
-                                             'gap': '8px'
-                                         }),
-                                html.Div(
-                                    'Run uses Configure controls. Sweep executes the selected validated study plan exactly; its cases, resources, and cache settings remain authoritative.',
-                                    style={
-                                        'color': COLORS['muted'],
-                                        'fontSize': '12px',
-                                        'marginTop': '8px'
-                                    }),
-                                html.Details([
-                                    html.Summary('Advanced execution'),
-                                    html.Div(
-                                        [
-                                            dcc.Input(id='cache-root', value='', placeholder='Cache root'),
-                                            dcc.Input(id='cache-namespaces', value='', placeholder='cache namespaces'),
-                                            dcc.Textarea(
-                                                id='unset-paths', value='', placeholder='Optional --unset dotted paths, one per line'),
-                                            dcc.Input(id='resume-directory', value='', placeholder='Resume path'),
-                                            dcc.Checklist(id='execution-flags',
-                                                          options=[{
-                                                              'label': 'Continue on error',
-                                                              'value': 'continue'
-                                                          }, {
-                                                              'label': 'Measure costs',
-                                                              'value': 'costs'
-                                                          }, {
-                                                              'label': 'Hash predictions',
-                                                              'value': 'hash'
-                                                          }, {
-                                                              'label': 'Dry run',
-                                                              'value': 'dry'
-                                                          }],
-                                                          value=[],
-                                                          inline=True),
-                                            dcc.Checklist(
-                                                id='refit-enabled', options=[{
-                                                    'label': 'Final refit',
-                                                    'value': 'refit'
-                                                }], value=[])
-                                        ],
-                                        style={
-                                            'display': 'grid',
-                                            'gridTemplateColumns': 'repeat(auto-fit,minmax(min(100%,180px),1fr))',
-                                            'gap': '8px',
-                                            'marginTop': '8px'
-                                        }),
-                                    html.Div('Refit is available and defaults to off.',
-                                             style={
-                                                 'color': COLORS['muted'],
-                                                 'fontSize': '12px',
-                                                 'marginTop': '6px'
-                                             })
-                                ],
-                                             style={'marginTop': '9px'}),
-                                html.Div(id='request-status', style={'marginTop': '8px'}),
-                                html.Label('Equivalent CLI', style={
-                                    'display': 'block',
-                                    'marginTop': '10px',
-                                    'fontWeight': 700
-                                }),
-                                html.Pre(id='command-view',
-                                         style={
-                                             'whiteSpace': 'pre-wrap',
-                                             'background': '#f5f8f9',
-                                             'padding': '10px'
-                                         }),
-                                html.Label('Resolved YAML', style={
-                                    'display': 'block',
-                                    'fontWeight': 700
-                                }),
-                                html.Pre(id='resolved-view',
-                                         style={
-                                             'maxHeight': '320px',
-                                             'overflow': 'auto',
-                                             'background': '#f5f8f9',
-                                             'padding': '10px'
-                                         }),
-                                html.Div([
-                                    _button('Train', 'train', disabled=True),
-                                    _button('Stop', 'stop-train', danger=True),
-                                    _button('Download CLI', 'save-cli'),
-                                    _button('Download YAML', 'save-yaml')
-                                ],
-                                         style={
-                                             'display': 'flex',
-                                             'flexWrap': 'wrap',
-                                             'gap': '8px'
-                                         }),
-                                html.Div(id='train-status', style={
-                                    'marginTop': '10px',
-                                    'whiteSpace': 'pre-wrap'
-                                })
-                            ]),
-                            html.Div(
-                                [
-                                    _panel([
-                                        html.H3('Participant inference', style={'marginTop': 0}),
-                                        html.Label('Participant ID'),
-                                        dcc.Input(id='inference-participant-id',
-                                                  type='text',
-                                                  placeholder='Required participant_id',
-                                                  style={'width': '100%'},
-                                                  debounce=True),
-                                        html.Label('Optional existing manifest to import',
-                                                   style={
-                                                       'display': 'block',
-                                                       'marginTop': '8px'
-                                                   }),
-                                        dcc.Input(id='inference-manifest',
-                                                  type='text',
-                                                  placeholder='Local YAML/JSON manifest path',
-                                                  style={'width': '100%'},
-                                                  debounce=True),
-                                        html.Div(id='input-contract-status', style={
-                                            'fontSize': '12px',
-                                            'marginTop': '7px'
-                                        }),
-                                        dash_table.DataTable(
-                                            id='inference-file-table',
-                                            columns=[{
-                                                'name': 'file_id',
-                                                'id': 'file_id',
-                                                'editable': True
-                                            }, {
-                                                'name': 'path',
-                                                'id': 'path',
-                                                'editable': True
-                                            }, {
-                                                'name': 'role',
-                                                'id': 'role',
-                                                'editable': True,
-                                                'presentation': 'dropdown'
-                                            }, {
-                                                'name': 'label',
-                                                'id': 'label',
-                                                'editable': True
-                                            }],
-                                            data=[{
-                                                'file_id': '',
-                                                'path': '',
-                                                'role': 'B',
-                                                'label': ''
-                                            }],
-                                            editable=True,
-                                            row_deletable=True,
-                                            dropdown={
-                                                'role': {
-                                                    'options': _options(['B', 'R1', 'R2', 'R3', 'R4', 'S1', 'S2', 'W1', 'W2']),
-                                                    'clearable': False
-                                                }
-                                            },
-                                            page_size=8,
-                                            style_cell={
-                                                'fontFamily': 'monospace',
-                                                'fontSize': 10,
-                                                'textAlign': 'left'
-                                            }),
-                                        html.Div([_button('Add file', 'add-inference-file')], style={'marginTop': '8px'}),
-                                        dcc.Checklist(id='inference-source-contract',
-                                                      options=[{
-                                                          'label': INFERENCE_SOURCE_CONFIRMATION,
-                                                          'value': 'confirmed'
-                                                      }],
-                                                      value=[],
-                                                      style={
-                                                          'fontSize': '12px',
-                                                          'marginTop': '8px'
-                                                      }),
-                                        html.Div([
-                                            _button('Infer', 'infer'),
-                                            _button('Infer CLI', 'save-inference-cli'),
-                                            _button('Infer YAML', 'save-inference-yaml')
-                                        ],
-                                                 style={
-                                                     'display': 'flex',
-                                                     'flexWrap': 'wrap',
-                                                     'gap': '8px',
-                                                     'marginTop': '8px'
-                                                 }),
-                                        html.Label('Equivalent CLI', style={
-                                            'display': 'block',
-                                            'fontWeight': 700,
-                                            'marginTop': '9px'
-                                        }),
-                                        html.Pre(id='inference-command-view',
-                                                 style={
-                                                     'whiteSpace': 'pre-wrap',
-                                                     'background': '#f5f8f9',
-                                                     'padding': '8px'
-                                                 }),
-                                        html.Label('Resolved YAML', style={
-                                            'display': 'block',
-                                            'fontWeight': 700,
-                                            'marginTop': '9px'
-                                        }),
-                                        html.Pre(id='inference-yaml-view',
-                                                 style={
-                                                     'whiteSpace': 'pre-wrap',
-                                                     'maxHeight': '260px',
-                                                     'overflow': 'auto',
-                                                     'background': '#f5f8f9',
-                                                     'padding': '8px'
-                                                 }),
-                                        html.Div(SINGLE_PARTICIPANT_NOTICE,
-                                                 style={
-                                                     'fontSize': '12px',
-                                                     'color': COLORS['muted'],
-                                                     'marginTop': '8px'
-                                                 }),
-                                        html.Pre(id='infer-result',
-                                                 style={
-                                                     'whiteSpace': 'pre-wrap',
-                                                     'maxHeight': '270px',
-                                                     'overflow': 'auto'
-                                                 })
-                                    ]),
-                                    _panel([
-                                        html.H3('Comparison queue', style={'marginTop': 0}),
-                                        html.Div([
-                                            dcc.Input(id='comparison-name', placeholder='Case name'),
-                                            _button('Add', 'add-comparison'),
-                                            _button('Run queue', 'run-comparison'),
-                                            _button('Export CLI', 'export-sequence-cli'),
-                                            _button('Export YAML', 'export-sequence-yaml'),
-                                            _button('Run CLI', 'save-comparison-run-cli'),
-                                            _button('Run YAML', 'save-comparison-run-yaml')
-                                        ],
-                                                 style={
-                                                     'display': 'flex',
-                                                     'gap': '8px',
-                                                     'flexWrap': 'wrap'
-                                                 }),
-                                        html.Div(id='comparison-status', style={'marginTop': '8px'}),
-                                        html.Div(
-                                            'Run queue first materializes a parser-backed YAML. Use the Training Stop button above to terminate the whole submitted process group.',
-                                            style={
-                                                'color': COLORS['muted'],
-                                                'fontSize': '12px',
-                                                'marginTop': '6px'
-                                            }),
-                                        dash_table.DataTable(id='comparison-table',
-                                                             columns=[{
-                                                                 'name': 'order',
-                                                                 'id': 'order'
-                                                             }, {
-                                                                 'name': 'name',
-                                                                 'id': 'name'
-                                                             }, {
-                                                                 'name': 'config SHA',
-                                                                 'id': 'config_sha256'
-                                                             }, {
-                                                                 'name': 'CLI',
-                                                                 'id': 'display'
-                                                             }],
-                                                             data=[],
-                                                             style_cell={
-                                                                 'fontFamily': 'monospace',
-                                                                 'fontSize': 10,
-                                                                 'whiteSpace': 'normal',
-                                                                 'height': 'auto',
-                                                                 'textAlign': 'left'
-                                                             }),
-                                        html.Label('Sequential CLI', style={
-                                            'display': 'block',
-                                            'fontWeight': 700,
-                                            'marginTop': '9px'
-                                        }),
-                                        html.Pre(id='comparison-cli-view',
-                                                 style={
-                                                     'whiteSpace': 'pre-wrap',
-                                                     'maxHeight': '220px',
-                                                     'overflow': 'auto',
-                                                     'background': '#f5f8f9',
-                                                     'padding': '8px'
-                                                 }),
-                                        html.Label('Executable plan or sequential request YAML',
-                                                   style={
-                                                       'display': 'block',
-                                                       'fontWeight': 700,
-                                                       'marginTop': '9px'
-                                                   }),
-                                        html.Pre(id='comparison-yaml-view',
-                                                 style={
-                                                     'whiteSpace': 'pre-wrap',
-                                                     'maxHeight': '260px',
-                                                     'overflow': 'auto',
-                                                     'background': '#f5f8f9',
-                                                     'padding': '8px'
-                                                 }),
-                                        html.Label('Submitted execution CLI',
-                                                   style={
-                                                       'display': 'block',
-                                                       'fontWeight': 700,
-                                                       'marginTop': '9px'
-                                                   }),
-                                        html.Pre(id='comparison-run-cli-view',
-                                                 style={
-                                                     'whiteSpace': 'pre-wrap',
-                                                     'maxHeight': '160px',
-                                                     'overflow': 'auto',
-                                                     'background': '#e4f2f0',
-                                                     'padding': '8px'
-                                                 }),
-                                        html.Label('Materialized execution YAML',
-                                                   style={
-                                                       'display': 'block',
-                                                       'fontWeight': 700,
-                                                       'marginTop': '9px'
-                                                   }),
-                                        html.Pre(id='comparison-run-yaml-view',
-                                                 style={
-                                                     'whiteSpace': 'pre-wrap',
-                                                     'maxHeight': '260px',
-                                                     'overflow': 'auto',
-                                                     'background': '#e4f2f0',
-                                                     'padding': '8px'
-                                                 })
-                                    ])
-                                ],
-                                style={
-                                    'display': 'grid',
-                                    'gridTemplateColumns': 'repeat(auto-fit,minmax(min(100%,320px),1fr))',
-                                    'gap': '12px',
-                                    'marginTop': '12px'
-                                })
-                        ],
-                                          style={'paddingTop': '14px'})),
-                    dcc.Tab(
-                        label='Analyse',
-                        value='analyse',
-                        children=html.Div([
-                            _panel([
-                                html.H3('Analysis request', style={'marginTop': 0}),
-                                html.Div([
-                                    dcc.Dropdown(id='analysis-run',
-                                                 options=_options(study_outputs),
-                                                 value=[study_outputs[0]] if study_outputs else [],
-                                                 multi=True,
-                                                 placeholder='pipeline_output runs'),
-                                    dcc.Dropdown(id='analysis-mode',
-                                                 options=_options(['single', 'comparison', 'ablation', 'test']),
-                                                 value='single',
-                                                 clearable=False),
-                                    dcc.Dropdown(id='analysis-preset',
-                                                 options=_options(sorted(REPORT_PRESETS)),
-                                                 value='classification',
-                                                 clearable=False),
-                                    dcc.Input(id='analysis-reference', placeholder='Reference case'),
-                                    dcc.Input(id='analysis-factors', placeholder='factor.path,other.path'),
-                                    dcc.Input(id='report-name', placeholder='Optional report name')
-                                ],
-                                         style={
-                                             'display': 'grid',
-                                             'gridTemplateColumns': 'repeat(auto-fit,minmax(min(100%,150px),1fr))',
-                                             'gap': '8px'
-                                         }),
-                                html.Details([
-                                    html.Summary('Analysis contract'),
-                                    html.Div(
-                                        [
-                                            dcc.Input(id='include-cases', placeholder='include cases,comma'),
-                                            dcc.Input(id='exclude-cases', placeholder='exclude cases,comma'),
-                                            dcc.Input(
-                                                id='comparison-family', value='declared_comparison', placeholder='comparison family'),
-                                            dcc.Dropdown(id='validation-depth',
-                                                         options=_options(['full', 'selected']),
-                                                         value='full',
-                                                         clearable=False),
-                                            dcc.Dropdown(id='on-missing',
-                                                         options=_options(['na', 'error', 'skip']),
-                                                         value='na',
-                                                         clearable=False),
-                                            dcc.Checklist(id='analysis-flags',
-                                                          options=[{
-                                                              'label': 'V2 compatibility',
-                                                              'value': 'v2'
-                                                          }],
-                                                          value=['v2'])
-                                        ],
-                                        style={
-                                            'display': 'grid',
-                                            'gridTemplateColumns': 'repeat(auto-fit,minmax(min(100%,150px),1fr))',
-                                            'gap': '8px',
-                                            'marginTop': '8px'
-                                        })
-                                ],
-                                             style={'marginTop': '9px'}),
-                                html.Label('Analysis modules', style={
-                                    'display': 'block',
-                                    'marginTop': '9px'
-                                }),
-                                dcc.Dropdown(id='analysis-modules', options=_options(report_module_ids), value=[], multi=True),
-                                html.Div(
-                                    [
-                                        dcc.Dropdown(id='analysis-figures',
-                                                     options=_options(sorted(KNOWN_FIGURES)),
-                                                     value=None,
-                                                     multi=True,
-                                                     placeholder='Preset figures'),
-                                        dcc.Dropdown(id='analysis-tables',
-                                                     options=_options(sorted(KNOWN_TABLES)),
-                                                     value=None,
-                                                     multi=True,
-                                                     placeholder='Preset tables'),
-                                        dcc.Input(id='bootstrap', type='number', value=10000, min=1),
-                                        dcc.Input(id='permutation', type='number', value=100000, min=1),
-                                        dcc.Input(id='statistics-seed', type='number', value=42),
-                                        dcc.Input(id='alpha', type='number', value=0.05, min=0.0001, max=1, step=0.01),
-                                        dcc.Input(id='calibration-bins', type='number', value=10, min=2)
-                                    ],
-                                    style={
-                                        'display': 'grid',
-                                        'gridTemplateColumns': 'repeat(auto-fit,minmax(min(100%,150px),1fr))',
-                                        'gap': '8px',
-                                        'marginTop': '9px'
-                                    }),
-                                html.Div([
-                                    _button('Analyse', 'analyse'),
-                                    _button('Validate', 'validate-report'),
-                                    _button('Stop', 'stop-report', danger=True),
-                                    _button('Report CLI', 'save-analysis-cli'),
-                                    _button('Report YAML', 'save-analysis-yaml'),
-                                    _button('Refresh', 'refresh-outputs')
-                                ],
-                                         style={
-                                             'display': 'flex',
-                                             'gap': '8px',
-                                             'marginTop': '10px'
-                                         }),
-                                html.Pre(id='analysis-command',
-                                         style={
-                                             'whiteSpace': 'pre-wrap',
-                                             'background': '#f5f8f9',
-                                             'padding': '10px'
-                                         }),
-                                html.Pre(id='analysis-yaml',
-                                         style={
-                                             'whiteSpace': 'pre-wrap',
-                                             'maxHeight': '260px',
-                                             'overflow': 'auto',
-                                             'background': '#f5f8f9',
-                                             'padding': '10px'
-                                         }),
-                                html.Div(id='analysis-status', style={'whiteSpace': 'pre-wrap'})
-                            ]),
-                            html.Div(
-                                [
-                                    _panel([
-                                        html.H3('Pipeline data', style={'marginTop': 0}),
-                                        dcc.Dropdown(id='pipeline-table-select', placeholder='Select data table'),
-                                        dash_table.DataTable(id='pipeline-table',
-                                                             page_size=12,
-                                                             filter_action='native',
-                                                             sort_action='native',
-                                                             style_table={'overflowX': 'auto'},
-                                                             style_cell={
-                                                                 'fontFamily': 'monospace',
-                                                                 'fontSize': 10,
-                                                                 'maxWidth': 260,
-                                                                 'overflow': 'hidden',
-                                                                 'textOverflow': 'ellipsis'
-                                                             })
-                                    ]),
-                                    _panel([
-                                        html.H3('Report preview', style={'marginTop': 0}),
-                                        dcc.Dropdown(id='report-output',
-                                                     options=_options(report_outputs),
-                                                     value=report_outputs[0] if report_outputs else None,
-                                                     placeholder='report_output run'),
-                                        dcc.Dropdown(id='report-table-select', placeholder='Report table', style={'marginTop': '8px'}),
-                                        dash_table.DataTable(id='report-table',
-                                                             page_size=10,
-                                                             style_table={'overflowX': 'auto'},
-                                                             style_cell={
-                                                                 'fontFamily': 'monospace',
-                                                                 'fontSize': 10
-                                                             }),
-                                        dcc.Dropdown(
-                                            id='report-figure-select', placeholder='Report figure', style={'marginTop': '8px'}),
-                                        html.Div(id='report-figure', style={'marginTop': '8px'})
-                                    ])
-                                ],
-                                style={
-                                    'display': 'grid',
-                                    'gridTemplateColumns': 'repeat(auto-fit,minmax(min(100%,320px),1fr))',
-                                    'gap': '12px',
-                                    'marginTop': '12px'
-                                })
-                        ],
-                                          style={'paddingTop': '14px'})),
-                    dcc.Tab(
-                        label='Tools',
-                        value='tools',
-                        children=html.Div([
-                            _panel([
-                                html.H3('Validated maintenance tools', style={'marginTop': 0}),
-                                dcc.Dropdown(id='tool-operation',
-                                             options=[{
-                                                 'label': label,
-                                                 'value': value
-                                             } for label, value in TOOL_OPTIONS],
-                                             value='pipeline_validate',
-                                             clearable=False),
-                                html.Div(
-                                    'Pipeline validate/show-config reuse the current server-built Run request. Analyse > Validate reuses every current Analyse selector.',
-                                    style={
-                                        'color': COLORS['muted'],
-                                        'fontSize': '12px',
-                                        'marginTop': '7px'
-                                    }),
-                                html.Details([
-                                    html.Summary('Common paths and policy'),
-                                    html.Div(
-                                        [
-                                            dcc.Input(
-                                                id='tool-pipeline-path', placeholder='pipeline_output/<run>', style={'width': '100%'}),
-                                            dcc.Input(
-                                                id='tool-report-path', placeholder='report_output/<run>', style={'width': '100%'}),
-                                            dcc.Input(id='tool-plan-path', placeholder='Study-plan YAML', style={'width': '100%'}),
-                                            dcc.Dropdown(id='tool-validation-mode',
-                                                         options=_options(['config', 'smoke', 'full']),
-                                                         value='smoke',
-                                                         clearable=False),
-                                            dcc.Checklist(id='tool-flags',
-                                                          options=[{
-                                                              'label': 'Hash predictions',
-                                                              'value': 'hash'
-                                                          }, {
-                                                              'label': 'Replace workbook',
-                                                              'value': 'replace'
-                                                          }],
-                                                          value=[],
-                                                          inline=True)
-                                        ],
-                                        style={
-                                            'display': 'grid',
-                                            'gridTemplateColumns': 'repeat(auto-fit,minmax(min(100%,190px),1fr))',
-                                            'gap': '8px',
-                                            'marginTop': '8px'
-                                        })
-                                ],
-                                             style={'marginTop': '9px'}),
-                                html.Details([
-                                    html.Summary('Specialized artifact workflows'),
-                                    html.Div(
-                                        [
-                                            dcc.Input(id='tool-special-plan', placeholder='Specialized YAML'),
-                                            dcc.Input(id='tool-source-root', value='.', placeholder='V5 source root'),
-                                            dcc.Input(id='tool-special-output', placeholder='Optional report output name'),
-                                            dcc.Input(id='tool-special-study', placeholder='Optional source study'),
-                                            dcc.Input(id='tool-special-run-name', placeholder='Optional computation run name'),
-                                            dcc.Input(id='tool-special-resume', placeholder='Optional computation resume'),
-                                            dcc.Input(id='tool-special-upstream', placeholder='Optional upstream study'),
-                                            dcc.Input(id='tool-special-case', placeholder='Optional case ID'),
-                                            dcc.Input(id='tool-prediction-file', placeholder='Optional prediction file'),
-                                            dcc.Input(id='tool-step', type='number', min=1e-12, placeholder='Optional step'),
-                                            dcc.Input(id='tool-special-report-input', placeholder='Special report input'),
-                                            dcc.Checklist(id='tool-special-flags',
-                                                          options=[{
-                                                              'label': 'Exclude denoiser',
-                                                              'value': 'no_denoiser'
-                                                          }, {
-                                                              'label': 'Completion dry run',
-                                                              'value': 'dry'
-                                                          }],
-                                                          value=[],
-                                                          inline=True)
-                                        ],
-                                        style={
-                                            'display': 'grid',
-                                            'gridTemplateColumns': 'repeat(auto-fit,minmax(min(100%,190px),1fr))',
-                                            'gap': '8px',
-                                            'marginTop': '8px'
-                                        })
-                                ],
-                                             style={'marginTop': '9px'}),
-                                html.Div([
-                                    _button('Build CLI', 'build-tool'),
-                                    _button('Run tool', 'run-tool'),
-                                    _button('Stop tool', 'stop-tool', danger=True),
-                                    _button('Download CLI', 'save-tool-cli'),
-                                    _button('Download YAML', 'save-tool-yaml')
-                                ],
-                                         style={
-                                             'display': 'flex',
-                                             'flexWrap': 'wrap',
-                                             'gap': '8px',
-                                             'marginTop': '12px'
-                                         }),
-                                html.Label('Equivalent CLI', style={
-                                    'display': 'block',
-                                    'fontWeight': 700,
-                                    'marginTop': '10px'
-                                }),
-                                html.Pre(id='tool-command',
-                                         style={
-                                             'whiteSpace': 'pre-wrap',
-                                             'background': '#f5f8f9',
-                                             'padding': '10px'
-                                         }),
-                                html.Label('Request YAML', style={
-                                    'display': 'block',
-                                    'fontWeight': 700
-                                }),
-                                html.Pre(id='tool-yaml',
-                                         style={
-                                             'whiteSpace': 'pre-wrap',
-                                             'maxHeight': '260px',
-                                             'overflow': 'auto',
-                                             'background': '#f5f8f9',
-                                             'padding': '10px'
-                                         }),
-                                html.Pre(id='tool-status', style={
-                                    'whiteSpace': 'pre-wrap',
-                                    'maxHeight': '300px',
-                                    'overflow': 'auto'
-                                })
-                            ]),
-                            _panel([
-                                html.H3('Equivalent read-only surfaces', style={'marginTop': 0}),
-                                html.Div(EQUIVALENT_SURFACE_NOTICE,
-                                         id='equivalent-tools',
-                                         style={
-                                             'color': COLORS['muted'],
-                                             'fontSize': '13px'
-                                         }),
-                                html.Pre(
-                                    'Configure = pipeline.py modules/presets/parameters/manual-cli\nAnalyse selectors = analyse_report.py list',
-                                    style={
-                                        'whiteSpace': 'pre-wrap',
-                                        'background': '#fff6e6',
-                                        'padding': '10px'
-                                    })
-                            ],
-                                   style={'marginTop': '12px'})
-                        ],
-                                          style={'paddingTop': '14px'}))
-                ])
-        ],
-        style={
-            'background': COLORS['background'],
-            'color': COLORS['ink'],
-            'fontFamily': 'Inter, Segoe UI, sans-serif',
-            'minHeight': '100vh',
-            'padding': 'clamp(10px,2.5vw,26px) clamp(10px,3vw,26px) 40px'
-        })
+    assets = _asset_choices(root)
+    app = Dash(__name__, title='PPG Frailty · Workflow', suppress_callback_exceptions=True)
+    app.index_string = '''<!DOCTYPE html><html><head>{%metas%}<title>{%title%}</title>{%favicon%}{%css%}
+    <style>body{margin:0;background:#f6f7f9;color:#202b38;font-family:Arial,"Microsoft YaHei",sans-serif}
+    *{box-sizing:border-box}h1{font-size:27px}h2{font-size:21px}h3{font-size:16px}h4{font-size:14px}
+    .stage,.top-panel{background:white;border:1px solid #dde2e8;border-radius:8px;padding:22px;margin:18px 0}
+    .stage-body{display:grid;grid-template-columns:minmax(280px,32%) minmax(0,1fr);gap:24px}
+    .parameter{padding:10px 0;border-bottom:1px solid #edf0f3}.parameter label,.field>label{display:block;font-size:13px;font-weight:600;margin:0 0 8px}
+    .parameter small{display:block;color:#77828e;font-size:10px;overflow-wrap:anywhere;margin-top:4px}
+    .numeric-control{display:grid;grid-template-columns:minmax(110px,1fr) 100px;align-items:center;gap:8px}
+    input,textarea{max-width:100%;padding:7px;border:1px solid #cbd2da;border-radius:4px}input[type=text]{width:100%}
+    button{background:#2165a6;color:white;border:0;border-radius:4px;padding:9px 16px;margin:5px 6px 5px 0;cursor:pointer;font-weight:600}
+    button:disabled{opacity:.45;cursor:default}.stop{background:#ad3636}.actions{margin-top:16px}
+    .empty-preview{min-height:180px;background:#fafbfd;border:1px dashed #d9e0e7;padding:22px;color:#7b8793}
+    .notice{color:#637384;font-size:13px;line-height:1.6}.status{white-space:pre-wrap;color:#526577;line-height:1.5}
+    pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:360px;overflow:auto}
+    summary{cursor:pointer;padding:8px 0;font-weight:600}.field{margin:10px 0}.nav a{margin-right:14px;color:#2165a6}
+    @media(max-width:900px){.stage-body{grid-template-columns:1fr}.stage{padding:14px}}
+    </style></head><body>{%app_entry%}<footer>{%config%}{%scripts%}{%renderer%}</footer></body></html>'''
 
-    @app.callback(Output('training-yaml', 'options'),
-                  Output('model-export', 'options'),
-                  Output('sweep-plan', 'options'),
-                  Input('refresh-configs', 'n_clicks'),
-                  prevent_initial_call=True)
-    def refresh_configuration_sources(_: int) -> tuple[Any, Any, Any]:
-        return (_options(list(control.yaml_paths())), _options(list(control.model_exports())),
-                _options(list(control.study_plan_paths())))
+    def path_picker(label, identity, choices):
+        return _field(label, html.Div([dcc.Dropdown(id=identity, options=_options(choices), value=None,
+                                                    placeholder='Select existing artifact'),
+                                      dcc.Input(id=identity+'-path', placeholder='Or enter a path', debounce=True)]))
 
-    @app.callback(Output('model-case', 'options'), Output('model-case', 'value'), Input('model-export', 'value'))
-    def model_case_options(export: str | None) -> tuple[Any, Any]:
-        if not export:
-            return ([], None)
-        try:
-            values = list(control.model_cases(export))
-        except Exception:
-            return ([], None)
-        return (_options(values), values[0] if values else None)
-
-    @app.callback(Output('config-state', 'data'),
-                  Output('module-controls', 'children'),
-                  Output('parameter-table', 'data'),
-                  Output('parameter-sliders', 'children'),
-                  Output('training-yaml', 'value'),
-                  Output('config-status', 'children'),
-                  Input('load-config', 'n_clicks'),
-                  State('config-source', 'value'),
-                  State('training-yaml', 'value'),
-                  State('model-export', 'value'),
-                  State('model-case', 'value'),
-                  prevent_initial_call=True)
-    def load_configuration(_: int, source: str, yaml_path: str | None, export: str | None,
-                           case_id: str | None) -> tuple[Any, Any, Any, Any, Any, str]:
-        try:
-            if source == 'model_config':
-                if not export:
-                    raise ValueError('select a model_config export')
-                loaded = control.load_model_defaults(export, case_id)
-                config = loaded.config
-                defaults = loaded.module_defaults
-                features = loaded.feature_defaults
-                selected_yaml = loaded.config_path
-                capability = loaded.inference_capability
-            else:
-                if not yaml_path:
-                    raise ValueError('select a training YAML')
-                config, _ = control.load_yaml(yaml_path)
-                defaults = control.module_defaults_from_config(config)
-                feature_section = config.get('features', {})
-                raw_features = feature_section.get('enabled_groups', []) if isinstance(feature_section, Mapping) else []
-                features = tuple((str(value) for value in raw_features))
-                selected_yaml = yaml_path
-                capability = {'available': False, 'reason': 'YAML_has_no_learned_weights'}
-            catalog = control.module_catalog(export if source == 'model_config' else None)
-            rows = flatten_parameters(config, parameter_contract=parameter_contract)
-            state = {
-                'config_path': selected_yaml,
-                'default_modules': defaults,
-                'default_features': list(features),
-                'model_export': export if source == 'model_config' else None,
-                'model_case': case_id if source == 'model_config' else None,
-                'inference_capability': capability
-            }
-            status = f"Loaded {selected_yaml}. Registry families: {len(catalog)}. Inference bundle: {('available' if capability.get('available') else 'unavailable')}; adapter: {capability.get('adapter_source', 'none')}."
-            return (state, _module_controls(catalog, defaults, features), rows, _numeric_sliders(rows), selected_yaml, status)
-        except Exception as error:
-            return (no_update, no_update, no_update, no_update, no_update, _error(error))
-
-    @app.callback(Output('parameter-table', 'data', allow_duplicate=True),
-                  Input({
-                      'type': 'parameter-slider',
-                      'path': ALL
-                  }, 'value'),
-                  State({
-                      'type': 'parameter-slider',
-                      'path': ALL
-                  }, 'id'),
-                  State('parameter-table', 'data'),
-                  prevent_initial_call=True)
-    def apply_numeric_sliders(values: Sequence[int | float], identities: Sequence[Mapping[str, Any]],
-                              rows: Sequence[Mapping[str, Any]]) -> Any:
-        if not rows:
-            return no_update
-        by_path = {str(identity['path']): value for identity, value in zip(identities, values)}
-        output = [dict(row) for row in rows]
-        for row in output:
-            path = str(row.get('path', ''))
-            if path not in by_path:
-                continue
-            original = yaml.safe_load(str(row.get('original_yaml', 'null')))
-            value: int | float = by_path[path]
-            if isinstance(original, int) and (not isinstance(original, bool)):
-                value = int(round(float(value)))
-            row['value_yaml'] = yaml.safe_dump(value, default_flow_style=True, sort_keys=False).strip().removesuffix('...').rstrip()
+    def controls_for(config, stage):
+        output, previous = [], None
+        for spec in grouped_parameter_specs(config, pipeline_root=root):
+            if spec['stage'] == stage:
+                if spec['group'] != previous:
+                    output.append(html.H3(str(spec['group']).replace('_', ' ')))
+                    previous = spec['group']
+                output.append(_parameter_control(spec))
         return output
 
-    @app.callback(Output('train-request', 'data'), Output('command-view', 'children'), Output('resolved-view', 'children'),
-                  Output('request-status', 'children'), Output('train', 'disabled'), Input('config-state', 'data'),
-                  Input({
-                      'type': 'module-select',
-                      'family': ALL
-                  }, 'value'), Input('parameter-table', 'data'), Input('train-operation', 'value'), Input('sweep-plan', 'value'),
-                  Input('run-name', 'value'), Input('study-id', 'value'), Input('study-purpose', 'value'), Input('config-id', 'value'),
-                  Input('unset-paths', 'value'), Input('repeats', 'value'), Input('folds', 'value'), Input('jobs', 'value'),
-                  Input('device', 'value'), Input('cache-mode', 'value'), Input('cache-root', 'value'),
-                  Input('cache-namespaces', 'value'), Input('resume-directory', 'value'),
-                  Input('execution-flags', 'value'), Input('refit-enabled', 'value'),
-                  State({
-                      'type': 'module-select',
-                      'family': ALL
-                  }, 'id'))
-    def build_request(state: Mapping[str, Any] | None, module_values: Sequence[Any], parameter_rows: Sequence[Mapping[str, Any]],
-                      operation: str, sweep_plan: str | None, run_name: str | None, study_id: str | None, purpose: str | None,
-                      config_id: str | None, unset_text: str | None, repeats: str | Sequence[int | str],
-                      folds: str | Sequence[int | str], job_count: int, device: str, cache_mode: str, cache_root: str | None,
-                      cache_namespaces: str | None, resume_directory: str | None,
-                      execution_flags: Sequence[str], refit_enabled: Sequence[str],
-                      module_ids: Sequence[Mapping[str, Any]]) -> tuple[Any, str, str, str, bool]:
-        if not state and operation == 'run':
-            return (None, 'Select and load a YAML first.', '', 'Not ready', True)
+    def tool_specs(operation):
+        _, script, command, _ = TOOLS[operation]
+        return command_parameter_specs(_tool_parser(script), command)
+
+    def parameter_panel(specs, namespace):
+        children, previous = [], None
+        for spec in specs:
+            if spec['group'] != previous:
+                children.append(html.H3(str(spec['group']).replace('_', ' ')))
+                previous = spec['group']
+            children.append(_parameter_control(spec, namespace))
+        return children
+
+    def tool_snapshot(operation, arguments=None, identities=None, values=None, number_ids=None, numbers=None,
+                      plan_state=None, plan_ids=None, plan_values=None, plan_number_ids=None, plan_numbers=None,
+                      *, materialize=False):
+        # Direct callers may still build an old CLI request. The browser always
+        # supplies widget IDs (including an empty list); only widgets govern it.
+        if identities is None:
+            return _tool_request(operation, arguments)
+        specs = tool_specs(operation)
+        current_values = _widget_values(specs, identities + (number_ids or []), (values or []) + (numbers or []))
+        plan_text, digest = '', ''
+        if plan_state and any(spec['path'] == 'plan' for spec in specs):
+            plan = plan_state['plan']
+            edits = _widget_values(plan_parameter_specs(plan), (plan_ids or []) + (plan_number_ids or []),
+                                   (plan_values or []) + (plan_numbers or []))
+            plan = apply_plan_values(plan, edits)
+            plan_text = yaml.safe_dump(plan, sort_keys=False, allow_unicode=True)
+            digest = hashlib.sha256(plan_text.encode('utf-8')).hexdigest()
+            current_values['plan'] = f'pipeline_output/.dashboard_requests/plans/{digest}.yaml'
+        request = _tool_request(operation, shlex.join(arguments_from_values(specs, current_values)))
+        if plan_text:
+            request = replace(request, resolved_yaml=plan_text, config_sha256=digest)
+            if materialize:
+                destination = root / current_values['plan']
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_text(plan_text, encoding='utf-8')
+        return request
+
+    def stage_panel(stage, title, number):
+        extra = []
+        if stage == 'input':
+            extra = [
+                _field('Manifest recordings · one or more', dcc.Dropdown(id='record-ids', multi=True, value=[],
+                    options=[{'label': f'{r.participant_id} · {r.role} · {r.record_id}', 'value': r.record_id} for r in records])),
+                _field('Recording shown in stage plots', dcc.Dropdown(id='preview-record', options=[], value=None)),
+                _field('Participant ID · custom CSV input', dcc.Input(id='participant-id', value='live_participant')),
+                html.Details([html.Summary('Custom CSV files / labels'),
+                    dash_table.DataTable(id='input-files', data=[], row_deletable=True, editable=True,
+                        columns=[{'name': k, 'id': k} for k in ('file_id', 'role', 'path', 'label')],
+                        style_table={'overflowX': 'auto'}, style_cell={'minWidth': '80px', 'textAlign': 'left'}),
+                    _button('Add file', 'add-file'),
+                    html.Div('A nonempty CSV table replaces the manifest selection. RED, IR, AX, AY, AZ, GX, GY, GZ; '
+                             '400 Hz; g and deg/s. Dynamic R/S/W uses the same participant’s B.', className='notice')]),
+                _field('Preview start / s', dcc.Input(id='preview-start', type='number', value=0, min=0)),
+                _field('Preview duration / s', dcc.Input(id='preview-duration', type='number', value=20, min=.1)),
+                html.Div('Full-record processing; the interval only controls the plot.', className='notice')]
+        elif stage == 'imu':
+            extra = [_field('Custom B calibration CSV · optional', dcc.Input(id='calibration-path', value='', debounce=True))]
+        elif stage == 'motion':
+            extra = [path_picker('Fitted motion evidence / weights', 'motion-bundle', assets['motion'])]
+        elif stage == 'quality':
+            extra = [path_picker('Fitted SQI calibration', 'sqi-artifact', assets['sqi'])]
+        elif stage == 'model':
+            extra = [
+                _field('Mode', dcc.RadioItems(id='model-mode', options=_options(['Analyse', 'Train']), value='Analyse', inline=True)),
+                _field('model_config weights', dcc.Dropdown(id='model-export', options=_options(control.model_exports()), value=None)),
+                _field('Model case', dcc.Dropdown(id='model-case', options=[], value=None)),
+                path_picker('Or a learned model bundle', 'model-bundle', assets['model']),
+                html.Div('Weights do not replace current controls. Choose the exported YAML above only to load its parameter values.', className='notice'),
+                html.Div([
+                    _field('Training target', dcc.Dropdown(id='train-target', value='current', clearable=False, options=[
+                        {'label': 'Current controls', 'value': 'current'}, {'label': 'Comparison queue', 'value': 'comparison'},
+                        {'label': 'Selected study YAML', 'value': 'sweep'}, {'label': 'Advanced tool request', 'value': 'tool'}])),
+                    _field('Run name', dcc.Input(id='run-name', value='', debounce=True)),
+                    _field('Repeat indices', dcc.Input(id='repeat-indices', value='all', debounce=True)),
+                    _field('Fold indices', dcc.Input(id='fold-indices', value='all', debounce=True)),
+                    _field('Parallel jobs', dcc.Input(id='job-count', type='number', value=1, min=1, step=1)),
+                    _field('Preprocessing cache', dcc.Dropdown(id='cache-mode', options=_options(['off', 'read_only', 'read_write']), value='off', clearable=False)),
+                    _field('Cache directory', dcc.Input(id='cache-root', value='cache/preprocessing', debounce=True)),
+                    _field('Resume directory', dcc.Input(id='resume-path', value='', debounce=True)),
+                    dcc.Checklist(id='train-flags', options=[{'label': 'Refit', 'value': 'refit'}, {'label': 'Dry run', 'value': 'dry_run'}], value=[]),
+                ], id='train-options', style={'display': 'none'})]
+        action = [_button('Analyse', {'type': 'analyse-stage', 'stage': stage})]
+        if stage == 'model':
+            action += [_button('Run', 'train', style={'display': 'none'}), _button('Stop', 'stop-train', className='stop'),
+                       html.Pre(id='train-status', className='status')]
+        return html.Section([html.H2(f'{number:02d} · {title}'), html.Div([
+            html.Div([*extra, html.Div(controls_for(defaults, stage), id={'type': 'stage-controls', 'stage': stage}),
+                      html.Div(action, className='actions')]),
+            dcc.Loading(html.Div(_render_preview(None), id={'type': 'stage-output', 'stage': stage})),
+        ], className='stage-body')], id='stage-'+stage, className='stage')
+
+    def make_layout():
+        return html.Main([
+            dcc.Store(id='session-id', data=uuid.uuid4().hex, storage_type='session'),
+            dcc.Store(id='config-state', data=defaults), dcc.Store(id='preview-store', data={}),
+            dcc.Store(id='report-preview-job', data=None),
+            dcc.Store(id='comparison-store', data=[]), dcc.Store(id='active-train-job'), dcc.Store(id='active-report-job'),
+            dcc.Store(id='last-stage', data='ppg'), dcc.Store(id='train-request'), dcc.Store(id='analysis-request'),
+            dcc.Store(id='tool-request'), dcc.Store(id='active-tool-job'), dcc.Store(id='tool-plan-state'),
+            *[dcc.Download(id=name) for name in ('download-cli', 'download-yaml', 'download-sequence-cli', 'download-sequence-yaml',
+                                                 'download-tool-cli', 'download-tool-yaml', 'download-report-cli')],
+            dcc.Interval(id='job-poll', interval=1500),
+            html.H1('PPG Frailty · Workflow'),
+            html.Div('Choose inputs → adjust a module → Analyse → inspect the output.', className='notice'),
+            html.Nav([html.A(title, href='#stage-'+stage) for stage, title in STAGES], className='nav'),
+            html.Section([
+                html.H2('Configuration'),
+                _field('Optional YAML · empty means function defaults', dcc.Dropdown(id='training-yaml',
+                    options=_options(sorted(set(control.yaml_paths()) | set(control.study_plan_paths()))),
+                    value=None, placeholder='No YAML · function defaults', clearable=True)),
+                _field('Study case', dcc.Dropdown(id='yaml-case', options=[], value=None)),
+                _button('Refresh', 'refresh-configs'), html.Div(id='config-status', className='status'),
+                html.Div('YAML fills controls once. Analyse always uses current values. Analysis never starts training.', className='notice'),
+            ], className='top-panel'),
+            *[stage_panel(stage, title, i) for i, (stage, title) in enumerate(STAGES, 1)],
+            html.Section([
+                html.H2('Comparison'), _field('Unit name', dcc.Input(id='comparison-name', value='case_01')),
+                _button('Add', 'add-comparison'), _button('Remove last', 'remove-comparison'), _button('Clear', 'clear-comparison'),
+                html.Div(id='comparison-table'), html.Div(id='comparison-status', className='status'),
+                _button('Download CLI', 'export-sequence-cli'), _button('Download YAML', 'export-sequence-yaml'),
+                html.Details([html.Summary('Comparison CLI / YAML'), html.Pre(id='comparison-cli-view'), html.Pre(id='comparison-yaml-view')]),
+                html.Div('Use the model Train mode and select Comparison queue to execute.', className='notice'),
+            ], className='stage'),
+            html.Section([
+                html.H2('11 · Analyse report'), html.Div([
+                    html.Div([
+                        _field('Pipeline output(s)', dcc.Dropdown(id='analysis-runs', options=_options(control.study_outputs()), multi=True, value=[])),
+                        _field('Mode', dcc.Dropdown(id='analysis-mode', options=_options(sorted(REPORT_MODES)), value='single', clearable=False)),
+                        _field('Report preset', dcc.Dropdown(id='analysis-preset', options=_options(sorted(PRESETS)), value='full', clearable=True)),
+                        _field('Report modules', dcc.Checklist(id='analysis-modules', options=_options([m.name for m in MODULES]), value=[])),
+                        _field('Figures · empty uses preset', dcc.Dropdown(id='analysis-figures', options=_options(sorted(KNOWN_FIGURES)), multi=True, value=[])),
+                        _field('Tables · empty uses preset', dcc.Dropdown(id='analysis-tables', options=_options(sorted(KNOWN_TABLES)), multi=True, value=[])),
+                        *[_field(label, dcc.Input(id=name, value='')) for name, label in (
+                            ('reference-case', 'Reference case'), ('factor-paths', 'Factor paths · comma separated'),
+                            ('include-cases', 'Include cases · comma separated'), ('exclude-cases', 'Exclude cases · comma separated'),
+                            ('report-name', 'Output name · optional'))],
+                        html.Div(controls_for(defaults, 'report'), id={'type': 'stage-controls', 'stage': 'report'}),
+                        *[_field(label, dcc.Input(id=name, type='number', value=value)) for name, label, value in (
+                            ('statistics-alpha', 'Alpha', .05), ('calibration-bins', 'Calibration bins', 10))],
+                        _button('Analyse', 'analyse-report'), _button('Stop', 'stop-report', className='stop'),
+                        _button('Download CLI', 'save-report-cli'),
+                        html.Pre(id='analysis-command'), html.Pre(id='analysis-status', className='status')],
+                    ),
+                    html.Div([
+                        _field('Report output preview', dcc.Dropdown(id='report-output', options=_options(control.report_outputs()), value=None)),
+                        _field('Figure', dcc.Dropdown(id='report-figure', options=[], value=None)),
+                        html.Img(id='report-image', style={'maxWidth': '100%'}),
+                        html.Div(id='report-document'),
+                        _field('Data table', dcc.Dropdown(id='report-table', options=[], value=None)),
+                        html.Div(id='report-table-preview')]),
+                ], className='stage-body'),
+            ], className='stage'),
+            html.Details([
+                html.Summary('Advanced tools · export, audits and specialized studies'),
+                _field('Operation', dcc.Dropdown(id='tool-operation', value='pipeline_validate', clearable=False,
+                    options=[{'label': row[0], 'value': key} for key, row in TOOLS.items()])),
+                html.Div(parameter_panel([spec for spec in tool_specs('pipeline_validate') if spec['path'] != 'plan'],
+                                         'tool-param'), id='tool-controls'),
+                html.Div([
+                    _field('Plan YAML · fills the plan controls', dcc.Dropdown(id='tool-plan-yaml', value=None,
+                        options=_options(sorted(str(path.relative_to(root)) for path in (root/'configs').rglob('*.yaml'))))),
+                    _field('Or enter a plan YAML path', dcc.Input(id='tool-plan-path', value='', debounce=True)),
+                    html.Div(id='tool-plan-status', className='status'),
+                    html.Div(id='tool-plan-controls'),
+                    html.Div('The source YAML is not overwritten. Current plan controls are saved only when you execute. '
+                             'The downloaded CLI recreates the same snapshot.', className='notice'),
+                ], id='tool-plan-picker', style={'display': 'none'}),
+                html.Details([html.Summary('Equivalent CLI arguments'), dcc.Textarea(id='tool-arguments',
+                    value='', readOnly=True, style={'width': '100%', 'minHeight': '80px'})]),
+                html.Details([html.Summary('Command help'), html.Pre(id='tool-help')]),
+                _button('Analyse', 'analyse-tool'), _button('Stop', 'stop-tool', className='stop'),
+                _button('Download CLI', 'save-tool-cli'), _button('Download YAML', 'save-tool-yaml'),
+                html.Div('Training tools execute only through the model Train → Advanced tool request → Run.', className='notice'),
+                html.Pre(id='tool-command'), html.Pre(id='tool-yaml'), html.Pre(id='tool-status', className='status'),
+            ], className='stage'),
+            html.Section([
+                html.H2('CLI / resolved YAML'), _button('Download CLI', 'save-cli'), _button('Download YAML', 'save-yaml'),
+                html.Div('Save workflow_config.yaml beside the downloaded stage command; run from the V5 directory.', className='notice'),
+                html.Details([html.Summary('Current Analyse CLI'), html.Pre(id='command-view')], open=True),
+                html.Details([html.Summary('Training CLI · does not run automatically'), html.Pre(id='train-command')]),
+                html.Details([html.Summary('Current YAML'), html.Pre(id='yaml-view')]),
+            ], className='stage'),
+        ], style={'maxWidth': '1600px', 'margin': 'auto', 'padding': 'clamp(12px,2vw,28px)'})
+
+    app.layout = make_layout
+
+    def current(config, identities, values):
+        return apply_control_values(config, _control_values(config, identities, values, root), pipeline_root=root)
+
+    @app.callback(Output('training-yaml', 'options'), Output('model-export', 'options'),
+                  Output('analysis-runs', 'options'), Output('report-output', 'options'),
+                  Output('sqi-artifact', 'options'), Output('motion-bundle', 'options'), Output('model-bundle', 'options'),
+                  Input('refresh-configs', 'n_clicks'))
+    def refresh(_):
+        available = _asset_choices(root)
+        return (_options(sorted(set(control.yaml_paths()) | set(control.study_plan_paths()))), _options(control.model_exports()),
+                _options(control.study_outputs()), _options(control.report_outputs()),
+                *[_options(available[family]) for family in ('sqi', 'motion', 'model')])
+
+    @app.callback(Output('record-ids', 'options'), Output('record-ids', 'value'),
+                  Input('config-state', 'data'), State('record-ids', 'value'))
+    def manifest_records(config, selected):
         try:
-            state = state or {}
-            selected: dict[str, Any] = {}
-            features: list[str] = []
-            for identity, value in zip(module_ids, module_values):
-                family = str(identity['family'])
-                if family == 'feature_group':
-                    features = list(value or [])
+            choices = browser.records(config['manifest']['path'])
+        except (OSError, ValueError):
+            return [], []
+        ids = {record.record_id for record in choices}
+        return ([{'label': f'{r.participant_id} · {r.role} · {r.record_id}', 'value': r.record_id} for r in choices],
+                [record for record in selected or [] if record in ids])
+
+    @app.callback(Output('yaml-case', 'options'), Output('yaml-case', 'value'), Input('training-yaml', 'value'))
+    def yaml_cases(path):
+        if not path or path not in control.study_plan_paths():
+            return [], None
+        from ..study import expand_study
+        plan, _ = control.load_study_plan(path)
+        cases = expand_study(plan, pipeline_root=root).cases
+        return _options([c.case_id for c in cases]), cases[0].case_id if cases else None
+
+    @app.callback(Output('config-state', 'data'), Output('config-status', 'children'),
+                  Output({'type': 'stage-controls', 'stage': ALL}, 'children'),
+                  Input('training-yaml', 'value'), Input('yaml-case', 'value'), Input({'type': 'param', 'path': ALL}, 'value'),
+                  Input({'type': 'param-number', 'path': ALL}, 'value'),
+                  State({'type': 'param', 'path': ALL}, 'id'), State({'type': 'param-number', 'path': ALL}, 'id'),
+                  State('config-state', 'data'), State({'type': 'stage-controls', 'stage': ALL}, 'id'))
+    def update_config(path, case, values, numbers, identities, number_ids, config, stages):
+        trigger = ctx.triggered_id
+        try:
+            if trigger in ('training-yaml', 'yaml-case') or trigger is None:
+                if not path:
+                    result = default_configuration(root)
+                elif path in control.study_plan_paths():
+                    from ..study import expand_study
+                    plan, _ = control.load_study_plan(path)
+                    cases = expand_study(plan, pipeline_root=root).cases
+                    result = copy.deepcopy(next((c.config for c in cases if c.case_id == case), cases[0].config))
                 else:
-                    selected[family] = value
-            request = control.build_train_request(
-                config_path=state.get('config_path'),
-                plan_path=sweep_plan or None,
-                operation=operation,
-                selected_modules=selected,
-                default_modules=state.get('default_modules', {}),
-                feature_groups=features,
-                default_feature_groups=state.get('default_features', []),
-                parameter_rows=parameter_rows or [],
-                unset_paths=[value.strip() for value in str(unset_text or '').splitlines() if value.strip()],
-                config_id=config_id or None,
-                study_id=study_id or None,
-                purpose=purpose or None,
-                repeats=repeats,
-                folds=folds,
-                jobs=int(job_count or 1),
-                device=device,
-                cache_mode=cache_mode,
-                cache_root=cache_root or None,
-                cache_namespaces=cache_namespaces or None,
-                continue_on_error='continue' in (execution_flags or []),
-                measure_operational_costs='costs' in (execution_flags or []),
-                hash_predictions='hash' in (execution_flags or []),
-                dry_run='dry' in (execution_flags or []),
-                resume=resume_directory or None,
-                run_name=run_name or None,
-                refit='refit' in (refit_enabled or []))
-            identity = 'plan' if operation == 'sweep' else 'config'
-            return (request.to_dict(), request.display, request.resolved_yaml,
-                    f'Ready · {identity} {request.config_sha256[:12]}', False)
+                    result, _ = control.load_yaml(path)
+                message = 'Loaded YAML values.' if path else 'Function defaults. No YAML selected.'
+            else:
+                changes = _control_values(config, identities + number_ids, values + numbers, root)
+                path_changed = trigger.get('path') if isinstance(trigger, dict) else None
+                result = apply_control_values(config, {path_changed: changes[path_changed]} if path_changed in changes else changes,
+                                              pipeline_root=root)
+                message = 'Controls updated. Analyse reuses unchanged stages and recomputes affected outputs.'
+            if result == config:
+                return no_update, no_update, [no_update] * len(stages)
+            old_specs = grouped_parameter_specs(config, pipeline_root=root)
+            new_specs = grouped_parameter_specs(result, pipeline_root=root)
+            # Only selector/schema changes replace widgets. Ordinary dragging
+            # leaves focus and the slider itself intact.
+            signature = lambda specs: [(s['path'], s['kind'], s['choices']) for s in specs]
+            previous = {s['path']: s['value'] for s in old_specs}
+            changed = {s['path'] for s in new_specs if previous.get(s['path']) != s['value']}
+            trigger_path = trigger.get('path') if isinstance(trigger, dict) else None
+            reload = (trigger in ('training-yaml', 'yaml-case') or signature(old_specs) != signature(new_specs)
+                      or bool(changed - {trigger_path}))
+            rendered = [controls_for(result, i['stage']) for i in stages] if reload else [no_update] * len(stages)
+            return result, message, rendered
         except Exception as error:
-            return (None, '', '', _error(error), True)
+            return no_update, f'{type(error).__name__}: {error}', [no_update] * len(stages)
 
-    @app.callback(Output('active-train-job', 'data'),
-                  Output('train-status', 'children', allow_duplicate=True),
-                  Input('train', 'n_clicks'),
-                  Input('stop-train', 'n_clicks'),
-                  State('train-request', 'data'),
-                  State('active-train-job', 'data'),
-                  prevent_initial_call=True)
-    def control_training(_: int, __: int, request_data: Mapping[str, Any] | None, job_id: str | None) -> tuple[Any, str]:
-        trigger = callback_context.triggered_id
+    for namespace in ('param', 'tool-param', 'plan-param'):
+        @app.callback(Output({'type': namespace+'-slide', 'path': MATCH}, 'value'), Output({'type': namespace+'-number', 'path': MATCH}, 'value'),
+                      Output({'type': namespace+'-slide', 'path': MATCH}, 'min'), Output({'type': namespace+'-slide', 'path': MATCH}, 'max'),
+                      Input({'type': namespace+'-slide', 'path': MATCH}, 'value'), Input({'type': namespace+'-number', 'path': MATCH}, 'value'),
+                      State({'type': namespace+'-slide', 'path': MATCH}, 'min'), State({'type': namespace+'-slide', 'path': MATCH}, 'max'),
+                      prevent_initial_call=True)
+        def sync_numeric(slider, number, lower, upper):
+            value = slider if ctx.triggered_id['type'].endswith('-slide') else number
+            return (no_update, no_update, no_update, no_update) if value is None else (value, value, min(lower, value), max(upper, value))
+
+    @app.callback(Output('input-files', 'data'), Input('add-file', 'n_clicks'), State('input-files', 'data'), prevent_initial_call=True)
+    def add_file(_, rows):
+        rows = list(rows or [])
+        return rows+[dict(file_id=f'file_{len(rows)+1}', role='B', path='', label='')]
+
+    @app.callback(Output('preview-record', 'options'), Output('preview-record', 'value'),
+                  Input('record-ids', 'value'), Input('input-files', 'data'), State('preview-record', 'value'))
+    def preview_records(ids, files, selected):
+        choices = [r['file_id'] for r in files or [] if r.get('file_id') and r.get('path')] or list(ids or [])
+        return _options(choices), selected if selected in choices else choices[0] if choices else None
+
+    @app.callback(Output('record-ids', 'disabled'), Input('input-files', 'data'))
+    def custom_inputs(files):
+        return any(row.get('path') for row in files or [])
+
+    @app.callback(Output('model-case', 'options'), Output('model-case', 'value'), Input('model-export', 'value'))
+    def model_cases(export):
+        cases = list(control.model_cases(export)) if export else []
+        return _options(cases), cases[0] if cases else None
+
+    @app.callback(Output('train-options', 'style'), Output('train', 'style'),
+                  Output({'type': 'analyse-stage', 'stage': 'model'}, 'style'), Input('model-mode', 'value'))
+    def training_mode(mode):
+        return ({}, {}, {'display': 'none'}) if mode == 'Train' else ({'display': 'none'}, {'display': 'none'}, {})
+
+    selection_names = ('participant-id', 'calibration-path', 'motion-bundle', 'motion-bundle-path', 'sqi-artifact',
+                       'sqi-artifact-path', 'model-export', 'model-case', 'model-bundle', 'model-bundle-path')
+
+    def selections(files, ids, args):
+        participant, calibration, motion, motion_path, sqi, sqi_path, export, case, bundle, bundle_path = args
+        supplied = [r for r in files or [] if r.get('path')]
+        return dict(files=supplied, record_ids=[] if supplied else ids or [], participant_id=participant,
+                    calibration_path=calibration or None, motion_bundle=motion_path or motion, sqi_artifact=sqi_path or sqi,
+                    model_export=export, model_case=case, model_bundle=bundle_path or bundle)
+
+    @app.callback(Output('preview-store', 'data'), Output('last-stage', 'data'),
+                  Input({'type': 'analyse-stage', 'stage': ALL}, 'n_clicks'), State('config-state', 'data'),
+                  State({'type': 'param', 'path': ALL}, 'id'), State({'type': 'param', 'path': ALL}, 'value'),
+                  State({'type': 'param-number', 'path': ALL}, 'id'), State({'type': 'param-number', 'path': ALL}, 'value'),
+                  State('preview-record', 'value'), State('session-id', 'data'), State('preview-start', 'value'),
+                  State('preview-duration', 'value'), State('input-files', 'data'), State('record-ids', 'value'),
+                  *[State(n, 'value') for n in selection_names], prevent_initial_call=True)
+    def analyse(clicks, config, identities, values, number_ids, numbers, record, session, start, duration, files, ids, *args):
+        if not any(clicks or []):
+            return no_update, no_update
+        stage = ctx.triggered_id['stage']
         try:
-            if trigger == 'stop-train':
-                if not job_id:
-                    return (None, 'No active training job.')
-                jobs.terminate(job_id)
-                return (job_id, f'Stop requested for {job_id}.')
-            if not request_data:
-                raise ValueError('Train requires a selected YAML and a valid request')
-            if job_id:
-                try:
-                    if jobs.status(job_id)['state'] == 'running':
-                        raise RuntimeError('stop the active training job first')
-                except KeyError:
-                    pass
-            from .control_service import CommandRequest
-            request = CommandRequest(script=str(request_data['script']),
-                                     arguments=tuple(request_data['arguments']),
-                                     display=str(request_data['display']),
-                                     resolved_yaml=str(request_data.get('resolved_yaml', '')),
-                                     config_sha256=str(request_data.get('config_sha256', '')))
-            new_id = jobs.start_request(request, kind='pipeline')
-            return (new_id, f'Training job {new_id} started.')
+            payload = current(config, identities + number_ids, values + numbers)
+            result = workflow.analyse(stage=stage, config_payload=payload, record_id=record or '', session_id=session,
+                selections=selections(files, ids, args), start_s=float(0 if start is None else start),
+                duration_s=float(20 if duration is None else duration))
+            result['configuration'] = payload
+            result['input_selection'] = selections(files, ids, args)
+            result['display_interval'] = [start, duration]
+            return result, stage
         except Exception as error:
-            return (job_id, _error(error))
+            try:
+                cached = getattr(workflow, 'cached_previews', lambda *a, **k: {})(session, record or '',
+                    start_s=float(0 if start is None else start), duration_s=float(20 if duration is None else duration))
+            except ValueError:
+                cached = {}
+            return dict(requested_stage=stage, error=f'{type(error).__name__}: {error}', previews=cached), stage
 
-    @app.callback(Output('train-status', 'children'),
-                  Input('job-poll', 'n_intervals'),
-                  State('active-train-job', 'data'),
-                  prevent_initial_call=True)
-    def poll_training(_: int, job_id: str | None) -> Any:
-        if not job_id:
-            return no_update
+    @app.callback(Output({'type': 'stage-output', 'stage': ALL}, 'children'), Input('preview-store', 'data'),
+                  Input('config-state', 'data'), State({'type': 'stage-output', 'stage': ALL}, 'id'),
+                  Input('preview-record', 'value'), Input('input-files', 'data'), Input('record-ids', 'value'),
+                  Input('preview-start', 'value'), Input('preview-duration', 'value'),
+                  *[Input(n, 'value') for n in selection_names])
+    def show_previews(result, config, identities, record, files, ids, start, duration, *args):
+        output = []
+        for identity in identities:
+            stage = identity['stage']
+            preview = (result or {}).get('previews', {}).get(stage)
+            children = _render_preview(preview)
+            if (result or {}).get('error') and stage == result.get('requested_stage'):
+                children = [html.Pre(result['error'], className='status')]
+            elif preview:
+                state = 'Reused' if stage in result.get('reused_stages', []) else 'Computed'
+                if result.get('configuration') != config:
+                    state = 'Settings changed · Analyse checks dependencies before reusing this output.'
+                elif (result.get('record_id') != record or result.get('input_selection') != selections(files, ids, args)
+                      or result.get('display_interval') != [start, duration]):
+                    state = 'Input / preview selection changed · press Analyse to refresh this output.'
+                children.insert(0, html.Div(state, className='notice'))
+            output.append(children)
+        return output
+
+    execution_names = ('run-name', 'repeat-indices', 'fold-indices', 'job-count',
+                       'cache-mode', 'cache-root', 'train-flags', 'resume-path')
+
+    def tool_dependencies(value_dependency):
+        return [value_dependency('tool-operation', 'value'), State('tool-arguments', 'value'),
+                State({'type': 'tool-param', 'path': ALL}, 'id'), value_dependency({'type': 'tool-param', 'path': ALL}, 'value'),
+                State({'type': 'tool-param-number', 'path': ALL}, 'id'), value_dependency({'type': 'tool-param-number', 'path': ALL}, 'value'),
+                value_dependency('tool-plan-state', 'data'),
+                State({'type': 'plan-param', 'path': ALL}, 'id'), value_dependency({'type': 'plan-param', 'path': ALL}, 'value'),
+                State({'type': 'plan-param-number', 'path': ALL}, 'id'), value_dependency({'type': 'plan-param-number', 'path': ALL}, 'value')]
+
+    def execution(args):
+        name, repeats, folds, count, cache_mode, cache_root, flags, resume = args
+        return dict(run_name=name, repeats=repeats, folds=folds, jobs=count, cache_mode=cache_mode, cache_root=cache_root,
+                    refit='refit' in (flags or []), dry_run='dry_run' in (flags or []), resume=resume)
+
+    @app.callback(Output('train-request', 'data'), Output('train-command', 'children'), Output('yaml-view', 'children'),
+                  Input('config-state', 'data'), Input('training-yaml', 'value'), *[Input(n, 'value') for n in execution_names])
+    def build_training(config, path, *args):
+        text = yaml.safe_dump(config, sort_keys=False, allow_unicode=True)
         try:
-            payload = jobs.status(job_id)
+            request = _training_request(control, config, execution(args), path)
+            return request.to_dict(), request.display, text
         except Exception as error:
-            return _error(error)
-        progress = payload.get('progress') or {}
-        return f"{payload['state']} · {payload['elapsed_s']:.1f}s\n{(_as_json(progress) if progress else '')}\n" + '\n'.join(
-            payload.get('log_tail', [])[-12:])
+            return None, f'{type(error).__name__}: {error}', text
 
-    @app.callback(Output('inference-participant-id', 'value'), Output('inference-file-table', 'data'),
-                  Output('input-contract-status', 'children'), Input('inference-manifest', 'value'))
-    def inspect_inference_input(manifest: str | None) -> tuple[Any, Any, str]:
-        if not manifest:
-            return (no_update, no_update, 'Enter a participant and files, or import a local YAML/JSON manifest.')
+    @app.callback(Output('command-view', 'children'), Input('config-state', 'data'), Input('last-stage', 'data'),
+                  Input('preview-record', 'value'), Input('preview-start', 'value'), Input('preview-duration', 'value'),
+                  Input('input-files', 'data'), Input('record-ids', 'value'), *[Input(n, 'value') for n in selection_names])
+    def stage_command(config, stage, record, start, duration, files, ids, *args):
+        argv = ['python', 'stage_analyse.py', '--config', 'workflow_config.yaml', '--stage', stage,
+                '--record-id', record or '', '--start-s', str(0 if start is None else start),
+                '--duration-s', str(20 if duration is None else duration),
+                '--selections', json.dumps(selections(files, ids, args), ensure_ascii=False)]
+        return shlex.join(argv)
+
+    @app.callback(Output('active-train-job', 'data'), Output('train-status', 'children', allow_duplicate=True),
+                  Input('train', 'n_clicks'), Input('stop-train', 'n_clicks'), State('model-mode', 'value'),
+                  State('training-yaml', 'value'), State('train-target', 'value'), State('train-request', 'data'),
+                  State('comparison-store', 'data'), State('active-train-job', 'data'),
+                  State('tool-request', 'data'),
+                  State('config-state', 'data'), State({'type': 'param', 'path': ALL}, 'id'),
+                  State({'type': 'param', 'path': ALL}, 'value'), State({'type': 'param-number', 'path': ALL}, 'id'),
+                  State({'type': 'param-number', 'path': ALL}, 'value'),
+                  *[State(n, 'value') for n in execution_names], *tool_dependencies(State), prevent_initial_call=True)
+    def training(_, __, mode, path, target, request, queue, job, tool, config, identities, values, number_ids, numbers, *args):
         try:
-            resolved = control.read_inference_manifest(manifest)
-            rows = [{'file_id': row.file_id, 'role': row.role, 'label': row.label, 'path': row.path} for row in resolved.files]
-            return (
-                resolved.participant_id, rows,
-                f'participant={resolved.participant_id}; files={len(rows)}; labelled participants={resolved.labelled_participant_count}. '
-                + SINGLE_PARTICIPANT_NOTICE)
+            if ctx.triggered_id == 'stop-train':
+                if job:
+                    jobs.terminate(job)
+                return job, 'Stopped.' if job else 'No active training job.'
+            tool_args = args[len(execution_names):]
+            selected_tool = tool_snapshot(*tool_args) if target == 'tool' and tool_args else None
+            tool_plan = selected_tool
+            if target == 'tool' and not tool_args and tool:
+                tool_plan = CommandRequest(**{**tool, 'arguments': tuple(tool['arguments'])})
+            if mode != 'Train' or not (path or tool_plan and '--plan' in tool_plan.arguments):
+                raise ValueError('Select a YAML and Train mode before Run.')
+            if job and jobs.status(job)['state'] == 'running':
+                return job, 'Training is already running. Stop it before starting another job.'
+            if target == 'comparison':
+                selected, _ = control.build_comparison_execution_request(queue or [])
+            elif target == 'tool':
+                if not tool_plan:
+                    raise ValueError('Configure the advanced tool request first.')
+                selected = tool_snapshot(*tool_args, materialize=True) if tool_args else tool_plan
+            elif target == 'sweep':
+                opts = execution(args[:len(execution_names)])
+                selected = control.build_train_request(config_path=None, plan_path=path, operation='sweep',
+                    run_name=opts['run_name'] or None, refit=opts['refit'], dry_run=opts['dry_run'], resume=opts['resume'] or None)
+            else:
+                payload = current(config, identities + number_ids, values + numbers)
+                selected = _training_request(control, payload, execution(args[:len(execution_names)]), path)
+            new_job = jobs.start_request(selected, kind='pipeline')
+            return new_job, 'Training started. Stop remains available.\n'+selected.display
         except Exception as error:
-            return (no_update, no_update, _error(error))
+            return job, f'{type(error).__name__}: {error}'
 
-    @app.callback(Output('inference-file-table', 'data', allow_duplicate=True),
-                  Input('add-inference-file', 'n_clicks'),
-                  State('inference-file-table', 'data'),
-                  prevent_initial_call=True)
-    def add_inference_file(_: int, rows: Sequence[Mapping[str, Any]] | None) -> Any:
-        return [*(dict(row) for row in rows or []), {'file_id': '', 'path': '', 'role': 'B', 'label': ''}]
+    @app.callback(Output('train-status', 'children'), Output('analysis-status', 'children'),
+                  Input('job-poll', 'n_intervals'), State('active-train-job', 'data'), State('active-report-job', 'data'))
+    def poll_jobs(_, train, report):
+        def status(job):
+            if not job:
+                return no_update
+            data = jobs.status(job)
+            return f"{data['state']} · {data['elapsed_s']:.1f}s\n"+'\n'.join(data.get('log_tail', [])[-12:])
+        return status(train), status(report)
 
-    @app.callback(Output('infer-result', 'children'),
-                  Output('inference-request', 'data'),
-                  Output('inference-command-view', 'children'),
-                  Output('inference-yaml-view', 'children'),
-                  Output('inference-manifest', 'value'),
-                  Input('infer', 'n_clicks'),
-                  State('config-state', 'data'),
-                  State('inference-participant-id', 'value'),
-                  State('inference-file-table', 'data'),
-                  State('inference-source-contract', 'value'),
-                  prevent_initial_call=True)
-    def run_inference(_: int, state: Mapping[str, Any] | None, participant_id: str | None, files: Sequence[Mapping[str, Any]] | None,
-                      source_confirmation: Sequence[str] | None) -> tuple[str, Any, Any, Any, Any]:
-        request = None
-        manifest_path = None
+    @app.callback(Output('comparison-store', 'data'), Output('comparison-status', 'children'),
+                  Input('add-comparison', 'n_clicks'), Input('remove-comparison', 'n_clicks'), Input('clear-comparison', 'n_clicks'),
+                  State('comparison-name', 'value'), State('train-request', 'data'), State('comparison-store', 'data'),
+                  State('training-yaml', 'value'), State('config-state', 'data'), State({'type': 'param', 'path': ALL}, 'id'),
+                  State({'type': 'param', 'path': ALL}, 'value'), State({'type': 'param-number', 'path': ALL}, 'id'),
+                  State({'type': 'param-number', 'path': ALL}, 'value'),
+                  *[State(n, 'value') for n in execution_names], prevent_initial_call=True)
+    def comparison(_, __, ___, name, request, queue, path, config, identities, values, number_ids, numbers, *args):
+        queue = list(queue or [])
         try:
-            if not state or not state.get('model_export'):
-                raise ValueError('Infer requires model_config defaults with a deployable bundle')
-            manifest_path = control.materialize_inference_manifest(participant_id=str(participant_id or ''),
-                                                                   files=files or (),
-                                                                   source_contract_confirmed='confirmed' in (source_confirmation
-                                                                                                             or ()))
-            request = control.build_inference_request(model_export=str(state['model_export']),
-                                                      case_id=state.get('model_case'),
-                                                      input_manifest=manifest_path)
-            result = control.infer(model_export=str(state['model_export']),
-                                   case_id=state.get('model_case'),
-                                   input_manifest=manifest_path)
-            return (_as_json({
-                'analysis_limit': SINGLE_PARTICIPANT_NOTICE,
-                'result': result
-            }), request.to_dict(), request.display, request.resolved_yaml, control.cli_input_path(manifest_path))
+            if ctx.triggered_id == 'clear-comparison':
+                return [], 'Queue cleared.'
+            if ctx.triggered_id == 'remove-comparison':
+                return queue[:-1], 'Last unit removed.'
+            payload = current(config, identities + number_ids, values + numbers)
+            request = _training_request(control, payload, execution(args), path)
+            candidate = dict(request.to_dict(), name=name)
+            candidate['arguments'] = list(candidate['arguments'])
+            comparison_sequence_export_yaml(queue+[candidate], pipeline_root=root)
+            return queue+[candidate], f'Added {name}; {len(queue)+1} units.'
         except Exception as error:
-            return (_error(error), request.to_dict() if request is not None else no_update,
-                    request.display if request is not None else '', request.resolved_yaml if request is not None else '',
-                    control.cli_input_path(manifest_path) if manifest_path is not None else no_update)
+            return queue, f'{type(error).__name__}: {error}'
 
-    @app.callback(Output('download-inference-cli', 'data'),
-                  Input('save-inference-cli', 'n_clicks'),
-                  State('inference-request', 'data'),
-                  prevent_initial_call=True)
-    def download_inference_cli(_: int, request: Mapping[str, Any] | None) -> Any:
-        if not request:
-            return no_update
-        return dcc.send_string(str(request.get('display', '')) + '\n', 'inference_command.sh')
+    @app.callback(Output('comparison-table', 'children'), Output('comparison-cli-view', 'children'),
+                  Output('comparison-yaml-view', 'children'), Input('comparison-store', 'data'))
+    def show_comparison(queue):
+        if not queue:
+            return html.Div('No comparison units yet.', className='notice'), '', ''
+        return (_table([{'order': n, 'name': r['name'], 'config_id': yaml.safe_load(r['resolved_yaml'])['config_id']}
+                        for n, r in enumerate(queue, 1)]), comparison_sequence_cli(queue),
+                comparison_sequence_export_yaml(queue, pipeline_root=root))
 
-    @app.callback(Output('download-inference-yaml', 'data'),
-                  Input('save-inference-yaml', 'n_clicks'),
-                  State('inference-request', 'data'),
-                  prevent_initial_call=True)
-    def download_inference_yaml(_: int, request: Mapping[str, Any] | None) -> Any:
-        if not request:
-            return no_update
-        return dcc.send_string(str(request.get('resolved_yaml', '')), 'inference_request.yaml')
+    report_fields = ('analysis-runs', 'analysis-mode', 'analysis-preset', 'analysis-modules', 'analysis-figures', 'analysis-tables',
+                     'reference-case', 'factor-paths', 'include-cases', 'exclude-cases', 'report-name',
+                     'statistics-alpha', 'calibration-bins')
 
-    @app.callback(Output('download-cli', 'data'),
-                  Input('save-cli', 'n_clicks'),
-                  State('train-request', 'data'),
-                  prevent_initial_call=True)
-    def download_cli(_: int, request: Mapping[str, Any] | None) -> Any:
-        if not request:
-            return no_update
-        return dcc.send_string(str(request['display']) + '\n', 'pipeline_command.sh')
-
-    @app.callback(Output('download-yaml', 'data'),
-                  Input('save-yaml', 'n_clicks'),
-                  State('train-request', 'data'),
-                  prevent_initial_call=True)
-    def download_yaml(_: int, request: Mapping[str, Any] | None) -> Any:
-        if not request:
-            return no_update
-        filename = 'resolved_study_plan.yaml' if request.get('script') == 'sweep.py' else 'resolved_pipeline.yaml'
-        return dcc.send_string(str(request.get('resolved_yaml', '')), filename)
-
-    @app.callback(Output('comparison-store', 'data'),
-                  Output('comparison-table', 'data'),
-                  Output('comparison-cli-view', 'children'),
-                  Output('comparison-yaml-view', 'children'),
-                  Output('comparison-execution-request', 'data'),
-                  Output('comparison-run-cli-view', 'children'),
-                  Output('comparison-run-yaml-view', 'children'),
-                  Output('comparison-status', 'children'),
-                  Input('add-comparison', 'n_clicks'),
-                  State('comparison-name', 'value'),
-                  State('train-request', 'data'),
-                  State('comparison-store', 'data'),
-                  State('comparison-execution-request', 'data'),
-                  prevent_initial_call=True)
-    def add_comparison(_: int, name: str | None, request: Mapping[str, Any] | None, stored: Sequence[Mapping[str, Any]] | None,
-                       execution_request: Mapping[str, Any] | None) -> tuple[Any, Any, str, str, Any, Any, Any, str]:
-        current = [dict(row) for row in stored or []]
+    @app.callback(Output('analysis-request', 'data'), Output('analysis-command', 'children'),
+                  *[Input(n, 'value') for n in report_fields], Input('config-state', 'data'))
+    def build_report(runs, mode, preset, modules, figures, tables, reference, factors, include, exclude,
+                     name, alpha, bins, config):
+        split = lambda text: [x.strip() for x in (text or '').split(',') if x.strip()]
+        if not runs:
+            return None, 'Select pipeline output(s).'
         try:
+            statistics = config['evaluation']['statistics']
+            request = control.build_analysis_request(run_paths=runs, mode=mode, preset=preset or '', modules=modules or [],
+                figures=figures or None, tables=tables or None, reference_case=reference or None, factor_paths=split(factors),
+                include_cases=split(include), exclude_cases=split(exclude), output_name=name or None,
+                bootstrap_resamples=statistics['bootstrap_replicates'],
+                permutation_resamples=statistics['paired_permutation_replicates'], statistics_seed=statistics['seed'],
+                alpha=alpha, calibration_bins=bins)
+            return request.to_dict(), request.display
+        except Exception as error:
+            return None, f'{type(error).__name__}: {error}'
+
+    @app.callback(Output('active-report-job', 'data'), Output('analysis-status', 'children', allow_duplicate=True),
+                  Input('analyse-report', 'n_clicks'), Input('stop-report', 'n_clicks'),
+                  State('analysis-request', 'data'), State('active-report-job', 'data'),
+                  State('config-state', 'data'), State({'type': 'param', 'path': ALL}, 'id'),
+                  State({'type': 'param', 'path': ALL}, 'value'), State({'type': 'param-number', 'path': ALL}, 'id'),
+                  State({'type': 'param-number', 'path': ALL}, 'value'),
+                  *[State(n, 'value') for n in report_fields], prevent_initial_call=True)
+    def report(_, __, request, job, config, identities, values, number_ids, numbers, *args):
+        try:
+            if ctx.triggered_id == 'stop-report':
+                if job:
+                    jobs.terminate(job)
+                return job, 'Report stopped.'
+            payload = current(config, identities + number_ids, values + numbers)
+            request, message = build_report(*args, payload)
             if not request:
-                raise ValueError('build a valid request before Add')
-            candidate = {
-                'name': str(name or '').strip(),
-                'script': str(request['script']),
-                'arguments': list(request['arguments']),
-                'display': str(request['display']),
-                'config_sha256': str(request.get('config_sha256', '')),
-                'resolved_yaml': str(request.get('resolved_yaml', ''))
-            }
-            trial = [*current, candidate]
-            sequential_cli = comparison_sequence_cli(trial)
-            export_yaml = comparison_sequence_export_yaml(trial, pipeline_root=control.pipeline_root)
-            table = [{'order': i + 1, **row} for i, row in enumerate(trial)]
-            return (trial, table, sequential_cli, export_yaml, None, '', '',
-                    f'Cached {len(trial)} sequential cases. Executable sequence YAML ready.')
+                raise ValueError(message)
+            if job and jobs.status(job)['state'] == 'running':
+                return job, 'Report is already running.'
+            selected = CommandRequest(**{**request, 'arguments': tuple(request['arguments'])})
+            return jobs.start_request(selected, kind='report'), 'Report analysis started.'
         except Exception as error:
+            return job, f'{type(error).__name__}: {error}'
+
+    @app.callback(Output('report-figure', 'options'), Output('report-figure', 'value'),
+                  Output('report-table', 'options'), Output('report-table', 'value'), Input('report-output', 'value'))
+    def report_artifacts(path):
+        figures = list(browser.study_figure_paths(path)) if path else []
+        tables = list(browser.study_table_paths(path)) if path else []
+        if path:
+            directory = browser._study_dir(path)
+            figures += [str(item.relative_to(directory)) for item in sorted(directory.rglob('*.html'))]
+        return _options(figures), figures[0] if figures else None, _options(tables), tables[0] if tables else None
+
+    @app.callback(Output('report-image', 'src'), Output('report-document', 'children'),
+                  Input('report-figure', 'value'), State('report-output', 'value'))
+    def figure(path, root_path):
+        if not path or not root_path:
+            return None, None
+        if str(path).endswith('.html'):
+            base = browser._study_dir(root_path)
+            document = (base / path).resolve()
+            document.relative_to(base)
+            return None, html.Iframe(srcDoc=document.read_text(encoding='utf-8'), sandbox='allow-scripts',
+                                     style={'width': '100%', 'height': '650px', 'border': 'none'})
+        return browser.study_figure_data_uri(root_path, path), None
+
+    @app.callback(Output('report-output', 'options', allow_duplicate=True), Output('report-output', 'value'),
+                  Output('report-preview-job', 'data'),
+                  Input('job-poll', 'n_intervals'), State('active-report-job', 'data'), State('report-output', 'value'),
+                  State('report-preview-job', 'data'),
+                  prevent_initial_call=True)
+    def finished_report(_, job, selected, displayed=None):
+        if not job or job == displayed:
+            return no_update, no_update, no_update
+        status = jobs.status(job)
+        if status['state'] != 'passed':
+            return no_update, no_update, no_update
+        paths = list(control.report_outputs())
+        command = status.get('command', [])
+        target = None
+        if command:
+            option = lambda name: DashboardJobManager._argument_value(command, name)
+            name = option('--output-name')
+            if not name:
+                source = option('--input') or option('--run').split('=', 1)[1]
+                path = Path(source)
+                relative = (path if path.is_absolute() else root / path).resolve().relative_to(root / 'pipeline_output')
+                name = relative.parts[0]
+            target = f'report_output/{name}'
+        return (_options(paths), target if target in paths else selected if selected in paths else paths[0] if paths else None,
+                job)
+
+    @app.callback(Output('report-table-preview', 'children'), Input('report-table', 'value'), State('report-output', 'value'))
+    def report_table(path, root_path):
+        return _table(browser.study_table(root_path, path)[0]) if path and root_path else None
+
+    @app.callback(Output('tool-controls', 'children'), Output('tool-plan-picker', 'style'),
+                  Input('tool-operation', 'value'))
+    def tool_parameters(operation):
+        specs = tool_specs(operation)
+        return (parameter_panel([spec for spec in specs if spec['path'] != 'plan'], 'tool-param'),
+                {} if any(spec['path'] == 'plan' for spec in specs) else {'display': 'none'})
+
+    @app.callback(Output('tool-plan-state', 'data'), Output('tool-plan-controls', 'children'),
+                  Output('tool-plan-status', 'children'), Input('tool-plan-yaml', 'value'), Input('tool-plan-path', 'value'))
+    def load_tool_plan(selected, entered):
+        path = entered or selected
+        if not path:
+            return None, [], 'Select a plan YAML to show its current parameters.'
+        try:
+            source = Path(path).expanduser()
+            source = source if source.is_absolute() else root / source
+            plan = yaml.safe_load(source.read_text(encoding='utf-8'))
+            if not isinstance(plan, Mapping):
+                raise TypeError('A plan YAML must contain a mapping.')
+            return ({'source': str(source), 'plan': plan}, parameter_panel(plan_parameter_specs(plan), 'plan-param'),
+                    'Loaded plan values. Edits affect the snapshot, not the source file.')
+        except Exception as error:
+            return None, [], f'{type(error).__name__}: {error}'
+
+    @app.callback(Output('tool-request', 'data'), Output('tool-command', 'children'), Output('tool-yaml', 'children'),
+                  Output('tool-help', 'children'), Output('analyse-tool', 'disabled'),
+                  *tool_dependencies(Input))
+    def build_tool(operation, arguments, *args):
+        _, script, command, trains = TOOLS[operation]
+        import argparse
+        parser = _tool_parser(script)
+        subcommands = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+        help_text = subcommands.choices[command].format_help()
+        try:
+            request = tool_snapshot(operation, arguments, *args)
+            return request.to_dict(), request.display, request.resolved_yaml, help_text, trains
+        except Exception as error:
+            return None, str(error), '', help_text, trains
+
+    @app.callback(Output('tool-arguments', 'value'), Input('tool-request', 'data'))
+    def tool_arguments(request):
+        return shlex.join(request['arguments'][1:]) if request else ''
+
+    @app.callback(Output('active-tool-job', 'data'), Output('tool-status', 'children', allow_duplicate=True),
+                  Input('analyse-tool', 'n_clicks'), Input('stop-tool', 'n_clicks'), State('tool-operation', 'value'),
+                  State('tool-request', 'data'), State('active-tool-job', 'data'),
+                  *tool_dependencies(State)[1:], prevent_initial_call=True)
+    def tool_action(_, __, operation, request, job, *args):
+        try:
+            if ctx.triggered_id == 'stop-tool':
+                if job:
+                    jobs.terminate(job)
+                return job, 'Stopped.'
+            if TOOLS[operation][3]:
+                return job, 'Use the model Train mode to start this training operation.'
+            if job and jobs.status(job)['state'] == 'running':
+                return job, 'This tool is already running.'
+            if not args and not request:
+                raise ValueError('Set the required command controls shown in Command help.')
+            selected = (tool_snapshot(operation, *args, materialize=True) if args else
+                        CommandRequest(**{**request, 'arguments': tuple(request['arguments'])}))
+            return jobs.start_request(selected, kind='tool'), 'Started.\n'+selected.display
+        except Exception as error:
+            return job, f'{type(error).__name__}: {error}'
+
+    @app.callback(Output('tool-status', 'children'), Input('job-poll', 'n_intervals'), State('active-tool-job', 'data'))
+    def poll_tool(_, job):
+        if not job:
+            return no_update
+        data = jobs.status(job)
+        return f"{data['state']} · {data['elapsed_s']:.1f}s\n"+'\n'.join(data.get('log_tail', [])[-16:])
+
+    @app.callback(Output('download-tool-cli', 'data'), Input('save-tool-cli', 'n_clicks'), State('tool-request', 'data'),
+                  *tool_dependencies(State), prevent_initial_call=True)
+    def tool_cli(_, request, *args):
+        if args:
             try:
-                current_cli = comparison_sequence_cli(current)
-                current_yaml = comparison_sequence_export_yaml(current, pipeline_root=control.pipeline_root)
-            except Exception:
-                current_cli = ''
-                current_yaml = ''
-            return (current, [{
-                'order': i + 1,
-                **row
-            } for i, row in enumerate(current)], current_cli, current_yaml, execution_request, no_update, no_update, _error(error))
+                request = tool_snapshot(*args).to_dict()
+            except (ValueError, TypeError, yaml.YAMLError):
+                return no_update  # The command preview displays the parser error.
+        return dcc.send_string(_tool_download_command(request), 'v5_tool.sh') if request else no_update
 
-    @app.callback(Output('comparison-execution-request', 'data', allow_duplicate=True),
-                  Output('active-train-job', 'data', allow_duplicate=True),
-                  Output('comparison-run-cli-view', 'children', allow_duplicate=True),
-                  Output('comparison-run-yaml-view', 'children', allow_duplicate=True),
-                  Output('comparison-status', 'children', allow_duplicate=True),
-                  Input('run-comparison', 'n_clicks'),
-                  State('comparison-store', 'data'),
-                  State('active-train-job', 'data'),
-                  prevent_initial_call=True)
-    def run_comparison_queue(_: int, stored: Sequence[Mapping[str, Any]] | None, job_id: str | None) -> tuple[Any, Any, Any, Any, str]:
-        request: CommandRequest | None = None
-        target: Path | None = None
-        try:
-            if job_id:
-                try:
-                    if jobs.status(job_id)['state'] == 'running':
-                        raise RuntimeError('stop the active training job first')
-                except KeyError:
-                    pass
-            request, target = control.build_comparison_execution_request(stored or [])
-            new_id = jobs.start_request(request, kind='pipeline')
-            payload = yaml.safe_load(request.resolved_yaml)
-            schema = str(payload.get('schema_version', 'unknown'))
-            return (request.to_dict(), new_id, request.display, request.resolved_yaml,
-                    f'Training job {new_id} started from {schema} at {control.relative(target)}.')
-        except Exception as error:
-            return (request.to_dict() if request is not None else no_update, job_id,
-                    request.display if request is not None else no_update, request.resolved_yaml if request is not None else no_update,
-                    _error(error))
-
-    @app.callback(Output('download-sequence-cli', 'data'),
-                  Input('export-sequence-cli', 'n_clicks'),
-                  State('comparison-store', 'data'),
-                  prevent_initial_call=True)
-    def export_sequence_cli(_: int, stored: Sequence[Mapping[str, Any]]) -> Any:
-        try:
-            return dcc.send_string(comparison_sequence_cli(stored or []), 'comparison_sequence.sh')
-        except Exception:
-            return no_update
-
-    @app.callback(Output('download-sequence-yaml', 'data'),
-                  Input('export-sequence-yaml', 'n_clicks'),
-                  State('comparison-store', 'data'),
-                  prevent_initial_call=True)
-    def export_sequence_yaml(_: int, stored: Sequence[Mapping[str, Any]]) -> Any:
-        try:
-            return dcc.send_string(comparison_sequence_export_yaml(stored or [], pipeline_root=control.pipeline_root),
-                                   'comparison_sequence.yaml')
-        except Exception:
-            return no_update
-
-    @app.callback(Output('download-comparison-run-cli', 'data'),
-                  Input('save-comparison-run-cli', 'n_clicks'),
-                  State('comparison-execution-request', 'data'),
-                  prevent_initial_call=True)
-    def download_comparison_run_cli(_: int, request: Mapping[str, Any] | None) -> Any:
-        if not request:
-            return no_update
-        return dcc.send_string(str(request.get('display', '')) + '\n', 'comparison_execution.sh')
-
-    @app.callback(Output('download-comparison-run-yaml', 'data'),
-                  Input('save-comparison-run-yaml', 'n_clicks'),
-                  State('comparison-execution-request', 'data'),
-                  prevent_initial_call=True)
-    def download_comparison_run_yaml(_: int, request: Mapping[str, Any] | None) -> Any:
-        if not request:
-            return no_update
-        return dcc.send_string(str(request.get('resolved_yaml', '')), 'comparison_execution.yaml')
-
-    @app.callback(Output('preview-record', 'options'), Output('preview-record', 'value'), Input('preview-participant', 'value'),
-                  Input('preview-role', 'value'))
-    def preview_records(participant: str | None, role: str | None) -> tuple[Any, Any]:
-        selected = [
-            row for row in records if (participant is None or row.participant_id == participant) and (role is None or row.role == role)
-        ]
-        options = [{'label': f'{row.role} · {row.record_id} · {row.duration_s:.1f}s', 'value': row.record_id} for row in selected]
-        return (options, selected[0].record_id if selected else None)
-
-    @app.callback(Output('preview-store', 'data'),
-                  Output('time-graph', 'figure'),
-                  Output('spectrum-graph', 'figure'),
-                  Output('stage-table', 'data'),
-                  Output('stage-table', 'columns'),
-                  Output('preview-status', 'children'),
-                  Input('preview', 'n_clicks'),
-                  State('config-state', 'data'),
-                  State('train-request', 'data'),
-                  State('preview-record', 'value'),
-                  State('preview-start', 'value'),
-                  State('preview-duration', 'value'),
-                  State('preview-traces', 'value'),
-                  State('preview-stages', 'value'),
-                  State('preview-artifact-run', 'value'),
-                  prevent_initial_call=True)
-    def build_preview(_: int, state: Mapping[str, Any] | None, train_request: Mapping[str, Any] | None, record_id: str | None,
-                      start: float, duration: float, traces: Sequence[str], stages: Sequence[str],
-                      artifact_run: str | None) -> tuple[Any, Any, Any, Any, Any, str]:
-        empty = go.Figure()
-        try:
-            if not state or not record_id:
-                raise ValueError('load a config and select a recording')
-            resolved_payload = None
-            if train_request and train_request.get('script') == 'pipeline.py':
-                candidate = yaml.safe_load(str(train_request.get('resolved_yaml', '')))
-                if isinstance(candidate, Mapping) and candidate.get('schema_version') == 'ppg_frailty.pipeline_config.v2':
-                    resolved_payload = candidate
-            result = preview.preview(config_path=str(state['config_path']) if resolved_payload is None else None,
-                                     config_payload=resolved_payload,
-                                     record_id=record_id,
-                                     start_s=float(start or 0),
-                                     duration_s=float(duration or 20),
-                                     trace_names=traces,
-                                     stage_names=stages)
-            time_figure = go.Figure()
-            spectrum_figure = go.Figure()
-            time_s = result.time_s
-            for name, values in result.traces.items():
-                time_figure.add_scatter(x=time_s, y=np.asarray(values), mode='lines', name=name)
-            for name, (frequency, power) in result.spectra.items():
-                spectrum_figure.add_scatter(x=frequency, y=power, mode='lines', name=name)
-            time_figure.update_layout(template='plotly_white', title='Canonical stage traces', xaxis_title='Time (s)')
-            spectrum_figure.update_layout(template='plotly_white', title='Welch spectra', xaxis_title='Hz', yaxis_type='log')
-            artifact_stages = {'representation_model', 'aggregation'} & set(stages or ())
-            rows = [dict(row) for row in result.stage_rows if str(row.get('stage')) not in artifact_stages]
-            if artifact_stages:
-                try:
-                    completed_rows = control.completed_workflow_stage_rows(artifact_run,
-                                                                           record_id=result.record_id,
-                                                                           participant_id=result.participant_id)
-                    rows.extend((dict(row) for row in completed_rows if str(row.get('stage')) in artifact_stages))
-                except Exception as artifact_error:
-                    rows.extend(({
-                        'stage': stage,
-                        'metric': 'completed_artifact',
-                        'value': _error(artifact_error),
-                        'status': 'failed'
-                    } for stage in sorted(artifact_stages)))
-            columns = [{'name': key, 'id': key} for key in (rows[0].keys() if rows else ())]
-            stored = {
-                'record_id': result.record_id,
-                'metadata': dict(result.stage_metadata),
-                'stage_rows': rows,
-                'completed_artifact': artifact_run
-            }
-            if any((row.get('status') == 'failed' for row in rows)):
-                artifact_status = 'model/aggregation artifact failed validation'
-            elif any((row.get('status') == 'artifact' for row in rows)):
-                artifact_status = 'completed OOF artifact loaded'
-            else:
-                artifact_status = 'model/aggregation artifact N/A'
-            return (stored, time_figure, spectrum_figure, rows, columns,
-                    f'Previewed {record_id}; no model fit executed; {artifact_status}.')
-        except Exception as error:
-            return (None, empty, empty, [], [], _error(error))
-
-    @app.callback(Output('active-report-job', 'data'),
-                  Output('analysis-request', 'data'),
-                  Output('analysis-command', 'children'),
-                  Output('analysis-yaml', 'children'),
-                  Output('analysis-status', 'children', allow_duplicate=True),
-                  Input('analyse', 'n_clicks'),
-                  Input('validate-report', 'n_clicks'),
-                  Input('stop-report', 'n_clicks'),
-                  State('analysis-run', 'value'),
-                  State('analysis-mode', 'value'),
-                  State('analysis-preset', 'value'),
-                  State('analysis-modules', 'value'),
-                  State('analysis-figures', 'value'),
-                  State('analysis-tables', 'value'),
-                  State('analysis-reference', 'value'),
-                  State('analysis-factors', 'value'),
-                  State('report-name', 'value'),
-                  State('include-cases', 'value'),
-                  State('exclude-cases', 'value'),
-                  State('comparison-family', 'value'),
-                  State('validation-depth', 'value'),
-                  State('on-missing', 'value'),
-                  State('analysis-flags', 'value'),
-                  State('bootstrap', 'value'),
-                  State('permutation', 'value'),
-                  State('statistics-seed', 'value'),
-                  State('alpha', 'value'),
-                  State('calibration-bins', 'value'),
-                  State('active-report-job', 'data'),
-                  prevent_initial_call=True)
-    def control_analysis(_: int, __: int, ___: int, run: Sequence[str] | None, mode: str, preset: str, modules: Sequence[str],
-                         figures: Sequence[str] | None, tables: Sequence[str] | None, reference: str | None, factors: str | None,
-                         report_name: str | None, include_cases: str | None, exclude_cases: str | None, comparison_family: str,
-                         validation_depth: str, on_missing: str, analysis_flags: Sequence[str], bootstrap: int, permutation: int,
-                         seed: int, alpha: float, bins: int, job_id: str | None) -> tuple[Any, Any, Any, Any, str]:
-        trigger = callback_context.triggered_id
-        try:
-            if trigger == 'stop-report':
-                if not job_id:
-                    return (None, no_update, no_update, no_update, 'No active analysis job.')
-                jobs.terminate(job_id)
-                return (job_id, no_update, no_update, no_update, f'Stop requested for {job_id}.')
-            if not run:
-                raise ValueError('select a pipeline_output run')
-            validation_only = trigger == 'validate-report'
-            request = control.build_analysis_request(
-                run_paths=list(run),
-                mode=mode,
-                preset=preset,
-                modules=modules or [],
-                figures=figures,
-                tables=tables,
-                reference_case=reference or None,
-                factor_paths=[value.strip() for value in (factors or '').split(',') if value.strip()],
-                bootstrap_resamples=int(bootstrap),
-                permutation_resamples=int(permutation),
-                statistics_seed=int(seed),
-                alpha=float(alpha),
-                calibration_bins=int(bins),
-                output_name=None if validation_only else report_name or None,
-                include_cases=[value.strip() for value in (include_cases or '').split(',') if value.strip()],
-                exclude_cases=[value.strip() for value in (exclude_cases or '').split(',') if value.strip()],
-                comparison_family=comparison_family,
-                validation_depth=validation_depth,
-                on_missing=on_missing,
-                allow_v2_compatibility='v2' in (analysis_flags or []),
-                command='validate' if validation_only else 'run')
-            if job_id:
-                try:
-                    if jobs.status(job_id)['state'] == 'running':
-                        raise RuntimeError('stop the active analysis job first')
-                except KeyError:
-                    pass
-            new_id = jobs.start_request(request, kind='analysis')
-            action = 'validation' if validation_only else 'analysis'
-            return (new_id, request.to_dict(), request.display, request.resolved_yaml, f'Report {action} job {new_id} started.')
-        except Exception as error:
-            return (job_id, no_update, no_update, no_update, _error(error))
-
-    @app.callback(Output('download-analysis-cli', 'data'),
-                  Input('save-analysis-cli', 'n_clicks'),
-                  State('analysis-request', 'data'),
-                  prevent_initial_call=True)
-    def download_analysis_cli(_: int, request: Mapping[str, Any] | None) -> Any:
-        if not request:
-            return no_update
-        return dcc.send_string(str(request.get('display', '')) + '\n', 'analysis_command.sh')
-
-    @app.callback(Output('download-analysis-yaml', 'data'),
-                  Input('save-analysis-yaml', 'n_clicks'),
-                  State('analysis-request', 'data'),
-                  prevent_initial_call=True)
-    def download_analysis_yaml(_: int, request: Mapping[str, Any] | None) -> Any:
-        if not request:
-            return no_update
-        return dcc.send_string(str(request.get('resolved_yaml', '')), 'analysis_request.yaml')
-
-    @app.callback(Output('analysis-status', 'children'),
-                  Input('job-poll', 'n_intervals'),
-                  State('active-report-job', 'data'),
-                  prevent_initial_call=True)
-    def poll_analysis(_: int, job_id: str | None) -> Any:
-        if not job_id:
-            return no_update
-        try:
-            payload = jobs.status(job_id)
-        except Exception as error:
-            return _error(error)
-        return f"{payload['state']} · {payload['elapsed_s']:.1f}s\n" + '\n'.join(payload.get('log_tail', [])[-12:])
-
-    @app.callback(Output('tool-request', 'data'),
-                  Output('tool-command', 'children'),
-                  Output('tool-yaml', 'children'),
-                  Output('tool-status', 'children', allow_duplicate=True),
-                  Input('build-tool', 'n_clicks'),
-                  State('tool-operation', 'value'),
-                  State('train-request', 'data'),
-                  State('device', 'value'),
-                  State('jobs', 'value'),
-                  State('tool-validation-mode', 'value'),
-                  State('tool-pipeline-path', 'value'),
-                  State('tool-report-path', 'value'),
-                  State('tool-plan-path', 'value'),
-                  State('tool-flags', 'value'),
-                  State('tool-special-plan', 'value'),
-                  State('tool-source-root', 'value'),
-                  State('tool-special-output', 'value'),
-                  State('tool-special-study', 'value'),
-                  State('tool-special-run-name', 'value'),
-                  State('tool-special-resume', 'value'),
-                  State('tool-special-upstream', 'value'),
-                  State('tool-special-case', 'value'),
-                  State('tool-prediction-file', 'value'),
-                  State('tool-step', 'value'),
-                  State('tool-special-report-input', 'value'),
-                  State('tool-special-flags', 'value'),
-                  prevent_initial_call=True)
-    def build_tool_request(_: int, operation: str, train_request: Mapping[str, Any] | None,
-                           device: str | None, job_count: int | None, validation_mode: str,
-                           pipeline_path: str | None, report_path: str | None, plan_path: str | None, tool_flags: Sequence[str] | None,
-                           specialized_plan: str | None, source_root: str | None, specialized_output: str | None,
-                           specialized_study: str | None, specialized_run_name: str | None, specialized_resume: str | None,
-                           specialized_upstream: str | None, specialized_case: str | None, prediction_file: str | None,
-                           step: float | None, specialized_report_input: str | None,
-                           specialized_flags: Sequence[str] | None) -> tuple[Any, str, str, str]:
-        def required(value: Any, label: str) -> str:
-            text = str(value or '').strip()
-            if not text:
-                raise ValueError(f'{label} is required')
-            return text
-
-        try:
-            flags = set(tool_flags or ())
-            if operation in {'pipeline_validate', 'show_config'}:
-                request = control.build_pipeline_config_tool_request(
-                    operation='validate' if operation == 'pipeline_validate' else 'show-config',
-                    run_request=train_request,
-                    validation_mode=validation_mode)
-            elif operation == 'sweep_validate':
-                request = control.build_sweep_validate_request(plan_path=required(plan_path, 'study-plan YAML'))
-            elif operation == 'pipeline_index':
-                request = control.build_pipeline_index_request(study_directory=required(pipeline_path, 'pipeline output'),
-                                                               hash_predictions='hash' in flags)
-            elif operation == 'model_export':
-                request = control.build_model_export_request(pipeline_output=required(pipeline_path, 'pipeline output'))
-            elif operation == 'pipeline_excel':
-                request = control.build_pipeline_excel_request(pipeline_output=required(pipeline_path, 'pipeline output'),
-                                                               replace='replace' in flags)
-            elif operation == 'report_excel':
-                request = control.build_report_excel_request(report_output=required(report_path, 'report output'),
-                                                             replace='replace' in flags)
-            elif operation == 'execution_audit':
-                request = control.build_execution_audit_request(
-                    pipeline_output=required(pipeline_path, 'pipeline output'),
-                    output_name=specialized_output or None)
-            elif operation in {'specialized_pipeline_validate', 'specialized_pipeline_run', 'specialized_pipeline_complete'}:
-                pipeline_operation = {
-                    'specialized_pipeline_validate': 'validate',
-                    'specialized_pipeline_run': 'run',
-                    'specialized_pipeline_complete': 'complete'
-                }[operation]
-                special_flags = set(specialized_flags or ())
-                request = control.build_specialized_pipeline_request(
-                    operation=pipeline_operation,
-                    plan_path=required(specialized_plan, 'specialized plan') if pipeline_operation != 'complete' else None,
-                    study_directory=required(specialized_study, 'specialized completion study')
-                    if pipeline_operation == 'complete' else specialized_study or None,
-                    run_name=specialized_run_name or None,
-                    resume=specialized_resume or None,
-                    source_root=source_root or '.',
-                    upstream_study=specialized_upstream or None,
-                    device=device,
-                    jobs=job_count,
-                    include_denoiser='no_denoiser' not in special_flags,
-                    dry_run='dry' in special_flags)
-            elif operation in {'specialized_validate', 'specialized_run'}:
-                request = control.build_specialized_request(
-                    operation='specialized-validate' if operation == 'specialized_validate' else 'specialized-run',
-                    plan_path=required(specialized_plan, 'specialized plan'),
-                    source_root=source_root or '.',
-                    output_name=specialized_output or None,
-                    study_directory=specialized_study or None,
-                    case_id=specialized_case or None,
-                    prediction_file=prediction_file or None,
-                    step=step)
-            elif operation == 'specialized_report':
-                request = control.build_specialized_request(operation='specialized-report',
-                                                            report_input=required(specialized_report_input,
-                                                                                  'specialized report input'),
-                                                            output_name=specialized_output or None)
-            else:
-                raise ValueError(f'unsupported Dashboard tool: {operation}')
-            return (request.to_dict(), request.display, request.resolved_yaml,
-                    'Ready; review the exact CLI and request YAML, then Run tool.')
-        except Exception as error:
-            return (None, '', '', _error(error))
-
-    @app.callback(Output('active-tool-job', 'data'),
-                  Output('tool-status', 'children', allow_duplicate=True),
-                  Input('run-tool', 'n_clicks'),
-                  Input('stop-tool', 'n_clicks'),
-                  State('tool-request', 'data'),
-                  State('active-tool-job', 'data'),
-                  prevent_initial_call=True)
-    def control_tool(_: int, __: int, raw_request: Mapping[str, Any] | None, job_id: str | None) -> tuple[Any, str]:
-        trigger = callback_context.triggered_id
-        try:
-            if trigger == 'stop-tool':
-                if not job_id:
-                    return (None, 'No active tool job.')
-                jobs.terminate(job_id)
-                return (job_id, f'Stop requested for {job_id}.')
-            if not raw_request:
-                raise ValueError('Build CLI before running a tool')
-            if job_id:
-                try:
-                    if jobs.status(job_id)['state'] == 'running':
-                        raise RuntimeError('stop the active tool job first')
-                except KeyError:
-                    pass
-            request = CommandRequest(script=str(raw_request.get('script', '')),
-                                     arguments=tuple((str(value) for value in raw_request.get('arguments', ()))),
-                                     display=str(raw_request.get('display', '')),
-                                     resolved_yaml=str(raw_request.get('resolved_yaml', '')),
-                                     config_sha256=str(raw_request.get('config_sha256', '')))
-            if request.script == 'export_model_config.py':
-                if len(request.arguments) != 2 or request.arguments[0] != '--pipeline-output':
-                    raise ValueError('invalid model export request')
-                result = control.execute_model_export(pipeline_output=request.arguments[1])
-                return (None, _as_json(result))
-            allowed = _TOOL_SUBCOMMANDS.get(request.script, frozenset())
-            if not request.arguments or request.arguments[0] not in allowed:
-                raise ValueError('request is outside the Dashboard maintenance allowlist')
-            new_id = jobs.start_request(request, kind='tool')
-            return (new_id, f'Tool job {new_id} started.')
-        except Exception as error:
-            return (job_id, _error(error))
-
-    @app.callback(Output('tool-status', 'children'),
-                  Input('job-poll', 'n_intervals'),
-                  State('active-tool-job', 'data'),
-                  prevent_initial_call=True)
-    def poll_tool(_: int, job_id: str | None) -> Any:
-        if not job_id:
-            return no_update
-        try:
-            payload = jobs.status(job_id)
-        except Exception as error:
-            return _error(error)
-        output = '\n'.join(payload.get('log_tail', [])[-12:])
-        if payload.get('state') != 'running' and payload.get('log_path'):
+    @app.callback(Output('download-tool-yaml', 'data'), Input('save-tool-yaml', 'n_clicks'), State('tool-request', 'data'),
+                  *tool_dependencies(State), prevent_initial_call=True)
+    def tool_yaml(_, request, *args):
+        if args:
             try:
-                log_path = control.safe_pipeline_input(str(payload['log_path']), label='tool job log')
-                output = log_path.read_text(encoding='utf-8', errors='replace')
-                if len(output) > 200000:
-                    output = '[output truncated to final 200000 characters]\n' + output[-200000:]
-            except Exception as error:
-                output = _error(error)
-        return f"{payload['state']} · {payload['elapsed_s']:.1f}s\n" + output
+                request = tool_snapshot(*args).to_dict()
+            except (ValueError, TypeError, yaml.YAMLError):
+                return no_update
+        name = f"{request['config_sha256']}.yaml" if request and request.get('config_sha256') else 'v5_tool_request.yaml'
+        return dcc.send_string(request['resolved_yaml'], name) if request else no_update
 
-    @app.callback(Output('download-tool-cli', 'data'),
-                  Input('save-tool-cli', 'n_clicks'),
-                  State('tool-request', 'data'),
-                  prevent_initial_call=True)
-    def download_tool_cli(_: int, request: Mapping[str, Any] | None) -> Any:
-        if not request:
-            return no_update
-        return dcc.send_string(str(request.get('display', '')) + '\n', 'v5_tool_command.sh')
+    @app.callback(Output('download-report-cli', 'data'), Input('save-report-cli', 'n_clicks'), State('analysis-request', 'data'), prevent_initial_call=True)
+    def report_cli(_, request):
+        return dcc.send_string(request['display']+'\n', 'v5_report.sh') if request else no_update
 
-    @app.callback(Output('download-tool-yaml', 'data'),
-                  Input('save-tool-yaml', 'n_clicks'),
-                  State('tool-request', 'data'),
-                  prevent_initial_call=True)
-    def download_tool_yaml(_: int, request: Mapping[str, Any] | None) -> Any:
-        if not request:
-            return no_update
-        return dcc.send_string(str(request.get('resolved_yaml', '')), 'v5_tool_request.yaml')
+    @app.callback(Output('download-cli', 'data'), Input('save-cli', 'n_clicks'), State('command-view', 'children'), prevent_initial_call=True)
+    def download_cli(_, command):
+        return dcc.send_string(command+'\n', 'workflow_analyse.sh')
 
-    @app.callback(Output('analysis-run', 'options'),
-                  Output('report-output', 'options'),
-                  Output('preview-artifact-run', 'options'),
-                  Input('refresh-outputs', 'n_clicks'),
-                  prevent_initial_call=True)
-    def refresh_outputs(_: int) -> tuple[Any, Any, Any]:
-        runs = _options(list(control.study_outputs()))
-        return (runs, _options(list(control.report_outputs())), runs)
+    @app.callback(Output('download-yaml', 'data'), Input('save-yaml', 'n_clicks'), State('config-state', 'data'), prevent_initial_call=True)
+    def download_yaml(_, config):
+        return dcc.send_string(yaml.safe_dump(config, sort_keys=False, allow_unicode=True), 'workflow_config.yaml')
 
-    @app.callback(Output('pipeline-table-select', 'options'), Output('pipeline-table-select', 'value'), Input('analysis-run', 'value'))
-    def pipeline_table_options(run: Sequence[str] | None) -> tuple[Any, Any]:
-        if not run:
-            return ([], None)
-        selected_run = str(run[0])
-        try:
-            values = list(preview.study_table_paths(selected_run))
-        except Exception:
-            return ([], None)
-        preferred = next((value for value in values if value.endswith('v5_fold_predictions.csv')), values[0] if values else None)
-        return (_options(values), preferred)
+    @app.callback(Output('download-sequence-cli', 'data'), Input('export-sequence-cli', 'n_clicks'), State('comparison-store', 'data'), prevent_initial_call=True)
+    def sequence_cli(_, queue):
+        return dcc.send_string(comparison_sequence_cli(queue), 'comparison_sequence.sh') if queue else no_update
 
-    @app.callback(Output('pipeline-table', 'data'), Output('pipeline-table', 'columns'), Input('pipeline-table-select', 'value'),
-                  State('analysis-run', 'value'))
-    def pipeline_table(path: str | None, run: Sequence[str] | None) -> tuple[Any, Any]:
-        if not path or not run:
-            return ([], [])
-        try:
-            data, columns = preview.study_table(str(run[0]), path)
-            return (data, [{'name': value, 'id': value} for value in columns])
-        except Exception as error:
-            return ([{'error': _error(error)}], [{'name': 'error', 'id': 'error'}])
-
-    @app.callback(Output('report-table-select', 'options'), Output('report-table-select', 'value'),
-                  Output('report-figure-select', 'options'), Output('report-figure-select', 'value'), Input('report-output', 'value'))
-    def report_artifact_options(report: str | None) -> tuple[Any, Any, Any, Any]:
-        if not report:
-            return ([], None, [], None)
-        try:
-            tables = list(preview.study_table_paths(report))
-            figures = list(preview.study_figure_paths(report))
-        except Exception:
-            return ([], None, [], None)
-        return (_options(tables), tables[0] if tables else None, _options(figures), figures[0] if figures else None)
-
-    @app.callback(Output('report-table', 'data'), Output('report-table', 'columns'), Input('report-table-select', 'value'),
-                  State('report-output', 'value'))
-    def report_table(path: str | None, report: str | None) -> tuple[Any, Any]:
-        if not path or not report:
-            return ([], [])
-        try:
-            data, columns = preview.study_table(report, path)
-            return (data, [{'name': value, 'id': value} for value in columns])
-        except Exception as error:
-            return ([{'error': _error(error)}], [{'name': 'error', 'id': 'error'}])
-
-    @app.callback(Output('report-figure', 'children'), Input('report-figure-select', 'value'), State('report-output', 'value'))
-    def report_figure(path: str | None, report: str | None) -> Any:
-        if not path or not report:
-            return None
-        try:
-            return html.Img(src=preview.study_figure_data_uri(report, path),
-                            style={
-                                'width': '100%',
-                                'maxHeight': '480px',
-                                'objectFit': 'contain'
-                            })
-        except Exception as error:
-            return html.Pre(_error(error))
+    @app.callback(Output('download-sequence-yaml', 'data'), Input('export-sequence-yaml', 'n_clicks'), State('comparison-store', 'data'), prevent_initial_call=True)
+    def sequence_yaml(_, queue):
+        return dcc.send_string(comparison_sequence_export_yaml(queue, pipeline_root=root), 'comparison_sequence.yaml') if queue else no_update
 
     return app

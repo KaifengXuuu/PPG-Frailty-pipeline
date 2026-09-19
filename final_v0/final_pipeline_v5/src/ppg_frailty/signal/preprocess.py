@@ -632,8 +632,10 @@ def materialize_signal_preprocessing_config(
 def build_signal_views(
     record: Mapping[str, Any] | Any,
     config: Mapping[str, Any],
+    *,
+    ppg_result: tuple[np.ndarray, np.ndarray, InputQC] | None = None,
 ) -> CanonicalSignalViews:
-    """Build canonical synchronized PPG and physical-unit IMU views."""
+    """Build synchronized views; optionally reuse the exact full-record PPG stage."""
     def required_field(name: str) -> Any:
         if isinstance(record, Mapping):
             if name not in record:
@@ -674,7 +676,7 @@ def build_signal_views(
     flatline_sec = float(quality_config.get("flatline_duration_s", float("nan")))
     if not np.isfinite(flatline_sec) or flatline_sec <= 0.0:
         raise ValueError("quality.flatline_duration_s must be explicit and positive")
-    native, filtered, ppg_qc = preprocess_ppg_pair(
+    native, filtered, ppg_qc = ppg_result if ppg_result is not None else preprocess_ppg_pair(
         ppg,
         fs_hz=fs_hz,
         timestamps_s=timestamps,

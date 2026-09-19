@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import hashlib
-import inspect
 import json
 import shutil
+from contextlib import contextmanager
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -39,6 +38,27 @@ from ppg_frailty.v5_reporting.cli import build_parser as build_report_parser
 
 
 PIPELINE_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _callback(app: object, output: str):
+    return next(value["callback"].__wrapped__ for key, value in app.callback_map.items() if output in key)
+
+
+def _layout(app: object):
+    return app.layout() if callable(app.layout) else app.layout
+
+
+@contextmanager
+def _trigger(component: object, prop: str = "n_clicks"):
+    from dash._callback_context import context_value
+    from dash._utils import AttributeDict
+
+    identity = json.dumps(component, separators=(",", ":"), sort_keys=True) if isinstance(component, dict) else str(component)
+    token = context_value.set(AttributeDict(triggered_inputs=[{"prop_id": f"{identity}.{prop}", "value": 1}]))
+    try:
+        yield
+    finally:
+        context_value.reset(token)
 
 
 def _comparison_case(name: str, request: CommandRequest) -> dict[str, object]:
@@ -260,51 +280,25 @@ def test_parameter_table_emits_only_changed_values() -> None:
 
 def test_parameter_table_and_shortcuts_use_the_live_cli_contract() -> None:
     pytest.importorskip("dash")
-    from ppg_frailty.dashboard.app import _numeric_sliders
+    from ppg_frailty.dashboard.app import _parameter_control
+    from ppg_frailty.dashboard.workflow_controls import default_configuration, grouped_parameter_specs
 
     service = V5ControlService(PIPELINE_ROOT)
     contract = service.parameter_contract()
-    rows = flatten_parameters(
-        {
-            "evaluation": {
-                "statistics": {
-                    "lcb95_percentile": 2.5,
-                    "seed": 42,
-                }
-            },
-            "signal": {"normalization": {"standard_ddof": 0}},
-            "training": {"learning_rate": 0.0003},
-        },
-        parameter_contract=contract,
-    )
-
-    lcb = next(
-        row
-        for row in rows
-        if row["path"] == "evaluation.statistics.lcb95_percentile"
-    )
-    assert lcb["range"] == "finite float in [0,100]"
-    assert lcb["input"].startswith("--set ")
-
-    controls = _numeric_sliders(rows)
-    sliders = [
-        component
-        for control in controls
-        for component in control._traverse()
-        if component.__class__.__name__ == "Slider"
-    ]
-    by_path = {slider.id["path"]: slider for slider in sliders}
-    assert set(by_path) == {
-        "evaluation.statistics.lcb95_percentile",
-        "signal.normalization.standard_ddof",
-    }
-    assert (
-        by_path["evaluation.statistics.lcb95_percentile"].min,
-        by_path["evaluation.statistics.lcb95_percentile"].max,
-    ) == (0.0, 100.0)
-    assert by_path["evaluation.statistics.lcb95_percentile"].step is None
-    assert "training.learning_rate" not in by_path
-    assert "evaluation.statistics.seed" not in by_path
+    assert contract["evaluation.statistics.lcb95_percentile"]["range"] == "finite float in [0,100]"
+    specs = grouped_parameter_specs(default_configuration(PIPELINE_ROOT), pipeline_root=PIPELINE_ROOT)
+    numeric = {s["path"]: s for s in specs if s["kind"] in {"integer", "number"}}
+    assert {"signal.ppg_filter.low_hz", "signal.ppg_filter.high_hz", "signal.ppg_filter.order",
+            "signal.imu.sensor_lowpass_acc_hz", "training.learning_rate"} <= set(numeric)
+    for path, spec in numeric.items():
+        component = _parameter_control(spec)
+        slider = next(c for c in component._traverse() if c.__class__.__name__ == "Slider")
+        editor = next(c for c in component._traverse() if c.__class__.__name__ == "Input")
+        assert slider.id["path"] == editor.id["path"] == path
+        assert slider.step is not None and slider.step > 0
+        assert slider.value == editor.value == spec["value"]
+        assert editor.type == "number"
+    assert next(s for s in specs if s["path"] == "signal.normalization.standard_ddof")["choices"] == [0, 1]
 
 
 def test_train_request_uses_same_resolver_and_fixed_output_root() -> None:
@@ -533,77 +527,39 @@ def test_model_export_tool_calls_existing_atomic_exporter(
 def test_tools_callback_builds_the_same_index_cli(tmp_path: Path) -> None:
     pytest.importorskip("dash")
     from ppg_frailty.dashboard import create_app
+    from ppg_frailty.dashboard.app import TOOLS
 
     root = tmp_path / "repo" / "final_v0" / "final_pipeline_v5"
     (root / "pipeline_output" / "run_a").mkdir(parents=True)
-    (root / "configs").mkdir()
-    (root / "configs" / "specialized.yaml").write_text(
-        "schema_version: preserved\n", encoding="utf-8"
+    app = create_app(root)
+    callback = _callback(app, "tool-request.data")
+    request, command, request_yaml, help_text, disabled = callback(
+        "pipeline_index", "--study-dir pipeline_output/run_a --hash-predictions"
     )
-    service = V5ControlService(root)
-    app = create_app(root, control_service=service)
-    callback = next(
-        value["callback"].__wrapped__
-        for key, value in app.callback_map.items()
-        if "tool-request.data" in key and "tool-command.children" in key
-    )
-    supplied = {
-        name: None
-        for name in inspect.signature(callback).parameters
-        if name != "_"
-    }
-    supplied.update(
-        {
-            "operation": "pipeline_index",
-            "pipeline_path": "pipeline_output/run_a",
-            "tool_flags": ["hash"],
-        }
-    )
-
-    request, command, request_yaml, status = callback(1, **supplied)
-
     assert request["script"] == "pipeline.py"
-    assert request["arguments"] == (
-        "index",
-        "--study-dir",
-        "pipeline_output/run_a",
-        "--hash-predictions",
-    )
-    assert command == (
-        "python pipeline.py index --study-dir pipeline_output/run_a "
-        "--hash-predictions"
-    )
+    assert request["arguments"] == ("index", "--study-dir", "pipeline_output/run_a", "--hash-predictions")
+    assert command == "python pipeline.py index --study-dir pipeline_output/run_a --hash-predictions"
     assert yaml.safe_load(request_yaml)["script"] == "pipeline.py"
-    assert status.startswith("Ready")
-
-    supplied.update(
-        {
-            "operation": "specialized_pipeline_run",
-            "specialized_plan": "configs/specialized.yaml",
-            "source_root": ".",
-            "specialized_run_name": "preserved_run",
-            "device": "cuda",
-            "job_count": 1,
-            "specialized_flags": ["no_denoiser"],
-        }
+    assert "--hash-predictions" in help_text and disabled is False
+    request, _, request_yaml, help_text, disabled = callback(
+        "specialized_pipeline_run", "--plan configs/specialized.yaml --source-root . "
+        "--run-name preserved_run --device cuda --jobs 1 --no-denoiser"
     )
-    request, _, request_yaml, status = callback(2, **supplied)
     parsed = build_specialized_parser().parse_args(list(request["arguments"]))
-
     assert request["script"] == "specialized_pipeline.py"
-    assert parsed.command == "run"
-    assert parsed.run_name == "preserved_run"
-    assert parsed.no_denoiser is True
-    assert yaml.safe_load(request_yaml)["script"] == "specialized_pipeline.py"
-    assert status.startswith("Ready")
-
-    download = app.callback_map["download-tool-yaml.data"]["callback"].__wrapped__(
-        1, request
-    )
+    assert parsed.command == "run" and parsed.run_name == "preserved_run"
+    assert parsed.no_denoiser is True and disabled is True
+    assert "--plan" in help_text
+    download = _callback(app, "download-tool-yaml.data")(1, request)
     assert download["filename"] == "v5_tool_request.yaml"
-    assert yaml.safe_load(download["content"])["script"] == (
-        "specialized_pipeline.py"
-    )
+    assert yaml.safe_load(download["content"])["script"] == "specialized_pipeline.py"
+    assert _callback(app, "download-tool-cli.data")(1, request)["content"] == request["display"] + "\n"
+    assert set(TOOLS) == {
+        "pipeline_validate", "show_config", "sweep_validate", "pipeline_index", "model_export",
+        "pipeline_excel", "report_excel", "execution_audit", "specialized_validate", "specialized_run",
+        "specialized_report", "specialized_pipeline_validate", "specialized_pipeline_run",
+        "specialized_pipeline_complete",
+    }
 
 
 def test_refit_is_one_optional_flag_without_selection_gates() -> None:
@@ -729,216 +685,98 @@ def test_dash_run_callback_forwards_execution_controls() -> None:
     pytest.importorskip("dash")
     from ppg_frailty.dashboard import create_app
 
+    service = V5ControlService(PIPELINE_ROOT)
+    config, _ = service.load_yaml("configs/presets/finalcase.yaml")
+    config["training"]["gradient_clip_norm"] = None
     app = create_app(PIPELINE_ROOT)
-    callback = next(
-        value["callback"].__wrapped__
-        for key, value in app.callback_map.items()
-        if "train-request.data" in key
+    callback = _callback(app, "train-request.data")
+    request, command, resolved = callback(
+        config, "configs/presets/finalcase.yaml", "", "0,2,4", "1,3", 1,
+        "off", "cache/preprocessing", ["refit"], "",
     )
-    supplied = {name: None for name in inspect.signature(callback).parameters}
-    supplied.update(
-        state={
-            "config_path": "configs/presets/finalcase.yaml",
-            "default_modules": {},
-            "default_features": [],
-        },
-        module_values=[],
-        parameter_rows=[],
-        operation="run",
-        study_id="v5_dashboard",
-        purpose="Dashboard forwarding test",
-        unset_text="training.gradient_clip_norm",
-        repeats=["0", "2", "4"],
-        folds=["1", "3"],
-        job_count=1,
-        device="cuda",
-        cache_mode="off",
-        execution_flags=[],
-        refit_enabled=["refit"],
-        module_ids=[],
-    )
-    request, _, _, status, train_disabled = callback(**supplied)
-
-    assert status.startswith("Ready")
-    assert train_disabled is False
+    assert request is not None, command
+    parsed = build_pipeline_parser().parse_args(list(request["arguments"]))
+    assert parsed.repeats == (0, 2, 4)
+    assert parsed.folds == (1, 3)
+    assert parsed.refit is True
+    assert parsed.preprocessing_cache_mode == "off"
     assert not {"--environment-policy", "--environment-lock"} & set(request["arguments"])
-    assert request["arguments"][request["arguments"].index("--repeats") + 1] == "0,2,4"
-    assert request["arguments"][request["arguments"].index("--folds") + 1] == "1,3"
-    assert ("--unset", "training.gradient_clip_norm") == tuple(
-        request["arguments"][request["arguments"].index("--unset") :][:2]
-    )
-    assert request["arguments"].count("--refit") == 1
-    supplied["state"] = None
-    empty_request, _, _, _, train_disabled = callback(**supplied)
-    assert empty_request is None
-    assert train_disabled is True
+    assert yaml.safe_load(resolved)["training"]["gradient_clip_norm"] is None
+    assert yaml.safe_load(request["resolved_yaml"])["training"]["gradient_clip_norm"] is None
+    assert request["display"] == command
 
 
-def test_dash_inference_table_materializes_then_calls_shared_service(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_dash_inference_table_materializes_then_calls_shared_service() -> None:
     pytest.importorskip("dash")
     from ppg_frailty.dashboard import create_app
 
-    service = V5ControlService(PIPELINE_ROOT)
-    app = create_app(PIPELINE_ROOT, control_service=service)
-    components = {
-        component.id: component
-        for component in app.layout._traverse()
-        if getattr(component, "id", None)
-    }
-    table = components["inference-file-table"]
-    assert components["inference-participant-id"].type == "text"
-    assert table.editable is True
-    assert table.row_deletable is True
-    assert [column["id"] for column in table.columns] == [
-        "file_id",
-        "path",
-        "role",
-        "label",
-    ]
-    assert "role" in table.dropdown
-    assert components["repeats"].multi is True
-    assert components["repeats"].value == ["0", "1", "2", "3", "4"]
-    assert components["folds"].multi is True
-    assert components["unset-paths"].value == ""
-    assert "preview-artifact-run" in components
+    observed = {}
+    class Workflow:
+        def analyse(self, **kwargs):
+            observed.update(kwargs)
+            return {"requested_stage": kwargs["stage"], "previews": {"model": {"tables": {"prediction": [{"class": 1}]}}}}
 
-    observed: list[tuple[str, object]] = []
-    manifest = PIPELINE_ROOT / "configs" / "presets" / "finalcase.yaml"
+    class NoJobs:
+        def start_request(self, *args, **kwargs):
+            pytest.fail("Analyse must not submit a training job")
 
-    def fake_materialize(**kwargs: object) -> Path:
-        observed.append(("materialize", kwargs))
-        return manifest
-
-    def fake_request(**kwargs: object) -> CommandRequest:
-        observed.append(("request", kwargs))
-        return CommandRequest(
-            script="pipeline.py",
-            arguments=("infer", "--input-manifest", "request.yaml"),
-            display="python pipeline.py infer --input-manifest request.yaml",
-            resolved_yaml="schema_version: dashboard_inference_fixture\n",
+    app = create_app(PIPELINE_ROOT, workflow_service=Workflow(), job_manager=NoJobs())
+    components = {c.id: c for c in _layout(app)._traverse() if isinstance(getattr(c, "id", None), str)}
+    table = components["input-files"]
+    assert table.editable is True and table.row_deletable is True
+    assert [c["id"] for c in table.columns] == ["file_id", "role", "path", "label"]
+    assert components["record-ids"].multi is True
+    assert components["training-yaml"].value is None
+    config, _ = V5ControlService(PIPELINE_ROOT).load_yaml("configs/presets/finalcase.yaml")
+    files = [{"file_id": "b", "path": "input/b.csv", "role": "B", "label": "Young"},
+             {"file_id": "r", "path": "input/r.csv", "role": "R1", "label": ""}]
+    with _trigger({"type": "analyse-stage", "stage": "model"}):
+        result, stage = _callback(app, "preview-store.data")(
+            [1], config, [], [], [{"type": "param-number", "path": "signal.ppg_filter.high_hz"}], [7.0],
+            "r", "browser-session", 3, 15, files, [],
+            "new-001", None, None, None, None, None, "model_config/run_a", "finalcase", None, None,
         )
-
-    def fake_infer(**kwargs: object) -> dict[str, object]:
-        observed.append(("infer", kwargs))
-        return {"participant_id": "new-001", "predicted_class": 1}
-
-    monkeypatch.setattr(service, "materialize_inference_manifest", fake_materialize)
-    monkeypatch.setattr(service, "build_inference_request", fake_request)
-    monkeypatch.setattr(service, "infer", fake_infer)
-    callback = next(
-        value["callback"].__wrapped__
-        for key, value in app.callback_map.items()
-        if "infer-result.children" in key and "inference-command-view.children" in key
-    )
-    result, request, command, request_yaml, materialized = callback(
-        1,
-        {"model_export": "model_config/run_a", "model_case": "finalcase"},
-        "new-001",
-        [{"file_id": "b", "path": "input/b.csv", "role": "B", "label": ""}],
-        ["confirmed"],
-    )
-
-    assert [name for name, _ in observed] == ["materialize", "request", "infer"]
-    assert "predicted_class" in result
-    assert request["script"] == "pipeline.py"
-    assert command == "python pipeline.py infer --input-manifest request.yaml"
-    assert yaml.safe_load(request_yaml)["schema_version"] == (
-        "dashboard_inference_fixture"
-    )
-    assert materialized == "configs/presets/finalcase.yaml"
+    assert stage == observed["stage"] == "model"
+    assert observed["config_payload"]["signal"]["ppg_filter"]["high_hz"] == 7.0
+    assert config["signal"]["ppg_filter"]["high_hz"] == 8.0
+    assert observed["selections"]["files"] == files
+    assert observed["selections"]["model_export"] == "model_config/run_a"
+    assert observed["selections"]["model_case"] == "finalcase"
+    assert observed["selections"]["participant_id"] == "new-001"
+    assert observed["session_id"] == "browser-session"
+    assert observed["start_s"] == 3 and observed["duration_s"] == 15
+    assert result["previews"]["model"]["tables"]["prediction"] == [{"class": 1}]
 
 
-def test_dash_preview_replaces_model_placeholders_with_completed_artifacts(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_dash_preview_replaces_model_placeholders_with_completed_artifacts() -> None:
     pytest.importorskip("dash")
     from ppg_frailty.dashboard import create_app
 
-    class FakePreview:
-        DEFAULT_TRACES: tuple[str, ...] = ()
-
-        @staticmethod
-        def records() -> tuple[object, ...]:
-            return ()
-
-        @staticmethod
-        def preview(**_: object) -> SimpleNamespace:
-            return SimpleNamespace(
-                record_id="rec-1",
-                participant_id="P01",
-                time_s=[],
-                traces={},
-                spectra={},
-                stage_metadata={},
-                stage_rows=(
-                    {
-                        "stage": "representation_model",
-                        "metric": "preview_status",
-                        "value": "pre_fit_inputs_only_model_fit_not_executed",
-                        "status": "N/A",
-                    },
-                    {
-                        "stage": "aggregation",
-                        "metric": "preview_status",
-                        "value": "requires_outer_oof_predictions_not_executed",
-                        "status": "N/A",
-                    },
-                ),
-            )
-
-    service = V5ControlService(PIPELINE_ROOT)
-    observed: dict[str, object] = {}
-
-    def completed(run: object, **identity: object) -> tuple[dict[str, object], ...]:
-        observed.update({"run": run, **identity})
-        return (
-            {
-                "stage": "representation_model",
-                "metric": "reference.repeat_00.fold_00.model_id",
-                "value": "InceptionTimeSmall",
-                "status": "artifact",
-            },
-            {
-                "stage": "aggregation",
-                "metric": "reference.repeat_00.fold_00.file.probabilities",
-                "value": "[0.7,0.2,0.1]",
-                "status": "artifact",
-            },
-        )
-
-    monkeypatch.setattr(service, "completed_workflow_stage_rows", completed)
-    app = create_app(
-        PIPELINE_ROOT,
-        control_service=service,
-        preview_service=FakePreview(),
-    )
-    callback = next(
-        value["callback"].__wrapped__
-        for key, value in app.callback_map.items()
-        if "preview-store.data" in key and "stage-table.data" in key
-    )
-    _, _, _, rows, _, status = callback(
-        1,
-        {"config_path": "configs/presets/finalcase.yaml"},
-        None,
-        "rec-1",
-        0,
-        20,
-        [],
-        ["representation_model", "aggregation"],
-        "pipeline_output/run_a",
-    )
-
-    assert observed == {
-        "run": "pipeline_output/run_a",
-        "record_id": "rec-1",
-        "participant_id": "P01",
-    }
-    assert {row["status"] for row in rows} == {"artifact"}
-    assert not any(row["metric"] == "preview_status" for row in rows)
-    assert "completed OOF artifact loaded" in status
+    app = create_app(PIPELINE_ROOT)
+    callback = _callback(app, '"type":"stage-output"')
+    config = {"config_id": "current"}
+    rows = [{"file_id": "r", "probabilities": [0.7, 0.2, 0.1]}]
+    payload = {"configuration": config, "requested_stage": "model",
+               "previews": {"model": {"tables": {"predictions": rows}}},
+               "computed_stages": ["model"], "reused_stages": [],
+               "record_id": "r", "display_interval": [0, 20],
+               "input_selection": {"files": [], "record_ids": [], "participant_id": "p",
+                                   "calibration_path": None, "motion_bundle": None, "sqi_artifact": None,
+                                   "model_export": None, "model_case": None, "model_bundle": None}}
+    identities = [{"type": "stage-output", "stage": "model"}]
+    selection = ("r", [], [], 0, 20, "p", None, None, None, None, None, None, None, None, None)
+    rendered = callback(payload, config, identities, *selection)[0]
+    table = next(c for c in rendered if c.__class__.__name__ == "DataTable")
+    assert table.data[0]["file_id"] == "r"
+    assert json.loads(table.data[0]["probabilities"]) == [0.7, 0.2, 0.1]
+    assert rendered[0].children == "Computed"
+    payload["reused_stages"] = ["model"]
+    assert callback(payload, config, identities, *selection)[0][0].children == "Reused"
+    assert "Settings changed" in callback(payload, {"config_id": "changed"}, identities, *selection)[0][0].children
+    assert "selection changed" in callback(payload, config, identities, "other-record", *selection[1:])[0][0].children
+    assert "selection changed" in callback(payload, config, identities, *selection[:3], 5, 20, *selection[5:])[0][0].children
+    failed = {"requested_stage": "model", "error": "Missing fitted transform", "previews": {}}
+    assert callback(failed, config, identities, *selection)[0][0].children == "Missing fitted transform"
 
 
 def test_train_requires_explicit_yaml() -> None:
@@ -995,109 +833,70 @@ def test_comparison_callback_displays_the_same_cli_and_yaml_it_exports() -> None
 
     service = V5ControlService(PIPELINE_ROOT)
     config, _ = service.load_yaml("configs/presets/finalcase.yaml")
-    first = service.build_train_request(
-        config_path="configs/presets/finalcase.yaml",
-        parameter_rows=flatten_parameters(config),
-    )
-    edited = flatten_parameters(config)
-    next(row for row in edited if row["path"] == "training.batch_size")[
-        "value_yaml"
-    ] = "32"
-    second = service.build_train_request(
-        config_path="configs/presets/finalcase.yaml",
-        parameter_rows=edited,
-    )
+    first = service.build_train_request(config_path="configs/presets/finalcase.yaml")
     app = create_app(PIPELINE_ROOT, control_service=service)
-    callback = next(
-        value["callback"].__wrapped__
-        for key, value in app.callback_map.items()
-        if "comparison-cli-view.children" in key
-        and "comparison-yaml-view.children" in key
-    )
-
-    stored, _, cli, export_yaml, execution, run_cli, run_yaml, _ = callback(
-        1, "reference", first.to_dict(), [], None
-    )
-    assert execution is None
-    assert run_cli == run_yaml == ""
-    stored, _, cli, export_yaml, execution, run_cli, run_yaml, status = callback(
-        2, "batch_32", second.to_dict(), stored, {"stale": True}
-    )
-
+    add = _callback(app, "comparison-store.data")
+    snapshot = ("configs/presets/finalcase.yaml", config, [], [], [], [], "", "all", "all", 1,
+                "off", "cache/preprocessing", [], "")
+    with _trigger("add-comparison"):
+        stored, _ = add(1, 0, 0, "reference", first.to_dict(), [], *snapshot)
+        # The cached request deliberately remains old: Add must snapshot live controls.
+        stored, status = add(2, 0, 0, "batch_32", first.to_dict(), stored,
+                             "configs/presets/finalcase.yaml", config, [], [],
+                             [{"type": "param-number", "path": "training.batch_size"}], [32],
+                             "", "all", "all", 1, "off", "cache/preprocessing", [], "")
+    _, cli, exported = _callback(app, "comparison-cli-view.children")(stored)
     assert cli == comparison_sequence_cli(stored)
-    assert export_yaml == comparison_sequence_export_yaml(
-        stored, pipeline_root=PIPELINE_ROOT
-    )
-    assert yaml.safe_load(export_yaml)["schema_version"] == "ppg_frailty.dashboard_comparison_sequence.v2"
-    assert execution is None
-    assert run_cli == run_yaml == ""
-    assert "Executable sequence YAML ready" in status
+    assert exported == comparison_sequence_export_yaml(stored, pipeline_root=PIPELINE_ROOT)
+    assert yaml.safe_load(exported)["schema_version"] == "ppg_frailty.dashboard_comparison_sequence.v2"
+    assert "2 units" in status
+    assert yaml.safe_load(stored[1]["resolved_yaml"])["training"]["batch_size"] == 32
+    assert _callback(app, "download-sequence-cli.data")(1, stored)["content"] == cli
+    assert _callback(app, "download-sequence-yaml.data")(1, stored)["content"] == exported
+    assert len(stored) == 2
+    with _trigger("remove-comparison"):
+        reduced, _ = add(2, 1, 0, "", None, stored, *snapshot)
+    assert [row["name"] for row in reduced] == ["reference"]
+    assert len(stored) == 2
+    with _trigger("clear-comparison"):
+        assert add(2, 1, 1, "", None, stored, *snapshot)[0] == []
 
 
-def test_comparison_run_callback_submits_through_the_training_job(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_comparison_run_callback_submits_through_the_training_job(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("dash")
     from ppg_frailty.dashboard import create_app
 
     service = V5ControlService(PIPELINE_ROOT)
     execution = CommandRequest(
-        script="comparison_sequence.py",
-        arguments=(
-            "run",
-            "--request",
-            "pipeline_output/.dashboard_requests/comparison/sequence_abc.yaml",
-        ),
-        display=(
-            "python comparison_sequence.py run --request "
-            "pipeline_output/.dashboard_requests/comparison/sequence_abc.yaml"
-        ),
-        resolved_yaml=(
-            "schema_version: ppg_frailty.dashboard_comparison_sequence.v2\n"
-        ),
+        script="comparison_sequence.py", arguments=("run", "--request", "sequence.yaml"),
+        display="python comparison_sequence.py run --request sequence.yaml",
+        resolved_yaml="schema_version: ppg_frailty.dashboard_comparison_sequence.v2\\n",
         config_sha256="a" * 64,
     )
-    target = PIPELINE_ROOT / "configs" / "presets" / "finalcase.yaml"
-
-    def fake_execution(
-        cases: object,
-    ) -> tuple[CommandRequest, Path]:
+    def fake_execution(cases):
         assert cases == [{"name": "cached"}]
-        return execution, target
+        return execution, PIPELINE_ROOT / "sequence.yaml"
 
     class FakeJobs:
-        requests: list[tuple[CommandRequest, str]] = []
-
-        @classmethod
-        def start_request(cls, request: CommandRequest, *, kind: str) -> str:
-            cls.requests.append((request, kind))
+        def __init__(self):
+            self.requests = []
+        def start_request(self, request, *, kind):
+            self.requests.append((request, kind))
             return "queue-job-01"
-
-        @staticmethod
-        def status(_: str) -> dict[str, str]:
+        def status(self, _):
             return {"state": "passed"}
 
     monkeypatch.setattr(service, "build_comparison_execution_request", fake_execution)
     jobs = FakeJobs()
     app = create_app(PIPELINE_ROOT, control_service=service, job_manager=jobs)
-    callback = next(
-        value["callback"].__wrapped__
-        for key, value in app.callback_map.items()
-        if "comparison-run-cli-view.children" in key
-        and "active-train-job.data" in key
-    )
-
-    request_data, job_id, cli, request_yaml, status = callback(
-        1, [{"name": "cached"}], None
-    )
-
-    assert request_data == execution.to_dict()
-    assert job_id == "queue-job-01"
-    assert cli == execution.display
-    assert request_yaml == execution.resolved_yaml
-    assert FakeJobs.requests == [(execution, "pipeline")]
-    assert "dashboard_comparison_sequence.v2" in status
-    assert "Training job queue-job-01 started" in status
+    callback = _callback(app, "active-train-job.data")
+    with _trigger("train"):
+        job, status = callback(1, 0, "Train", "configs/presets/finalcase.yaml", "comparison",
+                               None, [{"name": "cached"}], None, None, {}, [], [], [], [], "", "all", "all", 1,
+                               "off", "cache/preprocessing", [], "")
+    assert job == "queue-job-01"
+    assert jobs.requests == [(execution, "pipeline")]
+    assert execution.display in status
 
 
 def test_sparse_comparison_exports_exact_sequence_without_claiming_study_plan() -> None:
@@ -1851,84 +1650,31 @@ def test_job_manager_never_uses_a_shell(tmp_path: Path, monkeypatch: pytest.Monk
 def test_dash_layout_smoke_and_button_labels() -> None:
     pytest.importorskip("dash")
     from ppg_frailty.dashboard import create_app
+    from ppg_frailty.dashboard.app import STAGES
 
     app = create_app(PIPELINE_ROOT)
-    assert app.server.test_client().get("/").status_code == 200
+    client = app.server.test_client()
+    for endpoint in ("/", "/_dash-layout", "/_dash-dependencies"):
+        assert client.get(endpoint).status_code == 200
     assert len(app.callback_map) >= 20
-
-    buttons: list[object] = []
-
-    def visit(component: object) -> None:
-        if component.__class__.__name__ == "Button":
-            buttons.append(component)
-        children = getattr(component, "children", None)
-        if isinstance(children, (list, tuple)):
-            for child in children:
-                visit(child)
-        elif children is not None and not isinstance(children, (str, int, float)):
-            visit(children)
-
-    visit(app.layout)
-    labels = [str(getattr(button, "children", "")) for button in buttons]
-    assert {
-        "Infer",
-        "Train",
-        "Stop",
-        "Add",
-        "Run queue",
-        "Run CLI",
-        "Run YAML",
-        "Analyse",
-        "Validate",
-        "Build CLI",
-        "Run tool",
-        "Stop tool",
-    } <= set(labels)
+    layout = _layout(app)
+    all_components = list(layout._traverse())
+    buttons = [c for c in all_components if c.__class__.__name__ == "Button"]
+    labels = [str(c.children) for c in buttons]
+    assert {"Analyse", "Run", "Stop", "Add", "Download CLI", "Download YAML"} <= set(labels)
     assert all(len(label) <= 20 for label in labels)
-
-    components = {
-        component.id: component
-        for component in app.layout._traverse()
-        if isinstance(getattr(component, "id", None), str)
-    }
-    assert {
-        "comparison-cli-view",
-        "comparison-yaml-view",
-        "comparison-run-cli-view",
-        "comparison-run-yaml-view",
-        "tool-command",
-        "tool-yaml",
-    } <= set(components)
-    assert "download-comparison-run-cli.data" in app.callback_map
-    assert "download-comparison-run-yaml.data" in app.callback_map
-    assert "download-tool-yaml.data" in app.callback_map
-    grid_templates = [
-        str(component.style["gridTemplateColumns"])
-        for component in app.layout._traverse()
-        if isinstance(getattr(component, "style", None), dict)
-        and "gridTemplateColumns" in component.style
-    ]
-    assert grid_templates
-    assert all("auto-fit" in value and "min(100%" in value for value in grid_templates)
-    assert str(app.layout.style["padding"]).startswith("clamp(")
-    assert components["tool-operation"].value == "pipeline_validate"
-    operations = {item["value"] for item in components["tool-operation"].options}
-    assert {
-        "pipeline_validate",
-        "show_config",
-        "sweep_validate",
-        "pipeline_index",
-        "model_export",
-        "pipeline_excel",
-        "report_excel",
-        "execution_audit",
-        "specialized_validate",
-        "specialized_run",
-        "specialized_report",
-        "specialized_pipeline_validate",
-        "specialized_pipeline_run",
-        "specialized_pipeline_complete",
-    } <= operations
-    notice = components["equivalent-tools"].children
-    assert "Every displayed execution request uses a public parser-backed CLI" in notice
-    assert "not every CLI subcommand has a same-named button" in notice
+    assert labels.count("Run") == 1
+    assert not {"Infer", "Run queue", "Run CLI", "Run YAML", "Run tool"} & set(labels)
+    stages = [c.id["stage"] for c in buttons if isinstance(getattr(c, "id", None), dict)
+              and c.id.get("type") == "analyse-stage"]
+    assert stages == [stage for stage, _ in STAGES]
+    components = {c.id: c for c in all_components if isinstance(getattr(c, "id", None), str)}
+    assert components["model-mode"].value == "Analyse"
+    assert components["train"].style == {"display": "none"}
+    assert not getattr(components["stop-train"], "disabled", False)
+    assert components["training-yaml"].value is None
+    assert {"comparison-cli-view", "comparison-yaml-view", "command-view", "train-command", "yaml-view"} <= set(components)
+    assert "download-sequence-cli.data" in app.callback_map
+    assert "download-sequence-yaml.data" in app.callback_map
+    assert str(layout.style["padding"]).startswith("clamp(")
+    assert "grid-template-columns:1fr" in app.index_string

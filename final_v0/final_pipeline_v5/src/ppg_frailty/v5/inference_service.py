@@ -1,15 +1,15 @@
-"""Pretrained participant inference through the frozen V2 raw workflow.
+"""Pretrained prediction from current controls and canonical stage outputs.
 
 This module is deliberately an application adapter, not a second signal
 pipeline.  It constructs audited live-input records and calls the same V2
 preprocessing, windowing, resampling, model-input binding, prediction and
 hierarchical aggregation functions used by outer CV.
 
-Only workflows whose model-ready representation has no missing fold-fitted
-transform are accepted.  The first supported contract is the user-selected
-``finalcase`` raw route (quality/artifact modules off and ``raw_imu=none``).
-Unsupported configurations fail closed instead of approximating training-time
-semantics.
+The manifest entry point retains the established ``finalcase`` raw route.
+Notebook stages can instead supply cached raw/vector/matrix/fusion outputs;
+their fitted transforms come from the learned bundle, never the participant
+being analysed. Saved configuration is a default, not an override of current
+controls or a whole-configuration hash lock.
 """
 
 from __future__ import annotations
@@ -307,15 +307,15 @@ def _assert_loaded_bundle_contract(
     loaded: Any,
     config: Mapping[str, Any],
     *,
-    config_hash: str,
+    config_hash: str | None = None,
 ) -> tuple[ModelInputSpec, tuple[str, ...], tuple[str, ...]]:
     """Bind a verified bundle to the resolved raw model-input boundary."""
     _assert_supported_raw_contract(config)
-    if loaded.manifest.get("config_hash") != config_hash:
-        raise RuntimeError("learned bundle and resolved inference config hashes differ")
-    spec = ModelInputSpec.from_value(loaded.manifest.get("input_spec", {}))
-    if spec.mode.value != "raw":
-        raise RuntimeError("selected learned bundle is not a raw representation model")
+    # The saved hash is provenance, not permission to change preprocessing.
+    # Current controls own the input; only mathematical model compatibility is
+    # required when reusing weights.
+    del config_hash
+    spec = _assert_model_compatible(loaded, config)
     class_order = tuple(
         int(value) for value in _mapping(config.get("manifest"), label="manifest").get("class_id_order", ()))
     metadata = _mapping(loaded.manifest.get("metadata"), label="bundle metadata")
@@ -327,9 +327,6 @@ def _assert_loaded_bundle_contract(
             or tuple(value for value in _MODEL_CHANNELS if value in declared_channels) != declared_channels
             or spec.n_channels != len(declared_channels) or tuple(spec.channel_schema) != declared_channels):
         raise RuntimeError("learned bundle raw channel schema differs from the resolved config")
-    _, configured_model_id = normalize_model_id(str(model.get("model_id", "")))
-    if loaded.manifest.get("machine_model_id") != configured_model_id:
-        raise RuntimeError("learned bundle model identity differs from the resolved config")
     transforms = loaded.transforms
     if transforms is not None:
         if not isinstance(transforms, FrozenRepresentationTransformArchive):
@@ -338,8 +335,185 @@ def _assert_loaded_bundle_contract(
                 or transforms.boundary != "already_preprocessed_and_fitted_transforms_applied_model_input"
                 or transforms.input_schema_hash != loaded.manifest.get("input_spec_hash")):
             raise RuntimeError("final-refit transform archive differs from the raw model-input boundary")
-    concrete_roles, classifier_families = _validated_role_scope(config, loaded.pipeline_adapter)
+    concrete_roles, classifier_families = _validated_role_scope(config, None)
     return spec, concrete_roles, classifier_families
+
+
+def resolve_workflow_bundle(
+    model_export: str | Path, *, case_id: str | None = None,
+    pipeline_root: str | Path | None = None,
+) -> Path:
+    """Locate exported weights without substituting their saved UI settings."""
+    root = Path(pipeline_root or Path(__file__).resolve().parents[3]).resolve()
+    export = _inside(model_export, root, label="model_config export")
+    return _resolve_export(export, case_id)[1]
+
+
+def _assert_model_compatible(loaded: Any, config: Mapping[str, Any]) -> ModelInputSpec:
+    """Check architecture and representation, not the whole configuration hash."""
+    from ..module_registry import materialize_model_architecture
+
+    spec = ModelInputSpec.from_value(loaded.manifest["input_spec"])
+    mode = str(config["representation_mode"])
+    if mode != spec.mode.value:
+        raise ValueError(f"weights require {spec.mode.value}, current representation is {mode}")
+    model = config["model"]
+    _, model_id = normalize_model_id(str(model["model_id"]))
+    if loaded.manifest["machine_model_id"] != model_id:
+        raise ValueError("current model architecture differs from the selected weights")
+    archived = loaded.manifest.get("model_config", {}).get("architecture_parameters")
+    if archived is not None and stable_payload_sha256(archived) != stable_payload_sha256(
+        materialize_model_architecture(model, mode)
+    ):
+        raise ValueError("current architecture parameters differ from the selected weights")
+    if int(model.get("n_classes", spec.n_classes)) != spec.n_classes:
+        raise ValueError("current class count differs from the selected weights")
+    return spec
+
+
+def predict_model_ready(
+    bundle: Any, inputs: Mapping[str, np.ndarray], *, config_payload: Mapping[str, Any],
+) -> np.ndarray:
+    """Predict an already model-ready mapping through the bundle's own adapter.
+
+    This low-level interface accepts every bundle representation. Any fold-fit
+    transformations belonging before this boundary must already have been
+    applied; it never estimates them from the participant being analysed.
+    """
+    from ..training.bundle import predict_bundle
+
+    loaded = load_bundle(bundle) if isinstance(bundle, (str, Path)) else bundle
+    spec = _assert_model_compatible(loaded, config_payload)
+    values = np.asarray(inputs["window_bag"] if spec.mode.value == "fusion" else inputs["x"])
+    expected_rank = {"raw": 3, "feature_matrix": 3, "feature_vector": 2, "fusion": 4}[spec.mode.value]
+    if values.ndim != expected_rank:
+        raise ValueError(f"{spec.mode.value} model input must have {expected_rank} dimensions")
+    if spec.mode.value == "feature_vector":
+        if spec.feature_names and values.shape[1] != len(spec.feature_names):
+            raise ValueError("feature-vector dimension differs from the learned input schema")
+    elif values.shape[-2] != spec.n_channels:
+        raise ValueError("channel count differs from the learned input schema")
+    if spec.mode.value == "fusion" and np.asarray(inputs["file_features"]).shape[-1] != spec.n_file_features:
+        raise ValueError("fusion file-feature count differs from the learned input schema")
+    return predict_bundle(loaded, inputs)
+
+
+def _predict_dataset(loaded: Any, dataset: Any, prediction: Any) -> tuple[np.ndarray, tuple[Any, ...]]:
+    """Use the same batching, ensembles and estimator dispatch as training."""
+    if loaded.manifest.get("kind") == "estimator":
+        probabilities, _, identities = prediction.predict_estimator_probabilities(loaded.model, dataset)
+        classes = tuple(int(value) for value in loaded.model.classes_)
+        expected = tuple(range(probabilities.shape[1]))
+        if set(classes) != set(expected):
+            raise RuntimeError(f"trained model is missing a class: {classes}")
+        if classes != expected:
+            probabilities = probabilities[:, [classes.index(value) for value in expected]]
+    elif hasattr(loaded.model, "member_probabilities"):
+        _, probabilities, _, identities = prediction.predict_ensemble_members(loaded.model, dataset)
+    else:
+        probabilities, _, identities = prediction.predict_probabilities(loaded.model, dataset)
+    return probabilities, identities
+
+
+def predict_workflow_record(
+    bundle: Any, *, config_payload: Mapping[str, Any], participant_id: str,
+    record_id: str, role: str, raw_windows: Any = None, feature_vector: Any = None,
+    matrix_features: Any = None, route: str = "direct_x_filter", label: int | None = None,
+    quality_score: float = 1.0,
+) -> dict[str, Any]:
+    """Consume cached stage outputs; apply saved transforms and predict, never fit.
+
+    RawWindows and feature objects are the canonical, pre-fold-transform
+    contracts. Reusing these values avoids rerunning preprocessing after an
+    upstream Analyse. Current settings determine resampling/channel selection.
+    """
+    from types import SimpleNamespace
+    from .. import experiment as core
+    from ..signal.views import SignalRoute
+    from ..training.trainer import TrainingConfig, UnifiedTrainer, configure_torch_determinism
+
+    loaded = load_bundle(bundle) if isinstance(bundle, (str, Path)) else bundle
+    spec = _assert_model_compatible(loaded, config_payload)
+    mode = spec.mode.value
+    row = SimpleNamespace(participant_id=participant_id, record_id=record_id, role=role,
+                          class_id=-1 if label is None else int(label))
+    state = core._RuntimeRecord(row, retained=True, route=SignalRoute(route), raw_windows=raw_windows,
+                                vector=feature_vector, engineering=matrix_features,
+                                final_quality=SimpleNamespace(q_rate=SimpleNamespace(score=quality_score)))
+    transforms = loaded.transforms
+    if transforms is not None and not isinstance(transforms, FrozenRepresentationTransformArchive):
+        raise ValueError("this transform adapter requires already-model-ready inputs; use predict_model_ready")
+    fitted = {} if transforms is None else transforms.fitted_artifacts
+
+    def artifact(name: str) -> Any:
+        if name not in fitted:
+            raise ValueError(f"selected weights do not include fitted {name}; Analyse never fits participant data")
+        return fitted[name]
+
+    if mode in {"raw", "fusion"}:
+        if raw_windows is None:
+            raise ValueError("raw window stage output is required")
+        strategy = config_payload["signal"]["normalization"]["raw_imu"]
+        if strategy != "none":
+            from ..representations.imu_transform import transform_raw_windows_imu
+
+            imu = artifact("raw_imu")
+            if imu.strategy != strategy:
+                raise ValueError("current raw IMU scaling strategy differs from the saved fitted transform")
+            state.raw_windows = transform_raw_windows_imu(raw_windows, imu)
+    if mode == "feature_vector" and feature_vector is None:
+        raise ValueError("feature-vector stage output is required")
+    if mode == "fusion":
+        from ..features.vector_transform import transform_feature_vector_batch
+
+        if feature_vector is None:
+            raise ValueError("fusion requires the feature-vector stage output")
+        transformed = transform_feature_vector_batch([feature_vector], artifact("feature_vector"))
+        state.fusion_features = np.asarray(transformed.fusion_tensor[0], dtype=np.float32)
+    if mode == "feature_matrix":
+        from ..features.window_matrix import build_ordered_window_matrix, transform_window_features
+
+        if matrix_features is None:
+            raise ValueError("feature-matrix engineering stage output is required")
+        transformed = transform_window_features(matrix_features, artifact("engineering"))
+        state.matrix = build_ordered_window_matrix(transformed, provenance={"route": route, "record_id": record_id})
+    dataset = core._materialize_representation_dataset([state], (participant_id,), mode)
+    if dataset is None or len(dataset) == 0:
+        raise ValueError("stage outputs contain no usable model inputs")
+    dataset, _, resampling = core._prepare_dl_input_dataset(
+        dataset, mode, config_payload["signal"]["dl_resampling"]
+    )
+    binding = None
+    if mode == "raw":
+        dataset, binding = core._bind_raw_dataset_for_model(
+            dataset, str(loaded.manifest["machine_model_id"]),
+            declared_channel_order=config_payload["model"].get("input_channel_order"),
+        )
+    schema = tuple(getattr(dataset, "channel_schema", ()))
+    channels = (dataset.window_bags[0].shape[1] if mode == "fusion" else
+                dataset.values[0].shape[0] if mode == "feature_matrix" else
+                dataset.values.shape[1] if mode == "raw" else None)
+    if channels is not None and channels != spec.n_channels:
+        raise ValueError("current channel count differs from the learned input schema")
+    if spec.channel_schema and schema and schema != tuple(spec.channel_schema):
+        raise ValueError("current channel schema differs from the learned input schema")
+    if mode == "feature_vector" and spec.feature_names and tuple(dataset.feature_names) != tuple(spec.feature_names):
+        raise ValueError("current feature names differ from the learned input schema")
+    if mode == "fusion" and dataset.file_features.shape[1] != spec.n_file_features:
+        raise ValueError("current fusion feature count differs from the learned input schema")
+    training = TrainingConfig.from_mapping(dict(config_payload["training"]))
+    predictor = UnifiedTrainer(training)
+    if predictor.device is not None:
+        configure_torch_determinism(training.deterministic_algorithms)
+    probabilities, identities = _predict_dataset(loaded, dataset, predictor)
+    values = dataset.window_bags[0] if mode == "fusion" else dataset.values
+    shape = [list(value.shape) for value in values] if isinstance(values, tuple) else list(values.shape)
+    return {
+        "probabilities": probabilities, "identities": identities,
+        "window_ids": [identity.window_id for identity in identities], "input_shape": shape,
+        "channel_schema": list(schema), "representation_mode": mode,
+        "resampling": resampling, "input_binding": binding, "training_performed": False,
+    }
 
 
 def _manifest_rows(
@@ -476,6 +650,7 @@ def infer_from_manifest(
     input_manifest: str | Path,
     validated_input: Any | None = None,
     pipeline_root: str | Path | None = None,
+    config_path: str | Path | None = None,
 ) -> Mapping[str, Any]:
     """Classify one participant without fitting or modifying model state."""
 
@@ -494,7 +669,9 @@ def infer_from_manifest(
         repository_root=repository_root,
         label="inference manifest",
     )
-    config_path, bundle_path, selected_case = _resolve_export(export, case_id)
+    saved_config_path, bundle_path, selected_case = _resolve_export(export, case_id)
+    config_path = (saved_config_path if config_path is None else
+                   _inside(config_path, root, label="current inference configuration"))
     config_payload = _mapping(
         yaml.safe_load(config_path.read_text(encoding="utf-8")),
         label=str(config_path),
@@ -607,17 +784,7 @@ def infer_from_manifest(
     # Use the same V2 prediction entry points and configured batch size as the
     # outer-CV path.  This avoids a second whole-array inference implementation
     # and preserves its row-alignment and probability validation contracts.
-    if loaded.manifest.get("kind") == "estimator":
-        probabilities, _, prediction_identities = prediction.predict_estimator_probabilities(loaded.model, dataset)
-        classes = tuple(int(value) for value in loaded.model.classes_)
-        if set(classes) != {0, 1, 2}:
-            raise RuntimeError(f"trained model is missing a class: {classes}")
-        if classes != (0, 1, 2):
-            probabilities = probabilities[:, [classes.index(value) for value in (0, 1, 2)]]
-    elif hasattr(loaded.model, "member_probabilities"):
-        _, probabilities, _, prediction_identities = prediction.predict_ensemble_members(loaded.model, dataset)
-    else:
-        probabilities, _, prediction_identities = prediction.predict_probabilities(loaded.model, dataset)
+    probabilities, prediction_identities = _predict_dataset(loaded, dataset, prediction)
 
     metadata = _mapping(loaded.manifest.get("metadata"), label="bundle metadata")
     fitted_objects = metadata.get("fitted_objects")
@@ -693,6 +860,7 @@ def infer_from_manifest(
         "class_names": list(class_names),
         "probabilities": participant_probability.tolist(),
         "case_id": str(selected_case.get("case_id", "")),
+        "current_config_hash": config.sha256,
         "model_role": selected_case.get("model_role"),
         "bundle": {
             "path": bundle_path.relative_to(root).as_posix(),

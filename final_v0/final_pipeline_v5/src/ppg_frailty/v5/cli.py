@@ -193,6 +193,7 @@ def build_parser() -> argparse.ArgumentParser:
     infer.add_argument("--model-config", required=True)
     infer.add_argument("--case-id")
     infer.add_argument("--input-manifest", required=True)
+    infer.add_argument("--config", help="Use this current pipeline YAML with the selected weights; omit to use saved settings.")
     index = commands.add_parser("index", help="Rebuild the economical run data index.")
     index.add_argument("--study-dir", required=True)
     index.add_argument("--hash-predictions", action="store_true")
@@ -422,6 +423,7 @@ def _dispatch(args: argparse.Namespace) -> int:
             case_id=args.case_id,
             input_manifest=_path(args.input_manifest, must_exist=True),
             pipeline_root=PIPELINE_ROOT,
+            config_path=None if args.config is None else _path(args.config, must_exist=True),
         )
     elif args.command == "index":
         result = build_study_data_index(

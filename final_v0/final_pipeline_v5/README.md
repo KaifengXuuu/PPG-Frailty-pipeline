@@ -241,7 +241,7 @@ execution:
     verify_source_sha256: true
 ```
 
-Dash 的 Run 页可用 cache 模式下拉框控制普通训练；sweep 使用所选 study YAML
+Dash 的模型模块在 Train 模式下可用 cache 下拉框控制普通训练；sweep 使用所选 study YAML
 中的 cache 配置。已有 pipeline 结果的报告生成及已导出模型的推理不需要这些
 预处理 cache。清理磁盘前应确认没有训练任务正在使用缓存目录；关闭开关本身
 不会释放已有文件占用的空间。
@@ -320,17 +320,71 @@ python pipeline.py infer \
 ## Dash 操作面板
 
 ```bash
+conda activate ml
+# 在 final_v0/final_pipeline_v5 目录执行：
 python dashboard.py --host 127.0.0.1 --port 8050
 ```
 
-打开 `http://127.0.0.1:8050`。Dash 使用同一模块 registry 与执行服务，可以加载
-YAML 或 model_config，选择输入数据、模块和参数，查看各阶段的 signal、window、
-quality、feature、prediction 与 aggregation 输出，并预览报告图表。
+打开 `http://127.0.0.1:8050`。页面沿 workflow 纵向排列：输入 → PPG 预处理 →
+IMU 预处理 → motion detector → SQI → denoiser → 特征工程 → 表征 → 分类模型 →
+聚合 → report。每个阶段左侧为算法选择、开关、滑块和精确数值输入，右侧紧邻
+时域曲线、窗口/特征/预测表格。算法来自同一生产模块，界面不另写一套数学实现。
+原始/滤后 PPG、加速度、角速度等按量纲分开绘图，峰点叠加在滤后 PPG 上。
 
-`Train` 启动训练前需要选择 YAML，旁边的 `Stop` 终止后台训练；`Infer` 加载
-预训练 bundle 执行分类。comparison 临时队列可以逐次添加参数组合，形成批量
-实验序列。界面支持显示和下载当前操作或整个队列的等价 CLI 与 resolved YAML；
-Tools 提供执行审计、导出与专项报告入口。
+1. **配置**：顶部 YAML 默认不选，此时使用现有函数/dataclass 的参数默认值；
+   初始表征/模型为 raw/CompactCNN1D。选择 pipeline YAML 会填入控件；选择
+   study YAML 后可选择其中的 case。清空 YAML 恢复函数默认值。
+   YAML 只提供初值，之后每次 Analyse 均以当前控件值为准。
+2. **输入**：从 manifest 下拉框选择一条或多条 recording，并选定绘图记录；
+   更换 manifest 配置后，记录选项随之更新。
+   也可展开 Custom CSV files，添加路径、file_id、B/R/S/W role 和可选标签。
+   同 participant 的动态记录需要 B 校准记录；校准文件也可在 IMU 区指定。
+   起点/时长只控制图的显示范围，滤波和状态估计仍处理完整 recording。
+3. **逐段 Analyse**：可直接点击任一下游阶段。缺失或过期的上游会先计算，
+   不变的结果在当前会话内复用；修改参数后相关下游需要重算。
+   关闭的可选模块按原流程旁路，denoiser 是否实际被调用由原 SQI/motion 路由决定，
+   其状态显示在阶段详情中。Analyse 不训练分类器、motion detector 或 SQI 校准器。
+4. **已有拟合产物**：motion 和 SQI 各有独立文件选择框，可下拉选择或输入路径。
+   新生成或复制产物后，点击顶部 Refresh 更新可选项。
+   使用训练分位数 SQI 时需要包含 bounds 和 fitted_on_participant_ids 的已有校准
+   JSON；motion 使用已有 evidence JSON 所关联的模型与阈值。缺少时显示具体缺项，
+   不对待分析 participant 临时拟合。
+5. **模型 Analyse**：选择 model_config 的 case 或直接选择 learned bundle。
+   权重选择不会覆盖当前控件。要从该模型的原参数开始，在顶部选择导出的
+   resolved_pipeline_config.yaml；之后仍可修改参数。架构、通道和特征维度必须
+   与所选权重相容，训练期拟合变换必须随 bundle 提供；阶段详情记录当前配置。
+6. **训练**：模型区切换到 Train 后才出现 Run；运行前选择 YAML。Current controls
+   训练当前控件配置；Comparison queue 执行缓存的参数组合；Selected study YAML
+   执行所选计划的完整 case 序列，而非覆盖计划中的所有 case。
+   Stop 可终止后台任务及其子进程。Refit 默认关闭，cache 模式可独立选择。
+7. **Comparison**：填单位名、Add，修改参数后再次 Add；可 Remove last/Clear。
+   队列可下载为完整 CLI 和可执行 comparison YAML，再由模型区的同一个 Run 启动。
+8. **Report**：选择已有 pipeline output、分析方式、图表模块、统计参数后 Analyse。
+   报告仍由 analyse_report.py 写入 report_output，完成后自动选择对应输出，
+   面板提供图、HTML 和数据表预览，也可手动切换已有报告。
+   Advanced tools 保留索引、模型导出、Excel、执行审计和专项研究入口；其中需要
+   训练的操作只通过模型区 Train → Advanced tool request → Run 执行。
+   命令参数直接从原 CLI 生成控件；需要 plan 时选择已有 YAML，逐项修改展开的
+   参数。执行和下载均读取当前控件，CLI 文本只读。执行时将当前 plan 快照保存到
+   `pipeline_output/.dashboard_requests/plans/`，不覆盖原 YAML；下载的 CLI 包含
+   同一快照，可独立重放。专项训练选择此 plan 后也满足训练前必须选择 YAML 的要求。
+
+页面底部可查看并下载当前阶段等价 CLI 和 resolved YAML；两份文件放在 V5 目录后
+可从 CLI 执行同一阶段。也可不使用 YAML，直接调用同一个无训练阶段服务：
+
+```bash
+python stage_analyse.py --stage ppg --record-id <record-id> \
+  --set signal.ppg_filter.low_hz=0.2 \
+  --set signal.ppg_filter.high_hz=8.0 \
+  --set signal.ppg_filter.order=3
+python stage_analyse.py --help
+```
+
+阶段预览只保留有容量限制的会话内存结果，不写入磁盘预处理 cache，不改已有 run
+或模型权重。浏览器刷新/服务重启后可重新 Analyse。当前生产实现的 feature-matrix
+提取依赖 routing timeline；质量、motion 和 denoiser 全部关闭的组合不产生该
+timeline，会报告缺项。需要分析此表征时可选择现有 diagnostics_only 路线，
+Dash 不会静默改变所选流程。
 
 单 participant 输入可查看质量、概率与分类；ROC/AUC、cohort confusion matrix
 和显著性检验需要有标注、满足相应类别和样本要求的多 participant 数据。
