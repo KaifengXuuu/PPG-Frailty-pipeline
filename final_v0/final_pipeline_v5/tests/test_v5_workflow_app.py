@@ -210,11 +210,12 @@ def test_parameter_edit_updates_config_without_recreating_numeric_widget() -> No
     config, _ = V5ControlService(ROOT).load_yaml("configs/presets/finalcase.yaml")
     numbers = [{"type": "param-number", "path": "signal.ppg_filter.high_hz"}]
     with triggered(numbers[0], "value"):
-        updated, status, panels = callback(app, "config-state.data")(
+        updated, status, panels, selectors = callback(app, "config-state.data")(
             "configs/presets/finalcase.yaml", None, [], [7.0], [], numbers, config,
-            [{"type": "stage-controls", "stage": "ppg"}])
+            [{"type": "stage-controls", "stage": "ppg"}], [])
     assert updated["signal"]["ppg_filter"]["high_hz"] == 7
     assert "Controls updated" in status and panels == [no_update]
+    assert selectors == []
     assert config["signal"]["ppg_filter"]["high_hz"] == 8
 
 
@@ -225,11 +226,13 @@ def test_vector_element_edit_refreshes_parent_without_stale_parent_replay() -> N
     parent = {"type": "param", "path": "signal.normalization.clip_after_scale"}
     children = [{"type": "param-number", "path": parent["path"] + f".{i}"} for i in (0, 1)]
     with triggered(children[0], "value"):
-        updated, _, rendered = callback(app, "config-state.data")(
+        updated, _, rendered, selectors = callback(app, "config-state.data")(
             "configs/presets/finalcase.yaml", None, ["[-8, 8]"], [-4.0, 8.0], [parent], children, config,
-            [{"type": "stage-controls", "stage": "representation"}])
+            [{"type": "stage-controls", "stage": "representation"}],
+            [{"type": "stage-selectors", "stage": "representation"}])
     assert updated["signal"]["normalization"]["clip_after_scale"] == [-4.0, 8.0]
     assert rendered[0] is not no_update
+    assert selectors[0] is not no_update
     parent_editor = next(c for block in rendered[0] for c in block._traverse()
                          if getattr(c, "id", None) == parent)
     assert yaml.safe_load(parent_editor.value) == [-4.0, 8.0]
@@ -243,12 +246,14 @@ def test_coupled_control_change_ignores_stale_other_widget() -> None:
     controls = [{"type": "param", "path": path} for path in
                 ("aggregation.balance_line", "training.training_balance")]
     with triggered(controls[0], "value"):
-        updated, _, rendered = callback(app, "config-state.data")(
+        updated, _, rendered, selectors = callback(app, "config-state.data")(
             "configs/presets/finalcase.yaml", None, ["line_a_equal_files", "equal_role_families"], [],
-            controls, [], config, [{"type": "stage-controls", "stage": "model"}])
+            controls, [], config, [{"type": "stage-controls", "stage": "model"}],
+            [{"type": "stage-selectors", "stage": "model"}])
     assert updated["aggregation"]["balance_line"] == "line_a_equal_files"
     assert updated["training"]["training_balance"] == "equal_files"
     assert rendered[0] is not no_update
+    assert selectors[0] is not no_update
 
 
 def test_report_uses_current_statistics_and_public_cli(tmp_path: Path) -> None:

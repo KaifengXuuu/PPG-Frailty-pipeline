@@ -319,6 +319,9 @@ def grouped_parameter_specs(config: Mapping[str, Any], *,
         result.append({'path': path, 'value': copy.deepcopy(value), 'kind': kind, 'choices': choices,
                        'min': low, 'max': high, 'step': step, 'stage': stage, 'group': group,
                        'range': row['range'], 'nullable': path in _OPTIONAL_NUMBERS or value is None})
+    from .parameter_help import parameter_help
+    for spec in result:
+        spec['description'] = parameter_help(spec, config)
     return sorted(result, key=lambda row: STAGES.index(row['stage']))
 
 

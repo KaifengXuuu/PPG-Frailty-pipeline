@@ -23,6 +23,14 @@ STAGES = (
     ('features', 'Feature engineering'), ('representation', 'Representation'),
     ('model', 'Machine learning model'), ('aggregation', 'Aggregation'),
 )
+PARAMETER_PANELS = {
+    'imu': ('gravity_method 参数', {'signal.imu.gravity_method'}),
+    'quality': ('calibrator / SQI 参数', {'quality.mode', 'quality.calibrator'}),
+    'denoiser': ('Reducer 参数', {'artifact.denoiser_enabled', 'artifact.reducer'}),
+    'features': ('Feature 参数', set()),
+    'representation': ('Representation 参数', {'representation_mode'}),
+    'model': ('Model / Train 参数', {'model.model_id'}),
+}
 GRID = {'display': 'grid', 'gridTemplateColumns': 'repeat(auto-fit,minmax(min(100%,280px),1fr))', 'gap': '16px'}
 TOOLS = {
     'pipeline_validate': ('Pipeline validate', 'pipeline.py', 'validate', False),
@@ -77,9 +85,14 @@ def _button(label: str, identity: Any, **kwargs: Any) -> Any:
     return html.Button(label, id=identity, n_clicks=0, **kwargs)
 
 
-def _field(label: str, component: Any) -> Any:
+def _field(label: str, component: Any, description: str | None = None) -> Any:
     from dash import html
-    return html.Div([html.Label(label), component], className='field')
+    from .parameter_help import field_help
+    description = description or field_help(getattr(component, 'id', None))
+    heading = [html.Span(label, className='parameter-name')]
+    if description:
+        heading.append(html.Span(description, className='parameter-help'))
+    return html.Div([html.Label(heading, className='parameter-label'), component], className='field')
 
 
 def _table(rows: list[dict]) -> Any:
@@ -96,6 +109,7 @@ def _table(rows: list[dict]) -> Any:
 
 def _parameter_control(spec: Mapping[str, Any], namespace: str = 'param') -> Any:
     from dash import dcc, html
+    from .parameter_help import parameter_help
     path, value, kind = spec['path'], spec['value'], spec['kind']
     identity = {'type': namespace, 'path': path}
     if kind in {'number', 'integer'}:
@@ -118,7 +132,9 @@ def _parameter_control(spec: Mapping[str, Any], namespace: str = 'param') -> Any
         text = value if isinstance(value, str) else yaml.safe_dump(value, default_flow_style=True).strip().removesuffix('...').strip()
         component = dcc.Input(id=identity, value=text, type='text', debounce=True)
     label = path.replace('~1', '.').replace('~0', '~') if namespace == 'plan-param' else path
-    return html.Div([html.Label(label.rsplit('.', 1)[-1], title=label), component,
+    return html.Div([html.Label([html.Span(label.rsplit('.', 1)[-1], className='parameter-name'),
+                                html.Span(parameter_help(spec), className='parameter-help')],
+                               title=label, className='parameter-label'), component,
                      html.Small(label, title=str(spec.get('range', '')))], className='parameter')
 
 
@@ -206,7 +222,7 @@ def _render_preview(preview: Mapping | None) -> list:
                 chart.update_layout(template='plotly_white', height=300, yaxis_title='Probability', yaxis_range=[0, 1])
                 output.append(dcc.Graph(figure=chart, config={'displaylogo': False}))
     if preview.get('metadata'):
-        output.append(html.Details([html.Summary('Stage details'), html.Pre(_json(preview['metadata']))]))
+        output.append(html.Div([html.H4('Stage details'), html.Pre(_json(preview['metadata']))]))
     return output
 
 
@@ -273,6 +289,10 @@ def create_app(pipeline_root: str | Path | None = None, *, control_service=None,
     .stage-body{display:grid;grid-template-columns:minmax(280px,32%) minmax(0,1fr);gap:24px}
     .parameter{padding:10px 0;border-bottom:1px solid #edf0f3}.parameter label,.field>label{display:block;font-size:13px;font-weight:600;margin:0 0 8px}
     .parameter small{display:block;color:#77828e;font-size:10px;overflow-wrap:anywhere;margin-top:4px}
+    .parameter label.parameter-label,.field>label.parameter-label{display:flex;flex-wrap:wrap;align-items:baseline;gap:5px 10px}
+    .parameter-name{overflow-wrap:anywhere}.parameter-help{flex:1 1 220px;color:#526577;font-size:12px;font-weight:400;line-height:1.65}
+    .parameter-panel{border:1px solid #dde2e8;border-radius:6px;padding:0 12px;margin:12px 0;background:#fafbfd}
+    .parameter-panel>summary{padding:12px 0;color:#2165a6}.parameter-panel[open]>summary{border-bottom:1px solid #dde2e8}
     .numeric-control{display:grid;grid-template-columns:minmax(110px,1fr) 100px;align-items:center;gap:8px}
     input,textarea{max-width:100%;padding:7px;border:1px solid #cbd2da;border-radius:4px}input[type=text]{width:100%}
     button{background:#2165a6;color:white;border:0;border-radius:4px;padding:9px 16px;margin:5px 6px 5px 0;cursor:pointer;font-weight:600}
@@ -285,14 +305,17 @@ def create_app(pipeline_root: str | Path | None = None, *, control_service=None,
     </style></head><body>{%app_entry%}<footer>{%config%}{%scripts%}{%renderer%}</footer></body></html>'''
 
     def path_picker(label, identity, choices):
+        from .parameter_help import field_help
         return _field(label, html.Div([dcc.Dropdown(id=identity, options=_options(choices), value=None,
                                                     placeholder='Select existing artifact'),
-                                      dcc.Input(id=identity+'-path', placeholder='Or enter a path', debounce=True)]))
+                                      dcc.Input(id=identity+'-path', placeholder='Or enter a path', debounce=True)]),
+                      field_help(identity))
 
-    def controls_for(config, stage):
+    def controls_for(config, stage, *, selectors=False):
         output, previous = [], None
+        visible = PARAMETER_PANELS.get(stage, ('', set()))[1]
         for spec in grouped_parameter_specs(config, pipeline_root=root):
-            if spec['stage'] == stage:
+            if spec['stage'] == stage and (spec['path'] in visible) == selectors:
                 if spec['group'] != previous:
                     output.append(html.H3(str(spec['group']).replace('_', ' ')))
                     previous = spec['group']
@@ -381,14 +404,23 @@ def create_app(pipeline_root: str | Path | None = None, *, control_service=None,
                     _field('Preprocessing cache', dcc.Dropdown(id='cache-mode', options=_options(['off', 'read_only', 'read_write']), value='off', clearable=False)),
                     _field('Cache directory', dcc.Input(id='cache-root', value='cache/preprocessing', debounce=True)),
                     _field('Resume directory', dcc.Input(id='resume-path', value='', debounce=True)),
-                    dcc.Checklist(id='train-flags', options=[{'label': 'Refit', 'value': 'refit'}, {'label': 'Dry run', 'value': 'dry_run'}], value=[]),
+                    _field('Training options', dcc.Checklist(id='train-flags', options=[{'label': 'Refit', 'value': 'refit'}, {'label': 'Dry run', 'value': 'dry_run'}], value=[])),
                 ], id='train-options', style={'display': 'none'})]
         action = [_button('Analyse', {'type': 'analyse-stage', 'stage': stage})]
         if stage == 'model':
             action += [_button('Run', 'train', style={'display': 'none'}), _button('Stop', 'stop-train', className='stop'),
                        html.Pre(id='train-status', className='status')]
+        parameters = html.Div(controls_for(defaults, stage), id={'type': 'stage-controls', 'stage': stage})
+        if stage in PARAMETER_PANELS:
+            # Keep this Details outside callback outputs: changing algorithms or
+            # loading YAML replaces controls, not the user's expanded state.
+            parameters = html.Div([
+                html.Div(controls_for(defaults, stage, selectors=True), id={'type': 'stage-selectors', 'stage': stage}),
+                html.Details([html.Summary(PARAMETER_PANELS[stage][0]), parameters],
+                             id={'type': 'stage-parameters', 'stage': stage}, open=False, className='parameter-panel'),
+            ])
         return html.Section([html.H2(f'{number:02d} · {title}'), html.Div([
-            html.Div([*extra, html.Div(controls_for(defaults, stage), id={'type': 'stage-controls', 'stage': stage}),
+            html.Div([*extra, parameters,
                       html.Div(action, className='actions')]),
             dcc.Loading(html.Div(_render_preview(None), id={'type': 'stage-output', 'stage': stage})),
         ], className='stage-body')], id='stage-'+stage, className='stage')
@@ -523,11 +555,13 @@ def create_app(pipeline_root: str | Path | None = None, *, control_service=None,
 
     @app.callback(Output('config-state', 'data'), Output('config-status', 'children'),
                   Output({'type': 'stage-controls', 'stage': ALL}, 'children'),
+                  Output({'type': 'stage-selectors', 'stage': ALL}, 'children'),
                   Input('training-yaml', 'value'), Input('yaml-case', 'value'), Input({'type': 'param', 'path': ALL}, 'value'),
                   Input({'type': 'param-number', 'path': ALL}, 'value'),
                   State({'type': 'param', 'path': ALL}, 'id'), State({'type': 'param-number', 'path': ALL}, 'id'),
-                  State('config-state', 'data'), State({'type': 'stage-controls', 'stage': ALL}, 'id'))
-    def update_config(path, case, values, numbers, identities, number_ids, config, stages):
+                  State('config-state', 'data'), State({'type': 'stage-controls', 'stage': ALL}, 'id'),
+                  State({'type': 'stage-selectors', 'stage': ALL}, 'id'))
+    def update_config(path, case, values, numbers, identities, number_ids, config, stages, selector_stages):
         trigger = ctx.triggered_id
         try:
             if trigger in ('training-yaml', 'yaml-case') or trigger is None:
@@ -548,7 +582,7 @@ def create_app(pipeline_root: str | Path | None = None, *, control_service=None,
                                               pipeline_root=root)
                 message = 'Controls updated. Analyse reuses unchanged stages and recomputes affected outputs.'
             if result == config:
-                return no_update, no_update, [no_update] * len(stages)
+                return no_update, no_update, [no_update] * len(stages), [no_update] * len(selector_stages)
             old_specs = grouped_parameter_specs(config, pipeline_root=root)
             new_specs = grouped_parameter_specs(result, pipeline_root=root)
             # Only selector/schema changes replace widgets. Ordinary dragging
@@ -560,9 +594,11 @@ def create_app(pipeline_root: str | Path | None = None, *, control_service=None,
             reload = (trigger in ('training-yaml', 'yaml-case') or signature(old_specs) != signature(new_specs)
                       or bool(changed - {trigger_path}))
             rendered = [controls_for(result, i['stage']) for i in stages] if reload else [no_update] * len(stages)
-            return result, message, rendered
+            rendered_selectors = ([controls_for(result, i['stage'], selectors=True) for i in selector_stages]
+                                  if reload else [no_update] * len(selector_stages))
+            return result, message, rendered, rendered_selectors
         except Exception as error:
-            return no_update, f'{type(error).__name__}: {error}', [no_update] * len(stages)
+            return no_update, f'{type(error).__name__}: {error}', [no_update] * len(stages), [no_update] * len(selector_stages)
 
     for namespace in ('param', 'tool-param', 'plan-param'):
         @app.callback(Output({'type': namespace+'-slide', 'path': MATCH}, 'value'), Output({'type': namespace+'-number', 'path': MATCH}, 'value'),
