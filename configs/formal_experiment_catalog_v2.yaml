@@ -1,0 +1,502 @@
+schema_version: ppg_frailty.formal_experiment_catalog.v2
+catalog_id: formal_models_line_selectable_v2
+pipeline_generation: final_pipeline_v2
+execution_policy:
+  auto_run: false
+  candidate_count: 11
+  matched_comparator_count: 1
+  ensemble_comparison_count: 1
+  default_balance_line: line_b
+  selectable_balance_lines: [line_b, line_a]
+  materialization_only: true
+entries:
+- entry_id: compact_cnn
+  config_stem: formal_compact_cnn
+  representation_mode: raw
+  catalog_role: reference_candidate
+  model:
+    model_id: CompactCNN1D
+    variant: canonical_32_64_128
+    input_channels: 8
+    input_channels_resolution: canonical_frailty_raw_8
+    input_channel_order: [RED, IR, A_dyn_x, A_dyn_y, A_dyn_z, GX, GY, GZ]
+    n_classes: 3
+    ensemble_size: 1
+    seed_policy: outer_cv_repeat_seed_equals_split_seed
+    mask_aware_pooling: true
+    dropout: 0.2
+    kernel_sizes: [9, 9, 7]
+    dilations: [1, 1, 1]
+    pool_sizes: [4, 4]
+    architecture_parameters:
+      classifier_dropout: 0.2
+      dilations: [1, 1, 1]
+      global_pooling: adaptive_average_1
+      kernel_sizes: [9, 9, 7]
+      model_id: compact_cnn
+      n_classes: 3
+      pool_sizes: [4, 4]
+      representation_mode: raw
+      stage_channels: [32, 64, 128]
+      stage_dropouts: [0.1, 0.15]
+- entry_id: inception_full
+  config_stem: formal_inception_full
+  representation_mode: raw
+  catalog_role: reference_candidate
+  model:
+    model_id: InceptionTimeFull
+    variant: full_single_network
+    input_channels: 8
+    input_channels_resolution: canonical_frailty_raw_8
+    input_channel_order: [RED, IR, A_dyn_x, A_dyn_y, A_dyn_z, GX, GY, GZ]
+    n_classes: 3
+    ensemble_size: 1
+    seed_policy: outer_cv_repeat_seed_equals_split_seed
+    mask_aware_pooling: true
+    dropout: 0.2
+    kernel_sizes: [39, 19, 9]
+    dilation: 1
+    architecture_parameters:
+      bottleneck_channels: 32
+      branch_count: 4
+      classifier_dropout: 0.2
+      depth: 6
+      dilation: 1
+      global_pooling: mask_aware_global_average
+      kernel_sizes: [39, 19, 9]
+      model_id: inception_full
+      n_classes: 3
+      out_channels: 32
+      representation_mode: raw
+      residual_interval: 3
+      variant: full
+- entry_id: inception_small
+  config_stem: formal_inception_small
+  representation_mode: raw
+  catalog_role: reference_candidate
+  model:
+    model_id: InceptionTimeSmall
+    variant: small_single_network
+    input_channels: 8
+    input_channels_resolution: canonical_frailty_raw_8
+    input_channel_order: [RED, IR, A_dyn_x, A_dyn_y, A_dyn_z, GX, GY, GZ]
+    n_classes: 3
+    ensemble_size: 1
+    seed_policy: outer_cv_repeat_seed_equals_split_seed
+    mask_aware_pooling: true
+    dropout: 0.2
+    kernel_sizes: [39, 19, 9]
+    dilation: 1
+    architecture_parameters:
+      bottleneck_channels: 16
+      branch_count: 4
+      classifier_dropout: 0.2
+      depth: 3
+      dilation: 1
+      global_pooling: mask_aware_global_average
+      kernel_sizes: [39, 19, 9]
+      model_id: inception_small
+      n_classes: 3
+      out_channels: 16
+      representation_mode: raw
+      residual_interval: 3
+      variant: small
+- entry_id: inception_matrix_small
+  config_stem: reference_static_feature_matrix_v2
+  representation_mode: feature_matrix
+  catalog_role: reference_candidate
+  model:
+    model_id: InceptionTimeMatrix
+    variant: small
+    input_channels: 146
+    input_channels_resolution: exact_window_feature_schema_d146
+    n_classes: 3
+    ensemble_size: 1
+    seed_policy: outer_cv_repeat_seed_equals_split_seed
+    mask_aware_pooling: true
+    dropout: 0.2
+    kernel_sizes: [39, 19, 9]
+    dilation: 1
+    architecture_parameters:
+      bottleneck_channels: 16
+      branch_count: 4
+      classifier_dropout: 0.2
+      depth: 3
+      dilation: 1
+      global_pooling: mask_aware_global_average
+      kernel_sizes: [39, 19, 9]
+      model_id: inception_matrix
+      n_classes: 3
+      out_channels: 16
+      representation_mode: feature_matrix
+      residual_interval: 3
+      variant: small
+- entry_id: logistic_regression
+  config_stem: formal_logistic_regression_l2
+  representation_mode: feature_vector
+  catalog_role: reference_candidate
+  model:
+    model_id: LogisticRegressionL2
+    variant: l2_lbfgs
+    input_channels: 0
+    input_channels_resolution: not_applicable_feature_vector
+    n_classes: 3
+    ensemble_size: 1
+    seed_policy: outer_cv_repeat_seed_equals_split_seed
+    class_weight: null
+    logistic_c: 1.0
+    logistic_max_iter: 5000
+    logistic_solver: lbfgs
+    architecture_parameters:
+      class_weight: null
+      C: 1.0
+      estimator: sklearn.linear_model.LogisticRegression
+      max_iter: 5000
+      model_id: logistic_regression
+      n_classes: 3
+      preprocessing: [median_imputer_keep_empty_features, standard_scaler]
+      representation_mode: feature_vector
+      solver: lbfgs
+- entry_id: rbf_svm
+  config_stem: formal_rbf_svm
+  representation_mode: feature_vector
+  catalog_role: reference_candidate
+  model:
+    model_id: RBFSVM
+    variant: rbf_probability
+    input_channels: 0
+    input_channels_resolution: not_applicable_feature_vector
+    n_classes: 3
+    ensemble_size: 1
+    seed_policy: outer_cv_repeat_seed_equals_split_seed
+    class_weight: null
+    svm_kernel: rbf
+    svm_probability: true
+    svm_c: 1.0
+    svm_gamma: scale
+    architecture_parameters:
+      C: 1.0
+      class_weight: null
+      estimator: sklearn.svm.SVC
+      gamma: scale
+      kernel: rbf
+      model_id: rbf_svm
+      n_classes: 3
+      preprocessing: [median_imputer_keep_empty_features, standard_scaler]
+      probability: true
+      representation_mode: feature_vector
+- entry_id: extra_trees
+  config_stem: formal_extra_trees
+  representation_mode: feature_vector
+  catalog_role: reference_candidate
+  model:
+    model_id: ExtraTrees
+    variant: 500_trees
+    input_channels: 0
+    input_channels_resolution: not_applicable_feature_vector
+    n_classes: 3
+    ensemble_size: 1
+    seed_policy: outer_cv_repeat_seed_equals_split_seed
+    class_weight: null
+    extra_trees_n_estimators: 500
+    extra_trees_n_jobs: 1
+    extra_trees_max_features: sqrt
+    extra_trees_min_samples_leaf: 1
+    architecture_parameters:
+      class_weight: null
+      estimator: sklearn.ensemble.ExtraTreesClassifier
+      max_features: sqrt
+      min_samples_leaf: 1
+      model_id: extra_trees
+      n_classes: 3
+      n_estimators: 500
+      n_jobs: 1
+      preprocessing: [median_imputer_keep_empty_features]
+      representation_mode: feature_vector
+- entry_id: shapeformer_channel_specific_osd
+  config_stem: formal_shapeformer_channel_specific_osd
+  representation_mode: raw
+  catalog_role: reference_candidate
+  model:
+    model_id: ShapeFormerChannelSpecificOSD
+    variant: channel_specific_osd_reference
+    input_channels: 8
+    input_channels_resolution: canonical_frailty_raw_8
+    input_channel_order: [RED, IR, A_dyn_x, A_dyn_y, A_dyn_z, GX, GY, GZ]
+    n_classes: 3
+    ensemble_size: 1
+    seed_policy: outer_cv_repeat_seed_equals_split_seed
+    mask_aware_pooling: true
+    discovery_method: channel_specific_osd
+    input_fs_hz: 400.0
+    num_pip_ratio: 0.20
+    shapelets_per_class: 3
+    max_discovery_windows: 180
+    discovery_balance: participant_file_balanced
+    position_search_neighbourhood_samples: 128
+    pip_rounding_rule: floor_ratio_minimum_5_capped_at_actual_T
+    pip_selection_rule: upstream_zscored_time_index_perpendicular_distance_first_max
+    candidate_generation_rule: insertion_stage_three_consecutive_pips_half_open
+    candidate_enumeration_rule: upstream_class_channel_source_sample_insertion_order
+    candidate_ranking_rule: upstream_numpy_default_argsort_then_reverse
+    selected_bank_order_rule: upstream_per_class_start_sample_default_argsort
+    discovery_position_search_boundary_rule: upstream_pcs_start_minus_w_plus_1_end_plus_w_half_open
+    information_gain_split_rule: upstream_positive_recall_grid_0p2
+    sequence_length_samples: 2000
+    local_kernel_width_samples: 8
+    local_embedding_channels: 48
+    shape_embedding_channels: 128
+    attention_feedforward_channels: 256
+    attention_heads: 4
+    attention_query_chunk_size: 128
+    distance_position_chunk_size: 256
+    dropout: 0.30
+    complexity_norm: 1000.0
+    max_complexity_ratio: 3.0
+    architecture_parameters:
+      attention_feedforward_channels: 256
+      attention_heads: 4
+      attention_probability_dropout_applied: false
+      attention_query_chunk_size: 128
+      best_fit_search_stride_samples: 1
+      candidate_generation_rule: insertion_stage_three_consecutive_pips_half_open
+      candidate_enumeration_rule: upstream_class_channel_source_sample_insertion_order
+      candidate_ranking_rule: upstream_numpy_default_argsort_then_reverse
+      selected_bank_order_rule: upstream_per_class_start_sample_default_argsort
+      discovery_position_search_boundary_rule: upstream_pcs_start_minus_w_plus_1_end_plus_w_half_open
+      information_gain_split_rule: upstream_positive_recall_grid_0p2
+      candidate_stride_samples: null
+      complexity_norm: 1000.0
+      discovery_balance: participant_file_balanced
+      discovery_method: channel_specific_osd
+      distance_position_chunk_size: 256
+      dropout: 0.30
+      generic_branch_channel_count: 8
+      generic_branch_input: canonical_frailty_raw_8
+      global_shape_pooling: first_contextualised_shape_token
+      implementation_status: implemented_not_benchmarked_high_compute
+      input_fs_hz: 400.0
+      local_embedding_channels: 48
+      local_kernel_width_samples: 8
+      max_discovery_windows: 180
+      max_complexity_ratio: 3.0
+      model_id: shapeformer_channel_specific_osd
+      n_classes: 3
+      num_pip_ratio: 0.2
+      pip_rounding_rule: floor_ratio_minimum_5_capped_at_actual_T
+      pip_selection_rule: upstream_zscored_time_index_perpendicular_distance_first_max
+      position_search_neighbourhood_samples: 128
+      representation_mode: raw
+      sequence_length_samples: 2000
+      shapelet_channel_policy: single_source_channel
+      shapelet_count: 9
+      shapelet_count_per_class: 3
+      shapelet_length_policy: variable_insertion_stage_three_consecutive_pips
+      shapelet_length_samples: null
+      shapelet_position_embeddings: [source_channel, source_start, source_end]
+      shape_position_embedding_width_policy: upstream_observed_max_plus_1_per_axis
+      shapelet_token_formula: selected_projection(raw_best_segment)-shapelet_projection(shapelet)
+      shapelet_weighting: learnable_initialised_from_information_gain
+      shape_embedding_channels: 128
+- entry_id: shapeformer_effect_size_fixed_v1
+  config_stem: formal_shapeformer_effect_size_fixed_v1
+  representation_mode: raw
+  catalog_role: ablation_candidate
+  model:
+    model_id: ShapeFormerEffectSizeFixedV1
+    variant: effect_size_fixed_v1
+    input_channels: 8
+    input_channels_resolution: canonical_frailty_raw_8
+    input_channel_order: [RED, IR, A_dyn_x, A_dyn_y, A_dyn_z, GX, GY, GZ]
+    n_classes: 3
+    ensemble_size: 1
+    seed_policy: outer_cv_repeat_seed_equals_split_seed
+    mask_aware_pooling: true
+    discovery_method: effect_size_fixed_v1
+    input_fs_hz: 400.0
+    shapelet_length_samples: 128
+    shapelets_per_class: 3
+    discovery_stride_samples: 64
+    max_candidates_per_class: 128
+    hidden_channels: 64
+    dropout: 0.2
+    patch_size_samples: 16
+    attention_heads: 4
+    attention_layers: 1
+    distance_position_chunk_size: 256
+    architecture_parameters:
+      attention_activation: gelu
+      attention_feedforward_channels: 128
+      attention_heads: 4
+      attention_layers: 1
+      attention_norm_first: false
+      best_fit_search_stride_samples: 1
+      candidate_stride_samples: 64
+      classifier_dropout: 0.2
+      discovery_balance: null
+      discovery_method: effect_size_fixed_v1
+      distance_position_chunk_size: 256
+      hidden_channels: 64
+      input_fs_hz: 400.0
+      max_discovery_windows: null
+      model_id: shapeformer_effect_size_fixed_v1
+      n_classes: 3
+      num_pip_ratio: null
+      patch_bias: false
+      patch_size_samples: 16
+      patch_stride_samples: 16
+      representation_mode: raw
+      shapelet_channel_policy: joint_all_channels
+      shapelet_count: 9
+      shapelet_count_per_class: 3
+      shapelet_length_policy: fixed_samples
+      shapelet_length_samples: 128
+- entry_id: fusion_compact
+  config_stem: formal_fusion_compact
+  representation_mode: fusion
+  catalog_role: reference_candidate
+  model:
+    model_id: FileBagFusionCompact
+    variant: compact_raw_encoder
+    input_channels: 8
+    input_channels_resolution: canonical_frailty_raw_8
+    input_channel_order: [RED, IR, A_dyn_x, A_dyn_y, A_dyn_z, GX, GY, GZ]
+    n_classes: 3
+    ensemble_size: 1
+    seed_policy: outer_cv_repeat_seed_equals_split_seed
+    mask_aware_pooling: true
+    signal_dropout: 0.0
+    signal_kernel_sizes: [9, 9, 7]
+    signal_dilations: [1, 1, 1]
+    signal_pool_sizes: [4, 4]
+    feature_hidden_dim: 32
+    fusion_hidden_dim: 64
+    pooling: mean
+    dropout: 0.2
+    architecture_parameters:
+      feature_hidden_dim: 32
+      fusion_dropout: 0.2
+      fusion_hidden_dim: 64
+      model_id: fusion_compact
+      n_classes: 3
+      pooling: mean
+      representation_mode: fusion
+      signal_encoder:
+        classifier_dropout: 0.0
+        dilations: [1, 1, 1]
+        global_pooling: adaptive_average_1
+        kernel_sizes: [9, 9, 7]
+        pool_sizes: [4, 4]
+        stage_channels: [32, 64, 128]
+        stage_dropouts: [0.1, 0.15]
+      signal_feature_dim: 128
+- entry_id: fusion_inception
+  config_stem: formal_fusion_inception
+  representation_mode: fusion
+  catalog_role: reference_candidate
+  model:
+    model_id: FileBagFusionInception
+    variant: small_raw_encoder
+    input_channels: 8
+    input_channels_resolution: canonical_frailty_raw_8
+    input_channel_order: [RED, IR, A_dyn_x, A_dyn_y, A_dyn_z, GX, GY, GZ]
+    n_classes: 3
+    ensemble_size: 1
+    seed_policy: outer_cv_repeat_seed_equals_split_seed
+    mask_aware_pooling: true
+    signal_variant: small
+    signal_dropout: 0.0
+    signal_kernel_sizes: [39, 19, 9]
+    signal_dilation: 1
+    feature_hidden_dim: 32
+    fusion_hidden_dim: 64
+    pooling: mean
+    dropout: 0.2
+    architecture_parameters:
+      feature_hidden_dim: 32
+      fusion_dropout: 0.2
+      fusion_hidden_dim: 64
+      model_id: fusion_inception
+      n_classes: 3
+      pooling: mean
+      representation_mode: fusion
+      signal_encoder:
+        bottleneck_channels: 16
+        branch_count: 4
+        classifier_dropout: 0.0
+        depth: 3
+        dilation: 1
+        global_pooling: mask_aware_global_average
+        kernel_sizes: [39, 19, 9]
+        out_channels: 16
+        residual_interval: 3
+        variant: small
+      signal_feature_dim: 64
+- entry_id: inception_full_member0_comparator
+  config_stem: comparison_inception_full_member0_comparator
+  representation_mode: raw
+  catalog_role: matched_comparator
+  model:
+    model_id: InceptionTimeFull
+    variant: full_single_network
+    input_channels: 8
+    input_channels_resolution: canonical_frailty_raw_8
+    input_channel_order: [RED, IR, A_dyn_x, A_dyn_y, A_dyn_z, GX, GY, GZ]
+    n_classes: 3
+    ensemble_size: 1
+    seed_policy: cv_fixed_member0_seed_50042_comparator
+    mask_aware_pooling: true
+    dropout: 0.2
+    kernel_sizes: [39, 19, 9]
+    dilation: 1
+    architecture_parameters:
+      bottleneck_channels: 32
+      branch_count: 4
+      classifier_dropout: 0.2
+      depth: 6
+      dilation: 1
+      global_pooling: mask_aware_global_average
+      kernel_sizes: [39, 19, 9]
+      model_id: inception_full
+      n_classes: 3
+      out_channels: 32
+      representation_mode: raw
+      residual_interval: 3
+      variant: full
+- entry_id: inception_full_five_member_ensemble
+  config_stem: comparison_inception_full_five_member_ensemble
+  representation_mode: raw
+  catalog_role: ensemble_comparison
+  model:
+    model_id: InceptionTimeFullFiveMemberEnsemble
+    variant: full_five_independent_members
+    input_channels: 8
+    input_channels_resolution: canonical_frailty_raw_8
+    input_channel_order: [RED, IR, A_dyn_x, A_dyn_y, A_dyn_z, GX, GY, GZ]
+    n_classes: 3
+    ensemble_size: 5
+    member_seeds: [50042, 60042, 70042, 80042, 90042]
+    seed_policy: cv_fixed_five_member_seed_roster
+    member_seed_roster_id: cv_fixed_five_member_seed_roster
+    mask_aware_pooling: true
+    comparison_only: true
+    dropout: 0.2
+    kernel_sizes: [39, 19, 9]
+    dilation: 1
+    architecture_parameters:
+      member_bottleneck_channels: 32
+      member_branch_count: 4
+      member_classifier_dropout: 0.2
+      member_count: 5
+      member_depth: 6
+      member_dilation: 1
+      member_global_pooling: mask_aware_global_average
+      member_kernel_sizes: [39, 19, 9]
+      member_out_channels: 32
+      member_residual_interval: 3
+      member_seeds: [50042, 60042, 70042, 80042, 90042]
+      member_variant: full
+      model_id: inception_full_five_member_ensemble
+      n_classes: 3
+      probability_aggregation: arithmetic_mean
+      representation_mode: raw

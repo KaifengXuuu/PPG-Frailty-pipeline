@@ -1,0 +1,99 @@
+# Stage 1: five representation/model routes on the complete frozen 5x5 budget.
+# Registered defaults are inherited instead of copied into this study plan.
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: staged_static_01_representation_baselines_v2
+  kind: catalog_sweep
+  purpose: "Compare the default Matrix-Small, raw CompactCNN, feature-vector Logistic, and CompactCNN Fusion routes with one explicitly configured Full InceptionTime route."
+  flow_position: "Stage 1 of the staged pure-static finalist flow."
+  decision_role: screening
+  reference_case_id: raw__compact_cnn
+  thesis_sections:
+    - "Executable representation routes and the Small Matrix Inception baseline"
+    - "Configured Full InceptionTime comparison"
+    - "Default CompactCNN Fusion comparison"
+    - "Participant-cluster confidence intervals and paired inference"
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: "Five prespecified routes on the same frozen 5x5 participant splits; raw CompactCNN is only the statistical reference and is not an automatically selected winner."
+  controlled_factors:
+    - "All 29 participants, five frozen repeats, and five held-out participant folds per repeat"
+    - "Static roles B, R1, R2, R3, R4 with Line B file/role/participant aggregation"
+    - "Raw DL inputs contain RED, IR, A_dyn_x/y/z, GX, GY, GZ and use 5 s windows with 2.5 s hop"
+    - "Matrix-Small uses the registered 146xvariable-K feature-matrix defaults: 10 s engineering windows with 2 s hop"
+    - "Deep routes use fixed 10 epochs; Logistic uses its registered deterministic LBFGS estimator contract"
+  notes:
+    - "The default CompactCNN, Logistic, Matrix-Small, and CompactCNN Fusion cases inherit their complete registered defaults through catalog references; no algorithm is copied into this YAML."
+    - "The Full InceptionTime case changes only the explicitly declared sampling and optimization parameters."
+    - "This is a representation/model screen, not a single-factor causal ablation and not a final-case selection."
+cases:
+  - case_id: raw__compact_cnn
+    catalog_entry: compact_cnn
+    screen_profile_id: registered_default_fixed10
+    output_group: raw
+    overrides: {}
+    rationale: "Eight-channel raw CompactCNN baseline using registered defaults."
+    formal_profile: null
+  - case_id: feature_vector__logistic
+    catalog_entry: logistic_regression
+    screen_profile_id: registered_default_logistic
+    output_group: feature_vector
+    overrides: {}
+    rationale: "Engineered feature-vector Logistic Regression baseline using registered defaults."
+    formal_profile: null
+  - case_id: feature_matrix__inception_small
+    catalog_entry: inception_matrix_small
+    screen_profile_id: registered_default_matrix_small_fixed10
+    output_group: feature_matrix
+    overrides: {}
+    rationale: "Chronological 146xvariable-K feature matrix with the registered Small Matrix InceptionTime defaults."
+    formal_profile: null
+  - case_id: fusion__compact_cnn
+    catalog_entry: fusion_compact
+    screen_profile_id: registered_default_fusion_compact_fixed10
+    output_group: fusion
+    overrides: {}
+    rationale: "Registered default file-level CompactCNN Fusion route combining the eight-channel raw branch with engineered features."
+    formal_profile: null
+  - case_id: raw__inception_full_configured
+    catalog_entry: inception_full
+    screen_profile_id: configured_64hz_fixed10_b16_lr3e4_do50_wd005_ls20
+    output_group: raw
+    overrides:
+      signal.dl_resampling.enabled: true
+      signal.dl_resampling.target_fs_hz: 64.0
+      windows.raw_dl.length_s: 5.0
+      windows.raw_dl.hop_s: 2.5
+      model.dropout: 0.50
+      training.fixed_epochs: 10
+      training.batch_size: 16
+      training.learning_rate: 0.0003
+      training.weight_decay: 0.005
+      training.label_smoothing: 0.20
+    rationale: "Eight-channel Full InceptionTime with the prespecified tuned training profile."
+    formal_profile: null
+execution:
+  repeats: [0, 1, 2, 3, 4]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 1
+  device: cuda
+  parallel_level: cases
+  continue_on_error: true
+  allow_parallel_deep: false
+  measure_operational_costs: false
+output:
+  root: artifacts/studies/static_line_b_staged_v2
+report:
+  top_k: 5
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10
+  figure_modules: [all]
+  compact_mean_sd: true
+  write_excel_workbook: true

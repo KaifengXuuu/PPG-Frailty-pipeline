@@ -1,0 +1,110 @@
+schema_version: ppg_frailty.v5_model_reuse_parameters.v1
+source:
+  pipeline_output: pipeline_output/review_final_5cases
+  case_id: tuned_all_roles__inception_small
+model:
+  model_id: InceptionTimeSmall
+  input_channels: 8
+  input_channels_resolution: canonical_frailty_raw_8
+  input_channel_order:
+  - RED
+  - IR
+  - A_dyn_x
+  - A_dyn_y
+  - A_dyn_z
+  - GX
+  - GY
+  - GZ
+  n_classes: 3
+  seed_policy: outer_cv_repeat_seed_equals_split_seed
+  dropout: 0.5
+  kernel_sizes:
+  - 39
+  - 19
+  - 9
+  dilation: 1
+  ensemble_size: 1
+  variant: single_network
+  mask_aware_pooling: true
+  architecture_parameters:
+    bottleneck_channels: 16
+    branch_count: 4
+    classifier_dropout: 0.5
+    depth: 3
+    dilation: 1
+    global_pooling: mask_aware_global_average
+    kernel_sizes:
+    - 39
+    - 19
+    - 9
+    model_id: inception_small
+    n_classes: 3
+    out_channels: 16
+    pool_size: 3
+    representation_mode: raw
+    residual_interval: 3
+    variant: small
+training:
+  epoch_rule: fixed_epoch
+  epoch_profile: default_10
+  execution_mode: formal
+  fixed_epochs: 10
+  maximum_inner_epochs: 0
+  inner_patience: 0
+  batch_size: 16
+  learning_rate: 0.0003
+  weight_decay: 0.001
+  device: cuda
+  num_workers: 0
+  seed: 42
+  optimizer: adamw
+  optimizer_parameters:
+    betas:
+    - 0.9
+    - 0.999
+    eps: 1.0e-08
+    amsgrad: false
+    maximize: false
+  class_weighting: inverse_frequency
+  class_count_basis: row
+  training_balance: equal_role_families
+  sampler: exhaustive_shuffle_without_replacement
+  samples_per_epoch: null
+  participant_window_quota: all
+  classifier_role_families:
+  - B
+  - R
+  - S
+  - W
+  loss: cross_entropy
+  focal_gamma: 2.0
+  class_weight_beta: 0.999
+  label_smoothing: 0.2
+  gradient_clip_norm: null
+  deterministic_algorithms: true
+  cache_policy: disabled
+  outer_labels_visible_to_trainer: false
+  inner_grouped_folds: 0
+  refit_on_all_outer_training: true
+  n_classes: 3
+representation_mode: raw
+fold_provenance:
+  fold_model_row_count: 25
+  file: fold_model_parameters.csv
+deployment_capability:
+  configuration_reuse: true
+  learned_weights_available: true
+  new_participant_inference: true
+  reason: ready
+selected_model:
+  balanced_accuracy: 0.8333333333333334
+  bundle_manifest: tuned_all_roles__inception_small/repeat_00/fold_02/model_checkpoint/manifest.json
+  bundle_manifest_sha256: 9994c5b192880f6b960036cfac7af2f07b9f3b66d4deee19f3861d678aa81520
+  case_id: tuned_all_roles__inception_small
+  complete_5x5: true
+  deployment_status: not_unbiased_deployment_model_outer_train_subset_only
+  fold: 2
+  model_input_boundary: already_preprocessed_fold_model_input
+  model_role: research_outer_fold_median_for_dashboard_trial
+  repeat: 0
+  selection_manifest: models/tuned_all_roles__inception_small/median_fold/selection.json

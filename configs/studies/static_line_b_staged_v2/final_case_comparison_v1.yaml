@@ -1,0 +1,167 @@
+# Four prespecified InceptionTimeFull finalists on the frozen participant-grouped
+# 5x5 split registry. Historical S1 profiles are ported into the current V2
+# signal, aggregation and reporting stack; no historical algorithm is copied.
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: final_case_comparison_inception_full_v1
+  kind: catalog_sweep
+  purpose: "Compare two historical fixed-epoch S1 finalists, the selected V2 tuned InceptionTimeFull profile, and its all-role module-off extension."
+  flow_position: "Prespecified final-case candidate comparison before the separately locked final confirmation run."
+  decision_role: candidate_comparison
+  reference_case_id: s1_163_v2_port_static
+  thesis_sections:
+    - "Historical fixed-epoch finalist transfer into V2"
+    - "Static-only tuned InceptionTimeFull comparison"
+    - "Static-only versus all-role tuned InceptionTimeFull comparison"
+    - "Participant-cluster confidence intervals and paired repeat inference"
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: "Four prespecified multi-parameter candidate configurations on identical frozen 5x5 participant splits; this is a finalist comparison, not a single-factor ablation or Cartesian grid search."
+  controlled_factors:
+    - "InceptionTimeFull single-network architecture with eight channels in RED, IR, A_dyn_x/y/z, GX, GY, GZ order"
+    - "64 Hz DL inputs, 5 s windows, 2.5 s hop and all-eight-channel per-window robust scaling"
+    - "Profile-A physical IMU processing, Line B file/role/participant aggregation, frozen participant-grouped splits and repeat seeds"
+    - "SQI, motion detection and denoising are explicitly disabled in all four cases"
+  notes:
+    - "S1_085 and S1_163 are V2 ports of their effective historical optimization and 90%-window-retention settings; they are not byte-identical reruns of the historical runner."
+    - "The S1 ports preserve historical inverse participant-count class weights, whereas the V2 tuned case preserves its selected row-count class weights. This intentional source-profile difference makes the study a candidate comparison rather than a causal ablation."
+    - "The all-role case inherits the tuned static case exactly apart from roles/classifier role families; SQI, motion and denoiser remain off."
+    - "No Stage5 EKF choice is imported into this non-Stage5 study; all cases use the ordinary V2 Profile-A physical IMU view."
+cases:
+  - case_id: s1_085_v2_port_static
+    catalog_entry: inception_full
+    screen_profile_id: historical_s1_085_v2_port_static
+    output_group: raw
+    overrides: &s1_085_static
+      signal.imu.gravity_method: profile_a_lowpass_0p3hz
+      signal.imu.comparison_method: calibrated_roll_pitch_ekf
+      signal.dl_resampling.enabled: true
+      signal.dl_resampling.target_fs_hz: 64.0
+      signal.normalization.raw_ppg: per_window_robust
+      signal.normalization.raw_imu: none
+      windows.raw_dl.length_s: 5.0
+      windows.raw_dl.hop_s: 2.5
+      windows.raw_dl.cap_per_file: null
+      windows.raw_dl.cap_fraction_per_file: 0.90
+      model.dropout: 0.0
+      training.fixed_epochs: 10
+      training.batch_size: 32
+      training.optimizer: adamw
+      training.learning_rate: 0.001
+      training.weight_decay: 0.0005
+      training.label_smoothing: 0.10
+      training.sampler: exhaustive_shuffle_without_replacement
+      training.class_weighting: inverse_frequency
+      training.class_count_basis: participant
+      training.classifier_role_families: [B, R]
+      aggregation.balance_line: line_b_equal_role_families
+      roles: [B, R1, R2, R3, R4]
+      quality.mode: "off"
+      artifact.motion_detector_enabled: false
+      artifact.denoiser_enabled: false
+      artifact.reducer: identity
+      artifact.reducer_version: identity_v1
+      artifact.degraded_policy: drop
+      artifact.parameters: {}
+    rationale: "V2 port of historical S1_085: dropout 0, AdamW, batch 32, LR .001, WD .0005, label smoothing .10, fixed 10 epochs and 90% retained windows."
+    formal_profile: null
+
+  - case_id: s1_163_v2_port_static
+    catalog_entry: inception_full
+    screen_profile_id: historical_s1_163_v2_port_static
+    output_group: raw
+    overrides: &s1_163_static
+      <<: *s1_085_static
+      model.dropout: 0.50
+      training.fixed_epochs: 15
+    rationale: "V2 port of historical S1_163: S1_085 controls with dropout .50 and fixed 15 epochs."
+    formal_profile: null
+
+  - case_id: inception_full_tuned_static
+    catalog_entry: inception_full
+    screen_profile_id: v2_tuned_b16_lr3e4_wd001_do50_ls20_fixed10_static
+    output_group: raw
+    overrides: &tuned_static
+      signal.imu.gravity_method: profile_a_lowpass_0p3hz
+      signal.imu.comparison_method: calibrated_roll_pitch_ekf
+      signal.dl_resampling.enabled: true
+      signal.dl_resampling.target_fs_hz: 64.0
+      signal.normalization.raw_ppg: per_window_robust
+      signal.normalization.raw_imu: none
+      windows.raw_dl.length_s: 5.0
+      windows.raw_dl.hop_s: 2.5
+      windows.raw_dl.cap_per_file: 128
+      windows.raw_dl.cap_fraction_per_file: null
+      model.dropout: 0.50
+      training.fixed_epochs: 10
+      training.batch_size: 16
+      training.optimizer: adamw
+      training.learning_rate: 0.0003
+      training.weight_decay: 0.001
+      training.label_smoothing: 0.20
+      training.sampler: exhaustive_shuffle_without_replacement
+      training.class_weighting: inverse_frequency
+      training.class_count_basis: row
+      training.classifier_role_families: [B, R]
+      aggregation.balance_line: line_b_equal_role_families
+      roles: [B, R1, R2, R3, R4]
+      quality.mode: "off"
+      artifact.motion_detector_enabled: false
+      artifact.denoiser_enabled: false
+      artifact.reducer: identity
+      artifact.reducer_version: identity_v1
+      artifact.degraded_policy: drop
+      artifact.parameters: {}
+    rationale: "Selected V2 tuned static-only profile: AdamW, batch 16, LR 3e-4, WD .001, dropout .50, label smoothing .20 and fixed 10 epochs."
+    formal_profile: null
+
+  - case_id: inception_full_tuned_all_roles_modules_off
+    catalog_entry: inception_full
+    screen_profile_id: v2_tuned_b16_lr3e4_wd001_do50_ls20_fixed10_all_roles_off
+    output_group: raw
+    overrides:
+      <<: *tuned_static
+      training.classifier_role_families: [B, R, S, W]
+      roles: [B, R1, R2, R3, R4, S1, S2, W1, W2]
+      quality.mode: "off"
+      artifact.motion_detector_enabled: false
+      artifact.denoiser_enabled: false
+      artifact.reducer: identity
+      artifact.reducer_version: identity_v1
+      artifact.degraded_policy: drop
+      artifact.parameters: {}
+    rationale: "Selected tuned InceptionTimeFull profile with all B/R/S/W roles admitted and SQI, motion detection and denoising all disabled."
+    formal_profile: null
+execution:
+  repeats: [0, 1, 2, 3, 4]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 1
+  device: cuda
+  parallel_level: cases
+  continue_on_error: false
+  allow_parallel_deep: false
+  measure_operational_costs: false
+  preprocessing_cache:
+    mode: read_write
+    root: artifacts/studies/cache
+    namespaces:
+      - imu_calibration
+      - canonical_signal_views
+      - raw_windows
+    verify_source_sha256: true
+output:
+  root: artifacts/studies/static_line_b_staged_v2
+report:
+  top_k: 4
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10
+  figure_modules: [all]
+  compact_mean_sd: true
+  write_excel_workbook: true
