@@ -149,7 +149,7 @@ def _publish_specialized_artifact_contract(output: Path, schema: str) -> Mapping
         "pipeline_excel": excel.get("workbook"),
         "public_phase_runs": [],
     }
-    if schema == STAGE5_SCHEMA:
+    if schema == STAGE5_SCHEMA and _mapping(output / 'study_manifest.json').get('motion_enabled', True):
         exported = export_motion_model_config(output)
         payload.update(
             model_trained=True,
@@ -157,7 +157,7 @@ def _publish_specialized_artifact_contract(output: Path, schema: str) -> Mapping
             per_fold_learned_weights="complete",
             model_config_export=exported.get("output_directory"),
         )
-    elif schema == PEAK_ABLATION_SCHEMA:
+    elif schema in {STAGE5_SCHEMA, PEAK_ABLATION_SCHEMA}:
         payload.update(model_trained=False, model_kind="not_applicable")
     else:
         phases = []

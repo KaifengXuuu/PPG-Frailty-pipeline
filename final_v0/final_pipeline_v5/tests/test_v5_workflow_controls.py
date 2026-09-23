@@ -72,6 +72,60 @@ def test_unchanged_full_widget_mapping_does_not_reset_loaded_values():
     assert config == before
 
 
+def test_role_widget_groups_families_without_losing_concrete_record_ids():
+    config = default_configuration()
+    spec = next(row for row in grouped_parameter_specs(config) if row['path'] == 'roles')
+    assert spec['choices'] == ['B', 'R', 'S', 'W']
+    assert spec['value'] == ['B', 'R']
+    assert spec['resolved_roles'] == ['B', 'R1', 'R2', 'R3', 'R4']
+    spec['resolved_roles'].append('S1')
+    assert config['roles'] == ['B', 'R1', 'R2', 'R3', 'R4']
+
+
+@pytest.mark.parametrize(('selected', 'expected'), [
+    (['B', 'R', 'S'], ['B', 'R1', 'R2', 'R3', 'R4', 'S1', 'S2']),
+    (['B', 'R', 'W'], ['B', 'R1', 'R2', 'R3', 'R4', 'W1', 'W2']),
+    (['B'], ['B']),
+    ([], []),
+])
+def test_role_family_edits_expand_or_remove_only_the_requested_record_groups(selected, expected):
+    config = default_configuration()
+    mapping = {'roles': selected}
+    result = apply_control_values(config, mapping)
+    assert result['roles'] == expected
+    assert result['training'] == config['training']
+    assert mapping == {'roles': selected}
+    assert config['roles'] == ['B', 'R1', 'R2', 'R3', 'R4']
+
+
+def test_partial_yaml_role_selection_survives_roundtrip_and_unrelated_edits():
+    config = apply_control_values(default_configuration(), {'roles': ['B', 'R1']}, validate=True)
+    controls = {row['path']: row['value'] for row in grouped_parameter_specs(config)}
+    assert controls['roles'] == ['B', 'R']
+    assert apply_control_values(config, controls, validate=True) == config
+    controls['signal.ppg_filter.high_hz'] = 7.5
+    edited = apply_control_values(config, controls, validate=True)
+    assert edited['roles'] == ['B', 'R1']
+    expanded = apply_control_values(edited, {'roles': ['B', 'R', 'S']}, validate=True)
+    assert expanded['roles'] == ['B', 'R1', 'S1', 'S2']
+    assert expanded['training'] == config['training']
+    without_r = apply_control_values(expanded, {'roles': ['B', 'S']})
+    reselected = apply_control_values(without_r, {'roles': ['B', 'R', 'S']}, validate=True)
+    assert reselected['roles'] == ['B', 'R1', 'R2', 'R3', 'R4', 'S1', 'S2']
+
+
+def test_explicit_concrete_role_edits_keep_exact_membership_and_canonical_validation():
+    config = default_configuration()
+    concrete = ['B', 'R2', 'W1']
+    result = apply_control_values(config, {'roles': concrete}, validate=True)
+    assert result['roles'] == concrete
+    assert result['training'] == config['training']
+    with pytest.raises(ValueError, match='roles must be a non-empty registered role list'):
+        apply_control_values(config, {'roles': []}, validate=True)
+    with pytest.raises(ValueError, match='classifier_role_families must be represented by roles'):
+        apply_control_values(config, {'roles': ['B']}, validate=True)
+
+
 @pytest.mark.parametrize('descriptor', list_modules('artifact'), ids=lambda row: row['module_id'])
 def test_every_reducer_selector_materializes_its_own_parameters(descriptor):
     from ppg_frailty.artifacts import get_reducer

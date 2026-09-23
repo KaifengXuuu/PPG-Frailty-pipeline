@@ -135,7 +135,9 @@ def _parameter_control(spec: Mapping[str, Any], namespace: str = 'param') -> Any
     return html.Div([html.Label([html.Span(label.rsplit('.', 1)[-1], className='parameter-name'),
                                 html.Span(parameter_help(spec), className='parameter-help')],
                                title=label, className='parameter-label'), component,
-                     html.Small(label, title=str(spec.get('range', '')))], className='parameter')
+                     html.Small(label, title=str(spec.get('range', ''))),
+                     *([html.Small('Resolved roles: ' + ', '.join(spec['resolved_roles']))]
+                       if 'resolved_roles' in spec else [])], className='parameter')
 
 
 def _widget_values(specifications: list, identities: list | None, values: list | None) -> dict:
@@ -175,15 +177,44 @@ def _tool_download_command(request: Mapping) -> str:
     return prefix+request['display']+'\n'
 
 
+def _feature_table_group(title: str) -> str | None:
+    """Group existing tables for display, without copying or recomputing rows."""
+    if title.startswith(('Engineering 115', 'Window matrix 146', 'Window rates')) or title == 'Matrix · windows':
+        return 'engineering features'
+    if title == 'File · hrv_spectral':
+        return 'freq domain features'
+    if title.startswith('Morphology ·') or title == 'File · morphology':
+        return 'morphology features'
+    if title.startswith(('Peaks ·', 'PPI ·', 'PRV ·', 'Matrix · used')) or title in {
+            'File · ppi_basic_rate', 'File · hrv_time_domain', 'File · hrv_nonlinear'}:
+        return 'time series features'
+    if title.startswith(('File ·', 'Dual optical ·')):
+        return 'file level features'
+    return None
+
+
 def _render_preview(preview: Mapping | None) -> list:
     from dash import dcc, html
     import plotly.graph_objects as go
     if not preview:
         return [html.Div('Analyse computes missing upstream stages automatically.', className='empty-preview')]
     output = []
-    if preview.get('traces'):
+    time_figures = {}
+    for name, points in preview.get('traces', {}).items():
+        heading = preview.get('trace_figures', {}).get(name, 'Time domain')
+        time_figures.setdefault(heading, {})[name] = points
+    if preview.get('metadata', {}).get('stage') == 'features':
+        time_figures.setdefault('Window PPI / HR', {})
+    for traces, group_key, heading, frequency in (
+            *((traces, 'trace_groups', heading, '') for heading, traces in time_figures.items()),
+            (preview.get('fft_traces', {}), 'fft_groups', 'Frequency domain / FFT amplitude', 'fft'),
+            (preview.get('frequency_traces', {}), 'frequency_groups', 'Frequency domain / PSD', 'psd')):
+        if not traces and heading != 'Window PPI / HR':
+            continue
         from plotly.subplots import make_subplots
         def group(name):
+            if name in preview.get(group_key, {}):
+                return preview[group_key][name]
             name = name.removeprefix('first_window_')
             if name.startswith('native_') or name in {'RED', 'IR'}:
                 return 'PPG windows' if preview.get('metadata', {}).get('stage') == 'representation' else 'Native PPG'
@@ -198,20 +229,69 @@ def _render_preview(preview: Mapping | None) -> list:
             if name in {'roll_rad', 'pitch_rad'}:
                 return 'Orientation'
             return 'Scores / state'
-        groups = list(dict.fromkeys(group(name) for name in preview['traces']))
+        groups = list(dict.fromkeys(group(name) for name in traces)) or ['PPI / s', 'HR / bpm']
         figure = make_subplots(rows=len(groups), cols=1, shared_xaxes=True, subplot_titles=groups,
                                vertical_spacing=min(.1, .3 / len(groups)))
-        for name, points in preview['traces'].items():
+        for name, points in traces.items():
+            style = {'mode': 'markers' if name.endswith('_peaks') else 'lines'}
+            if not frequency:
+                style.update(preview.get('trace_styles', {}).get(name, {}))
             figure.add_trace(go.Scattergl(x=points['x'], y=points['y'],
-                                         mode='markers' if name.endswith('_peaks') else 'lines', name=name),
+                                         name=name, **style),
                              row=groups.index(group(name)) + 1, col=1)
-        figure.update_layout(template='plotly_white', height=max(350, 220 * len(groups)),
-                             margin=dict(l=50, r=20, t=35, b=40), legend=dict(orientation='h'), uirevision='signal')
-        figure.update_xaxes(title_text='Time / s', row=len(groups), col=1)
-        output.append(dcc.Graph(figure=figure, config={'displaylogo': False}))
+        # Legends grow upwards, away from all x-axis labels. Reserve room for
+        # wrapped entries without taking it from the signal's plotting area.
+        legend_space = 60 + 24 * ((len(traces) + 1) // 2)
+        figure.update_layout(template='plotly_white', height=max(300, 220 * len(groups)) + legend_space + 60,
+                             margin=dict(l=60, r=25, t=legend_space, b=60),
+                             legend=dict(orientation='h', x=0, xanchor='left', y=1.12, yanchor='bottom'),
+                             uirevision=heading)
+        figure.update_xaxes(type='linear')
+        figure.update_xaxes(title_text='Frequency / Hz' if frequency else 'Time / s', row=len(groups), col=1)
+        if frequency == 'psd':
+            for row, panel in enumerate(groups, start=1):
+                # PSD values stay untouched; an all-zero panel needs a linear axis.
+                positive = any(value is not None and value > 0 for name, points in traces.items()
+                               if group(name) == panel for value in points['y'])
+                figure.update_yaxes(title_text='PSD', type='log' if positive else 'linear', row=row, col=1)
+        elif frequency == 'fft':
+            figure.update_yaxes(title_text='FFT amplitude', type='linear')
+            figure.update_xaxes(range=[0.01, 8])
+            # Full FFT data include DC; it must not squash the initial 0.01–8 Hz
+            # view. Only set view limits, never alter the underlying amplitudes.
+            for row, panel in enumerate(groups, start=1):
+                peak = max((amplitude for name, points in traces.items() if group(name) == panel
+                            for hz, amplitude in zip(points['x'], points['y'])
+                            if 0.01 <= hz <= 8 and amplitude is not None), default=0)
+                figure.update_yaxes(range=[0, peak * 1.05 if peak > 0 else 1], row=row, col=1)
+        graph = dcc.Graph(figure=figure, config={'displaylogo': False})
+        if frequency == 'psd':
+            output.append(html.Details([html.Summary(heading), graph,
+                html.Small('PSD 正值使用对数纵轴；零值保留但不显示在对数轴上，全零面板使用线性轴。频率轴保留 0 Hz。')],
+                open=False, className='parameter-panel'))
+        else:
+            output.extend([html.H4(heading), graph])
+        if frequency == 'fft':
+            output.append(html.Small('FFT 幅度 = abs(rFFT)/N，不平方、不转 dB、不加倍、不额外去趋势。默认查看 0.01–8 Hz；频谱保留 DC 至奈奎斯特频率，可用图表 Autoscale 展开。缺失记录只使用最长连续有效片段，范围见 Stage details → fft。'))
+        elif heading == 'Window PPI / HR':
+            rate = preview.get('metadata', {}).get('window_rate', {})
+            if not traces or rate.get('valid_window_count') == 0 or rate.get('status') == 'unavailable':
+                reason = rate.get('reason', 'window_rate_not_computed')
+                explanation = {'peak_detection_unavailable': '当前提取结果没有可用峰',
+                               'no_windows_planned': '当前窗长、步长和边界设置未生成窗口',
+                               'no_windows_with_sufficient_route_eligible_ppi': '已有窗口，但没有满足路由和间期有效性条件的统计值',
+                               'window_rate_not_computed': '尚无逐窗计算结果'}.get(reason, '逐窗计算不可用')
+                output.append(html.Div(f'暂无有效逐窗 PPI/HR：{explanation}（{reason}）。未补值或放宽算法有效性条件。', role='status'))
+            output.append(html.Small('直接复用 feature matrix 的分窗与 PPI/HR 统计，不受表征模式限制；非 matrix 模式仅作预览，不改变模型输入。显示整条记录，不受时域预览起点/时长裁剪；横坐标为窗口中心，全部曲线默认显示，无效窗口断线且不补值。'))
+        elif heading == 'Beatwise PPI / HR':
+            output.append(html.Small('横坐标为相邻峰的时间中点，HR = 60/PPI。连续有效间期用直线连接；无效间期为叉号，默认隐藏，点击对应图例显示。缺失或来源切换处断线。used 与 matrix_used 标记实际特征所选间期。'))
+    feature_panels = {name: [] for name in ('engineering features', 'file level features',
+                      'time series features', 'freq domain features', 'morphology features')}
     for title, rows in preview.get('tables', {}).items():
         if rows:
-            output.extend([html.H4(title.replace('_', ' ')), _table(list(rows))])
+            panel = _feature_table_group(title) if preview.get('metadata', {}).get('stage') == 'features' else None
+            target = feature_panels[panel] if panel else output
+            target.extend([html.H4(title.replace('_', ' ')), _table(list(rows))])
             if title in {'recordings', 'participants'} and any(row.get('probabilities') for row in rows):
                 chart = go.Figure()
                 for row in rows:
@@ -221,6 +301,8 @@ def _render_preview(preview: Mapping | None) -> list:
                                       name=str(row.get('participant_id') if title == 'participants' else row.get('file_id')))
                 chart.update_layout(template='plotly_white', height=300, yaxis_title='Probability', yaxis_range=[0, 1])
                 output.append(dcc.Graph(figure=chart, config={'displaylogo': False}))
+    output.extend(html.Details([html.Summary(name), *children], open=False, className='parameter-panel')
+                  for name, children in feature_panels.items() if children)
     if preview.get('metadata'):
         output.append(html.Div([html.H4('Stage details'), html.Pre(_json(preview['metadata']))]))
     return output

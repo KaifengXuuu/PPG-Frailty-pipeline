@@ -1326,8 +1326,12 @@ def _route_records(
                 f"quality_route_execution_failed:{state.row.record_id}:{type(exc).__name__}:{exc}"
             ) from exc
 
-def _extract_vector(state: _RuntimeRecord, report: Any, features_config: Mapping[str, Any] | None = None) -> None:
-    """构建完整 FeatureVectorV1 / Build one complete FeatureVectorV1."""
+def _extract_vector(state: _RuntimeRecord, report: Any, features_config: Mapping[str, Any] | None = None,
+                    *, capture: dict[str, Any] | None = None) -> None:
+    """Build the production vector; optionally retain already-computed products."""
+    preview = None
+    if capture is not None:
+        capture["vector"] = preview = {}
     if not state.retained:
         return
     api = _runtime_imports()
@@ -1361,11 +1365,20 @@ def _extract_vector(state: _RuntimeRecord, report: Any, features_config: Mapping
             q_rate_qualified = (
                 True if state.final_quality is None else state.final_quality.q_rate.state is QualityState.PASS
             )
+        if preview is not None:
+            preview.update(pulse_used=pulse, morphology_pulse=direct_pulse,
+                           pulses_direct=state.direct_pulses_per_wavelength,
+                           pulses_processed=state.processed_pulses_per_wavelength,
+                           diagnostics=state.diagnostic_components)
+            source = "pulses_processed" if pulse.source_route is SignalRoute.ARTIFACT_RATE_ONLY and state.routing_timeline is None else "pulses_direct"
+            preview[source] = pulses_per_wavelength
         prv = api["compute_prv"](
             pulse, observation_duration_s=state.views.x_filter.shape[0] / 400.0,
             role=api["canonicalize_role_family"](str(state.row.role)), route=prv_route,
             q_rate_qualified=q_rate_qualified, config=prv_config,
         )
+        if preview is not None:
+            preview["prv"] = prv
         pulse_only = state.quality_tier == "acceptable"
         if pulse_only:
             values: dict[str, Any] = {}
@@ -1394,6 +1407,8 @@ def _extract_vector(state: _RuntimeRecord, report: Any, features_config: Mapping
                 )
             state.engineering = engineering
             values, validity = api["summarize_engineering"](engineering)
+        if preview is not None:
+            preview.update(engineering=state.engineering, values=values, validity=validity)
         if state.final_quality is not None:
             values["sqi.q_rate"] = float(state.final_quality.q_rate.score)
             validity["sqi.q_rate"] = True
@@ -1407,6 +1422,8 @@ def _extract_vector(state: _RuntimeRecord, report: Any, features_config: Mapping
             validity[f"prv.{name}"] = bool(prv.validity[name])
         if state.shape_features_eligible:
             morphology = api["extract_morphology"](state.views.x_filter, direct_pulse, route=SignalRoute.DIRECT)
+            if preview is not None:
+                preview["morphology"] = morphology
             if state.routing_timeline is None:
                 morphology_values = morphology.aggregate_values
                 morphology_validity = morphology.aggregate_validity
@@ -1425,6 +1442,8 @@ def _extract_vector(state: _RuntimeRecord, report: Any, features_config: Mapping
                 optical = api["extract_dual_optical"](
                     state.views.x_native, state.views.x_filter, pulses_per_wavelength, route=SignalRoute.DIRECT
                 )
+                if preview is not None:
+                    preview["optical"] = optical
                 for name, value in optical.aggregate_values.items():
                     values[f"optical.{name}"] = value
                     validity[f"optical.{name}"] = bool(optical.aggregate_validity[name])
@@ -1436,6 +1455,8 @@ def _extract_vector(state: _RuntimeRecord, report: Any, features_config: Mapping
         enabled_groups = None if features_config is None else features_config.get("enabled_groups")
         registry = api["registry_for_groups"](enabled_groups)
         complete_registry = api["default_registry"]()
+        if preview is not None:
+            preview.update(registry=registry, complete_registry=complete_registry)
         non_predictor_names = sorted(set(values) - set(complete_registry.names))
         disabled_registered_names = sorted(set(complete_registry.names) - set(registry.names))
         allowed_metadata_names = {"prv.coverage", "sqi.coverage", "sqi.q_morph", "sqi.q_rate"}
@@ -1473,6 +1494,8 @@ def _extract_vector(state: _RuntimeRecord, report: Any, features_config: Mapping
                 if pulse_only else "full_configured_feature_groups",
             },
         )
+        if preview is not None:
+            preview["result"] = state.vector
     except Exception as exc:
         _drop_after_routing(
             state, reason=f"feature_vector_failed:{type(exc).__name__}:{exc}",
@@ -1500,8 +1523,11 @@ def _dataset(states: Iterable[_RuntimeRecord]) -> Any:
     ))
     return api["FeatureVectorDataset"](api["np"].stack([state.vector.values for state in selected]), names, identities)
 
-def _extract_matrix_features(state: _RuntimeRecord, report: Any) -> None:
-    """Extract the route-aware 146-feature variable-K window sequence."""
+def _extract_matrix_features(state: _RuntimeRecord, report: Any, *, capture: dict[str, Any] | None = None) -> None:
+    """Extract the route-aware matrix, optionally retaining computed products."""
+    preview = None
+    if capture is not None:
+        capture["matrix"] = preview = {}
     if not state.retained:
         return
     api = _runtime_imports()
@@ -1520,10 +1546,17 @@ def _extract_matrix_features(state: _RuntimeRecord, report: Any) -> None:
             processed_pulse = state.processed_pulses_per_wavelength[api["select_reference_wavelength"](
                 state.processed_pulses_per_wavelength
             )]
+        if preview is not None:
+            preview.update(pulses_direct=pulses, pulses_processed=state.processed_pulses_per_wavelength,
+                           morphology=direct_morphology, morphology_pulse=direct_pulse,
+                           diagnostics=state.diagnostic_components)
         state.engineering = api["extract_window_features"](
             state.views, plan=plan, timeline=state.routing_timeline, direct_pulse=direct_pulse,
             direct_morphology=direct_morphology, processed_pulse=processed_pulse,
+            **({"capture": preview} if preview is not None else {}),
         )
+        if preview is not None:
+            preview["engineering"] = state.engineering
     except Exception as exc:
         _drop_after_routing(
             state, reason=f"feature_matrix_engineering_failed:{type(exc).__name__}:{exc}",

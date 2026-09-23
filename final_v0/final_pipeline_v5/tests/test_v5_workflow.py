@@ -110,6 +110,10 @@ def test_end_to_end_representation_uses_existing_algorithms_without_fitting(serv
     result = service.analyse("representation", config, "fixture")
     assert result["computed_stages"] == list(STAGES[:8])
     assert result["previews"]["features"]["metadata"]["feature_count"] > 100
+    feature_tables = result["previews"]["features"]["tables"]
+    assert all(f"{kind} · direct_{channel}" in feature_tables
+               for kind in ("Peaks", "PPI") for channel in ("RED", "IR"))
+    assert any(name.startswith("PPI · used_") for name in feature_tables)
     assert result["previews"]["representation"]["metadata"]["shape"][1:] == [8, 320]
     assert result["previews"]["representation"]["metadata"]["retained"]
     assert all(not preview["metadata"]["model_training_executed"] for preview in result["previews"].values())
@@ -240,24 +244,118 @@ def test_all_representation_branches_are_materialized_without_fitting(service, c
         assert preview["tables"]["matrix_windows"]
     else:
         assert preview["metadata"]["feature_vector_shape"] == [282]
-        assert len(preview["tables"]["feature_vector"]) == 282
+        assert sum(len(rows) for key, rows in preview["tables"].items() if key.startswith("file_")) == 282
     if mode == "fusion":
         assert preview["metadata"]["shape"][1:] == [8, 320]
 
 
-def test_matrix_does_not_inherit_failure_of_nonessential_file_vector_preview(service, config, monkeypatch):
+def test_matrix_preview_does_not_compute_an_unrelated_file_vector(service, config, monkeypatch):
     from ppg_frailty import experiment
+    from ppg_frailty.dashboard import feature_preview
     from ppg_frailty.signal.sqi import SqiConfig
     edited = deepcopy(config)
     edited["representation_mode"] = "feature_matrix"
     edited["quality"].update(SqiConfig().to_dict(), mode="diagnostics_only")
-    def fail_vector_preview(state, *args):
-        state.retained, state.reason = False, "optional_vector_preview_failed"
+    def fail_vector_preview(*args, **kwargs):
+        raise AssertionError("Matrix preview must display the actual matrix extraction, not a separate file vector")
     monkeypatch.setattr(experiment, "_extract_vector", fail_vector_preview)
+    monkeypatch.setattr(feature_preview, "compute_window_rate_preview", fail_vector_preview)
     result = service.analyse("representation", edited, "fixture")
-    assert result["previews"]["features"]["metadata"]["feature_vector_preview_reason"] == "optional_vector_preview_failed"
+    assert result["previews"]["features"]["metadata"]["representation_mode"] == "feature_matrix"
     assert result["previews"]["representation"]["metadata"]["retained"]
     assert result["previews"]["representation"]["metadata"]["shape"][0] == 146
+
+
+@pytest.mark.parametrize("mode", ["raw", "feature_vector", "feature_matrix", "fusion"])
+def test_window_rate_plot_is_available_in_every_representation(service, config, mode):
+    edited = deepcopy(config)
+    edited["representation_mode"] = mode
+    edited["windows"]["engineering"].update(length_s=8.0, hop_s=1.0)
+    # Matrix extraction uses its actual routing; the other modes also exercise
+    # the quality-off path, which must keep routing_timeline=None unchanged.
+    if mode == "feature_matrix":
+        edited["quality"]["mode"] = "diagnostics_only"
+    result = service.analyse("representation", edited, "fixture")
+    preview = result["previews"]["features"]
+    rates = preview["metadata"]["window_rate"]
+    assert rates["status"] == "available"
+    assert rates["window_count"] > 0
+    assert rates["window_count"] == 13
+    names = [name for name in preview["traces"] if name.startswith("window_local_interval.")]
+    assert len(names) == 6
+    assert all(any(value is not None for value in preview["traces"][name]["y"]) for name in names)
+    assert result["previews"]["representation"]["metadata"]["mode"] == mode
+    assert result["previews"]["representation"]["metadata"]["retained"]
+    state = service._sessions["default"]["fixture"]["features"]["value"]["state"]
+    assert state.engineering.sequence.values.shape[1] == (146 if mode == "feature_matrix" else 115)
+    if mode == "feature_matrix":
+        assert rates["source"] == "actual_feature_matrix"
+    else:
+        assert rates["source"] == "matrix_window_rate_kernels_preview_only"
+        assert rates["scope"] == "full_record_direct_quality_not_assessed"
+        assert state.routing_timeline is None
+        assert preview["tables"]["Window rates · local_interval"]
+
+
+def test_matrix_without_routing_detects_once_for_preview_without_changing_model_state(service, config, monkeypatch):
+    from ppg_frailty import experiment
+    api = dict(experiment._runtime_imports())
+    detector = api["detect_pulses_per_wavelength"]
+    calls = []
+    def counted(*args, **kwargs):
+        calls.append(True)
+        return detector(*args, **kwargs)
+    api["detect_pulses_per_wavelength"] = counted
+    monkeypatch.setattr(experiment, "_runtime_imports", lambda: api)
+    edited = deepcopy(config)
+    edited["representation_mode"] = "feature_matrix"
+    result = service.analyse("features", edited, "fixture")
+    rates = result["previews"]["features"]["metadata"]["window_rate"]
+    assert rates["status"] == "available" and rates["valid_window_count"] > 0
+    assert len(calls) == 1
+    entries = service._sessions["default"]["fixture"]
+    upstream = entries["denoiser"]["value"]["state"]
+    actual = entries["features"]["value"]["state"]
+    assert upstream.retained and upstream.routing_timeline is None
+    assert upstream.direct_pulses_per_wavelength is None
+    assert actual.engineering is None and not actual.retained
+    assert "feature_matrix_requires_routing_timeline" in actual.reason
+    # Display-range changes reuse the independently captured rate plot.
+    assert service.analyse("features", edited, "fixture", start_s=2.)["computed_stages"] == []
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("mode", ["raw", "feature_matrix"])
+def test_window_trends_are_not_clipped_to_the_peak_inspection_range(service, config, mode):
+    edited = deepcopy(config)
+    edited["representation_mode"] = mode
+    if mode == "feature_matrix":
+        edited["quality"]["mode"] = "diagnostics_only"
+    full = service.analyse("features", edited, "fixture")
+    # All 10-second window centres fall outside this one-second waveform view.
+    narrow = service.analyse("features", edited, "fixture", start_s=0., duration_s=1.)
+    preview = narrow["previews"]["features"]
+    assert narrow["computed_stages"] == []
+    assert preview["metadata"]["window_rate"]["display_scope"] == "full_record"
+    names = [name for name in preview["traces"] if name.startswith("window_local_interval.")]
+    assert len(names) == 6
+    for name in names:
+        assert preview["traces"][name] == full["previews"]["features"]["traces"][name]
+        assert min(preview["traces"][name]["x"]) >= 5.
+        assert any(value is not None for value in preview["traces"][name]["y"])
+    assert max(preview["traces"]["direct_RED"]["x"]) < 1.
+
+
+def test_unavailable_rate_exploration_never_excludes_the_model_input(service, config, monkeypatch):
+    from ppg_frailty.dashboard import feature_preview
+    def unavailable(*args):
+        raise ValueError("fixture: no complete rate windows")
+    monkeypatch.setattr(feature_preview, "compute_window_rate_preview", unavailable)
+    result = service.analyse("representation", config, "fixture")
+    assert result["previews"]["representation"]["metadata"]["retained"]
+    rates = result["previews"]["features"]["metadata"]["window_rate"]
+    assert rates == {"status": "unavailable", "reason": "fixture: no complete rate windows", "display_scope": "full_record"}
+    assert not any(name.startswith("window_local_interval.") for name in result["previews"]["features"]["traces"])
 
 
 def test_feature_group_edit_reuses_all_signal_and_quality_stages(service, config):

@@ -15,7 +15,7 @@ PARAMETER_HELP = {
     'config_id': '当前参数组合的标识，用于区分配置和记录来源；改名不会改变数学计算，也不会自动更改输出目录。',
     'manifest.path': '记录清单 CSV 的路径，决定可选 recording、participant、角色和标签来源；换清单会改变输入数据，不是滤波参数。',
     'splits.path': '已生成的数据划分表，规定每个 repeat/fold 的训练与测试 participant；换表会改变评估划分，Analyse 不用它重新划分单条记录。',
-    'roles': '允许进入流程的具体记录角色，如 B、R1、S1；增加角色会纳入相应记录，最终分类还受 classifier_role_families 限制，不会生成新记录。',
+    'roles': 'Dash 按 B/R/S/W 选择记录类别；新勾选类别展开为其全部记录编号，已加载 YAML 的部分编号保持不变，取消后重选才展开。下方显示实际编号，导出 YAML 仍保存它们；最终分类还受 classifier_role_families 独立限制，不会生成新记录。',
     'features.enabled_groups': '选择脉搏间隔、时域/频域/非线性变化、波形形状、双波长关系和工程统计特征。增加组会增加相应特征；raw 模型仍吃信号，特征区用于预览，feature-vector/fusion 等路线才消费对应特征。',
     'features.rate_prv_min_duration_s': '允许报告基本脉率/PPI 的最短观测时间（秒）；增大时短记录更容易缺失这些结果，减小会接受更短但证据更少的片段。',
     'features.rate_prv_min_peaks': '基本脉率/PPI 至少需要的脉搏峰数；增大要求更多完整脉搏，减小可覆盖短片段，但并不提高峰检测准确度。',

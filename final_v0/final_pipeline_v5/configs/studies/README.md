@@ -3,6 +3,11 @@
 本目录保留 V2 的全部 reusable study YAML，并新增论文最终方案
 `finalcase.yaml`。请从 `final_pipeline_v5/` 根目录运行，不要调用 V2 顶层脚本。
 
+论文各项已运行 comparison/ablation 的入口集中在
+[`thesis/README.md`](thesis/README.md)。`thesis/` 按实验保存历史参数版 YAML；
+已能直接复用的测试在索引中链接原文件。通用模板会随默认配置更新，历史重跑应
+使用索引指定的配置和执行步骤，而不是仅按 V2 的旧文件名选择模板。
+
 ## Canonical study plan
 
 `schema_version: ppg_frailty.study_plan.v2`：

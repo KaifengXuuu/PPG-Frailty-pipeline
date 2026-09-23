@@ -1158,21 +1158,14 @@ def normalize_window_config(section: Mapping[str, Any]) -> dict[str, Any]:
 
 def validate_window_profiles_for_representation(section: Mapping[str, Any], representation_mode: str,
                                                 enabled_feature_groups: list[str] | tuple[str, ...]) -> dict[str, Any]:
-    """Reject non-default window controls with no runtime consumer."""
+    """Engineering windows also serve the mode-independent rate preview."""
     normalized = normalize_window_config(section)
     mode = str(representation_mode)
     if mode not in {'raw', 'feature_vector', 'feature_matrix', 'fusion'}:
         raise ValueError(f'unsupported representation_mode: {mode!r}')
     if not isinstance(enabled_feature_groups, (list, tuple)):
         raise ValueError('enabled_feature_groups must be a list or tuple')
-    groups = tuple((str(value) for value in enabled_feature_groups))
-    inactive_profiles: list[str] = []
-    if mode == 'raw':
-        inactive_profiles.append('engineering')
-    elif mode in {'feature_vector', 'feature_matrix'}:
-        inactive_profiles.append('raw_dl')
-    if mode in {'feature_vector', 'fusion'} and 'engineering_summary' not in groups:
-        inactive_profiles.append('engineering')
+    inactive_profiles = ['raw_dl'] if mode in {'feature_vector', 'feature_matrix'} else []
     for profile_name in inactive_profiles:
         defaults = _WINDOW_PROFILE_DEFAULTS[profile_name]
         observed = normalized[profile_name]

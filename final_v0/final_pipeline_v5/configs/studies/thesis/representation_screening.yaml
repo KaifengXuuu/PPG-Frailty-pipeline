@@ -1,0 +1,86 @@
+# Thesis Table 24: three historically executed routes (5 repeats x 5 folds).
+# Source: final_pipeline_v2/artifacts/studies/static_line_b_staged_v2/20260823_075821_catalog_sweep_staged-static-01-representation-baselines-v2/study_plan.yaml
+# The frozen resolved configs used Aboy v1; pin that existing selectable detector
+# explicitly because the shared catalog now defaults to MSPTDfast.
+# This is a historical configuration rerun, not a change to pipeline defaults.
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: thesis_representation_screening
+  kind: catalog_sweep
+  purpose: Repeat the three input-representation routes reported in thesis Table 24 using their historical executed
+    parameters.
+  flow_position: Three-route representation comparison; no fusion or additional tuned model.
+  decision_role: screening
+  reference_case_id: raw__compact_cnn
+  thesis_sections: ['4.2.1 / Table 24: input-representation screening']
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: Three prespecified routes on the same frozen 5x5 participant splits; raw CompactCNN is only the
+    statistical reference and is not an automatically selected winner.
+  controlled_factors: ['All 29 participants, five frozen repeats, and five held-out participant folds per repeat',
+    'Static roles B, R1, R2, R3, R4 with Line B file/role/participant aggregation', 'Raw DL inputs contain RED,
+      IR, A_dyn_x/y/z, GX, GY, GZ and use 5 s windows with 2.5 s hop', 'Matrix-Small uses the registered 146xvariable-K
+      feature-matrix defaults: 10 s engineering windows with 2 s hop', Deep routes use fixed 10 epochs; Logistic
+      uses its registered deterministic LBFGS estimator contract]
+  notes:
+    - The three reported cases preserve their executed settings, including the historical Aboy v1 detector.
+    - Fusion and the additional configured Full InceptionTime case are not part of this three-route comparison.
+    - This is a representation/model screen, not a single-factor causal ablation or final-case selection.
+cases:
+- case_id: raw__compact_cnn
+  catalog_entry: compact_cnn
+  screen_profile_id: registered_default_fixed10
+  output_group: raw
+  overrides:
+    signal.peak_detector.detector_id: aboy_project_v1
+    signal.peak_detector.parameters: {}
+  rationale: Eight-channel raw CompactCNN baseline using registered defaults.
+  formal_profile: null
+- case_id: feature_vector__logistic
+  catalog_entry: logistic_regression
+  screen_profile_id: registered_default_logistic
+  output_group: feature_vector
+  overrides:
+    signal.peak_detector.detector_id: aboy_project_v1
+    signal.peak_detector.parameters: {}
+  rationale: Engineered feature-vector Logistic Regression baseline using registered defaults.
+  formal_profile: null
+- case_id: feature_matrix__inception_small
+  catalog_entry: inception_matrix_small
+  screen_profile_id: registered_default_matrix_small_fixed10
+  output_group: feature_matrix
+  overrides:
+    signal.peak_detector.detector_id: aboy_project_v1
+    signal.peak_detector.parameters: {}
+  rationale: Chronological 146xvariable-K feature matrix with the registered Small Matrix InceptionTime defaults.
+  formal_profile: null
+execution:
+  repeats: [0, 1, 2, 3, 4]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 1
+  parallel_level: cases
+  continue_on_error: true
+  allow_parallel_deep: false
+  measure_operational_costs: false
+  device: cuda
+output:
+  root: pipeline_output
+report:
+  top_k: 3
+  write_html: false
+  write_static_figures: false
+  calibration_bins: 10
+  figure_modules: [all]
+  compact_mean_sd: true
+  write_excel_workbook: true
+  classification_tsne_random_state: 42
+  classification_tsne_perplexity: 30.0
+  classification_tsne_max_samples: 5000
+  classification_roc_macro_grid_points: 201
+  classification_score_histogram_bins: 40

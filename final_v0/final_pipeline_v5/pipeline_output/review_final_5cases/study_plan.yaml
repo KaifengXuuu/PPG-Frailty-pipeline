@@ -1,0 +1,341 @@
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: thesis_final_five_configurations
+  kind: catalog_sweep
+  purpose: Rerun the five configurations reported in thesis Tables 33-34 together;
+    this combines historical executed cases, not a new single-factor ablation.
+  flow_position: Combined rerun of the five reported finalists; no new candidate-selection
+    rule.
+  decision_role: candidate_comparison
+  reference_case_id: null
+  thesis_sections:
+  - '4.2.4.5 / Tables 33-34: final five configurations'
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  interpretation: Five historical configurations in thesis rank order. A complete
+    rerun, not replay of the merged reporting archive; not all pairs are single-factor
+    contrasts.
+  runtime_sampling: false
+  controlled_factors:
+  - Eight raw channels in RED, IR, acceleration x/y/z, gyroscope x/y/z order.
+  - 64 Hz input, 5 s windows, 2.5 s hop, and all-eight-channel per-window robust scaling.
+  - SQI, motion detection and denoising disabled; AdamW and inverse-frequency class
+    weighting.
+  - Line B aggregation and the same five participant-grouped repeats and folds.
+  - Architecture, gravity handling, role scope and training hyperparameters are case-specific
+    below.
+  notes:
+  - Rank 1/2/3 are tuned all-role Small, Small without gravity removal, and Full.
+  - Rank 4 is the executed historical S1_163 all-role case (15 epochs, batch 32, participant-count
+    class weights, 90% windows), not the later edited final_case_comparison template.
+  - Rank 5 is tuned static-only Full. The existing merged archive has no reference
+    case; this plan also leaves the reference unset.
+  - The user-selected deployment preset finalcase remains Rank 2; this comparison
+    does not choose or replace it.
+cases:
+- case_id: tuned_all_roles__inception_small
+  catalog_entry: inception_small
+  screen_profile_id: tuned_all_roles_inception_small_64out_b16_f16_d3_fixed10
+  output_group: raw
+  overrides:
+    signal.dl_resampling.enabled: true
+    signal.dl_resampling.target_fs_hz: 64.0
+    signal.normalization.raw_ppg: per_window_robust
+    signal.normalization.raw_imu: none
+    windows.raw_dl.length_s: 5.0
+    windows.raw_dl.hop_s: 2.5
+    model.dropout: 0.5
+    training.optimizer: adamw
+    training.sampler: exhaustive_shuffle_without_replacement
+    training.class_weighting: inverse_frequency
+    aggregation.balance_line: line_b_equal_role_families
+    quality.mode: 'off'
+    artifact.motion_detector_enabled: false
+    artifact.denoiser_enabled: false
+    artifact.reducer: identity
+    artifact.reducer_version: identity_v1
+    artifact.degraded_policy: drop
+    artifact.parameters: {}
+    signal.imu.gravity_method: profile_a_lowpass_0p3hz
+    signal.imu.comparison_method: calibrated_roll_pitch_ekf
+    windows.raw_dl.end_alignment: include_right_aligned_if_distinct
+    windows.raw_dl.padding: none_complete_windows_only
+    windows.raw_dl.min_valid_fraction: 1.0
+    windows.raw_dl.cap_per_file: 128
+    windows.raw_dl.cap_fraction_per_file: null
+    training.fixed_epochs: 10
+    training.batch_size: 16
+    training.learning_rate: 0.0003
+    training.weight_decay: 0.001
+    training.label_smoothing: 0.2
+    training.class_count_basis: row
+    training.classifier_role_families:
+    - B
+    - R
+    - S
+    - W
+    roles:
+    - B
+    - R1
+    - R2
+    - R3
+    - R4
+    - S1
+    - S2
+    - W1
+    - W2
+  rationale: 'Matched registered Small InceptionTime: 64-channel concatenated module
+    output, bottleneck 16, 16 filters per branch and depth 3.'
+  formal_profile: null
+- case_id: tuned_all_roles__inception_small_no_gravity
+  catalog_entry: inception_small
+  screen_profile_id: tuned_all_roles_inception_small_no_gravity_fixed10
+  output_group: raw
+  overrides:
+    signal.dl_resampling.enabled: true
+    signal.dl_resampling.target_fs_hz: 64.0
+    signal.normalization.raw_ppg: per_window_robust
+    signal.normalization.raw_imu: none
+    windows.raw_dl.length_s: 5.0
+    windows.raw_dl.hop_s: 2.5
+    model.dropout: 0.5
+    training.optimizer: adamw
+    training.sampler: exhaustive_shuffle_without_replacement
+    training.class_weighting: inverse_frequency
+    aggregation.balance_line: line_b_equal_role_families
+    quality.mode: 'off'
+    artifact.motion_detector_enabled: false
+    artifact.denoiser_enabled: false
+    artifact.reducer: identity
+    artifact.reducer_version: identity_v1
+    artifact.degraded_policy: drop
+    artifact.parameters: {}
+    signal.imu.gravity_method: sensor_filter_only_no_gravity_removal
+    signal.imu.comparison_method: profile_a_lowpass_0p3hz
+    windows.raw_dl.end_alignment: include_right_aligned_if_distinct
+    windows.raw_dl.padding: none_complete_windows_only
+    windows.raw_dl.min_valid_fraction: 1.0
+    windows.raw_dl.cap_per_file: 128
+    windows.raw_dl.cap_fraction_per_file: null
+    training.fixed_epochs: 10
+    training.batch_size: 16
+    training.learning_rate: 0.0003
+    training.weight_decay: 0.001
+    training.label_smoothing: 0.2
+    training.class_count_basis: row
+    training.classifier_role_families:
+    - B
+    - R
+    - S
+    - W
+    roles:
+    - B
+    - R1
+    - R2
+    - R3
+    - R4
+    - S1
+    - S2
+    - W1
+    - W2
+  rationale: Separate tuned all-role Small InceptionTime run with the registered no-gravity-removal
+    IMU ablation.
+  formal_profile: null
+- case_id: tuned_all_roles__inception_full
+  catalog_entry: inception_full
+  screen_profile_id: tuned_all_roles_inception_full_fixed10
+  output_group: raw
+  overrides:
+    signal.dl_resampling.enabled: true
+    signal.dl_resampling.target_fs_hz: 64.0
+    signal.normalization.raw_ppg: per_window_robust
+    signal.normalization.raw_imu: none
+    windows.raw_dl.length_s: 5.0
+    windows.raw_dl.hop_s: 2.5
+    model.dropout: 0.5
+    training.optimizer: adamw
+    training.sampler: exhaustive_shuffle_without_replacement
+    training.class_weighting: inverse_frequency
+    aggregation.balance_line: line_b_equal_role_families
+    quality.mode: 'off'
+    artifact.motion_detector_enabled: false
+    artifact.denoiser_enabled: false
+    artifact.reducer: identity
+    artifact.reducer_version: identity_v1
+    artifact.degraded_policy: drop
+    artifact.parameters: {}
+    signal.imu.gravity_method: profile_a_lowpass_0p3hz
+    signal.imu.comparison_method: calibrated_roll_pitch_ekf
+    windows.raw_dl.end_alignment: include_right_aligned_if_distinct
+    windows.raw_dl.padding: none_complete_windows_only
+    windows.raw_dl.min_valid_fraction: 1.0
+    windows.raw_dl.cap_per_file: 128
+    windows.raw_dl.cap_fraction_per_file: null
+    training.fixed_epochs: 10
+    training.batch_size: 16
+    training.learning_rate: 0.0003
+    training.weight_decay: 0.001
+    training.label_smoothing: 0.2
+    training.class_count_basis: row
+    training.classifier_role_families:
+    - B
+    - R
+    - S
+    - W
+    roles:
+    - B
+    - R1
+    - R2
+    - R3
+    - R4
+    - S1
+    - S2
+    - W1
+    - W2
+  rationale: Corrected tuned all-role Full InceptionTime reference.
+  formal_profile: null
+- case_id: s1_163_v2_port_all_roles_modules_off
+  catalog_entry: inception_full
+  screen_profile_id: historical_s1_163_v2_port_all_roles_modules_off
+  output_group: raw
+  overrides:
+    signal.dl_resampling.enabled: true
+    signal.dl_resampling.target_fs_hz: 64.0
+    signal.normalization.raw_ppg: per_window_robust
+    signal.normalization.raw_imu: none
+    windows.raw_dl.length_s: 5.0
+    windows.raw_dl.hop_s: 2.5
+    model.dropout: 0.5
+    training.optimizer: adamw
+    training.sampler: exhaustive_shuffle_without_replacement
+    training.class_weighting: inverse_frequency
+    aggregation.balance_line: line_b_equal_role_families
+    quality.mode: 'off'
+    artifact.motion_detector_enabled: false
+    artifact.denoiser_enabled: false
+    artifact.reducer: identity
+    artifact.reducer_version: identity_v1
+    artifact.degraded_policy: drop
+    artifact.parameters: {}
+    signal.imu.gravity_method: profile_a_lowpass_0p3hz
+    signal.imu.comparison_method: calibrated_roll_pitch_ekf
+    windows.raw_dl.cap_per_file: null
+    windows.raw_dl.cap_fraction_per_file: 0.9
+    training.fixed_epochs: 15
+    training.batch_size: 32
+    training.learning_rate: 0.001
+    training.weight_decay: 0.0005
+    training.label_smoothing: 0.1
+    training.class_count_basis: participant
+    training.classifier_role_families:
+    - B
+    - R
+    - S
+    - W
+    roles:
+    - B
+    - R1
+    - R2
+    - R3
+    - R4
+    - S1
+    - S2
+    - W1
+    - W2
+  rationale: S1_163 V2 port with all B/R/S/W roles admitted and SQI, frozen motion
+    detection and denoising all disabled.
+  formal_profile: null
+- case_id: inception_full_tuned_static
+  catalog_entry: inception_full
+  screen_profile_id: v2_tuned_b16_lr3e4_wd001_do50_ls20_fixed10_static
+  output_group: raw
+  overrides:
+    signal.dl_resampling.enabled: true
+    signal.dl_resampling.target_fs_hz: 64.0
+    signal.normalization.raw_ppg: per_window_robust
+    signal.normalization.raw_imu: none
+    windows.raw_dl.length_s: 5.0
+    windows.raw_dl.hop_s: 2.5
+    model.dropout: 0.5
+    training.optimizer: adamw
+    training.sampler: exhaustive_shuffle_without_replacement
+    training.class_weighting: inverse_frequency
+    aggregation.balance_line: line_b_equal_role_families
+    quality.mode: 'off'
+    artifact.motion_detector_enabled: false
+    artifact.denoiser_enabled: false
+    artifact.reducer: identity
+    artifact.reducer_version: identity_v1
+    artifact.degraded_policy: drop
+    artifact.parameters: {}
+    signal.imu.gravity_method: profile_a_lowpass_0p3hz
+    signal.imu.comparison_method: calibrated_roll_pitch_ekf
+    windows.raw_dl.cap_per_file: 128
+    windows.raw_dl.cap_fraction_per_file: null
+    training.fixed_epochs: 10
+    training.batch_size: 16
+    training.learning_rate: 0.0003
+    training.weight_decay: 0.001
+    training.label_smoothing: 0.2
+    training.class_count_basis: row
+    training.classifier_role_families:
+    - B
+    - R
+    roles:
+    - B
+    - R1
+    - R2
+    - R3
+    - R4
+  rationale: 'Selected V2 tuned static-only profile: AdamW, batch 16, LR 3e-4, WD
+    .001, dropout .50, label smoothing .20 and fixed 10 epochs.'
+  formal_profile: null
+execution:
+  repeats:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  folds:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  jobs: 1
+  parallel_level: cases
+  continue_on_error: false
+  allow_parallel_deep: false
+  measure_operational_costs: false
+  preprocessing_cache:
+    mode: read_write
+    root: pipeline_output/cache
+    namespaces:
+    - imu_calibration
+    - canonical_signal_views
+    - raw_windows
+    verify_source_sha256: true
+  device: cuda
+output:
+  root: /home/trinker/Code/github/PPG-Frailty-pipeline/final_v0/final_pipeline_v5/pipeline_output
+report:
+  top_k: 10
+  detailed_configuration_top_k: 0
+  write_html: false
+  write_static_figures: false
+  calibration_bins: 10
+  figure_modules:
+  - all
+  compact_mean_sd: true
+  write_excel_workbook: false
+  classification_tsne_random_state: 42
+  classification_tsne_perplexity: 30.0
+  classification_tsne_max_samples: 5000
+  classification_roc_macro_grid_points: 201
+  classification_score_histogram_bins: 40

@@ -236,6 +236,7 @@ class WorkflowService:
     def _ppg(self, config: dict[str, Any], selected: dict[str, Any], context: dict[str, Any],
              record_id: str, session_id: str) -> dict[str, Any]:
         from ..signal.preprocess import preprocess_ppg_pair
+        from .signal_preview import amplitude_spectra, power_spectra
         signal, source = config["signal"], context["input"]["loaded"]
         filtering = signal["ppg_filter"]
         result = preprocess_ppg_pair(source["ppg"], fs_hz=source["fs_hz"], timestamps_s=source.get("timestamps_s"),
@@ -244,17 +245,34 @@ class WorkflowService:
                                      filter_low_hz=filtering["low_hz"], filter_high_hz=filtering["high_hz"],
                                      filter_order=filtering["order"])
         native, filtered, qc = result
-        return {"ppg_result": result,
-                "signals": {"native_RED": native[:, 0], "native_IR": native[:, 1],
-                            "filtered_RED": filtered[:, 0], "filtered_IR": filtered[:, 1]},
+        signals, groups, frequency_groups = {}, {}, {}
+        for index, channel in enumerate(("RED", "IR")):
+            for prefix, values in (("raw", source["ppg"]), ("native", native), ("filtered", filtered)):
+                name = f"{prefix}_{channel}"
+                signals[name] = values[:, index]
+                groups[name] = "PPG / raw counts"
+                frequency_groups[name] = f"{channel} · PSD / raw counts²/Hz"
+        spectrum = power_spectra(signals, fs_hz=source["fs_hz"])
+        fft = amplitude_spectra(signals, fs_hz=source["fs_hz"])
+        return {"ppg_result": result, "signals": signals, "trace_groups": groups,
+                "trace_styles": {f"native_{channel}": {"visible": "legendonly"} for channel in ("RED", "IR")},
+                "trace_figures": {name: "Filtered PPG" if name.startswith("filtered_") else "Raw PPG" for name in signals},
+                "frequency_traces": spectrum["frequency_traces"], "frequency_groups": frequency_groups,
+                "fft_traces": fft["fft_traces"],
+                "fft_groups": {name: f"{name.rsplit('_', 1)[-1]} · FFT amplitude / raw counts" for name in signals},
                 "metadata": {"filter": filtering, "repaired_samples": int(np.count_nonzero(qc.repair_mask)),
-                             "source_valid_fraction": float(np.mean(qc.source_valid_mask)), "qc": qc.metrics}}
+                             "source_valid_fraction": float(np.mean(qc.source_valid_mask)), "qc": qc.metrics,
+                             "signal_sources": {"raw": "original input, gaps preserved", "native": "gap-repaired input",
+                                                "filtered": "actual pipeline output"},
+                             "spectrum": spectrum["spectrum_metadata"], "fft": fft["fft_metadata"]}}
 
     def _imu(self, config: dict[str, Any], selected: dict[str, Any], context: dict[str, Any],
              record_id: str, session_id: str) -> dict[str, Any]:
         from ..pipeline import PipelinePaths, _load_record
-        from ..signal.motion_imu import fit_motion_imu_calibration
+        from ..signal.imu import convert_acceleration, convert_gyro
+        from ..signal.motion_imu import fit_motion_imu_calibration, _convert_profile_acceleration
         from ..signal.preprocess import build_signal_views, roll_pitch_ekf_config_from_resolved
+        from .signal_preview import amplitude_spectra, power_spectra
         source, row = dict(context["input"]["loaded"]), context["input"]["row"]
         imu = config["signal"]["imu"]
         calibration_id = None
@@ -280,16 +298,52 @@ class WorkflowService:
                 source_role="B", fs_hz=float(calibration_row.fs), acceleration_unit=loaded["acc_unit"],
                 gyroscope_unit=loaded["gyro_unit"], config=roll_pitch_ekf_config_from_resolved(imu))
         views = build_signal_views(source, config, ppg_result=context["ppg"]["ppg_result"])
-        traces = {}
+        raw_acc = (_convert_profile_acceleration(source["acc"], source["acc_unit"],
+                    gravity_mps2=roll_pitch_ekf_config_from_resolved(imu).gravity_mps2)
+                   if calibration_id is not None else convert_acceleration(source["acc"], source["acc_unit"]))
+        raw_gyro = convert_gyro(source["gyro"], source["gyro_unit"])
+        traces = {f"raw_{name}_{axis}": values[:, index]
+                  for name, values in (("acc_mps2", raw_acc), ("gyro_rads", raw_gyro))
+                  for index, axis in enumerate("xyz")}
         for name, values in views.imu_processed.items():
             values = np.asarray(values)
             if values.ndim == 1:
                 traces[name] = values
             elif values.ndim == 2 and values.shape[1] == 3:
                 traces.update({f"{name}_{axis}": values[:, index] for index, axis in enumerate("xyz")})
-        return {"views": views, "signals": traces,
+        groups, frequency_groups = {}, {}
+        for name in traces:
+            axis = name.rsplit("_", 1)[-1]
+            if name.startswith(("raw_acc_mps2_", "acc_mps2_", "dynamic_acc_mps2_", "gravity_mps2_")):
+                group = f"Acceleration {axis.upper()} / m/s²"
+            elif name.startswith(("raw_gyro_rads_", "gyro_rads_")):
+                group = f"Angular velocity {axis.upper()} / rad/s"
+            elif name.startswith("jerk_"):
+                group = "Acceleration change / m/s³"
+            elif name in {"roll_rad", "pitch_rad"}:
+                group = "Orientation / rad"
+            elif name in {"acc_magnitude", "dynamic_magnitude"}:
+                group = "Acceleration magnitude / m/s²"
+            elif name == "gyro_magnitude":
+                group = "Angular velocity magnitude / rad/s"
+            else:
+                group = "Validity / state"
+            groups[name] = group
+            if name.startswith(("raw_acc_mps2_", "acc_mps2_", "dynamic_acc_mps2_", "raw_gyro_rads_", "gyro_rads_")):
+                frequency_groups[name] = group.replace(" / ", " · PSD / (") + ")²/Hz"
+        frequency_signals = {name: traces[name] for name in frequency_groups}
+        spectrum = power_spectra(frequency_signals)
+        fft = amplitude_spectra(frequency_signals)
+        return {"views": views, "signals": traces, "trace_groups": groups,
+                "frequency_traces": spectrum["frequency_traces"], "frequency_groups": frequency_groups,
+                "fft_traces": fft["fft_traces"],
+                "fft_groups": {name: groups[name].replace(" / ", " · FFT amplitude / ") for name in frequency_groups},
                 "metadata": {"gravity_method": views.metadata["gravity_method"], "calibration_record_id": calibration_id,
-                             "imu_status": views.metadata["imu_status"], "imu_valid_fraction": views.metadata["imu_valid_fraction"]}}
+                             "imu_status": views.metadata["imu_status"], "imu_valid_fraction": views.metadata["imu_valid_fraction"],
+                             "original_units": {"acceleration": source["acc_unit"], "gyroscope": source["gyro_unit"]},
+                             "raw_preview_units": {"acceleration": "m/s²", "gyroscope": "rad/s"},
+                             "processed_source": "actual imu_processed arrays, including the selected gravity policy",
+                             "spectrum": spectrum["spectrum_metadata"], "fft": fft["fft_metadata"]}}
 
     def _motion(self, config: dict[str, Any], selected: dict[str, Any], context: dict[str, Any],
                 record_id: str, session_id: str) -> dict[str, Any]:
@@ -464,28 +518,35 @@ class WorkflowService:
     def _features(self, config: dict[str, Any], selected: dict[str, Any], context: dict[str, Any],
                   record_id: str, session_id: str) -> dict[str, Any]:
         from ..experiment import _extract_vector, _extract_matrix_features
+        from .feature_preview import build_feature_preview, compute_window_rate_preview
         state = _clone_state(context["denoiser"]["state"])
-        _extract_vector(state, self._report(config), config["features"])
-        tables = {}
-        if state.vector is not None:
-            tables["features"] = [{"feature": name, "value": float(value), "valid": bool(valid)}
-                for name, value, valid in zip(state.vector.feature_names, state.vector.values, state.vector.validity)]
-        vector_reason = state.reason
+        capture = {}
+        report = self._report(config)
         if config["representation_mode"] == "feature_matrix":
-            # The file vector above is an extra preview, not a matrix prerequisite.
-            state = _clone_state(context["denoiser"]["state"])
-            _extract_matrix_features(state, self._report(config))
-        traces = {}
-        if state.direct_pulses_per_wavelength:
-            for name, pulse in state.direct_pulses_per_wavelength.items():
-                tables[f"{name}_PPI"] = [{"ppi_s": float(value), "valid": bool(valid)}
-                    for value, valid in zip(pulse.ppi_s, pulse.valid_interval_mask)]
-                traces[f"{name}_peaks"] = (pulse.peak_timestamps_s, state.views.x_filter[pulse.peaks, 0 if name == "RED" else 1])
-        return {"state": state, "point_traces": traces, "tables": tables,
-                "signals": {"direct_RED": state.views.x_filter[:, 0], "direct_IR": state.views.x_filter[:, 1]},
-                "metadata": {"retained": state.retained, "reason": state.reason, "feature_count": len(tables.get("features", [])),
-                             "feature_vector_preview_reason": vector_reason,
-                             "fitted_transforms_applied": False, "missing_values": "remain NaN until a saved training transform is applied"}}
+            _extract_matrix_features(state, report, capture=capture)
+        else:
+            _extract_vector(state, report, config["features"], capture=capture)
+        if capture.get("matrix", {}).get("engineering") is None:
+            try:
+                preview_state = context["denoiser"]["state"]
+                if config["representation_mode"] == "feature_matrix" and preview_state.retained and preview_state.routing_timeline is None:
+                    # Matrix extraction stops before peak detection without a
+                    # routing timeline. Detect once for the independent preview;
+                    # keep the production matrix state/reason untouched.
+                    from ..experiment import _direct_pulses_for_state, _runtime_imports
+                    preview_state = _clone_state(preview_state)
+                    _direct_pulses_for_state(preview_state, _runtime_imports(), report.peak_detector)
+                capture["window_rate"] = compute_window_rate_preview(preview_state, report, capture)
+            except (ValueError, RuntimeError) as exc:
+                # An unavailable exploration plot must not change model eligibility.
+                capture["window_rate"] = {"status": "unavailable", "reason": str(exc)}
+        preview = build_feature_preview(state, capture)
+        preview["metadata"].update(
+            representation_mode=config["representation_mode"],
+            feature_use="exploration_only_not_raw_model_input" if config["representation_mode"] == "raw" else "pipeline_features",
+            retained=state.retained, reason=state.reason, fitted_transforms_applied=False,
+            missing_values="remain NaN until a saved training transform is applied")
+        return {"state": state, **preview}
 
     def _representation(self, config: dict[str, Any], selected: dict[str, Any], context: dict[str, Any],
                         record_id: str, session_id: str) -> dict[str, Any]:
@@ -514,7 +575,14 @@ class WorkflowService:
                           for index, channel in enumerate(("RED", "IR", "AX", "AY", "AZ", "GX", "GY", "GZ"))}
         if mode in {"feature_vector", "fusion"} and state.vector is not None:
             metadata["feature_vector_shape"] = list(state.vector.values.shape)
-            tables["feature_vector"] = context["features"]["tables"].get("features", [])
+            # Keep the exact selected model vector visible here; the feature
+            # stage additionally exposes intermediate and disabled-group values.
+            from ..features.registry import registry_for_feature_names
+            registry = registry_for_feature_names(state.vector.feature_names)
+            for definition, value, valid in zip(registry.definitions, state.vector.values, state.vector.validity):
+                tables.setdefault(f"file_{definition.group}", []).append({
+                    "feature": definition.canonical_name, "value": float(value), "valid": bool(valid),
+                    "unit": definition.units})
         if mode == "feature_matrix" and state.engineering is not None:
             sequence = state.engineering.sequence
             metadata.update(shape=list(sequence.values.T.shape), transform="saved fold transform applied only at model Analyse")
@@ -606,12 +674,20 @@ class WorkflowService:
                                 "std": float(np.std(window)), "minimum": float(np.min(window)), "maximum": float(np.max(window))})
         for name, (x, y) in value.get("point_traces", {}).items():
             x, y = np.asarray(x), np.asarray(y)
-            keep = (x >= start_s) & (x < start_s + duration_s)
-            stride = max(1, int(np.ceil(np.count_nonzero(keep) / 2000)))
+            # Window trends summarize the whole recording, not the short peak
+            # inspection range: a window centre may lie outside that range.
+            keep = (np.ones(x.shape, dtype=bool) if value.get("trace_figures", {}).get(name) == "Window PPI / HR"
+                    else (x >= start_s) & (x < start_s + duration_s))
+            markers = "markers" in value.get("trace_styles", {}).get(name, {}).get("mode", "") or name.endswith("_peaks")
+            stride = 1 if markers else max(1, int(np.ceil(np.count_nonzero(keep) / 2000)))
             traces[name] = {"x": x[keep][::stride].tolist(), "y": y[keep][::stride].tolist()}
         tables = {name: list(rows) for name, rows in value.get("tables", {}).items()}
         if metrics:
             tables["metrics"] = metrics
         metadata = {**value.get("metadata", {}), "stage": stage, "algorithm_scope": "full_record",
                     "display_start_s": start_s, "display_duration_s": duration_s, "model_training_executed": False}
-        return to_strict_json_value({"traces": traces, "tables": tables, "metadata": metadata})
+        if "window_rate" in metadata:
+            metadata["window_rate"] = {**metadata["window_rate"], "display_scope": "full_record"}
+        return to_strict_json_value({"traces": traces, "tables": tables, "metadata": metadata,
+            **{key: value[key] for key in ("trace_groups", "trace_styles", "trace_figures", "frequency_traces", "frequency_groups",
+                                         "fft_traces", "fft_groups") if key in value}})

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Iterable, Mapping
+from typing import Any, Iterable, Mapping
 
 import numpy as np
 
@@ -318,11 +318,15 @@ def _rate_features(
     timeline: RoutingTimeline,
     start_sample: int,
     stop_sample: int,
+    *, capture: dict[str, Any] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     interval_values: list[float] = []
     deltas: list[float] = []
     for pulse in pulses:
         indices, adjacency = _pulse_intervals(pulse, timeline, start_sample, stop_sample)
+        if capture is not None:
+            selected_capture = {"pulse": pulse, "interval_indices": indices, "delta_pairs": []}
+            capture.setdefault("sources", []).append(selected_capture)
         ppi = np.asarray(pulse.ppi_s, dtype=np.float64)
         interval_values.extend(map(float, ppi[indices]))
         selected = set(map(int, indices))
@@ -343,6 +347,8 @@ def _rate_features(
                         source_route=_source_route_name(pulse),
                 ):
                     deltas.append(float(ppi[right] - ppi[left]))
+                    if capture is not None:
+                        selected_capture["delta_pairs"].append((left, right, deltas[-1]))
 
     values = np.full(len(RATE_WINDOW_NAMES), np.nan, dtype=np.float64)
     validity = np.zeros(len(RATE_WINDOW_NAMES), dtype=bool)
@@ -431,12 +437,15 @@ def extract_window_features(
     direct_pulse: PulseResult,
     direct_morphology: MorphologyResult,
     processed_pulse: PulseResult | None = None,
+    capture: dict[str, Any] | None = None,
 ) -> WindowFeatureExtraction:
     """Build all complete 146-feature rows after final RoutingTimeline exists."""
 
     direct_views.validate()
     timeline.validate()
     base = extract_engineering_features(direct_views, plan=plan)
+    if capture is not None:
+        capture.update(base_engineering=base, windows=[])
     starts = np.asarray(base.sequence.start_samples, dtype=np.int64)
     planned = plan.plan(direct_views.x_filter.shape[0], CANONICAL_FS_HZ)
     if len(planned) != starts.size or any(int(item.start_sample) != int(start) for item, start in zip(planned, starts)):
@@ -452,6 +461,10 @@ def extract_window_features(
     for row_index, item in enumerate(planned):
         start, stop = int(item.start_sample), int(item.end_sample)
         tier, eligible = matrix_row_route(timeline, start, stop)
+        if capture is not None:
+            window_capture = {"window_index": row_index, "start_sample": start, "stop_sample": stop,
+                              "tier": tier, "eligible": eligible}
+            capture["windows"].append(window_capture)
         tiers.append(tier)
         if not eligible:
             reasons.append(f"row_{row_index}:routing_excluded")
@@ -466,7 +479,8 @@ def extract_window_features(
             rate_pulses = direct_rate_pulses
         else:
             rate_pulses = mixed_rate_pulses
-        rate_values, rate_validity = _rate_features(rate_pulses, timeline, start, stop)
+        rate_values, rate_validity = _rate_features(
+            rate_pulses, timeline, start, stop, **({"capture": window_capture} if capture is not None else {}))
         values[row_index, 129:] = rate_values
         validity[row_index, 129:] = rate_validity
     sequence = EngineeringFeatureSequence(

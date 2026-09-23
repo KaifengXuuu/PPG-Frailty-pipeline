@@ -228,7 +228,7 @@ def grouped_parameter_specs(config: Mapping[str, Any], *,
     selections with varying length (roles/features) remain multi-selects. Fields
     fixed by the numerical implementation do not acquire fictitious switches.
     """
-    from ..data.schema import REGISTERED_ROLES, ROLE_FAMILIES
+    from ..data.schema import ROLE_FAMILIES, canonicalize_role_family
     from ..artifacts import get_reducer
     from ..artifacts.base import parameters_dict
 
@@ -285,7 +285,7 @@ def grouped_parameter_specs(config: Mapping[str, Any], *,
         if choices and not isinstance(value, (list, tuple, dict)) and value is not None and value not in choices:
             choices.append(value)  # Preserve a valid legacy spelling loaded from YAML.
         stage, group = _section(path)
-        multi = {'roles': list(REGISTERED_ROLES), 'training.classifier_role_families': list(ROLE_FAMILIES),
+        multi = {'roles': list(ROLE_FAMILIES), 'training.classifier_role_families': list(ROLE_FAMILIES),
                  'features.enabled_groups': choices}
         if path == 'model.input_channel_order' and config['representation_mode'] == 'raw':
             from ..models.factory import FRAILTY_RAW_CHANNEL_SCHEMA
@@ -319,6 +319,10 @@ def grouped_parameter_specs(config: Mapping[str, Any], *,
         result.append({'path': path, 'value': copy.deepcopy(value), 'kind': kind, 'choices': choices,
                        'min': low, 'max': high, 'step': step, 'stage': stage, 'group': group,
                        'range': row['range'], 'nullable': path in _OPTIONAL_NUMBERS or value is None})
+        if path == 'roles':
+            result[-1]['resolved_roles'] = list(value)
+            families = {canonicalize_role_family(role) for role in value}
+            result[-1]['value'] = [family for family in ROLE_FAMILIES if family in families]
     from .parameter_help import parameter_help
     for spec in result:
         spec['description'] = parameter_help(spec, config)
@@ -386,6 +390,7 @@ def apply_control_values(config: Mapping[str, Any], mapping: Mapping[str, Any], 
     from ..artifacts.base import parameters_dict
     from ..config import (_materialize_feature_defaults, _materialize_quality_defaults,
                           _materialize_aggregation_defaults)
+    from ..data.schema import REGISTERED_ROLES, ROLE_FAMILIES, canonicalize_role_family
     from ..features.registry import FEATURE_GROUP_ORDER
     from ..module_registry import normalize_window_config
     from ..peaks.resolver import resolve_detector_parameters
@@ -394,6 +399,15 @@ def apply_control_values(config: Mapping[str, Any], mapping: Mapping[str, Any], 
     from ..training.trainer import OPTIMIZER_PARAMETER_DEFAULTS, derived_epoch_profile
 
     payload = copy.deepcopy(dict(config))
+    requested_roles = mapping.get('roles')
+    if isinstance(requested_roles, (list, tuple)) and all(role in ROLE_FAMILIES for role in requested_roles):
+        # The UI groups roles, but loaded YAML may intentionally select only R1.
+        # Keep existing concrete selections; expand only newly enabled families.
+        current_roles = set(config['roles'])
+        current_families = {canonicalize_role_family(role) for role in current_roles}
+        mapping = {**mapping, 'roles': [role for role in REGISTERED_ROLES
+                   if canonicalize_role_family(role) in requested_roles
+                   and (role in current_roles or canonicalize_role_family(role) not in current_families)]}
     changes = {path: copy.deepcopy(value) for path, value in mapping.items() if value != _get(config, path)}
     if not changes:
         return validate_config_payload(payload) if validate else payload

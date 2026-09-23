@@ -70,7 +70,8 @@ def test_all_parameter_catalog_covers_every_canonical_study_case_leaf() -> None:
         declared = yaml.safe_load(source.read_text(encoding="utf-8"))
         if declared.get("schema_version") != "ppg_frailty.study_plan.v2":
             continue
-        canonical_plan_count += 1
+        if source.parent.name != "thesis":
+            canonical_plan_count += 1
         expansion = expand_study(load_study_plan(source), pipeline_root=ROOT)
         for case in expansion.cases:
             assert _leaf_paths(case.config) <= paths

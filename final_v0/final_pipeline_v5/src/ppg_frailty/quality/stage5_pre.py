@@ -102,7 +102,9 @@ def load_motion_peak_plan(path: str | Path) -> StudyPlan:
     if dataset.get('dataset_id') != PTT_DATASET_ID or dataset.get('root') != PTT_SOURCE_ROOT.as_posix() or int(dataset.get('participant_count', -1)) != 22 or (int(
             dataset.get('record_count', -1)) != 66):
         raise ValueError('PTT plan must declare the registered 22-participant/66-record source')
-    if schema == STAGE5_SCHEMA:
+    if schema == STAGE5_SCHEMA and (float(dataset.get('source_fs_hz', -1.0)) != 500.0 or float(dataset.get('pipeline_fs_hz', -1.0)) != 400.0):
+        raise ValueError('Stage5-pre uses the registered PTT 500-to-400-Hz adapter')
+    if schema == STAGE5_SCHEMA and data.get('execution', {}).get('motion', True):
         motion_detector = data.get('motion_detector')
         if not isinstance(motion_detector, Mapping):
             raise ValueError('Stage5-pre requires motion_detector settings')
@@ -126,6 +128,7 @@ def load_motion_peak_plan(path: str | Path) -> StudyPlan:
                 comparison.get('downstream_role') != 'comparison_only_single_factor_motion_detector_training_dataset') or (comparison.get('candidate_bound_preprocessing_required')
                                                                                                                            is not True):
             raise ValueError('Stage5 motion-model comparison declaration drift')
+    if schema == STAGE5_SCHEMA and data.get('execution', {}).get('denoiser', True):
         benchmark = data.get('denoiser_benchmark')
         if not isinstance(benchmark, Mapping):
             raise ValueError('Stage5-pre requires denoiser_benchmark')
@@ -145,9 +148,7 @@ def load_motion_peak_plan(path: str | Path) -> StudyPlan:
             _finite(validation.get(key), f'denoiser_benchmark.validation.{key}', positive=True)
         scoring_detector = resolve_detector_id(str(benchmark.get('scoring_peak_detector', CANONICAL_DETECTOR_ID)))
         resolve_detector_parameters(scoring_detector, benchmark.get('scoring_peak_detector_parameters'))
-        if float(dataset.get('source_fs_hz', -1.0)) != 500.0 or float(dataset.get('pipeline_fs_hz', -1.0)) != 400.0:
-            raise ValueError('Stage5-pre uses the registered PTT 500-to-400-Hz adapter')
-    else:
+    elif schema == PEAK_ABLATION_SCHEMA:
         if data.get('activities') != ['sit']:
             raise ValueError('Stage-ablation-01 is a pure-static sit-only experiment')
         algorithms = data.get('algorithms')
@@ -842,12 +843,15 @@ def _fresh_stage_attempt(root: Path, default_name: str) -> Path:
 
 def run_motion_peak_study(plan_path: str | Path, *, pipeline_root: str | Path, output_root: str | Path, resume: str | Path | None = None, progress_sink: ProgressSink | None = None,
                           device: str | None = None, include_denoiser: bool = True) -> Path:
-    """Execute a Stage5-pre or static peak-ablation plan."""
+    """Execute the selected independent Stage5 tests or static peak ablation."""
     plan = load_motion_peak_plan(plan_path)
+    execution = plan.payload.get('execution', {})
+    motion_enabled = plan.schema_version == STAGE5_SCHEMA and bool(execution.get('motion', True))
+    denoiser_enabled = plan.schema_version == STAGE5_SCHEMA and bool(execution.get('denoiser', True)) and include_denoiser
     if plan.schema_version != STAGE5_SCHEMA and (not include_denoiser):
         raise ValueError('--no-denoiser applies only to Stage5-pre')
     if device is not None:
-        if plan.schema_version != STAGE5_SCHEMA:
+        if not motion_enabled:
             raise ValueError('--device applies only to the Stage5-pre training plan')
         requested = str(device)
         trainer_config = FormalMotionTrainerConfig(device=requested)
@@ -856,7 +860,7 @@ def run_motion_peak_study(plan_path: str | Path, *, pipeline_root: str | Path, o
         payload['motion_detector']['training_device'] = requested
         plan = StudyPlan(path=plan.path, payload=payload, schema_version=plan.schema_version, study_type=plan.study_type, study_id=plan.study_id)
     progress = progress_sink or NullProgressSink()
-    progress_total = (6 if include_denoiser else 5) if plan.schema_version == STAGE5_SCHEMA else 1
+    progress_total = (5 * motion_enabled + denoiser_enabled) if plan.schema_version == STAGE5_SCHEMA else 1
     progress_current = 0
     progress(
         ProgressEvent(event='motion_peak_study_started', current=0, total=progress_total, detail_current=0, detail_total=1, detail_label='prepare study directory',
@@ -878,20 +882,22 @@ def run_motion_peak_study(plan_path: str | Path, *, pipeline_root: str | Path, o
     manifest_path = root / 'study_manifest.json'
     manifest: dict[str, Any] = {
         'schema_version': RESULT_SCHEMA, 'study_id': plan.study_id, 'study_type': plan.study_type, 'status': 'running',
-        'scientific_scope': 'paired motion-detector training-dataset ablation: Frailty29 grouped OOF/final to PTT and PTT repeat-0 grouped OOF/final to Frailty29; optional PTT denoiser comparison; PTT is not claimed independent'
+        'scientific_scope': ('paired motion-detector training-dataset ablation: Frailty29 grouped OOF/final to PTT and PTT repeat-0 grouped OOF/final to Frailty29; optional PTT denoiser comparison; PTT is not claimed independent'
+                             if motion_enabled else 'PTT reducer comparison with ECG-referenced beat/interval scoring; no motion-model fitting')
         if plan.schema_version == STAGE5_SCHEMA else
         'PTT sit-only subject-recording detector comparison: default MSPTDfast versus explicit aboy_project ablation; 300-s drifting lag and +/-150-ms one-to-one beat assessment; no motion segments and no denoiser selection',
-        'plan_sha256': sha256_file(resolved_plan), 'training_device': plan.payload['motion_detector']['training_device'] if plan.schema_version == STAGE5_SCHEMA else None,
-        'denoiser_enabled': bool(include_denoiser) if plan.schema_version == STAGE5_SCHEMA else None, 'stages': {}
+        'plan_sha256': sha256_file(resolved_plan), 'training_device': plan.payload['motion_detector']['training_device'] if motion_enabled else None,
+        'motion_enabled': motion_enabled if plan.schema_version == STAGE5_SCHEMA else None,
+        'denoiser_enabled': bool(denoiser_enabled) if plan.schema_version == STAGE5_SCHEMA else None, 'stages': {}
     }
     if manifest_path.exists():
         old = json.loads(manifest_path.read_text(encoding='utf-8'))
-        if plan.schema_version == STAGE5_SCHEMA and bool(old.get('denoiser_enabled', True)) != bool(include_denoiser):
+        if plan.schema_version == STAGE5_SCHEMA and bool(old.get('denoiser_enabled', True)) != bool(denoiser_enabled):
             raise ValueError('resume denoiser execution option differs from the persisted study')
         manifest['stages'] = dict(old.get('stages', {}))
     _strict_json(manifest_path, manifest)
     try:
-        if plan.schema_version == STAGE5_SCHEMA:
+        if motion_enabled:
             internal_dir, internal_complete = _stage_directory(root, manifest, 'internal_motion_oof', 'motion_internal', 'motion_internal_evidence.json')
             if internal_complete and (not (internal_dir / 'motion_window_oof.parquet').is_file() or not any(internal_dir.rglob('motion_training_history.json'))):
                 internal_dir = _fresh_stage_attempt(root, 'motion_internal')
@@ -993,7 +999,8 @@ def run_motion_peak_study(plan_path: str | Path, *, pipeline_root: str | Path, o
             _strict_json(manifest_path, manifest)
             progress_current += 1
             _stage_progress(progress, progress_current, progress_total, 'motion-model comparison package')(1, 1, 'completed or resumed')
-            if include_denoiser:
+        if plan.schema_version == STAGE5_SCHEMA:
+            if denoiser_enabled:
                 denoiser_dir, denoiser_complete = _stage_directory(root, manifest, 'ptt_denoiser_benchmark', 'denoiser', 'denoiser_benchmark.json')
                 denoiser_path = denoiser_dir / 'denoiser_benchmark.json'
                 if not denoiser_complete:
@@ -1011,7 +1018,9 @@ def run_motion_peak_study(plan_path: str | Path, *, pipeline_root: str | Path, o
                 progress_current += 1
                 _stage_progress(progress, progress_current, progress_total, 'PTT denoiser benchmark')(1, 1, 'completed or resumed')
             else:
-                manifest['stages']['ptt_denoiser_benchmark'] = {'status': 'skipped_by_cli', 'reason': '--no-denoiser'}
+                manifest['stages']['ptt_denoiser_benchmark'] = {
+                    'status': 'skipped_by_cli' if not include_denoiser else 'skipped_by_plan',
+                    'reason': '--no-denoiser' if not include_denoiser else 'execution.denoiser=false'}
                 _strict_json(manifest_path, manifest)
         else:
             ablation_dir, ablation_complete = _stage_directory(root, manifest, 'static_peak_ablation', 'static_peak_ablation', 'static_peak_ablation.json')

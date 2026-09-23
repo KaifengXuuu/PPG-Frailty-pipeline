@@ -181,7 +181,9 @@ python sweep.py run \
 ```
 
 comparison 和 ablation 在同一 study 中定义多个 case，仍按统一 repeat/fold 流程
-运行。更多计划及命令见 [CLI 参考](docs/CLI_REFERENCE.md) 和
+运行。论文各组实验、历史参数对应关系及运行命令见
+[论文实验 YAML 索引](configs/studies/thesis/README.md)。通用模板与论文历史实验配置
+分开存放，不能仅凭相同文件名认定为相同实验。更多计划及命令见 [CLI 参考](docs/CLI_REFERENCE.md) 和
 [计划兼容性说明](docs/PLAN_COMPATIBILITY.md)。
 
 `refit` 默认关闭。需要全 cohort 训练权重时增加 `--refit`，它会在 outer-fold
@@ -328,8 +330,46 @@ python dashboard.py --host 127.0.0.1 --port 8050
 打开 `http://127.0.0.1:8050`。页面沿 workflow 纵向排列：输入 → PPG 预处理 →
 IMU 预处理 → motion detector → SQI → denoiser → 特征工程 → 表征 → 分类模型 →
 聚合 → report。每个阶段左侧为算法选择、开关、滑块和精确数值输入，右侧紧邻
-时域曲线、窗口/特征/预测表格。算法来自同一生产模块，界面不另写一套数学实现。
-原始/滤后 PPG、加速度、角速度等按量纲分开绘图，峰点叠加在滤后 PPG 上。
+时域/频域曲线、窗口/特征/预测表格。算法来自同一生产模块，界面不另写一套数学实现。
+PPG 预处理时域图将原始 RED/IR 与滤波后的 RED/IR 分为两张图，分别使用独立纵轴；
+补缺后的 native 曲线保留在原始图图例中，点击可显示。不作额外归一化或纵向平移。
+时域及频域图例统一放在绘图区上方，预留换行空间，避免与横坐标重叠。
+IMU 原始与处理后曲线按同一物理单位配对展示。
+频域图使用完整采样率记录，不随时域预览起点/时长改变；同一单位的面板中叠加
+原始/处理后 PSD，默认收起，点击 `Frequency domain / PSD` 展开；横轴为 Hz
+（包含 0 Hz），正值使用对数纵轴，零值不改写；全零面板使用线性纵轴。
+另默认展开 `Frequency domain / FFT amplitude`，采用与 Notebook 相同的
+`abs(rFFT)/N`：不平方、不转 dB、不额外加倍或去趋势，正弦幅度 A 对应正频率峰 A/2。
+FFT 使用线性纵轴，初始查看 0.01–8 Hz；保留 DC 至奈奎斯特频率的全部频点，
+可用图表 Autoscale 展开。含缺口时只计算最长连续有效片段，不拼接缺口；
+实际样本区间及频率分辨率在 Stage details 的 `fft` 字段中说明。
+特征阶段在同一 PPG 时域图叠加 direct/processed 的 RED/IR 曲线，保留各来源及
+actual-used 峰点，不重复绘制 actual-used 的底层波形；未降噪时只显示 direct 两条线。
+表格按特征种类和
+维度排列，保留全部行，可分页、筛选和排序。文件级特征分七类；窗口级分别展示
+实际 115 维工程量和 146 维矩阵，另列逐搏形态、双波长配对及有效性/来源。
+特征表默认收起，按 `engineering features`、`file level features`、
+`time series features`、`freq domain features`、`morphology features` 五组展开。
+工程窗口/矩阵归工程组；PPI、时域及非线性量归时序组；频域和形态量各归对应组；
+其余文件级汇总及双波长表归文件级组。同一张表不重复展示，折叠不改变表内数据。
+矩阵模式不再额外计算文件级向量；未执行的产物不补造，raw 模式的特征探索不作为
+raw 分类模型的输入。
+峰检测预览中的 `Beatwise PPI / HR` 分别显示逐搏间期（秒）及 `60/PPI`（bpm），
+横坐标均为相邻两峰的时间中点；圆点/叉号区分有效/无效间期，direct、processed
+和特征实际采用的间期通过图例区分。无效点默认隐藏，点击对应图例显示，数据不删除。
+连续有效点直线相连，无效间期、缺失或来源
+切换处断线，不作插值补齐。
+所有表征模式点击特征工程的 `Analyse` 都会生成 `Window PPI / HR`，无需切换到
+`feature_matrix`。已有矩阵时直接读取其结果；其他模式直接调用同一个 `WindowPlan`
+和矩阵逐窗 rate 提取函数，复用已检测的峰，不重算完整 146 维矩阵，也不改变模型输入。
+分窗采用 `windows.engineering` 的窗口长度、步长及边界设置，这些控件在所有模式下
+均可调整，不改变 raw 模型独立的 `windows.raw_dl`。质量路由存在时使用
+其实际有效区段；路由关闭时按整条记录分窗，不额外制造路由边界或质量等级。
+逐窗图始终展开并展示整条记录，不受时域预览起点/时长裁剪。
+均值、中位数和总体标准差全部默认显示，以窗口中心为横坐标，连接相邻有效窗口，
+无效窗口处断线。窗口 HR 是逐搏 `60/PPI` 的统计值，不是窗口平均 PPI 的倒数。
+缺失/不合格窗口不补值；没有可用峰或记录不满足分窗条件时，保留图框，
+在图下及 Stage details 明示原因，不放宽原算法的有效性条件。
 
 IMU、SQI、denoiser、特征工程、表征和模型各只有一个默认收起的参数区，点击
 带箭头的参数标题即可展开。主要算法选择和主开关留在外面；Analyse、Run、Stop、
@@ -344,7 +384,10 @@ IMU、SQI、denoiser、特征工程、表征和模型各只有一个默认收起
    YAML 只提供初值，之后每次 Analyse 均以当前控件值为准。
 2. **输入**：从 manifest 下拉框选择一条或多条 recording，并选定绘图记录；
    更换 manifest 配置后，记录选项随之更新。
-   也可展开 Custom CSV files，添加路径、file_id、B/R/S/W role 和可选标签。
+   `roles` 主控件只显示 B/R/S/W，下面的 Resolved roles 显示实际记录编号。
+   新勾选类别展开全部编号；YAML 已指定的部分编号保持不变，取消后重选才展开。
+   `training.classifier_role_families` 仍独立控制分类范围，B 可仅用于校准。
+   也可展开 Custom CSV files，添加路径、file_id、具体 role（B、R1–R4、S1–S2、W1–W2）和可选标签。
    同 participant 的动态记录需要 B 校准记录；校准文件也可在 IMU 区指定。
    起点/时长只控制图的显示范围，滤波和状态估计仍处理完整 recording。
 3. **逐段 Analyse**：可直接点击任一下游阶段。缺失或过期的上游会先计算，

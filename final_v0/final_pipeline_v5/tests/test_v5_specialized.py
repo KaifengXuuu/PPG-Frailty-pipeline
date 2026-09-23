@@ -232,12 +232,12 @@ def _motion_export_fixture(
 
 
 
-def test_all_ten_preserved_specialized_plans_use_their_native_loader() -> None:
-    assert len(SPECIALIZED_PLANS) == 10
+def test_preserved_and_thesis_specialized_plans_use_their_native_loader() -> None:
+    assert len([path for path in SPECIALIZED_PLANS if path.parent.name == 'static_line_b_staged_v2']) == 10
     descriptions = [specialized.validate_specialized_plan(path) for path in SPECIALIZED_PLANS]
     assert {row["schema_version"] for row in descriptions} == specialized.SUPPORTED_SCHEMAS
     assert sum(row["workflow_kind"] == "analysis_only" for row in descriptions) == 5
-    assert sum(row["workflow_kind"] == "computation" for row in descriptions) == 5
+    assert sum(row["workflow_kind"] == "computation" for row in descriptions) == len(SPECIALIZED_PLANS) - 5
 
 
 def test_training_entry_points_default_to_data_only() -> None:
