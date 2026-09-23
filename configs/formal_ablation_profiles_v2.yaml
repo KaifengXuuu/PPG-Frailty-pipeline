@@ -1,0 +1,80 @@
+schema_version: ppg_frailty.formal_ablation_profiles.v2
+catalog_id: formal_single_factor_profiles_v2
+pipeline_generation: final_pipeline_v2
+execution_policy:
+  auto_run: false
+  materialization_only: true
+  allow_cartesian_product: false
+  safe_suite_execution: false
+families:
+  aggregation_balance:
+    reference_profile_id: role_aware_equal_roles
+    entries:
+    - profile_id: role_aware_equal_roles
+      training_balance: equal_role_families
+      balance_line: line_b_equal_role_families
+      hierarchy: [window, file, role, participant]
+      catalog_role: reference
+      auto_run: false
+    - profile_id: equal_files_line_a_ablation
+      training_balance: equal_files
+      balance_line: line_a_equal_files
+      hierarchy: [window, file, participant]
+      catalog_role: ablation
+      auto_run: false
+  sampler:
+    reference_profile_id: exhaustive_shuffle_without_replacement
+    entries:
+    - {profile_id: exhaustive_shuffle_without_replacement, sampler: exhaustive_shuffle_without_replacement, catalog_role: reference, auto_run: false}
+    - {profile_id: line_b_weighted_sampler_ablation, sampler: balance_line_weighted_v2, catalog_role: ablation, auto_run: false}
+  class_count_basis:
+    reference_profile_id: row_count_class_weights
+    entries:
+    - {profile_id: row_count_class_weights, class_weighting: inverse_frequency, class_count_basis: row, catalog_role: reference, auto_run: false}
+    - {profile_id: participant_count_class_weights_ablation, class_weighting: inverse_frequency, class_count_basis: participant, catalog_role: ablation, auto_run: false}
+  deep_fixed_epoch:
+    reference_profile_id: default_epoch_10
+    entries:
+    - {profile_id: epoch_7_ablation, fixed_epochs: 7, catalog_role: ablation, auto_run: false}
+    - {profile_id: default_epoch_10, fixed_epochs: 10, catalog_role: reference, auto_run: false}
+    - {profile_id: epoch_15_ablation, fixed_epochs: 15, catalog_role: ablation, auto_run: false}
+  direct_filter:
+    reference_profile_id: direct_filter_0p2_to_8hz
+    entries:
+    - {profile_id: direct_filter_0p2_to_8hz, low_hz: 0.2, high_hz: 8.0, catalog_role: reference, auto_run: false}
+    - {profile_id: direct_filter_0p5_to_5hz_ablation, low_hz: 0.5, high_hz: 5.0, catalog_role: ablation, auto_run: false}
+  imu_gravity:
+    reference_profile_id: profile_a_lowpass_0p3hz
+    silent_fallback_forbidden: true
+    entries:
+    - {profile_id: profile_a_lowpass_0p3hz, method: profile_a_lowpass_0p3hz, catalog_role: reference, auto_run: false}
+    - {profile_id: calibrated_roll_pitch_ekf_ablation, method: calibrated_roll_pitch_ekf, catalog_role: ablation, auto_run: false}
+    - {profile_id: sensor_filter_only_no_gravity_removal_ablation, method: sensor_filter_only_no_gravity_removal, catalog_role: ablation, auto_run: false}
+  peak_detector:
+    reference_profile_id: msptdfast_v2_3_python_port
+    silent_fallback_forbidden: true
+    entries:
+    - profile_id: msptdfast_v2_3_python_port
+      detector_id: msptdfast_v2_3_python_port
+      parameters: {target_downsample_hz: 20.0, minimum_heart_rate_bpm: 30.0, window_s: 6.0, overlap_fraction: 0.2}
+      catalog_role: reference
+      auto_run: false
+    - {profile_id: aboy_project_v2, detector_id: aboy_project_v2, catalog_role: ablation, auto_run: false}
+    - {profile_id: dual_polarity_prominence_v1_ablation, detector_id: dual_polarity_prominence_v1_ablation, catalog_role: ablation, auto_run: false}
+  fixed_kernel_samples:
+    family_id: fixed_kernel_samples_resampling_ablation
+    eligible_models: [CompactCNN1D, InceptionTimeFull]
+    physical_time_matched_claim: forbidden
+    cases:
+    - {case_id: compactcnn1d__reference, model_name: CompactCNN1D, dl_fs_hz: 400.0, raw_window_seconds: 5.0, sequence_length_samples: 2000, kernel_samples: [9, 9, 7], dilation: 1, catalog_role: reference, auto_run: false}
+    - {case_id: compactcnn1d__context_10s, model_name: CompactCNN1D, dl_fs_hz: 400.0, raw_window_seconds: 10.0, sequence_length_samples: 4000, kernel_samples: [9, 9, 7], dilation: 1, catalog_role: ablation, auto_run: false}
+    - {case_id: compactcnn1d__fs_100, model_name: CompactCNN1D, dl_fs_hz: 100.0, raw_window_seconds: 5.0, sequence_length_samples: 500, kernel_samples: [9, 9, 7], dilation: 1, catalog_role: ablation, auto_run: false}
+    - {case_id: compactcnn1d__fs_160, model_name: CompactCNN1D, dl_fs_hz: 160.0, raw_window_seconds: 5.0, sequence_length_samples: 800, kernel_samples: [9, 9, 7], dilation: 1, catalog_role: ablation, auto_run: false}
+    - {case_id: compactcnn1d__fs_200, model_name: CompactCNN1D, dl_fs_hz: 200.0, raw_window_seconds: 5.0, sequence_length_samples: 1000, kernel_samples: [9, 9, 7], dilation: 1, catalog_role: ablation, auto_run: false}
+    - {case_id: compactcnn1d__dilation_2, model_name: CompactCNN1D, dl_fs_hz: 400.0, raw_window_seconds: 5.0, sequence_length_samples: 2000, kernel_samples: [9, 9, 7], dilation: 2, catalog_role: ablation, auto_run: false}
+    - {case_id: inceptiontimefull__reference, model_name: InceptionTimeFull, dl_fs_hz: 400.0, raw_window_seconds: 5.0, sequence_length_samples: 2000, kernel_samples: [39, 19, 9], dilation: 1, catalog_role: reference, auto_run: false}
+    - {case_id: inceptiontimefull__context_10s, model_name: InceptionTimeFull, dl_fs_hz: 400.0, raw_window_seconds: 10.0, sequence_length_samples: 4000, kernel_samples: [39, 19, 9], dilation: 1, catalog_role: ablation, auto_run: false}
+    - {case_id: inceptiontimefull__fs_100, model_name: InceptionTimeFull, dl_fs_hz: 100.0, raw_window_seconds: 5.0, sequence_length_samples: 500, kernel_samples: [39, 19, 9], dilation: 1, catalog_role: ablation, auto_run: false}
+    - {case_id: inceptiontimefull__fs_160, model_name: InceptionTimeFull, dl_fs_hz: 160.0, raw_window_seconds: 5.0, sequence_length_samples: 800, kernel_samples: [39, 19, 9], dilation: 1, catalog_role: ablation, auto_run: false}
+    - {case_id: inceptiontimefull__fs_200, model_name: InceptionTimeFull, dl_fs_hz: 200.0, raw_window_seconds: 5.0, sequence_length_samples: 1000, kernel_samples: [39, 19, 9], dilation: 1, catalog_role: ablation, auto_run: false}
+    - {case_id: inceptiontimefull__dilation_2, model_name: InceptionTimeFull, dl_fs_hz: 400.0, raw_window_seconds: 5.0, sequence_length_samples: 2000, kernel_samples: [39, 19, 9], dilation: 2, catalog_role: ablation, auto_run: false}

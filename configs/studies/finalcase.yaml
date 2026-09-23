@@ -1,0 +1,94 @@
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: finalcase
+  kind: catalog_sweep
+  purpose: Reproduce the user-selected Rank-2 finalcase without changing V2 numerical semantics.
+  flow_position: Final thesis case; 5x5 participant-grouped outer OOF before optional deployment refit.
+  decision_role: single_run
+  reference_case_id: tuned_all_roles__inception_small_no_gravity
+  thesis_sections:
+    - Methods 3.1-3.6
+    - Frailty classification 4.2
+    - Appendix E
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: One preselected final case; no automatic model selection is performed.
+  controlled_factors:
+    - InceptionTimeSmall with the frozen V2 small architecture
+    - All B/R/S/W roles and 64 Hz deep-model input
+    - Fixed 10 epochs, AdamW, batch 16 and Line B aggregation
+cases:
+  - case_id: tuned_all_roles__inception_small_no_gravity
+    catalog_entry: inception_small
+    screen_profile_id: tuned_all_roles_inception_small_no_gravity_fixed10
+    output_group: raw
+    overrides:
+      signal.imu.gravity_method: sensor_filter_only_no_gravity_removal
+      signal.imu.comparison_method: profile_a_lowpass_0p3hz
+      signal.dl_resampling.enabled: true
+      signal.dl_resampling.target_fs_hz: 64.0
+      signal.normalization.raw_ppg: per_window_robust
+      signal.normalization.raw_imu: none
+      windows.raw_dl.length_s: 5.0
+      windows.raw_dl.hop_s: 2.5
+      windows.raw_dl.end_alignment: include_right_aligned_if_distinct
+      windows.raw_dl.padding: none_complete_windows_only
+      windows.raw_dl.min_valid_fraction: 1.0
+      windows.raw_dl.cap_per_file: 128
+      windows.raw_dl.cap_fraction_per_file: null
+      model.dropout: 0.50
+      training.fixed_epochs: 10
+      training.batch_size: 16
+      training.optimizer: adamw
+      training.learning_rate: 0.0003
+      training.weight_decay: 0.001
+      training.label_smoothing: 0.20
+      training.sampler: exhaustive_shuffle_without_replacement
+      training.class_weighting: inverse_frequency
+      training.class_count_basis: row
+      training.classifier_role_families: [B, R, S, W]
+      aggregation.balance_line: line_b_equal_role_families
+      roles: [B, R1, R2, R3, R4, S1, S2, W1, W2]
+      quality.mode: "off"
+      artifact.motion_detector_enabled: false
+      artifact.denoiser_enabled: false
+      artifact.reducer: identity
+      artifact.reducer_version: identity_v1
+      artifact.degraded_policy: drop
+      artifact.parameters: {}
+    rationale: User-selected Rank-2 thesis finalcase.
+    formal_profile: null
+execution:
+  repeats: [0, 1, 2, 3, 4]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 1
+  device: cuda
+  parallel_level: cases
+  continue_on_error: false
+  allow_parallel_deep: false
+  measure_operational_costs: false
+  preprocessing_cache:
+    mode: read_write
+    root: cache/preprocessing
+    namespaces:
+      - imu_calibration
+      - canonical_signal_views
+      - raw_windows
+    verify_source_sha256: true
+output:
+  root: pipeline_output
+report:
+  top_k: 1
+  detailed_configuration_top_k: 1
+  write_html: false
+  write_static_figures: false
+  calibration_bins: 10
+  figure_modules: [all]
+  compact_mean_sd: true
+  write_excel_workbook: false

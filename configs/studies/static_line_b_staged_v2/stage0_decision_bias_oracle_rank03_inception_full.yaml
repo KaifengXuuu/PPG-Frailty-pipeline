@@ -1,0 +1,33 @@
+# Intentionally label-leaking decision-layer ceiling for merged final-case Rank 3.
+# The selected bias is an upper-bound diagnostic only and is never deployable.
+schema_version: ppg_frailty.stage0_decision_bias_oracle.v1
+study:
+  study_id: staged-static-00-decision-bias-oracle-rank03-inception-full-v1
+  purpose: "Measure the maximum three-class decision-layer BA recoverable from Rank 3 InceptionTimeFull participant OOF probabilities."
+  scientific_role: decision_layer_recoverable_margin_upper_bound_only
+source:
+  study_dir: artifacts/studies/static_line_b_staged_v2/20260824_160517_catalog_sweep_final-case-all-roles-inception-architecture-comparison-v1
+  case_id: tuned_all_roles__inception_full
+  prediction_file: null
+  prediction_level: participant
+  prediction_kind: single_model
+  expected_participants: 29
+  expected_repeats: [0, 1, 2, 3, 4]
+  expected_class_order: [0, 1, 2]
+  repeat_aggregation: arithmetic_mean_probability_per_participant
+oracle:
+  bias_parameterization: nonnegative_sum_one_simplex
+  step: 0.01
+  objective: balanced_accuracy
+  prediction_rule: argmax_probability_plus_bias
+  prediction_tie_break: first_class_in_declared_class_order
+  optimum_tie_break: closest_to_equal_bias_then_lexicographic
+interpretation:
+  substantial_upper_bound: 0.70
+  limited_upper_bound: 0.65
+  substantial_action: proceed_to_leakage_free_decision_layer_followup
+  limited_action: report_ceiling_and_prioritise_beat_level_representation
+output:
+  slug: stage0-decision-bias-oracle-rank03-inception-full-v1
+  write_static_figures: true
+  write_excel_workbook: true

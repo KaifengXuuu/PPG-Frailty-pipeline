@@ -1,0 +1,33 @@
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: compactcnn_optimizer_grid_v2
+  kind: grid
+  purpose: Descriptively screen a small learning-rate and weight-decay grid without automatic winner selection.
+  flow_position: Training-parameter screening before single-factor confirmation and manual final-use-case selection.
+  decision_role: screening
+  reference_case_id: null
+  thesis_sections: []
+base_config: configs/reference_static_role_aware_v2.yaml
+axes:
+  - path: training.learning_rate
+    values: [0.0003, 0.001]
+    reference: 0.001
+  - path: training.weight_decay
+    values: [0.0001, 0.001]
+    reference: 0.0001
+execution:
+  repeats: [0, 1, 2, 3, 4]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 1
+  device: cuda
+  parallel_level: cases
+  continue_on_error: true
+  allow_parallel_deep: false
+  measure_operational_costs: true
+output:
+  root: artifacts/studies
+report:
+  top_k: 10
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10

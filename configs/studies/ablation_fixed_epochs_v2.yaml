@@ -1,0 +1,30 @@
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: compactcnn_fixed_epoch_ablation_v2
+  kind: ablation
+  purpose: Compare the declared 7/10/15 fixed-epoch profiles while holding all other resolved fields constant.
+  flow_position: Deep-model training-capacity ablation before manual candidate comparison.
+  decision_role: ablation
+  reference_case_id: null
+  thesis_sections: []
+base_config: configs/reference_static_role_aware_v2.yaml
+axes:
+  - path: training.fixed_epochs
+    values: [7, 10, 15]
+    reference: 10
+execution:
+  repeats: [0, 1, 2, 3, 4]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 1
+  device: cuda
+  parallel_level: cases
+  continue_on_error: true
+  allow_parallel_deep: false
+  measure_operational_costs: true
+output:
+  root: artifacts/studies
+report:
+  top_k: 10
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10
