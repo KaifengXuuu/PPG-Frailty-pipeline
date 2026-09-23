@@ -1,0 +1,609 @@
+# Two models x eight independent B0-to-Bk profiles x five repeats x five folds.
+# Frozen execution source: final_pipeline_v2/artifacts/studies/static_line_b_staged_v2/
+# 20260821_162454_catalog_sweep_staged-static-03-centered-star-v1/raw/*/resolved_config.yaml
+# Shared anchors retain the original IMU EKF parameters, especially required by B3.
+# The bridge controls below own sampling, windowing, normalization and training;
+# generic raw-config defaults do not replace those field-driven controls.
+# Unused feature-matrix metadata uses the current V5 schema, not retired fixed-K
+# 115x150 metadata: this study extracts raw windows, never a feature matrix.
+# This is fixed-10 centered-star training, not the earlier outer-label early-stop study.
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: thesis_legacy_bridge_ablation
+  kind: catalog_sweep
+  purpose: Reproduce the historical two-model B0-to-B7 centered-star ablation with explicit execution controls from
+    its recorded 20260821 configurations.
+  flow_position: Restarted Stage 3 before ensemble, SQI/motion, finalist ablations, and stage-last ShapeFormer.
+  decision_role: ablation
+  reference_case_id: compact_cnn__b0_star_fixed10
+  thesis_sections:
+  - '4.2.4.1 / Tables 29-30: centered legacy-to-V2 raw-model ablation'
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: B0 is the centre. Every B1-B7 case changes only its declared factor from B0; no adjacent Bk-to-B(k+1)
+    or cross-model contrast is permitted.
+  controlled_factors:
+  - Frozen repeats 0-4 and frozen folds 0-4
+  - Training seed 42
+  - Ten fixed epochs without early stopping or outer-label checkpoint selection
+  - Identical model-neutral B profile controls for both architectures
+  notes:
+  - Eight profiles times two models produce 16 cases and 400 repeat/fold cells.
+  - B7 changes only the native primary report aggregation; its training inputs and OOF window probabilities must
+    equal B0 within each model.
+cases:
+- case_id: compact_cnn__b0_star_fixed10
+  catalog_entry: compact_cnn
+  screen_profile_id: legacy_bridge_b0_star
+  output_group: raw
+  overrides: &cnn_historical_overrides
+    <<: &historical_common
+      roles:
+      - B
+      - R1
+      - R2
+      - R3
+      - R4
+      signal.internal_fs_hz: 400.0
+      signal.channel_order:
+      - RED
+      - IR
+      - AX
+      - AY
+      - AZ
+      - GX
+      - GY
+      - GZ
+      signal.ppg_native_unit: raw_counts
+      signal.accelerometer_input_unit: g
+      signal.gyroscope_input_unit: deg/s
+      signal.peak_detector:
+        detector_id: aboy_project_v1
+        failure_action: fail_closed_no_fallback
+        min_observation_sec: 8.0
+        min_peaks: 5
+      signal.ppg_filter:
+        family: butterworth_sos
+        order: 3
+        low_hz: 0.2
+        high_hz: 8.0
+        phase: zero_phase
+        short_signal_policy: reject
+        notch_enabled: false
+      signal.analysis_view:
+        direct_source: x_filter_0p2_to_8hz
+        non_identity_source: aligned_x_ar
+        non_identity_semantics: rate_only
+        additional_filter: none
+      signal.gap_repair:
+        method: linear_inside_only
+        max_gap_samples: 100
+        edge_extrapolation: false
+        all_missing_channel_action: reject_record
+      signal.imu:
+        gravity_method: calibrated_roll_pitch_ekf
+        initialization: same_participant_static_calibration
+        comparison_method: profile_a_lowpass_0p3hz
+        sensor_lowpass_acc_hz: 20.0
+        sensor_lowpass_gyro_hz: 40.0
+        sensor_filter_order: 3
+        calibration_start_s: 5.0
+        calibration_stop_s: 100.0
+        process_covariance_diagonal_per_second:
+        - 5.0
+        - 5.0
+        - 0.05
+        - 0.05
+        - 0.05
+        observation_covariance_diagonal_rad2:
+        - 0.5
+        - 0.5
+        initial_covariance_diagonal:
+        - 1.0
+        - 1.0
+        - 0.5
+        - 0.5
+        - 0.5
+        dynamic_observation_scale: 3.0
+        gravity_mps2: 9.81
+        output_units:
+          acceleration: m/s^2
+          gyroscope: rad/s
+          jerk: m/s^3
+        required_axes: 6
+        failure_action: fail_closed
+      signal.dl_resampling:
+        enabled: false
+        target_fs_hz: 400.0
+        method: polyphase_anti_alias
+        preserve_feature_grid_hz: 400.0
+      signal.normalization:
+        raw_ppg: per_window_robust
+        raw_imu: none
+        iqr_fallback: standard_deviation_then_finite_one
+        clip_after_scale:
+        - -8.0
+        - 8.0
+        robust_iqr_divisor: 1.349
+        mad_consistency_divisor: 0.6744897501960817
+        scale_epsilon: 1.0e-08
+        standard_ddof: 0
+      windows.shared_planner_version: window_plan_v1
+      windows.engineering:
+        length_s: 10.0
+        hop_s: 2.0
+        end_alignment: left_start_regular_grid
+        padding: none_complete_windows_only
+        cap_per_file: null
+        cap_fraction_per_file: null
+        min_valid_fraction: 1.0
+      windows.raw_dl:
+        length_s: 5.0
+        hop_s: 2.5
+        end_alignment: include_right_aligned_if_distinct
+        padding: none_complete_windows_only
+        cap_per_file: 128
+        cap_fraction_per_file: null
+        min_valid_fraction: 1.0
+      quality.mode: 'off'
+      quality.fit_scope: not_applied_off
+      quality.components: []
+      quality.high_quality_rule: not_applied
+      quality.failure_action: fail_closed
+      quality.window_selection:
+        policy: none
+        keep_fraction: 1.0
+        score_algorithm: legacy_cardiac_motion_window_sqi_v1
+        application_scope: outer_train_only
+      quality.long_gap_max_samples: 100
+      quality.flatline_duration_s: 1.0
+      training.epoch_rule: fixed_epoch
+      training.epoch_profile: default_10
+      training.execution_mode: formal
+      training.fixed_epochs: 10
+      training.maximum_inner_epochs: 0
+      training.inner_patience: 0
+      training.batch_size: 64
+      training.learning_rate: 0.001
+      training.weight_decay: 0.0001
+      training.device: cuda
+      training.num_workers: 0
+      training.seed: 42
+      training.optimizer: adam
+      training.optimizer_parameters:
+        betas:
+        - 0.9
+        - 0.999
+        eps: 1.0e-08
+        amsgrad: false
+        maximize: false
+      training.class_weighting: inverse_frequency
+      training.class_count_basis: participant
+      training.training_balance: equal_role_families
+      training.sampler: balance_line_weighted_v2
+      training.samples_per_epoch: null
+      training.participant_window_quota: all
+      training.classifier_role_families:
+      - B
+      - R
+      training.loss: cross_entropy
+      training.focal_gamma: 2.0
+      training.class_weight_beta: 0.999
+      training.label_smoothing: 0.0
+      training.gradient_clip_norm: null
+      training.deterministic_algorithms: true
+      training.cache_policy: disabled
+      training.outer_labels_visible_to_trainer: false
+      training.inner_grouped_folds: 0
+      training.refit_on_all_outer_training: true
+      training.n_classes: 3
+      aggregation.balance_line: line_b_equal_role_families
+      aggregation.hierarchy:
+      - window
+      - file
+      - role
+      - participant
+      aggregation.file_to_role: ordinary_mean
+      aggregation.role_to_participant: ordinary_mean
+      aggregation.missing_role_policy: mean_available_roles
+      aggregation.window_to_file: ordinary_mean
+      aggregation.quality_weighting: false
+      aggregation.quality_weight_source: none
+      aggregation.quality_weight_levels: []
+      aggregation.direct_all_window_participant_mean: false
+      artifact.reducer: identity
+      artifact.reducer_version: identity_v1
+      artifact.motion_detector_enabled: false
+      artifact.denoiser_enabled: false
+      artifact.parameters: {}
+    model.model_id: CompactCNN1D
+    model.input_channels: 8
+    model.input_channels_resolution: canonical_frailty_raw_8
+    model.input_channel_order:
+    - RED
+    - IR
+    - A_dyn_x
+    - A_dyn_y
+    - A_dyn_z
+    - GX
+    - GY
+    - GZ
+    model.n_classes: 3
+    model.seed_policy: outer_cv_repeat_seed_equals_split_seed
+    model.dropout: 0.2
+    model.kernel_sizes:
+    - 9
+    - 9
+    - 7
+    model.dilations:
+    - 1
+    - 1
+    - 1
+    model.pool_sizes:
+    - 4
+    - 4
+    model.ensemble_size: 1
+    model.variant: reference_not_wang_fcn
+    model.mask_aware_pooling: true
+  rationale: CompactCNN complete legacy-input fixed-10 baseline.
+  formal_profile: null
+- case_id: inception_full__b0_star_fixed10
+  catalog_entry: inception_full
+  screen_profile_id: legacy_bridge_b0_star
+  output_group: raw
+  overrides: &inception_historical_overrides
+    <<: *historical_common
+    model.model_id: InceptionTimeFull
+    model.input_channels: 8
+    model.input_channels_resolution: canonical_frailty_raw_8
+    model.input_channel_order:
+    - RED
+    - IR
+    - A_dyn_x
+    - A_dyn_y
+    - A_dyn_z
+    - GX
+    - GY
+    - GZ
+    model.n_classes: 3
+    model.seed_policy: outer_cv_repeat_seed_equals_split_seed
+    model.dropout: 0.2
+    model.kernel_sizes:
+    - 39
+    - 19
+    - 9
+    model.dilation: 1
+    model.ensemble_size: 1
+    model.variant: single_network
+    model.mask_aware_pooling: true
+  rationale: InceptionTimeFull under the identical model-neutral B0 controls.
+  formal_profile: null
+- case_id: compact_cnn__b1_star_fixed10
+  catalog_entry: compact_cnn
+  screen_profile_id: legacy_bridge_b1_star
+  output_group: raw
+  overrides: *cnn_historical_overrides
+  rationale: CompactCNN B0 with only target sample rate changed from 64 to 400 Hz.
+  formal_profile: null
+- case_id: inception_full__b1_star_fixed10
+  catalog_entry: inception_full
+  screen_profile_id: legacy_bridge_b1_star
+  output_group: raw
+  overrides: *inception_historical_overrides
+  rationale: InceptionTimeFull B0 with only target sample rate changed from 64 to 400 Hz.
+  formal_profile: null
+- case_id: compact_cnn__b2_star_fixed10
+  catalog_entry: compact_cnn
+  screen_profile_id: legacy_bridge_b2_star
+  output_group: raw
+  overrides: *cnn_historical_overrides
+  rationale: CompactCNN B0 with only the window length/hop changed to 5/2.5 seconds.
+  formal_profile: null
+- case_id: inception_full__b2_star_fixed10
+  catalog_entry: inception_full
+  screen_profile_id: legacy_bridge_b2_star
+  output_group: raw
+  overrides: *inception_historical_overrides
+  rationale: InceptionTimeFull B0 with only the window length/hop changed to 5/2.5 seconds.
+  formal_profile: null
+- case_id: compact_cnn__b3_star_fixed10
+  catalog_entry: compact_cnn
+  screen_profile_id: legacy_bridge_b3_star
+  output_group: raw
+  overrides: *cnn_historical_overrides
+  rationale: CompactCNN B0 with only IMU semantics changed to calibrated EKF dynamic acceleration.
+  formal_profile: null
+- case_id: inception_full__b3_star_fixed10
+  catalog_entry: inception_full
+  screen_profile_id: legacy_bridge_b3_star
+  output_group: raw
+  overrides: *inception_historical_overrides
+  rationale: InceptionTimeFull B0 with only IMU semantics changed to calibrated EKF dynamic acceleration.
+  formal_profile: null
+- case_id: compact_cnn__b4_star_fixed10
+  catalog_entry: compact_cnn
+  screen_profile_id: legacy_bridge_b4_star
+  output_group: raw
+  overrides: *cnn_historical_overrides
+  rationale: CompactCNN B0 with only normalization changed to PPG-window plus outer-train IMU-fold scaling.
+  formal_profile: null
+- case_id: inception_full__b4_star_fixed10
+  catalog_entry: inception_full
+  screen_profile_id: legacy_bridge_b4_star
+  output_group: raw
+  overrides: *inception_historical_overrides
+  rationale: InceptionTimeFull B0 with only normalization changed to PPG-window plus outer-train IMU-fold scaling.
+  formal_profile: null
+- case_id: compact_cnn__b5_star_fixed10
+  catalog_entry: compact_cnn
+  screen_profile_id: legacy_bridge_b5_star
+  output_group: raw
+  overrides: *cnn_historical_overrides
+  rationale: CompactCNN B0 with only the sampler changed to Line B weighted sampling.
+  formal_profile: null
+- case_id: inception_full__b5_star_fixed10
+  catalog_entry: inception_full
+  screen_profile_id: legacy_bridge_b5_star
+  output_group: raw
+  overrides: *inception_historical_overrides
+  rationale: InceptionTimeFull B0 with only the sampler changed to Line B weighted sampling.
+  formal_profile: null
+- case_id: compact_cnn__b6_star_fixed10
+  catalog_entry: compact_cnn
+  screen_profile_id: legacy_bridge_b6_star
+  output_group: raw
+  overrides: *cnn_historical_overrides
+  rationale: CompactCNN B0 with only AdamW/batch32 changed to Adam/batch64.
+  formal_profile: null
+- case_id: inception_full__b6_star_fixed10
+  catalog_entry: inception_full
+  screen_profile_id: legacy_bridge_b6_star
+  output_group: raw
+  overrides: *inception_historical_overrides
+  rationale: InceptionTimeFull B0 with only AdamW/batch32 changed to Adam/batch64.
+  formal_profile: null
+- case_id: compact_cnn__b7_star_fixed10
+  catalog_entry: compact_cnn
+  screen_profile_id: legacy_bridge_b7_star
+  output_group: raw
+  overrides: *cnn_historical_overrides
+  rationale: CompactCNN B0 with only native reporting changed from direct-window to file/role aggregation.
+  formal_profile: null
+- case_id: inception_full__b7_star_fixed10
+  catalog_entry: inception_full
+  screen_profile_id: legacy_bridge_b7_star
+  output_group: raw
+  overrides: *inception_historical_overrides
+  rationale: InceptionTimeFull B0 with only native reporting changed from direct-window to file/role aggregation.
+  formal_profile: null
+legacy_bridge:
+  schema_version: ppg_frailty.legacy_v2_bridge_protocol.v1
+  design: centered_star_v1
+  protocol_id: stage3_two_model_centered_star_fixed10
+  source_specification: inline:legacy_bridge.effective_controls
+  source_specification_sha256: adc116fb9d80e06acc0b871d96e3ce2037ac0867d118f0198ca9efdd38691137
+  runtime_status: implemented_field_driven_centered_star_v1
+  budget:
+    case_count: 16
+    repeat_indices:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    fold_indices:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    training_seed: 42
+    fixed_epochs: 10
+    early_stopping: false
+    outer_label_checkpoint_selection: false
+    fit_count: 400
+    model_epoch_count: 4000
+    phase0_fit_count: 0
+    phase0_model_epoch_count: 0
+  execution_order:
+  - compact_cnn__B0_star_fixed10
+  - inception_full__B0_star_fixed10
+  - compact_cnn__B1_star_fixed10
+  - inception_full__B1_star_fixed10
+  - compact_cnn__B2_star_fixed10
+  - inception_full__B2_star_fixed10
+  - compact_cnn__B3_star_fixed10
+  - inception_full__B3_star_fixed10
+  - compact_cnn__B4_star_fixed10
+  - inception_full__B4_star_fixed10
+  - compact_cnn__B5_star_fixed10
+  - inception_full__B5_star_fixed10
+  - compact_cnn__B6_star_fixed10
+  - inception_full__B6_star_fixed10
+  - compact_cnn__B7_star_fixed10
+  - inception_full__B7_star_fixed10
+  baseline_controls:
+    ppg_preprocessing: legacy_detrend_bandpass_0p2_8
+    imu_preprocessing: legacy_filtered_axes
+    target_fs_hz: 64
+    window_seconds: 15.0
+    hop_seconds: 3.0
+    historical_retained_fraction: 0.9
+    max_windows_per_file: null
+    allow_short_record_padding: true
+    normalization: per_window_all_eight
+    sampler: exhaustive_shuffle_without_replacement
+    class_weighting: outer_train_window_inverse_frequency
+    optimizer: adamw
+    batch_size: 32
+    fixed_epochs: 10
+    learning_rate: 0.001
+    weight_decay: 0.0001
+    training_metric_aggregation_rule: line_a_equal_files
+    primary_report_aggregation_view: window_balanced_to_participant
+  factor_overrides:
+    B1:
+      factor_id: sampling_rate
+      overrides:
+        target_fs_hz: 400
+      expected_changed_paths:
+      - controls.target_fs_hz
+      interpretation: 'Target sample rate only: 64 to 400 Hz.'
+    B2:
+      factor_id: window_plan
+      overrides:
+        window_seconds: 5.0
+        hop_seconds: 2.5
+      expected_changed_paths:
+      - controls.window_seconds
+      - controls.hop_seconds
+      interpretation: 'Window plan only: 15/3 to 5/2.5 seconds; retain fraction 0.9 and no cap.'
+    B3:
+      factor_id: imu_preprocessing
+      overrides:
+        imu_preprocessing: calibrated_ekf_adyn
+      expected_changed_paths:
+      - controls.imu_preprocessing
+      interpretation: 'IMU semantics only: legacy axes to calibrated EKF dynamic acceleration.'
+    B4:
+      factor_id: normalization
+      overrides:
+        normalization: ppg_window_imu_outer_train_fold
+      expected_changed_paths:
+      - controls.normalization
+      interpretation: 'Normalization only: all-eight per-window to PPG-window plus outer-train IMU-fold scaling.'
+    B5:
+      factor_id: sampler
+      overrides:
+        sampler: balance_line_weighted_v2
+      expected_changed_paths:
+      - controls.sampler
+      interpretation: 'Sampler only: exhaustive uniform shuffle to Line B weighted sampling.'
+    B6:
+      factor_id: optimizer_and_batch_size
+      overrides:
+        optimizer: adam
+        batch_size: 64
+      expected_changed_paths:
+      - controls.optimizer
+      - controls.batch_size
+      interpretation: 'Declared training bundle only: AdamW/batch32 to Adam/batch64.'
+    B7:
+      factor_id: primary_aggregation
+      overrides:
+        primary_report_aggregation_view: line_b_equal_role_families
+      expected_changed_paths:
+      - controls.primary_report_aggregation_view
+      interpretation: 'Native primary reporting only: direct-window participant mean to file/role participant mean.'
+  profiles:
+  - {case_id: compact_cnn__B0_star_fixed10, catalog_case_id: compact_cnn__b0_star_fixed10, model_id: CompactCNN1D,
+    profile_id: B0}
+  - {case_id: inception_full__B0_star_fixed10, catalog_case_id: inception_full__b0_star_fixed10, model_id: InceptionTimeFull,
+    profile_id: B0}
+  - {case_id: compact_cnn__B1_star_fixed10, catalog_case_id: compact_cnn__b1_star_fixed10, model_id: CompactCNN1D,
+    profile_id: B1}
+  - {case_id: inception_full__B1_star_fixed10, catalog_case_id: inception_full__b1_star_fixed10, model_id: InceptionTimeFull,
+    profile_id: B1}
+  - {case_id: compact_cnn__B2_star_fixed10, catalog_case_id: compact_cnn__b2_star_fixed10, model_id: CompactCNN1D,
+    profile_id: B2}
+  - {case_id: inception_full__B2_star_fixed10, catalog_case_id: inception_full__b2_star_fixed10, model_id: InceptionTimeFull,
+    profile_id: B2}
+  - {case_id: compact_cnn__B3_star_fixed10, catalog_case_id: compact_cnn__b3_star_fixed10, model_id: CompactCNN1D,
+    profile_id: B3}
+  - {case_id: inception_full__B3_star_fixed10, catalog_case_id: inception_full__b3_star_fixed10, model_id: InceptionTimeFull,
+    profile_id: B3}
+  - {case_id: compact_cnn__B4_star_fixed10, catalog_case_id: compact_cnn__b4_star_fixed10, model_id: CompactCNN1D,
+    profile_id: B4}
+  - {case_id: inception_full__B4_star_fixed10, catalog_case_id: inception_full__b4_star_fixed10, model_id: InceptionTimeFull,
+    profile_id: B4}
+  - {case_id: compact_cnn__B5_star_fixed10, catalog_case_id: compact_cnn__b5_star_fixed10, model_id: CompactCNN1D,
+    profile_id: B5}
+  - {case_id: inception_full__B5_star_fixed10, catalog_case_id: inception_full__b5_star_fixed10, model_id: InceptionTimeFull,
+    profile_id: B5}
+  - {case_id: compact_cnn__B6_star_fixed10, catalog_case_id: compact_cnn__b6_star_fixed10, model_id: CompactCNN1D,
+    profile_id: B6}
+  - {case_id: inception_full__B6_star_fixed10, catalog_case_id: inception_full__b6_star_fixed10, model_id: InceptionTimeFull,
+    profile_id: B6}
+  - {case_id: compact_cnn__B7_star_fixed10, catalog_case_id: compact_cnn__b7_star_fixed10, model_id: CompactCNN1D,
+    profile_id: B7}
+  - {case_id: inception_full__B7_star_fixed10, catalog_case_id: inception_full__b7_star_fixed10, model_id: InceptionTimeFull,
+    profile_id: B7}
+  aggregation_views:
+  - window_balanced_to_participant
+  - line_a_equal_files
+  - line_b_equal_role_families
+  primary_table_columns:
+  - model
+  - profile
+  - factor_id
+  - primary_aggregation_view
+  - participant_oof_balanced_accuracy
+  - participant_oof_macro_f1
+  - worst_class_f1
+  - delta_from_model_b0
+  sampling_diagnostics:
+  - dataset_row_count
+  - draw_count
+  - unique_row_draw_count
+  - duplicate_draw_fraction
+  - never_drawn_row_fraction
+  - draw_counts_by_participant
+  - draw_counts_by_class
+  - draw_counts_by_B_R_family
+  - draw_counts_by_file
+  - class_weight_vector
+  - sampler_identity
+  restrictions:
+  - no_additional_cases_repeats_models_or_hyperparameter_search
+  - only_same_model_B0_to_B1_through_B7_contrasts
+  - no_adjacent_Bk_to_Bk_plus_1_contrasts
+  - no_cross_model_ablation_contrasts
+  - all_aggregation_views_from_same_OOF_window_probabilities
+  - B0_and_B7_training_inputs_and_window_probabilities_must_match_by_model
+  - sampling_diagnostics_saved_for_every_fold_and_epoch
+  required_runtime_capabilities:
+  - explicit_profile_controls_runtime_dispatch_without_B_id_algorithm_switches
+  - legacy_and_calibrated_EKF_IMU_preprocessing_independent_of_PPG_preprocessing
+  - all_eight_per_window_and_PPG_window_plus_outer_train_IMU_fold_normalization
+  - exhaustive_shuffle_and_line_B_weighted_sampler_profiles
+  - historical_outer_train_window_count_class_weights
+  - AdamW_batch32_and_Adam_batch64_training_profiles
+  - same_OOF_window_probability_replay_for_W_line_A_and_line_B_views
+execution:
+  repeats:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  folds:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  jobs: 1
+  device: cuda
+  parallel_level: cases
+  continue_on_error: false
+  allow_parallel_deep: false
+  measure_operational_costs: false
+  preprocessing_cache:
+    mode: 'off'
+output:
+  root: pipeline_output
+report:
+  top_k: 16
+  write_html: false
+  write_static_figures: false
+  calibration_bins: 10
+  figure_modules:
+  - all
+  compact_mean_sd: true
+  write_excel_workbook: false

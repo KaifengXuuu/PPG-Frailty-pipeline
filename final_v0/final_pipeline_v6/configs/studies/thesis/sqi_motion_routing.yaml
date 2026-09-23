@@ -1,0 +1,162 @@
+# Thesis Tables 26-27: the four no-denoiser routing cases, five repeats x five folds.
+# Source: final_pipeline_v2/artifacts/studies/static_line_b_staged_v2/20260824_031024_catalog_sweep_staged-static-05-sqi-motion-compact-cnn-v6/study_plan.yaml
+# Reuse the historical all-29 frozen motion model exactly as that experiment did;
+# it is in-sample auxiliary preprocessing, not outer-fold-independent motion fitting.
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: thesis_sqi_motion_routing
+  kind: catalog_sweep
+  purpose: Repeat the four routing contrasts reported in thesis Tables 26-27, with the executed five-repeat protocol.
+  flow_position: Stage 5 route-composition screen after ordinary-model selection.
+  decision_role: robustness
+  reference_case_id: raw_compact_cnn__off_off_all_roles
+  thesis_sections: ['4.2.3 / Tables 26-27: SQI and motion routing']
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: Four predeclared SQI/motion switch compositions; denoising is disabled in every case.
+  controlled_factors: ['CompactCNN1D raw route, participants, folds, split/training seeds and Line B aggregation',
+    Every case uses the identical B/R/S/W role input scope; no data-scope factor is mixed into this module comparison,
+    'All cases use the selected V2-core plus B0/B2/B7 state: 64 Hz, 5/2.5 s, AdamW/batch32 and file/role Line B
+      aggregation', The CNN tensor uses all-eight-channel per-window robust scaling; fold-level IMU post-scaling
+      is disabled, All four cases use the same calibrated roll-pitch EKF profile; EKF is a stage-wide explicit
+      ablation relative to the ordinary V2 Profile-A LPF default, 'Fixed-formula SQI uses Q_rate >= 0.50, Q_morph
+      >= 0.65 and coverage >= 0.80', Motion-enabled cases reuse the same frozen Stage5 all-29 model and OOF-derived
+      deployment threshold; it is in-sample auxiliary preprocessing evidence for Frailty29 and is never described
+      as motion-detector outer OOF, SQI and motion expose the same native 8 s/2 s windows; file motion median is
+      diagnostic only]
+  notes:
+    - The frailty classifier remains outer-held-out OOF; the all-29 motion model is in-sample auxiliary preprocessing.
+    - Motion-enabled cases use the 20260820_225546 frozen bundle and its OOF-derived deployment threshold.
+    - CompactCNN1D and frozen motion-model inference use CUDA, as in the historical experiment.
+    - The four additional PCA/FastICA development cases are not part of this reported routing comparison.
+cases:
+- case_id: raw_compact_cnn__off_off_all_roles
+  catalog_entry: compact_cnn
+  screen_profile_id: sqi_motion_off_all_roles
+  output_group: raw
+  overrides:
+    <<: &id001
+      signal.imu.gravity_method: calibrated_roll_pitch_ekf
+      signal.imu.comparison_method: profile_a_lowpass_0p3hz
+      signal.dl_resampling.enabled: true
+      signal.dl_resampling.target_fs_hz: 64.0
+      signal.normalization.raw_ppg: per_window_robust
+      signal.normalization.raw_imu: none
+      windows.raw_dl.length_s: 5.0
+      windows.raw_dl.hop_s: 2.5
+      routing.window_s: 8.0
+      routing.hop_s: 2.0
+      routing.fs_hz: 400.0
+      routing.source_grid: canonical_acquisition_grid
+      training.optimizer: adamw
+      training.batch_size: 32
+      training.sampler: exhaustive_shuffle_without_replacement
+      training.class_weighting: outer_train_window_inverse_frequency
+      training.class_count_basis: row
+      training.classifier_role_families: [B, R, S, W]
+      aggregation.balance_line: line_b_equal_role_families
+      roles: [B, R1, R2, R3, R4, S1, S2, W1, W2]
+      artifact.denoiser_enabled: false
+      artifact.reducer: identity
+      artifact.reducer_version: identity_v1
+      artifact.degraded_policy: drop
+      artifact.parameters: {}
+    quality.mode: 'off'
+    artifact.motion_detector_enabled: false
+  rationale: 'SQI-off/motion-off all-role control: every configured B/R/S/W recording routes Excellent/direct under
+    the common routing truth table.'
+  formal_profile: null
+- case_id: raw_compact_cnn__sqi_only
+  catalog_entry: compact_cnn
+  screen_profile_id: sqi_only_fixed_thresholds
+  output_group: raw
+  overrides:
+    <<: *id001
+    quality.mode: route
+    artifact.motion_detector_enabled: false
+    quality.calibrator: fixed_formula_thresholds_v1
+    quality.rate_threshold: 0.5
+    quality.morph_threshold: 0.65
+    quality.minimum_coverage: 0.8
+  rationale: SQI-only tier routing with the reference thresholds.
+  formal_profile: null
+- case_id: raw_compact_cnn__sqi_motion_all29_frozen
+  catalog_entry: compact_cnn
+  screen_profile_id: sqi_plus_reused_all29_frozen_motion
+  output_group: raw
+  overrides:
+    <<: *id001
+    quality.mode: route
+    artifact.motion_detector_enabled: true
+    quality.calibrator: fixed_formula_thresholds_v1
+    quality.rate_threshold: 0.5
+    quality.morph_threshold: 0.65
+    quality.minimum_coverage: 0.8
+    artifact.motion_detector.evidence_path: artifacts/studies/static_line_b_staged_v2/20260820_225546_staged-static-05-pre-motion-ptt-v1/motion_internal/motion_internal_evidence.json
+    artifact.motion_detector.expected_evidence_sha256: 10f02a9d784e06471c7109ff8dc92d28f1a8d7753f8fdf179bebce5699fb446c
+    artifact.motion_detector.device: cuda
+    artifact.motion_detector.batch_size: 64
+    artifact.motion_detector.window_probability_aggregation: native_windows_file_median_diagnostics_only
+    artifact.motion_detector.threshold_source: bundle_frozen
+    artifact.motion_detector.reuse_scope: all29_frozen_in_sample_auxiliary
+    artifact.motion_detector.expected_split_registry_sha256: 130b2887eb29a5a534397b4ce4dc7032f9de30ae46533fa0b2c41559ff4a1284
+  rationale: SQI plus shared all-29 frozen native-window motion inference; no fitting, recalibration, or file-median
+    routing.
+  formal_profile: null
+- case_id: raw_compact_cnn__sqi_off_motion_all29_frozen
+  catalog_entry: compact_cnn
+  screen_profile_id: sqi_off_plus_reused_all29_frozen_motion
+  output_group: raw
+  overrides:
+    <<: *id001
+    quality.mode: 'off'
+    artifact.motion_detector_enabled: true
+    quality.calibrator: fixed_formula_thresholds_v1
+    quality.rate_threshold: 0.5
+    quality.morph_threshold: 0.65
+    quality.minimum_coverage: 0.8
+    artifact.motion_detector.evidence_path: artifacts/studies/static_line_b_staged_v2/20260820_225546_staged-static-05-pre-motion-ptt-v1/motion_internal/motion_internal_evidence.json
+    artifact.motion_detector.expected_evidence_sha256: 10f02a9d784e06471c7109ff8dc92d28f1a8d7753f8fdf179bebce5699fb446c
+    artifact.motion_detector.device: cuda
+    artifact.motion_detector.batch_size: 64
+    artifact.motion_detector.window_probability_aggregation: native_windows_file_median_diagnostics_only
+    artifact.motion_detector.threshold_source: bundle_frozen
+    artifact.motion_detector.reuse_scope: all29_frozen_in_sample_auxiliary
+    artifact.motion_detector.expected_split_registry_sha256: 130b2887eb29a5a534397b4ce4dc7032f9de30ae46533fa0b2c41559ff4a1284
+  rationale: SQI-off motion-only route using the same shared all-29 frozen detector, with no denoiser.
+  formal_profile: null
+execution:
+  repeats: [0, 1, 2, 3, 4]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 1
+  parallel_level: cases
+  continue_on_error: true
+  allow_parallel_deep: false
+  measure_operational_costs: false
+  preprocessing_cache:
+    mode: read_write
+    root: pipeline_output/cache
+    namespaces: [imu_calibration, canonical_signal_views, motion_windows, raw_windows]
+    verify_source_sha256: true
+  device: cuda
+output:
+  root: pipeline_output
+report:
+  top_k: 4
+  write_html: false
+  write_static_figures: false
+  calibration_bins: 10
+  figure_modules: [all]
+  compact_mean_sd: true
+  write_excel_workbook: true
+  classification_tsne_random_state: 42
+  classification_tsne_perplexity: 30.0
+  classification_tsne_max_samples: 5000
+  classification_roc_macro_grid_points: 201
+  classification_score_histogram_bins: 40

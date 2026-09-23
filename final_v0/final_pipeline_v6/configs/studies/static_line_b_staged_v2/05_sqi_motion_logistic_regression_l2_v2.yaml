@@ -1,0 +1,205 @@
+# LogisticRegressionL2 re-test of the eight Stage5 SQI/motion/denoiser routes.
+# Algorithms are referenced through the V2 registries; none is copied here.
+schema_version: ppg_frailty.study_plan.v2
+study:
+  study_id: staged_static_05_sqi_motion_logistic_regression_l2_v1
+  kind: catalog_sweep
+  purpose: "Re-test the eight Stage5 SQI/motion/PCA/FastICA compositions with LogisticRegressionL2 so recovered rate-only PPI/PRV evidence can enter the classifier."
+  flow_position: "Stage 5 rate-feature composition re-test after the CompactCNN diagnostic-only audit."
+  decision_role: robustness
+  reference_case_id: feature_vector_logistic__off_off_all_roles
+  thesis_sections:
+    - "SQI tier routing and abstention"
+    - "Frozen all-29 motion-model reuse as explicitly in-sample auxiliary preprocessing"
+    - "PCA versus FastICA rate-feature recovery"
+catalog:
+  path: configs/formal_experiment_catalog_v2.yaml
+  balance_line: line_b
+  scope: selected_ordinary
+search:
+  method: deterministic_sparse_profiles
+  selection_seed: 42
+  runtime_sampling: false
+  interpretation: "Eight prespecified module-switch compositions around one fixed LogisticRegressionL2 feature-vector model; not a Cartesian search and not automatic model selection."
+  controlled_factors:
+    - "LogisticRegressionL2 model, feature registry, participants, frozen 5x5 splits, split seeds and Line B aggregation"
+    - "Every case uses the identical B/R/S/W input scope; only SQI, motion and reducer switches change"
+    - "All eight cases use calibrated roll-pitch EKF physical IMU processing"
+    - "Fixed-formula SQI uses Q_rate >= 0.50, Q_morph >= 0.65 and coverage >= 0.80"
+    - "Every motion-enabled cell reuses the same frozen Stage5 all-29 model and OOF-derived deployment threshold"
+    - "SQI and motion use the same native 8 s/2 s windows on the canonical 400 Hz grid"
+    - "Each recording with recoverable Unfit windows receives at most one whole-record reducer attempt"
+    - "PCA/FastICA output remains rate-only; only eligible post-denoiser pulse, PPI and PRV features enter LogisticRegressionL2"
+  notes:
+    - "The downstream frailty classifier remains outer-held-out OOF; the shared all-29 motion detector is in-sample auxiliary preprocessing evidence for Frailty29."
+    - "LogisticRegressionL2 executes on CPU; CUDA is retained for frozen motion-model inference."
+    - "PCA is preferred and FastICA is its parallel algorithm ablation."
+    - "No denoised waveform is used for morphology, optical features or raw-DL input."
+    - "SQI-off denoiser routes keep direct SQI disabled; a high-motion window can become Acceptable only after post-denoiser Q_rate passes."
+cases:
+  - case_id: feature_vector_logistic__off_off_all_roles
+    catalog_entry: logistic_regression
+    screen_profile_id: sqi_motion_off_all_roles
+    output_group: feature_vector
+    overrides: &logistic_common
+      signal.imu.gravity_method: calibrated_roll_pitch_ekf
+      signal.imu.comparison_method: profile_a_lowpass_0p3hz
+      routing.window_s: 8.0
+      routing.hop_s: 2.0
+      routing.fs_hz: 400.0
+      routing.source_grid: canonical_acquisition_grid
+      training.classifier_role_families: [B, R, S, W]
+      aggregation.balance_line: line_b_equal_role_families
+      roles: [B, R1, R2, R3, R4, S1, S2, W1, W2]
+      quality.mode: "off"
+      artifact.motion_detector_enabled: false
+      artifact.denoiser_enabled: false
+      artifact.reducer: identity
+      artifact.reducer_version: identity_v1
+      artifact.degraded_policy: drop
+      artifact.parameters: {}
+    rationale: "All-role LogisticRegressionL2 control with SQI, motion and denoiser disabled."
+    formal_profile: null
+
+  - case_id: feature_vector_logistic__sqi_only
+    catalog_entry: logistic_regression
+    screen_profile_id: sqi_only_fixed_thresholds
+    output_group: feature_vector
+    overrides: &sqi_only
+      <<: *logistic_common
+      quality.mode: route
+      quality.calibrator: fixed_formula_thresholds_v1
+      quality.rate_threshold: 0.50
+      quality.morph_threshold: 0.65
+      quality.minimum_coverage: 0.80
+      artifact.motion_detector_enabled: false
+      artifact.denoiser_enabled: false
+      artifact.reducer: identity
+      artifact.reducer_version: identity_v1
+      artifact.degraded_policy: drop
+      artifact.parameters: {}
+    rationale: "SQI-only tier routing with the reference thresholds."
+    formal_profile: null
+
+  - case_id: feature_vector_logistic__sqi_motion_all29_frozen
+    catalog_entry: logistic_regression
+    screen_profile_id: sqi_plus_reused_all29_frozen_motion
+    output_group: feature_vector
+    overrides: &sqi_motion_all29_frozen
+      <<: *sqi_only
+      artifact.motion_detector_enabled: true
+      artifact.motion_detector.evidence_path: artifacts/studies/static_line_b_staged_v2/20260820_225546_staged-static-05-pre-motion-ptt-v1/motion_internal/motion_internal_evidence.json
+      artifact.motion_detector.expected_evidence_sha256: 10f02a9d784e06471c7109ff8dc92d28f1a8d7753f8fdf179bebce5699fb446c
+      artifact.motion_detector.device: cuda
+      artifact.motion_detector.batch_size: 64
+      artifact.motion_detector.window_probability_aggregation: native_windows_file_median_diagnostics_only
+      artifact.motion_detector.threshold_source: bundle_frozen
+      artifact.motion_detector.reuse_scope: all29_frozen_in_sample_auxiliary
+      artifact.motion_detector.expected_split_registry_sha256: 130b2887eb29a5a534397b4ce4dc7032f9de30ae46533fa0b2c41559ff4a1284
+    rationale: "SQI plus shared all-29 frozen native-window motion inference; no fitting or recalibration."
+    formal_profile: null
+
+  - case_id: feature_vector_logistic__sqi_off_motion_all29_frozen
+    catalog_entry: logistic_regression
+    screen_profile_id: sqi_off_plus_reused_all29_frozen_motion
+    output_group: feature_vector
+    overrides:
+      <<: *sqi_motion_all29_frozen
+      quality.mode: "off"
+    rationale: "SQI-off motion-only feature-vector route with no denoiser."
+    formal_profile: null
+
+  - case_id: feature_vector_logistic__sqi_motion_pca
+    catalog_entry: logistic_regression
+    screen_profile_id: sqi_motion_pca_rate_feature_recovery
+    output_group: feature_vector
+    overrides:
+      <<: *sqi_motion_all29_frozen
+      artifact.denoiser_enabled: true
+      artifact.reducer: pca_bss
+      artifact.reducer_version: pca_component_select_v2
+      artifact.degraded_policy: denoise_then_extract_rate_features
+      artifact.parameters:
+        imu_reference_profile: imu_axes6_reference_v2
+    rationale: "PCA-BSS recovered pulse/PPI/PRV evidence is eligible for the LogisticRegressionL2 feature vector."
+    formal_profile: null
+
+  - case_id: feature_vector_logistic__sqi_motion_fastica
+    catalog_entry: logistic_regression
+    screen_profile_id: sqi_motion_fastica_rate_feature_ablation
+    output_group: feature_vector
+    overrides:
+      <<: *sqi_motion_all29_frozen
+      artifact.denoiser_enabled: true
+      artifact.reducer: fastica_bss
+      artifact.reducer_version: fastica_component_select_v2
+      artifact.degraded_policy: denoise_then_extract_rate_features
+      artifact.parameters:
+        random_state: 42
+        max_iter: 1000
+        tolerance: 0.00001
+        imu_reference_profile: imu_axes6_reference_v2
+    rationale: "FastICA-BSS recovered pulse/PPI/PRV evidence enters the same LogisticRegressionL2 feature contract."
+    formal_profile: null
+
+  - case_id: feature_vector_logistic__sqi_off_motion_pca
+    catalog_entry: logistic_regression
+    screen_profile_id: sqi_off_motion_pca_rate_feature_recovery
+    output_group: feature_vector
+    overrides:
+      <<: *sqi_motion_all29_frozen
+      quality.mode: "off"
+      artifact.denoiser_enabled: true
+      artifact.reducer: pca_bss
+      artifact.reducer_version: pca_component_select_v2
+      artifact.degraded_policy: denoise_then_extract_rate_features
+      artifact.parameters:
+        imu_reference_profile: imu_axes6_reference_v2
+    rationale: "Direct SQI remains off; high-motion windows recovered by post-denoiser Q_rate contribute rate features."
+    formal_profile: null
+
+  - case_id: feature_vector_logistic__sqi_off_motion_fastica
+    catalog_entry: logistic_regression
+    screen_profile_id: sqi_off_motion_fastica_rate_feature_ablation
+    output_group: feature_vector
+    overrides:
+      <<: *sqi_motion_all29_frozen
+      quality.mode: "off"
+      artifact.denoiser_enabled: true
+      artifact.reducer: fastica_bss
+      artifact.reducer_version: fastica_component_select_v2
+      artifact.degraded_policy: denoise_then_extract_rate_features
+      artifact.parameters:
+        random_state: 42
+        max_iter: 1000
+        tolerance: 0.00001
+        imu_reference_profile: imu_axes6_reference_v2
+    rationale: "Direct SQI remains off; FastICA post-Q_rate recovery contributes rate features."
+    formal_profile: null
+execution:
+  repeats: [0, 1, 2, 3, 4]
+  folds: [0, 1, 2, 3, 4]
+  jobs: 1
+  device: cuda
+  parallel_level: cases
+  continue_on_error: true
+  allow_parallel_deep: false
+  measure_operational_costs: false
+  preprocessing_cache:
+    mode: read_write
+    root: artifacts/studies/cache
+    namespaces:
+      - imu_calibration
+      - canonical_signal_views
+      - motion_windows
+    verify_source_sha256: true
+output:
+  root: artifacts/studies/static_line_b_staged_v2
+report:
+  top_k: 8
+  write_html: true
+  write_static_figures: true
+  calibration_bins: 10
+  figure_modules: [all]
+  compact_mean_sd: true
+  write_excel_workbook: true
