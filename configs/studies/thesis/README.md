@@ -31,7 +31,7 @@ audit is disabled; this does not change the bridge training algorithms.
 | 4.1.2 / Table 21: bidirectional motion transfer | [motion_detector.yaml](motion_detector.yaml) | Frailty29 → PTT22 and PTT22 → Frailty29; motion-specific grouped five-fold evaluation, no denoiser | specialized |
 | 4.1.3 / Tables 22–23: denoiser | [denoiser.yaml](denoiser.yaml) | Identity plus six reducers; PTT static/dynamic scoring separately, no motion training | specialized |
 | 4.2.1 / Table 24: representation comparison | [representation_screening.yaml](representation_screening.yaml) | raw/CNN, feature-vector/logistic, feature-matrix/Small Inception; 3 × 5 repeats × 5 folds | sweep |
-| 4.2.2 / Table 25: early matched three-model comparison | No numerically equivalent V5/V6 training YAML yet | Historical CNN, InceptionTime, ShapeFormer; see the historical boundary below | Decision pending |
+| 4.2.2 / Table 25: early matched three-model comparison | No equivalent training YAML available | CNN, InceptionTime, ShapeFormer with evaluation-label early stopping; see protocol limitations below | Not supported |
 | 4.2.3 / Tables 26–27: SQI/motion routing | [sqi_motion_routing.yaml](sqi_motion_routing.yaml) | Four combinations of two switches, all with denoising disabled; 4 × 5 × 5 | sweep |
 | 4.2.4 / Tables 28–30: B0–B7 single-factor comparisons | [legacy_bridge_ablation.yaml](legacy_bridge_ablation.yaml) | CNN and InceptionTime, each B0–B7; 16 × 5 × 5 | sweep |
 | 4.2.4 / Table 31, Appendix D-A: batch/LR | [batch_learning_rate_search.yaml](batch_learning_rate_search.yaml) | Six groups; screening, promotion, then full-CV completion of unpromoted groups | specialized + complete |
@@ -44,8 +44,7 @@ basis, or gravity processing. Rank 4 is the configuration actually run,
 `s1_163_v2_port_all_roles_modules_off`, not the tuned all-role group in a
 later same-named template. The selected single-configuration entry point
 remains [finalcase.yaml](../finalcase.yaml), corresponding to Rank 2
-`tuned_all_roles__inception_small_no_gravity`. This directory does not change
-that selection.
+`tuned_all_roles__inception_small_no_gravity`.
 
 ## Ordinary classification comparisons
 
@@ -124,27 +123,7 @@ than choosing fixed values again. If a rerun changes the upstream selection,
 the downstream configuration changes accordingly. This is the original
 dependent-search workflow, not a separately frozen experiment.
 
-## Historical sources and reproduction boundaries
-
-The following paths identify the original sources of the frozen parameters.
-They were under V2's `artifacts/studies/static_line_b_staged_v2/`; they are not
-runtime dependencies and are not included as result archives in V6.
-
-| Configuration/result | Historical run directory |
-|---|---|
-| Static peak detection | `20260823_104616_stage-ablation-01-static-peak-detectors-v3` |
-| Bidirectional motion transfer | `20260820_225546_staged-static-05-pre-motion-ptt-v1` |
-| Denoising | `20260820_182324_staged-static-05-pre-motion-ptt-v1` |
-| Three-way representation | First three groups of `20260823_075821_catalog_sweep_staged-static-01-representation-baselines-v2` |
-| SQI/motion | First four groups of `20260824_031024_catalog_sweep_staged-static-05-sqi-motion-compact-cnn-v6` |
-| B0–B7 | `20260821_162454_catalog_sweep_staged-static-03-centered-star-v1` |
-| Batch/LR | `20260822_190832_hyperparameter_staged-static-06-batch-lr-successive-halving-v1` and its phases |
-| Regularization | `20260823_031621_hyperparameter_staged-static-06-regularization-grid-v1` and its full_cv phase |
-| Final Ranks 1/3 | `20260824_160517_catalog_sweep_final-case-all-roles-inception-architecture-comparison-v1` |
-| Final Rank 2 | `20260824_175009_catalog_sweep_stage0-inception-small-no-gravity-supplement-v1` |
-| Final Ranks 4/5 | `20260824_111943_catalog_sweep_final-case-comparison-inception-full-v1` |
-
-Important distinctions:
+## Protocol limitations
 
 - Historical three-way representation and both hyperparameter searches use
   `aboy_project_v1`; the current public catalog defaults to MSPTDfast.
@@ -153,8 +132,7 @@ Important distinctions:
 - Inactive motion/feature-matrix fields in the two searches use current defaults.
   These fields do not enter the raw classification computation. Stage resources,
   actual training, inputs, and peak-detection settings retain historical values.
-- Neither static-peak detector nor its alignment parameters changes algorithm.
-  The current statistical configuration uses a Holm–Šidák family across five
+- The static-peak statistical configuration uses a Holm–Šidák family across five
   metrics × two channels; early historical snapshots declared only the F1 family.
   The report's multiple-comparison scope must therefore match the cited thesis table.
 - Historical denoiser scoring used Aboy v1; the later `stage5_pre.yaml` switched
@@ -164,35 +142,13 @@ Important distinctions:
   the old seven-group merged reporting archive. Comparisons between differently
   configured groups are not all described as single-factor ablations.
 
-The thesis's early matched three-model comparison comes from the old runner:
-`results_frailty3/_overfitting_sweep/20260527_1320_cnn_inceptionTime` and
-`20260528_1045_shapeformer_0extra`. V2 only reanalyzed those historical results;
-see
-`results_frailty3/_v2_reanalysis/20260824_historical_search_reports_v2/01_early_three_model_matched/report_manifest.json`.
-Outer-evaluation labels participated in early stopping. Current fixed-epoch
-V5/V6 studies cannot stand in as equivalent reruns. Retaining historical analysis
-versus explicitly restoring the old training protocol requires a separate
-decision. No YAML is supplied under a misleading reproducibility label.
-A generic historical summary is not a numerically equivalent replacement
-for that matched report.
+The thesis's early matched three-model comparison used outer-evaluation labels
+for early stopping. Current fixed-epoch studies do not implement that protocol,
+so no equivalent training YAML is provided.
 
-Appendix D-C figure sources can be traced further. The window-length
-(5/10/15 seconds) and overlap (30/50%) plots are byte-identical to the corresponding
-PNGs under
-`results_frailty3/_sweep_analyse/20260608_0659_combined_cnn_inceptiontime_shapeformer/figures/`.
-The six plots for dropout, weight decay, label smoothing, retained-window
-fraction, epochs, and regularization factor match corresponding PNGs under
-`20260616_1139_overfitting_inceptiontime/figures/` and
-`20260616_1143_overfitting_inceptiontime/figures/` (both in `_sweep_analyse/`).
-The latter analyses' `clean_runs.csv` points to
-`_overfitting_sweep/20260608_1206_overfitting_sweep_stage1_rank2`.
-
-These are exploratory results from the old runner, not the V2 batch/LR or
-nine-group regularization experiments indexed above. Fixed-epoch exploration
-also differs from the early three-model early-stopping workflow. Complete
-input, training, and evaluation equivalence with V5 has not been checked;
-new training configurations must not be invented from individual box-plot
-axis labels. Existing development plans such as
+Appendix D-C contains exploratory window-length, overlap, and regularization
+results from a different protocol than the batch/LR and nine-group regularization
+experiments indexed above. Available development plans such as
 [ablation_fixed_epochs_v2.yaml](../ablation_fixed_epochs_v2.yaml) and
 [stage3_v3.yaml](../static_line_b_staged_v2/stage3_v3.yaml) can run, but their
-filenames alone do not establish reproduction of these older experiments.
+filenames alone do not establish equivalent inputs, training, or evaluation.

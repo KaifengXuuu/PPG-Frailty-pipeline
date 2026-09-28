@@ -1,8 +1,8 @@
 # Appendix: Source Locations and Snapshot
 
-This table lists the main algorithm files, configurations, and entry points discussed in the guide. Listing an entry point does not mean that the guide explains all of its training/reporting logic. Paths are relative to the V6 root. Line counts include comments and blank lines; their sum is not a count of added production code: this guide is documentation only.
+This table lists the main algorithm files, configurations, and entry points discussed in the guide. Listing an entry point does not mean that the guide explains all of its training/reporting logic. Paths are relative to the repository root. Line counts include comments and blank lines.
 
-If a line reference no longer matches, search for the function name in the text, then compare the source digest below. SHA-256 identifies the documented source snapshot only; these digests do not participate in pipeline execution. The English V6 snapshot has refreshed file counts and digests; historical inline line ranges may shift as comments are translated, so function and class names remain the primary navigation anchors.
+If a line reference no longer matches, search for the function or class name in the text, then compare the source digest below. SHA-256 identifies the documented source snapshot only; these digests do not participate in pipeline execution.
 
 | ID | Source file | Lines |
 |---|---|---:|
@@ -150,4 +150,4 @@ S65 84b662773185e4bf47df354c8c881f48ec7c4809c2ac5c1e572a1bcbc460da5d
 4. Check the entry point: existence of a low-level function, registration in the registry, and activation in a particular run are three different facts. Historical/specialized paths must not be confused with the current finalcase.
 5. For transforms involving training-data statistics, inspect the fitting population separately. A function name containing `fit` or `cache` does not by itself establish whether leakage occurs.
 
-This guide explains the implemented algorithms; it neither proves their effectiveness nor reproduces every internal iteration of third-party libraries line by line. Unimplemented learned denoisers, external-backend internals, and unexecuted tests of optional branches do not become validated merely because they are described. Before changing an algorithm, separately confirm the research objective and numerical-equivalence requirements. Reading this guide does not change configurations or results.
+Algorithm descriptions alone do not establish effectiveness. Third-party internals and optional branches require separate validation. The registered learned-denoiser aliases are unsupported placeholders, not implemented inference paths.

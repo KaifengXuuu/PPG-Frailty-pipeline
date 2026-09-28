@@ -70,7 +70,7 @@ pipeline_output/<run>/<comparison>/repeat_<RR>/fold_<FF>/
 ```
 
 `pipeline.py run/ablation/grid/run-plan`, `sweep.py run`, and Dash training
-all enter the same execution service retained from V5. The runner provides case
+all enter the same execution service. The runner provides case
 concurrency, progress, failure handling, and resume. It does not reorder folds,
 recompute frozen splits, or change the call sequence inside a cell.
 
@@ -94,11 +94,9 @@ The numerical stages are:
 7. Materialize and train fold-local models and save learned bundles.
 8. Aggregate window→file→role→participant and evaluate outer OOF predictions.
 
-Parallel alternatives share configuration/registry interfaces. The V5 refactor
-shares plumbing, data classes, serialization, and report adapters without changing
-mathematical equations, model architectures, sampling rates, splits, or the stage
-order above. V6 retains that scientific workflow. Such scientific changes require
-a separately defined decision and a distinct comparison/ablation identity.
+Parallel alternatives share configuration/registry interfaces, data classes,
+serialization, and report adapters. Each run's resolved configuration identifies
+the selected algorithms, model architecture, sampling rates, and splits.
 
 ## 4. Cache and resume
 
@@ -148,7 +146,7 @@ case. The raw-inference service loads this bundle and replays its supported
 preprocessing, windowing, model, and aggregation path without fitting.
 
 Finalcase dynamic R/S/W recordings require static B calibration from the same
-participant. Silent calibration without B remains a separate V5-origin TODO.
+participant. Silent calibration without B is not supported.
 Inference does not silently replace the training contract.
 
 ## 8. Dash
@@ -165,11 +163,10 @@ The interface displays and downloads equivalent CLI and resolved YAML.
 Training requires selecting YAML first. Stop terminates the current background
 training process group. Infer loads only available learned bundles from model_config.
 
-## 9. Numerical equivalence boundary
+## 9. Numerical validation
 
 Structural reuse and unit tests do not replace end-to-end numerical verification.
-The V2/V5 equivalence protocol requires identical inputs, splits, GPU, CUDA,
-PyTorch, and dependencies. It compares discrete fields and row identities over
-25 finalcase outer cells and uses `atol=1e-6, rtol=0` for floating-point values.
-The inherited V5 documentation did not establish completion of that full
-25-fold equivalence run. V6 translation itself provides no new benchmark evidence.
+Numerical comparisons require identical inputs, splits, GPU, CUDA, PyTorch,
+and dependencies. Compare discrete fields and row identities exactly across
+all 25 finalcase outer cells, using `atol=1e-6, rtol=0` for floating-point values.
+Documentation and source-level checks alone do not establish numerical equivalence.

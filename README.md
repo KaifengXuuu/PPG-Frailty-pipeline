@@ -93,24 +93,15 @@ for compatibility with existing artifacts.
 
 ## Installation and environment reproduction
 
-Run installation and CLI commands from the directory containing this README,
-`pyproject.toml`, and `pipeline.py`. The contents of this V6 directory can be
-used directly as a repository root. In the original multi-version checkout only,
-first enter its distribution directory:
-
-```bash
-cd final_v0/final_pipeline_v6
-```
-
-No `cd final_v0/...` is needed after publishing V6 as the repository root.
+Run installation and CLI commands from the repository root, which contains
+this README, `pyproject.toml`, and `pipeline.py`.
 Packaged configurations, manifests, splits, and outputs are located relative
 to this README, independent of the checkout depth.
 
 ### Standalone data layout
 
-By default, recordings are read from this repository root. The original
-`final_v0/final_pipeline_v6` layout automatically uses its enclosing project
-root instead. To keep private datasets outside the code checkout, set:
+By default, recordings are read from this repository root. To keep private
+datasets outside the code checkout, set:
 
 ```bash
 export PPG_FRAILTY_DATA_ROOT=/absolute/path/to/private-project-data
@@ -141,9 +132,6 @@ also disabled by default. Scientific comparison/ablation plans remain available
 under `configs/studies/thesis/`. Post-hoc oracle/role-scope templates require
 predictions from a completed run: point their input fields at your V6 outputs
 before using them; no historical predictions are bundled.
-
-For cloning into a clean folder, publishing a new branch, and merging it into
-`main`, see [Root deployment and Git publishing](docs/ROOT_DEPLOYMENT.md).
 
 Before public release, review the participant identifiers/labels in manifests
 and the verification samples in `model_config/**/learned_model/golden.npz`;
@@ -619,5 +607,4 @@ multi-participant data meeting the relevant class and sample requirements.
 - [CLI_REFERENCE.md](docs/CLI_REFERENCE.md): Complete commands, parameters, and study/sweep usage.
 - [OUTPUT_CONTRACT.md](docs/OUTPUT_CONTRACT.md): Directories, data formats, Excel, and model weights.
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): Relationships between configuration, scientific workflow, execution, reports, and Dash.
-- [THESIS_CODE_CONFLICTS.md](docs/THESIS_CODE_CONFLICTS.md): Differences between thesis descriptions and implementation, and their impact.
 - [PLAN_COMPATIBILITY.md](docs/PLAN_COMPATIBILITY.md): General and specialized study-plan entry points.

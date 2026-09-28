@@ -1,8 +1,7 @@
 # V6 study YAML entry points
 
-This directory retains all reusable V2 study YAML and adds the thesis final
-configuration, `finalcase.yaml`. Run from the V6 repository root;
-do not invoke V2 top-level scripts.
+This directory contains reusable study YAML and the thesis final configuration,
+`finalcase.yaml`. Run the commands below from the repository root.
 
 Entry points for previously run thesis comparisons/ablations are indexed in
 [`thesis/README.md`](thesis/README.md). The `thesis/` directory stores YAML
@@ -21,9 +20,8 @@ python sweep.py run --plan configs/studies/PLAN.yaml
 ```
 
 Alternatively, use `python pipeline.py run-plan --plan ...`. Both invoke the
-same data-only service inherited from V5. Plotting/report flags from the original
-plan are disabled; training parameters, case expansion, splits, and seeds retain
-their original definitions.
+same data-only service. Plotting/report flags in the plan are disabled;
+`analyse_report.py` generates figures separately from the saved training outputs.
 
 Thesis finalcase:
 
