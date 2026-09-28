@@ -1,7 +1,7 @@
 # V6 CLI reference
 
 This document describes the current public CLI. Run all examples from the
-`final_pipeline_v6/` root. Training writes only `pipeline_output` and
+repository root. Training writes only `pipeline_output` and
 `model_config`; `analyse_report.py` writes figures, presentation tables, and
 report Excel to `report_output`.
 
@@ -20,7 +20,7 @@ python pipeline.py validate --preset finalcase --mode full
 The trainer configures numerical backends through
 `training.deterministic_algorithms`. When deterministic CUDA is selected, a
 missing `CUBLAS_WORKSPACE_CONFIG=:4096:8` is set before device allocation;
-no manual export is required. Formal V2/V5 comparisons use the same data,
+no manual export is required. Numerical comparisons use the same data,
 splits, configuration, and reference environment, with `atol=1e-6, rtol=0`.
 CPU or other compatible dependency versions can be used, but numerical outputs
 should be revalidated.
@@ -380,7 +380,7 @@ python pipeline.py infer \
 
 The input manifest describes one or more recordings from the same participant.
 Dynamic R/S/W input currently requires a static B calibration record.
-Silent calibration without B remains an unimplemented V5-origin TODO.
+Silent calibration without B is not supported.
 Inference only loads the bundle and does not update weights.
 
 ## Dash

@@ -37,7 +37,7 @@ Intuition: first confirm that all eight columns form a complete shared recording
 3. Lines 291–300 apply physical checks to the entire recording. Even if only an initial segment is requested, cropping at lines 301–307 follows the full-record check.
 4. Lines 311–315 assign the first two columns to PPG, the next three to ACC, and the final three to Gyro; input units are declared as `g` and `deg/s`.
 
-Important implementation boundary: `physical_recording_qc_thresholds_v2` at `src/ppg_frailty/data/qc.py:296-313` sets a 5-second minimum and `maximum_nonfinite_gap_s=0.0`. Consequently, NaN/Inf at the normal finalcase CSV entry are rejected first. The existence of a “100-sample interpolation” function below does not mean the production entry automatically repairs missing data. The repair algorithm is a real reusable capability available through another eligible loader or direct calls; this explanation does not change entry-point behavior.
+Important implementation boundary: `physical_recording_qc_thresholds_v2` at `src/ppg_frailty/data/qc.py:296-313` sets a 5-second minimum and `maximum_nonfinite_gap_s=0.0`. Consequently, NaN/Inf at the normal finalcase CSV entry are rejected first. The existence of a “100-sample interpolation” function below does not mean the production entry automatically repairs missing data. The repair algorithm is a reusable capability available through another eligible loader or direct calls.
 
 ### 1.2.2 Explicit Timestamp Validation
 
@@ -267,7 +267,7 @@ Per-sample mathematics:
 
 Defaults at `imu.py:19-32` include angular-velocity noise density 0.002, bias random walk 0.0002, observation-angle noise 5°, and the thresholds above. These are Python-level `EskfConfiguration` settings. Ordinary `signal.imu` YAML currently exposes sensor-lowpass parameters, not CLI keys for all these values.
 
-Full-chain state management is at `imu.py:467-727`. Filter state, orientation state, previous dynamic acceleration, and timestamps persist across chunks. The estimator is copied before processing and committed at 710–719 only if the entire chunk succeeds. Invalid samples during initial/reinitialization remain NaN/False; raw windows touching them are discarded, not zero-filled and called valid. Lines 604–608 additionally output `gravity_confidence=exp(−σ/10)` only for valid orientation and finite σ, otherwise zero. This is not a correctness probability calibrated against class labels. The existence of this historical function does not prove completion of finalcase deployment/comparison protocols for the “no-B silent-calibration ablation.”
+Full-chain state management is at `imu.py:467-727`. Filter state, orientation state, previous dynamic acceleration, and timestamps persist across chunks. The estimator is copied before processing and committed at 710–719 only if the entire chunk succeeds. Invalid samples during initial/reinitialization remain NaN/False; raw windows touching them are discarded, not zero-filled and called valid. Lines 604–608 additionally output `gravity_confidence=exp(−σ/10)` only for valid orientation and finite σ, otherwise zero. This is not a correctness probability calibrated against class labels. Finalcase dynamic-recording inference requires same-participant B calibration; this standalone estimator does not provide a no-B inference route.
 
 ### 1.6.5 low_pass_0p3hz: Historical One-Direction Lowpass Gravity
 
@@ -531,4 +531,4 @@ Intuition: each small frame still receives a new ruler, but the old zero-length 
 | `pipeline.py`, `data/qc.py`, `experiment.py`, `module_registry.py` | Actual entry points, B selection, production defaults/accessibility, execution order |
 | `legacy_bridge.py` | Historical differences in filtering, order, floating-point precision, scaling formulas, and padding |
 
-This chapter explains source code, not a rerun-based validation report. SciPy filter design/polyphase coefficient generation and NumPy quantile internals are not reimplemented here; results depend on the installed dependency implementations. No algorithm is added or changed, and a function's existence does not imply that every CLI/Dash combination exposes it. The cache chapter explains deterministic keys, stored content, and cross-fold leakage avoidance; later chapters cover quality scores, denoisers, and features.
+Filter design, polyphase coefficient generation, and quantiles depend on the installed SciPy and NumPy implementations. A function's existence does not imply that every CLI/Dash combination exposes it. The cache chapter explains deterministic keys, stored content, and cross-fold leakage avoidance; later chapters cover quality scores, denoisers, and features.

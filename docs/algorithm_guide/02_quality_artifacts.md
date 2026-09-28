@@ -740,7 +740,7 @@ For dependency-call review, the following expands the locally installed sklearn 
 6. Stop when `max_i ||dot(R_new_i,R_i)|−1| < tolerance`. Absolute values prevent sign flips from appearing to be distinct solutions. Otherwise run at most 1000 iterations; nonconvergence raises a warning that this reducer treats as failure.
 7. Original-scale sources are `S=(RKZ)ᵀ`. `whiten="unit-variance"` then rescales S and R by each S column's standard deviation. Final `components_=RK` and `mixing_=pinv(components_)`.
 
-No library source is copied into the pipeline and no call is changed here. After dependency upgrades, check these default-kernel details against the newly installed source.
+After dependency upgrades, check these default-kernel details against the newly installed source.
 
 Actual controls are `random_state=42`, `max_iter=1000`, `tolerance=1e-5`, and `imu_reference_profile`. `ConvergenceWarning` is caught and returned as failure, not success or an automatic PCA fallback. Not executed in finalcase.
 
@@ -904,7 +904,7 @@ Original reports can provide recording-level medians, 25th/75th percentiles, IQR
 
 For multiple comparisons, `_holm_sidak_step_down` sorts ascending p values. At step k with m−k+1 remaining, candidate adjustment is `1−(1−p_k)^(m−k+1)`, taking the running maximum for monotonicity. Significance threshold is `1−(1−α)^[1/(m−k+1)]`. After the first nonrejection, no later hypothesis is rejected. Results retain both the full comparison family and prespecified within-plan families.
 
-This explains existing behavior: sharing recording lists does not make the statistical test paired, and the explanation does not change the algorithm.
+Sharing recording lists does not make the statistical test paired.
 
 ## 3.20 Manual-Review Coverage Checklist
 

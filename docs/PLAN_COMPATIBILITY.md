@@ -1,10 +1,10 @@
 # Study-plan entry points and compatibility
 
-V6 includes the 29-plan compatibility set (28 V2 plans plus `finalcase.yaml`)
-and eight dedicated thesis plans: 37 YAML files in total. Different
+V6 includes 29 general study plans and eight dedicated thesis plans:
+37 YAML files in total. Different
 schemas are not forced into one grid interpretation. Each plan is validated
 by its own strict loader before entering its computation or analysis route.
-This preserves the V2 workflow while separating training and presentation outputs.
+Training and presentation outputs use separate entry points.
 
 ## Standalone inputs
 
@@ -35,9 +35,8 @@ canonical files in `--plan` to use the same route.
 
 These plans cover single, grid, catalog, representation/model, ensemble,
 SQI/motion, sequential ablation, Legacy Bridge, finalcase, gravity, and
-ShapeFormer workflows. The V5-derived execution route disables only plan
-HTML/plot/report policies. Scientific configuration, case expansion,
-repeats/folds, seeds, splits, and training algorithms remain unchanged.
+ShapeFormer workflows. The execution route disables plan HTML/plot/report
+policies; figures and reports are generated separately by `analyse_report.py`.
 Outputs use `pipeline_output/<run>/<comparison>/repeat_<RR>/fold_<FF>/`.
 
 Two motion-finalist plans reference the same frozen detector bundle. The
@@ -89,8 +88,8 @@ Oracle results intentionally use evaluation labels and are not deployable models
 - `ppg_frailty.stage_ablation_01_static_peaks.v3`.
 - Five `ppg_frailty.hyperparameter_study_plan.v1` plans.
 
-These use the extracted V5 computation runners, retaining V2 numerical semantics
-and writing only `pipeline_output`. A Stage5 example:
+These use specialized computation runners and write only `pipeline_output`.
+A Stage5 example:
 
 ```bash
 python specialized_pipeline.py validate \
@@ -125,12 +124,11 @@ python specialized_pipeline.py run \
 `stage_ablation_channels.yaml` likewise uses `--upstream-study` to reference
 the completed regularization run.
 
-These computation routes write structured data directly, rather than generating
-presentation files and recursively deleting or rejecting them afterward.
+These computation routes write structured data without generating presentation files.
 After completion, the adapter indexes artifacts and writes the convenience data
 view `tables/pipeline_data.xlsx`. Stage5 exports a total of 10 outer-fold and
 2 final motion-weight sets across frailty29/PTT22 to `model_config/<run>`.
-Every V5-derived hyperparameter phase exports all frailty fold weights and
+Every hyperparameter phase exports all frailty fold weights and
 corresponding case configurations. Static-peak trains no model and explicitly
 records `model_trained=false`, `model_kind=not_applicable`.
 
@@ -143,7 +141,7 @@ python analyse_report.py specialized-report \
   --input pipeline_output/SPECIALIZED_RUN
 ```
 
-The sole existing V2 successive-halving completion workflow is retained:
+To complete full-CV training for unpromoted successive-halving candidates:
 
 ```bash
 python specialized_pipeline.py complete \
@@ -152,15 +150,13 @@ python specialized_pipeline.py complete \
 
 `specialized_pipeline.py run --resume pipeline_output/<run>` resumes the same
 Stage5/static-peak run. Hyperparameter orchestration also resumes its existing
-persisted V5-compatible phases. No new candidate-promotion mathematics is
-introduced. `complete` performs only the originally defined V2 full-CV completion
-of candidates that were not promoted.
+persisted phases. `complete` performs full-CV training of candidates that were
+not promoted; it does not change candidate-promotion rules.
 
-## Numerical boundary
+## Computation and reporting
 
-Presentation calls were extracted from computation runners into compatible
-`reporting.specialized` entry points. Computation routes contain no PNG/HTML
-writers and need no post-training presentation cleanup. Targeted golden/numerical
-tests audit mathematics, schemas, ordering, thresholds, splits/seeds, and artifact
-fields. Final scientific equivalence still requires full output comparisons
-in the frozen environment; static source hashes cannot replace that evidence.
+The `reporting.specialized` entry points generate presentations from persisted
+data. Computation routes contain no PNG/HTML writers. Golden/numerical tests
+cover mathematics, schemas, ordering, thresholds, splits/seeds, and artifact
+fields. Numerical equivalence requires full output comparisons in the reference
+environment; static source hashes cannot replace that evidence.

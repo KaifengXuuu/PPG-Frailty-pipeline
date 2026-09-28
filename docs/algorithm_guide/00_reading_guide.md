@@ -13,7 +13,7 @@ The “Intuition” sections use everyday images such as curves, rulers, directi
 
 ## Source Location Convention
 
-Full paths are relative to `final_pipeline_v6/`. For example, `src/ppg_frailty/signal/preprocess.py:381–411` means lines 381 through 411 of that file. Where a section omits the shared `src/ppg_frailty/` prefix, prepend it to locate the source; `configs/` paths are always relative to the V6 root. Line numbers refer to the source snapshot used when the guide was written. If code moves, locate the function or class named in the same section first. The appendix lists SHA-256 hashes of referenced source files to distinguish moved code from changed computations. These hashes are documentation provenance, not runtime environment locks or execution gates.
+Full paths are relative to the repository root. For example, `src/ppg_frailty/signal/preprocess.py:381–411` means lines 381 through 411 of that file. Where a section omits the shared `src/ppg_frailty/` prefix, prepend it to locate the source; `configs/` paths are always relative to the repository root. Line numbers refer to the documented source snapshot. If code moves, locate the function or class named in the same section first. The appendix lists SHA-256 hashes of referenced source files to distinguish moved code from changed computations. These hashes are documentation provenance, not runtime environment locks or execution gates.
 
 Code correspondence groups meaningful consecutive computational statements: each group identifies line ranges, variables, and mathematical operations. Imports, blank lines, and type declarations are not translated individually. Statements governing array orientation, masks, boundaries, interpolation, clipping, failure handling, and training-set fitting are also part of the algorithm explanation. For third-party functions, only the inputs, parameters, and mathematical meaning specified by the local call are described; other implementations or textbook defaults are not presented as this project's actual behavior.
 
@@ -78,4 +78,4 @@ pandoc docs/algorithm_guide/00_reading_guide.md \
   --output docs/V6_ALGORITHM_GUIDE.docx
 ```
 
-This guide does not change source code, defaults, sampling rates, model weights, or data. Static checks of line references and formulas do not replace algorithm validation on real data or imply that every optional module has undergone a new execution test.
+Source references and formulas do not replace algorithm validation on real data. Each optional module requires testing in its intended configuration.

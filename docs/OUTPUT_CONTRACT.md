@@ -213,8 +213,7 @@ This `export-excel` command requires the general report's
 Manifests, indexes, bundles, and output tables record the necessary paths,
 schemas, and hashes. Recovery and rebuilding read completed cells without
 redefining splits, models, or aggregation. Passing completeness checks does
-not establish numerical equivalence. A formal V2/V5 conclusion requires
-25-fold output comparison in the same frozen environment, with
-`atol=1e-6, rtol=0` for floating-point values. The inherited V5 documentation
-did not establish completion of this full finalcase equivalence run; the V6
-translation adds no new numerical-equivalence claim.
+not establish numerical equivalence. Numerical validation requires comparing
+all 25 finalcase folds in the same reference environment, with
+`atol=1e-6, rtol=0` for floating-point values and exact agreement for discrete
+fields and row identities.

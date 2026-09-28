@@ -30,7 +30,7 @@ outer-train window/row inverse-frequency class weights; B5's Line-B weighted
 sampler and participant-count weighting are not silently inherited. Historical
 Stage 3 bridge plans remain immutable evidence and are not rewritten.
 
-## Order and status
+## Workflow stages
 
 0. stage0_decision_bias_oracle.yaml
    Read-only, intentionally label-leaking decision-layer ceiling analysis for
@@ -65,7 +65,7 @@ Stage 3 bridge plans remain immutable evidence and are not rewritten.
    InceptionFull evidence is incompatible and is not reused. Review this report
    alongside a matching rerun of Stage 1.
 
-3. stage3_star.yaml (current restart)
+3. stage3_star.yaml (centered-star comparisons)
    Runs CompactCNN and InceptionTimeFull for B0 plus seven independent
    B0-to-Bk changes. Execution is profile-major and model-paired. Repeats 0-4,
    folds 0-4, fixed 10 epochs, seed 42, serial CUDA execution produce exactly
@@ -78,10 +78,10 @@ Stage 3 bridge plans remain immutable evidence and are not rewritten.
    the within-study reference; the paired difference isolates B1 conditional
    on B2. It reuses the same field-driven bridge runtime and has no Phase 0.
 
-   stage3_alter.yaml (preserved historical chain)
+   stage3_alter.yaml (sequential bridge comparisons)
    Executable specification for the revised nine-case legacy-to-V2 bridge and
    an optional, advisory Phase 0 data/source/cache audit. It freezes repeat 0,
-   folds 0-4, seed 42, ten epochs, the requested execution and numeric report
+   folds 0-4, seed 42, ten epochs, the configured execution and numeric report
    orders, L5-to-L6 sampler-plus-class-weight bundle, post-hoc aggregation
    views, and sampling diagnostics. Phase 0 never gates or changes training;
    the supplied plan sets `legacy_bridge.phase0.enabled: false` because the
@@ -140,7 +140,7 @@ Stage 3 bridge plans remain immutable evidence and are not rewritten.
    sliced; physical IMU and amplitude-preserving analysis views remain intact.
 
    06_sequential_single_factor_ablation_v2.yaml is retained as a separate
-   three-case CompactCNN learning-rate ablation, now also locked to the selected
+   three-case CompactCNN learning-rate ablation using the selected execution
    state. It is not the InceptionTime tuning route.
 
 6b. stage_ablation_s1_163_gravity_removal_v1.yaml
@@ -152,11 +152,10 @@ Stage 3 bridge plans remain immutable evidence and are not rewritten.
    The reference is rerun in the same code snapshot for paired inference.
 
 Last. stage_last_shapeformer_stability_v2.yaml
-   ShapeFormer is intentionally deferred until every numbered stage has been
-   reviewed because its fold-local discovery and model fitting are unusually
-   expensive. Default execution is one cell. If stable, rerun one complete
-   repeat, then full 5x5 only after another manual review. Its failure remains
-   isolated from ordinary models.
+   ShapeFormer's fold-local discovery and model fitting are unusually expensive.
+   Default execution is one cell. Start with that cell to assess stability and
+   resource use, then expand to one complete repeat and full 5x5 evaluation as
+   needed. Its execution is independent of ordinary models.
 
 ## Commands
 
